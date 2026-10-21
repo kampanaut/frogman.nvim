@@ -1,0 +1,8 @@
+-- plugin: rt_c2b
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e d                               ⦉a⦊ [d] ⟦-⟧   dtm{} dsm{}
+:e c                               ⦉d⦊ [c] ⟦-⟧   dtm{d>a} dsm{}
+<M-f>  (d graduates: dsm d>a)      ⦉-⦊ [c] ⟦d⟧   dtm{d>a} dsm{d>a}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+:e a                               ⦉c⦊ [a] ⟦d⟧   dtm{d>a} dsm{d>a}
+<M-f>  (to d: its partner is a)    ⦉c⦊ [d] ⟦a⟧   dtm{a-swap>c d>a} dsm{}
+<M-;><M-t>  (on d)                 ⦉c⦊ [d] ⟦a⟧   dtm{a-swap>c d>a} dsm{}  «No secondary relationship found for restoration. It means you hadn't d»

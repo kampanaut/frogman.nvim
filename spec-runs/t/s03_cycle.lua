@@ -1,0 +1,11 @@
+vim.cmd("e a.txt"); vim.cmd("e b.txt"); vim.cmd("e c.txt"); vim.cmd("e d.txt")
+TRY("M-f", function() CDV.toggle_secondary() end)  -- graduate ternary c to secondary
+vim.cmd("e e.txt")
+STATE("setup"); P("ord", ORD())
+TRY("cycle_right", function() CDV.cycle_right() end); STATE("cycle_right #1"); P("origin", NAME(H.data.cycling_origins[vim.api.nvim_get_current_win()].current_slot)); P("origin is live triquetra", tostring(H.data.cycling_origins[vim.api.nvim_get_current_win()] == W.data.crux[vim.api.nvim_get_current_win()]))
+TRY("cycle_right", function() CDV.cycle_right() end); STATE("cycle_right #2")
+P("ord during cycle", ORD())
+TRY("cycle_left", function() CDV.cycle_left() end); STATE("cycle_left")
+TRY("cycle_select", function() CDV.cycle_select() end); STATE("cycle_select (outside buffer?)")
+P("ord after", ORD())
+DONE()

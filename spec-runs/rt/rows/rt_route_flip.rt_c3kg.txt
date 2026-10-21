@@ -1,0 +1,22 @@
+-- plugin: rt_c3kg
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+<M-;><M-c>                         ⦉-⦊ [a] ⟦-⟧  p=[a]on   dtm{} dsm{}
+:e b                               ⦉a⦊ [b] ⟦-⟧  p=[a]on   dtm{} dsm{}
+:e d                               ⦉b⦊ [d] ⟦-⟧  p=[a]on   dtm{b>a} dsm{}
+<M-f>                              ⦉-⦊ [d] ⟦b⟧  p=[a]on   dtm{b>a} dsm{b>a}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+<M-f>                              ⦉-⦊ [b] ⟦d⟧  p=[a]on   dtm{b>a} dsm{b>a d-swap>b}
+:e e                               ⦉b⦊ [e] ⟦d⟧  p=[a]on   dtm{b>a} dsm{b>a d-swap>b}
+<M-;><M-c>                         ⦉b⦊ [e] ⟦d⟧  p=[e,a]on   dtm{b>a} dsm{b>a d-swap>b}
+<M-;><M-r>                         ⦉b⦊ [e] ⟦d⟧  p=[e,a]on   dtm{b>a} dsm{b>a d-swap>b}  «No ternary relationship found for restoration. It means you hadn't dis»
+<M-S-f>                            ⦉e⦊ [b] ⟦d⟧  p=[e,a]on   dtm{b>a e-swap>b} dsm{b>a d-swap>b}
+<M-;><M-t>                         ⦉e⦊ [b] ⟦a⟧  p=[e,a]on   dtm{b>a e-swap>b} dsm{b>d d-swap>b}  «Restored secondary slot to: 8522f50aac9c8a0d (a.txt)»
+<M-n> <M-v>                        ⦉e⦊ [a] ⟦b⟧  p=[e,a]on   dtm{b>a e-swap>b} dsm{b>d d-swap>b}  «Checkpoint saved: »
+:e e                               ⦉a⦊ [e] ⟦b⟧  p=[e,a]on   dtm{b>a e-swap>b} dsm{b>d d-swap>b}
+<M-f>                              ⦉a⦊ [b] ⟦e⟧  p=[e,a]on   dtm{b>a e-swap>a} dsm{b>d d-swap>b e-swap>b}
+<M-m> <M-v>                        ⦉a⦊ [e] ⟦b⟧  p=[e,a]on   dtm{b>a e-swap>a} dsm{b>d d-swap>b e-swap>b}  «Checkpoint saved: »
+<M-f>                              ⦉a⦊ [b] ⟦e⟧  p=[e,a]on   dtm{b>a e-swap>a} dsm{b>d d-swap>b e-swap>b}
+:e d                               ⦉b⦊ [d] ⟦e⟧  p=[e,a]on   dtm{b>a e-swap>a} dsm{b>d d-swap>b e-swap>b}
+:e d                               ⦉b⦊ [d] ⟦e⟧  p=[e,a]on   dtm{b>a e-swap>a} dsm{b>d d-swap>b e-swap>b}
+<M-;><M-t>                         ⦉e⦊ [d] ⟦b⟧  p=[e,a]on   dtm{b>a e-swap>a} dsm{b>d d-swap>b d>e e-swap>b}  «Restored secondary slot to: 57ee7eb11657c516 (b.txt)»
+<M-m> <M-v>                        ⦉e⦊ [b] ⟦d⟧  p=[e,a]on   dtm{b>a e-swap>a} dsm{b>d d-swap>b d>e e-swap>b}  «Checkpoint saved: »
+<M-;><M-t>                         ⦉e⦊ [b] ⟦d⟧  p=[e,a]on   dtm{b>a e-swap>a} dsm{b>d d-swap>b d>e e-swap>b}  ERROR: This is impossible. Remembered secondary is the same as current secondary. It sh

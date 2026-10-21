@@ -1,0 +1,20 @@
+- **Every fix together: all zero, under both views [sim].** The walks ran 900,000 steps: four walk sets, three seeds and two views, at 37,500 steps each. They gave:
+  - 0 I23 breaks, at the current window and at any window;
+  - 0 I1 breaks;
+  - 0 fill assertions;
+  - 0 ternary and 0 secondary restore throws;
+  - 0 "Duplicates detected";
+  - no other error and no hook failure.
+- **The fixes were exercised, not idle.** In those walks:
+  - 7,152 fills from history, each with the ordered list starting on the window's current buffer;
+  - 6,638 window-jump cancels, with no step left mid-cycle;
+  - 28,874 pick notes;
+  - 230 firings of the stale-note check where a slot changes under the current buffer.
+- **Today's code, same walks [run]:**
+  - 86,286 I23 breaks at the current window (99,612 at any window);
+  - 768 steps with one buffer in two slots at the current window (1,214 in any window);
+  - 314 fills that would trip the assertion;
+  - 370 ternary and 4,833 secondary restore throws;
+  - 37 "Duplicates detected", 380 other errors and 4 hook failures.
+- **Repeatable now [sim].** Two window-view sets with several windows were run three times each. With every fix, the three runs are identical step for step, and they stay identical when the file paths, and so the file hashes, change. Today's code gives different walks from run to run, in 253 to 330 of the 1,500. Each of those first differs in the ordered list alone, at a step where two buffers share an access time.
+- **With one window the view changes nothing**, for either code: the global and window walks are identical step for step.

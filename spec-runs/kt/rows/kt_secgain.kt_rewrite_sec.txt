@@ -1,0 +1,15 @@
+-- plugin: kt_rewrite_sec
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e e                               ⦉a⦊ [e] ⟦-⟧   dtm{} dsm{}
+<M-f>                              ⦉-⦊ [e] ⟦a⟧   dtm{} dsm{}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+:e d                               ⦉e⦊ [d] ⟦a⟧   dtm{} dsm{}
+<M-;><M-f>                         ⦉e⦊ [a] ⟦d⟧   dtm{d-swap>e} dsm{d-swap>a}
+<M-S-f>                            ⦉a⦊ [e] ⟦d⟧   dtm{a-swap>e d-swap>e} dsm{d-swap>a}
+<M-;><M-f>                         ⦉a⦊ [d] ⟦e⟧   dtm{a-swap>e d-swap>e e-swap>a} dsm{d-swap>a d>a e-swap>d}
+<M-f>                              ⦉a⦊ [e] ⟦d⟧   dtm{a-swap>e d-swap>a e-swap>a} dsm{d-swap>e d>a e-swap>d}
+<M-m> <M-m> <M-v>                  ⦉e⦊ [a] ⟦d⟧   dtm{a-swap>e d-swap>a e-swap>a} dsm{d-swap>e d>a e-swap>d}  «Checkpoint saved: »
+<M-m> <M-m> <M-v>                  ⦉e⦊ [d] ⟦a⟧   dtm{a-swap>e d-swap>a e-swap>a} dsm{d-swap>e d>e e-swap>d}  «Checkpoint saved: »  «KT-s rec-sec rw d>a => e swap=e prev=d»
+<M-f>                              ⦉e⦊ [a] ⟦d⟧   dtm{a-swap>e d-swap>e e-swap>a} dsm{d-swap>a d>e e-swap>d}
+<M-m> <M-v>                        ⦉e⦊ [d] ⟦a⟧   dtm{a-swap>e d-swap>e e-swap>a} dsm{d-swap>a d>e e-swap>d}  «Checkpoint saved: »
+<M-;><M-t>                         ⦉a⦊ [d] ⟦e⟧   dtm{a-swap>e d-swap>e e-swap>a} dsm{d-swap>a d>a e-swap>d}  «Restored secondary slot to: 0af0b0564cbfba1e (e.txt)»
+<M-;><M-t>                         ⦉e⦊ [d] ⟦a⟧   dtm{a-swap>e d-swap>e e-swap>a} dsm{d-swap>a d>e e-swap>d}  «Restored secondary slot to: 8522f50aac9c8a0d (a.txt)»

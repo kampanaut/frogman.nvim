@@ -1,0 +1,8 @@
+dofile(os.getenv("CDV_SPEC") .. "/t/fmt.lua")
+ROW(":e a", function() vim.cmd('edit a.txt') end)
+ROW(":e b", function() vim.cmd('edit b.txt') end)
+ROW(":e c", function() vim.cmd('edit c.txt') end)
+ROW(":e a", function() vim.cmd('edit a.txt') end)
+ROW(":e b  (b's note says a = where you are)", function() vim.cmd('edit b.txt') end)
+ROW("<M-;><M-r>", function() CDV.restore_ternary() end)
+ROWS_DONE()

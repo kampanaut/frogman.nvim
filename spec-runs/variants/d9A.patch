@@ -1,0 +1,21 @@
+diff -ruN a/lua/cavediver/domains/window/routines.lua b/lua/cavediver/domains/window/routines.lua
+--- a/lua/cavediver/domains/window/routines.lua	2026-10-21 03:57:15.295547554 +0800
++++ b/lua/cavediver/domains/window/routines.lua	2026-10-21 03:57:15.312656074 +0800
+@@ -731,14 +731,14 @@
+ 			type .. " slot.", vim.log.levels.WARN)
+ 	elseif not filepath then
+ 		error("This impossible error should never happen. Remembered " .. type .. " is not registered in history.")
+-	elseif (not filepath:match("^NONAME_")) and vim.fn.filereadable(filepath) == 0 then
+-		vim.notify("Remembered " .. type .. " is not found in filesystem anymore.", vim.log.levels.WARN)
+-		triquetra["displacement_" .. type .. "_map"][triquetra.current_slot] = nil
+ 	elseif remembered_relationship == current_relationship then
+ 		error("This is impossible. Remembered " ..
+ 			type .. " is the same as current " .. type .. ". It should be different for flip flop.")
+ 	else
+ 		local ui_get_basename = require('cavediver.domains.ui').routines.get_smart_basename
++		if (not filepath:match("^NONAME_")) and vim.fn.filereadable(filepath) == 0 then
++			vim.notify("[variant A] restored, but the file isn't on disk right now", vim.log.levels.WARN)
++		end
+ 		if type == "ternary" then
+ 			if remembered_relationship == triquetra.secondary_slot then
+ 				triquetra.secondary_slot = triquetra.ternary_slot

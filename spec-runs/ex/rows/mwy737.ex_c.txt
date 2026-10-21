@@ -1,0 +1,26 @@
+-- plugin: ex_c, history_view = window
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+<M-f>                              ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}  «Cannot populate secondary slot - insufficent history.»
+<M-n> <M-v>                        ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e d                               ⦉a⦊ [d] ⟦-⟧   dtm{} dsm{}
+<M-f>                              ⦉-⦊ [d] ⟦a⟧   dtm{} dsm{}  «…graduated.»
+:vsplit                            win2 ⦉-⦊ [d] ⟦-⟧   dtm{} dsm{}
+<M-m> <M-m> <M-v>                  win2 ⦉-⦊ [d] ⟦-⟧   dtm{} dsm{}
+<C-w>p                             win1 ⦉-⦊ [d] ⟦a⟧   dtm{} dsm{}
+<M-f>                              win1 ⦉-⦊ [a] ⟦d⟧   dtm{} dsm{d-swap>a}
+:vsplit                            win3 ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+<M-f>                              win3 ⦉-⦊ [a] ⟦a⟧   dtm{} dsm{}  «Secondary buffer populated from history.»
+<M-f>                              win3 ⦉-⦊ [a] ⟦a⟧   dtm{} dsm{a-swap>a}
+<M-m> <M-m> <M-v>                  win3 ⦉-⦊ [a] ⟦a⟧   dtm{} dsm{a-swap>a}
+:e b                               win3 ⦉a⦊ [b] ⟦a⟧   dtm{} dsm{a-swap>a}
+<C-w>p                             win1 ⦉-⦊ [a] ⟦d⟧   dtm{} dsm{d-swap>a}
+<M-m> <M-v>                        win1 ⦉-⦊ [d] ⟦a⟧   dtm{} dsm{d-swap>a}
+<M-;><M-c>                         win1 ⦉-⦊ [d] ⟦a⟧  p=[d]on   dtm{} dsm{d-swap>a}
+<C-w>p                             win3 ⦉a⦊ [b] ⟦a⟧   dtm{} dsm{a-swap>a}
+:e b                               win3 ⦉a⦊ [b] ⟦a⟧   dtm{} dsm{a-swap>a}
+<C-w>p                             win1 ⦉-⦊ [d] ⟦a⟧  p=[d]on   dtm{} dsm{d-swap>a}
+:e c                               win1 ⦉d⦊ [c] ⟦a⟧  p=[d]on   dtm{} dsm{d-swap>a}
+<M-f>                              win1 ⦉d⦊ [a] ⟦c⟧  p=[d]on   dtm{c-swap>d} dsm{c-swap>a d-swap>a}
+<C-w>p                             win3 ⦉a⦊ [b] ⟦a⟧   dtm{} dsm{a-swap>a}
+<M-f>                              win3 ⦉b⦊ [a] ⟦a⟧   dtm{b-swap>a} dsm{a-swap>a a>a b-swap>a}  ERROR: Duplicates detected in triquetra slots
+<M-;><M-t>                         win3 ⦉b⦊ [a] ⟦a⟧   dtm{b-swap>a} dsm{a-swap>a a>a b-swap>a}  ERROR: Remembered secondary is the same as current secondary.

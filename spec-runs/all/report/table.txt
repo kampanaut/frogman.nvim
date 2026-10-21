@@ -1,0 +1,62 @@
+| Walk set | Seed | View | Code | I23: current window / any window | I1: current window / any window | Fill assertions | Restore throws (ternary / secondary) | "Duplicates detected" | Other errors | Hook failures |
+|---|---|---|---|---|---|---|---|---|---|---|
+| one window | 7 | global | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| one window | 7 | global | today's code | 5,150 / 5,150 | 0 / 0 | – (would: 0) | 14 / 161 | 0 | 0 | 0 |
+| one window | 7 | window | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| one window | 7 | window | today's code | 5,150 / 5,150 | 0 / 0 | – (would: 0) | 14 / 161 | 0 | 0 | 0 |
+| one window | 11 | global | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| one window | 11 | global | today's code | 5,186 / 5,186 | 0 / 0 | – (would: 0) | 12 / 191 | 0 | 0 | 0 |
+| one window | 11 | window | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| one window | 11 | window | today's code | 5,186 / 5,186 | 0 / 0 | – (would: 0) | 12 / 191 | 0 | 0 | 0 |
+| one window | 13 | global | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| one window | 13 | global | today's code | 5,159 / 5,159 | 0 / 0 | – (would: 0) | 11 / 193 | 0 | 0 | 0 |
+| one window | 13 | window | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| one window | 13 | window | today's code | 5,159 / 5,159 | 0 / 0 | – (would: 0) | 11 / 193 | 0 | 0 | 0 |
+| several windows | 7 | global | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| several windows | 7 | global | today's code | 2,849 / 3,889 | 0 / 0 | – (would: 0) | 3 / 104 | 0 | 0 | 0 |
+| several windows | 7 | window | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| several windows | 7 | window | today's code | 2,854 / 3,890 | 15 / 25 | – (would: 5) | 3 / 105 | 1 | 0 | 0 |
+| several windows | 11 | global | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| several windows | 11 | global | today's code | 2,745 / 4,075 | 0 / 0 | – (would: 0) | 7 / 100 | 0 | 0 | 0 |
+| several windows | 11 | window | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| several windows | 11 | window | today's code | 2,756 / 4,081 | 40 / 60 | – (would: 7) | 7 / 99 | 6 | 0 | 0 |
+| several windows | 13 | global | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| several windows | 13 | global | today's code | 2,693 / 3,876 | 0 / 0 | – (would: 0) | 3 / 86 | 0 | 0 | 0 |
+| several windows | 13 | window | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| several windows | 13 | window | today's code | 2,706 / 3,886 | 5 / 7 | – (would: 3) | 3 / 86 | 0 | 0 | 0 |
+| cycles left open across a jump | 7 | global | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| cycles left open across a jump | 7 | global | today's code | 2,502 / 3,576 | 97 / 173 | – (would: 43) | 3 / 86 | 0 | 57 | 2 |
+| cycles left open across a jump | 7 | window | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| cycles left open across a jump | 7 | window | today's code | 2,500 / 3,576 | 105 / 179 | – (would: 49) | 2 / 85 | 3 | 57 | 2 |
+| cycles left open across a jump | 11 | global | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| cycles left open across a jump | 11 | global | today's code | 2,632 / 3,726 | 75 / 153 | – (would: 39) | 2 / 92 | 2 | 64 | 0 |
+| cycles left open across a jump | 11 | window | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| cycles left open across a jump | 11 | window | today's code | 2,634 / 3,731 | 112 / 193 | – (would: 50) | 1 / 92 | 5 | 64 | 0 |
+| cycles left open across a jump | 13 | global | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| cycles left open across a jump | 13 | global | today's code | 2,547 / 3,497 | 143 / 183 | – (would: 55) | 4 / 75 | 7 | 69 | 0 |
+| cycles left open across a jump | 13 | window | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| cycles left open across a jump | 13 | window | today's code | 2,560 / 3,501 | 176 / 241 | – (would: 63) | 6 / 75 | 13 | 69 | 0 |
+| restore-heavy | 7 | global | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| restore-heavy | 7 | global | today's code | 3,856 / 3,856 | 0 / 0 | – (would: 0) | 45 / 433 | 0 | 0 | 0 |
+| restore-heavy | 7 | window | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| restore-heavy | 7 | window | today's code | 3,856 / 3,856 | 0 / 0 | – (would: 0) | 45 / 433 | 0 | 0 | 0 |
+| restore-heavy | 11 | global | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| restore-heavy | 11 | global | today's code | 3,810 / 3,810 | 0 / 0 | – (would: 0) | 39 / 414 | 0 | 0 | 0 |
+| restore-heavy | 11 | window | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| restore-heavy | 11 | window | today's code | 3,810 / 3,810 | 0 / 0 | – (would: 0) | 39 / 414 | 0 | 0 | 0 |
+| restore-heavy | 13 | global | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| restore-heavy | 13 | global | today's code | 3,993 / 3,993 | 0 / 0 | – (would: 0) | 42 / 482 | 0 | 0 | 0 |
+| restore-heavy | 13 | window | all fixes | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 |
+| restore-heavy | 13 | window | today's code | 3,993 / 3,993 | 0 / 0 | – (would: 0) | 42 / 482 | 0 | 0 | 0 |
+
+| Code | View | Steps | I23: current / any | I1: current / any | Fill assertions | Restore throws (ternary / secondary) | "Duplicates detected" | Other errors | Hook failures | Run failures |
+|---|---|---|---|---|---|---|---|---|---|---|
+| all fixes | global | 450,000 | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 | 0 |
+| all fixes | window | 450,000 | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 | 0 |
+| all fixes | both | 900,000 | 0 / 0 | 0 / 0 | 0 | 0 / 0 | 0 | 0 | 0 | 0 |
+| today's code | global | 450,000 | 43,122 / 49,793 | 315 / 509 | – (would: 137) | 185 / 2,417 | 9 | 190 | 2 | 0 |
+| today's code | window | 450,000 | 43,164 / 49,819 | 453 / 705 | – (would: 177) | 185 / 2,416 | 28 | 190 | 2 | 0 |
+| today's code | both | 900,000 | 86,286 / 99,612 | 768 / 1,214 | – (would: 314) | 370 / 4,833 | 37 | 380 | 4 | 0 |
+
+all_fixed {"steps": 900000, "i23_cur": 0, "i23_any": 0, "i1_cur_steps": 0, "i1_any_steps": 0, "fill_assert": 0, "fill_would": 0, "throw_ternary": 0, "throw_secondary": 0, "dupdet": 0, "other": 0, "hook": 0, "cancel": 6638, "cancel_moved": 0, "runfail": 0, "self_any": 0, "q9": 28874, "cycling": 0}
+today {"steps": 900000, "i23_cur": 86286, "i23_any": 99612, "i1_cur_steps": 768, "i1_any_steps": 1214, "fill_assert": 0, "fill_would": 314, "throw_ternary": 370, "throw_secondary": 4833, "dupdet": 37, "other": 380, "hook": 4, "cancel": 0, "cancel_moved": 0, "runfail": 0, "self_any": 253, "q9": 0, "cycling": 29146}

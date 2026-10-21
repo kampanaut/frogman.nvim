@@ -1,0 +1,9 @@
+-- plugin: rt_c3kg
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e c                               ⦉a⦊ [c] ⟦-⟧   dtm{} dsm{}
+<M-f>  (a graduates)               ⦉-⦊ [c] ⟦a⟧   dtm{} dsm{}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+<M-f>  (to a)                      ⦉-⦊ [a] ⟦c⟧   dtm{} dsm{c-swap>a}
+<M-f>  (back to c)                 ⦉-⦊ [c] ⟦a⟧   dtm{} dsm{a-swap>c c-swap>a}
+:e e                               ⦉c⦊ [e] ⟦a⟧   dtm{} dsm{a-swap>c c-swap>a}
+<M-S-f>  (back to c)               ⦉e⦊ [c] ⟦a⟧   dtm{e-swap>c} dsm{a-swap>c c-swap>a}
+<M-;><M-t>  (on c)                 ⦉e⦊ [c] ⟦a⟧   dtm{e-swap>c} dsm{a-swap>c c-swap>a}  «No secondary relationship found for restoration. It means you hadn't d»

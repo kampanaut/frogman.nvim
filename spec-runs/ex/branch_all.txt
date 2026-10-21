@@ -1,0 +1,29 @@
+60 firings (24 behind a valid swap note); first added key R, paired with ex_c:
+    ex_a            hidden exchange  vs drop exchange  12
+    ex_a            hidden outside   vs drop outside   12
+    ex_a            read   exchange  vs drop none      2
+    ex_a            read   none      vs drop none      28
+    ex_a            read   outside   vs drop none      6
+    ex_b            hidden exchange  vs drop exchange  12
+    ex_b            hidden outside   vs drop outside   12
+    ex_b            read   exchange  vs drop none      36
+    kt_rewrite_sec  hidden exchange  vs drop exchange  12
+    kt_rewrite_sec  hidden outside   vs drop outside   12
+    kt_rewrite_sec  read   throw     vs drop none      36
+added keys: R R S
+  kt_rewrite_sec: read/throw/throw/exchange x36; hidden/exchange/exchange/none x12; hidden/outside/outside/exchange x12   I23 broken after: 0
+  ex_a: read/none/none/exchange x28; hidden/exchange/exchange/none x12; hidden/outside/outside/exchange x12; read/outside/outside/exchange x6; read/exchange/exchange/none x2   I23 broken after: 0
+  ex_b: read/exchange/exchange/none x35; hidden/exchange/exchange/none x12; hidden/outside/outside/exchange x12; read/exchange/exchange/exchange x1   I23 broken after: 0
+  ex_c: read/none/none/exchange x36; hidden/exchange/exchange/none x12; hidden/outside/outside/exchange x12   I23 broken after: 0
+  e.g. ex_a exchange/exchange/none : ea ec F ec X3 ee ed X3 F X3 G J ed X2 G ea F P P G ec ee S
+  e.g. ex_a none/none/exchange : ea ee eb F ec ee S F J R S
+  e.g. ex_a outside/outside/exchange : ea ec R ee ed R ed G eb ed F X2 G F G P F eb G F ee X3 S
+  e.g. ex_b exchange/exchange/exchange : ea eb X1 R eb S J R P ec ea F ec F S R X3 ea X2 S
+  e.g. ex_b exchange/exchange/none : ea ee eb F ec ee S F J R S
+  e.g. ex_b outside/outside/exchange : ea ee P F ea X1 X2 S ec S F ee G eb ed ec X1 eb F ea F S
+  e.g. ex_c exchange/exchange/none : ea ec F ec X3 ee ed X3 F X3 G J ed X2 G ea F P P G ec ee S
+  e.g. ex_c none/none/exchange : ea ee eb F ec ee S F J R S
+  e.g. ex_c outside/outside/exchange : ea ee P F ea X1 X2 S ec S F ee G eb ed ec X1 eb F ea F S
+  e.g. kt_rewrite_sec exchange/exchange/none : ea ec F ec X3 ee ed X3 F X3 G J ed X2 G ea F P P G ec ee S
+  e.g. kt_rewrite_sec outside/outside/exchange : ea ee P F ea X1 X2 S ec S F ee G eb ed ec X1 eb F ea F S
+  e.g. kt_rewrite_sec throw/throw/exchange : ea ee eb F ec ee S F J R S

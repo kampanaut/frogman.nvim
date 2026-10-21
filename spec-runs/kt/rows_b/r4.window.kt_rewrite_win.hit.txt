@@ -1,0 +1,12 @@
+-- plugin: kt_rewrite_win, window view
+:e a                       win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=1
+<M-;><M-c>                 win1  ⦉-⦊ [a] ⟦-⟧  p=[a]on   dtm{} dsm{}   ordered a=1
+:e c                       win1  ⦉a⦊ [c] ⟦-⟧  p=[a]on   dtm{} dsm{}   ordered c=2 a=1
+<M-S-f>                    win1  ⦉c⦊ [a] ⟦-⟧  p=[a]on   dtm{c-swap>a} dsm{}   ordered a=3 c=2
+:vsplit                    win2  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=3 c=2
+:close                     win1  ⦉c⦊ [a] ⟦-⟧  p=[a]on   dtm{c-swap>a} dsm{}   ordered a=3 c=2
+<M-S-f>                    win1  ⦉a⦊ [c] ⟦-⟧  p=[a]on   dtm{a-swap>c c-swap>a} dsm{}   ordered a=5 c=5
+<M-f>                      win1  ⦉-⦊ [c] ⟦a⟧  p=[a]on   dtm{a-swap>c c-swap>a} dsm{}   ordered a=5 c=5  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+:vsplit                    win3  ⦉-⦊ [c] ⟦-⟧   dtm{} dsm{}   ordered a=5 c=5
+<M-S-f>                    win3  ⦉-⦊ [c] ⟦-⟧   dtm{} dsm{}   ordered a=5 c=5  «No ternary buffer to swap with.»
+<M-f>                      win3  ⦉-⦊ [c] ⟦-⟧   dtm{} dsm{}   ordered a=5 c=5  ERROR: WV-fill-assert: ordered[1] a isn't the window's current c

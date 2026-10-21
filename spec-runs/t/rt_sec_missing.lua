@@ -1,0 +1,13 @@
+-- D9 on the secondary side: b's swap note names f; f is closed and deleted on disk; restore twice.
+dofile(os.getenv("CDV_SPEC") .. "/t/rt_fmt.lua")
+assert(vim.startswith(vim.fn.getcwd(), os.getenv("CDV_SPEC")))
+ROW(":e f", E"f") ROW(":e b", E"b")
+ROW("<M-f>  (f graduates)", F)
+ROW("<M-f>  (to f)", F)
+ROW(":e e", E"e")
+ROW("<M-f>  (to b: partner e, b remembers f)", F)
+ROW(":bdelete f, f.txt deleted on disk", function() vim.cmd("bdelete f.txt") os.remove("f.txt") end)
+ROW("<M-;><M-t>  (on b)", RS)
+ROW("<M-;><M-t>  (again)", RS)
+ROW("<M-;><M-t>  (again)", RS)
+ROWS_DONE()

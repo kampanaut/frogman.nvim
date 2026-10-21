@@ -1,0 +1,30 @@
+diff -ruN a/lua/cavediver/domains/window/routines.lua b/lua/cavediver/domains/window/routines.lua
+--- a/lua/cavediver/domains/window/routines.lua	2026-10-21 03:57:15.377993272 +0800
++++ b/lua/cavediver/domains/window/routines.lua	2026-10-21 03:57:15.390654619 +0800
+@@ -723,6 +723,26 @@
+ 
+ 	local filepath = history.get_filepath_from_hash(remembered_relationship)
+ 
++	-- [variant U] the author's rule: a missing file that's closed is skipped; one still open goes through
++	local function missing_and_closed(h, fp)
++		return h and fp and (not fp:match("^NONAME_")) and vim.fn.filereadable(fp) == 0 and history.get_buffer_from_hash(h) == nil
++	end
++	local swap = remembered_mapping[triquetra.current_slot .. "-swap"]
++	if remembered_relationship == swap and missing_and_closed(remembered_relationship, filepath) then
++		vim.notify("[variant U] skipped the swap note: its file is closed and not on disk", vim.log.levels.WARN)
++		remembered_relationship = remembered_mapping[triquetra.current_slot]
++		filepath = history.get_filepath_from_hash(remembered_relationship)
++	end
++	if missing_and_closed(remembered_relationship, filepath) then
++		vim.notify("[variant U] nothing to restore: the remembered file is closed and not on disk (kept)", vim.log.levels.WARN)
++		loop_sm:to(loop_states.SELF)
++		return
++	end
++	if filepath and (not filepath:match("^NONAME_")) and vim.fn.filereadable(filepath) == 0 then
++		vim.notify("[variant U] going through: the file isn't on disk but its buffer is open", vim.log.levels.WARN)
++		filepath = "NONAME_bypass" -- skip the missing-file branch below
++	end
++
+ 	if not remembered_relationship then
+ 		vim.notify(
+ 			"No " ..

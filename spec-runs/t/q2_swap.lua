@@ -1,0 +1,10 @@
+local function step(label, fn) fn() vim.wait(150) print(string.format("  %-34s %s", label, T())) end
+step(":e d.txt", function() vim.cmd('edit d.txt') end)
+step(":e e.txt", function() vim.cmd('edit e.txt') end)
+step(":e x.txt  (leave e by navigation)", function() vim.cmd('edit x.txt') end)
+step("<M-S-f>  (swap back to e)", function() CDV.toggle_ternary() end)
+step("<M-;><M-r>  (restore on e)", function() CDV.restore_ternary() end)
+step("<M-S-f>  (toggle to d)", function() CDV.toggle_ternary() end)
+step("<M-S-f>  (toggle back to e)", function() CDV.toggle_ternary() end)
+step("<M-;><M-r>  (restore on e)", function() CDV.restore_ternary() end)
+vim.cmd('qa!')

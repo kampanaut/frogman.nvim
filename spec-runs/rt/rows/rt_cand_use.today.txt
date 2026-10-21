@@ -1,0 +1,12 @@
+-- plugin: today
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e b                               ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}
+:e c                               ⦉b⦊ [c] ⟦-⟧   dtm{b>a} dsm{}
+<M-f>  (b graduates)               ⦉-⦊ [c] ⟦b⟧   dtm{b>a} dsm{b>a}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+:e d                               ⦉c⦊ [d] ⟦b⟧   dtm{b>a} dsm{b>a}
+:e b  (plain, onto the secondary)  ⦉c⦊ [b] ⟦d⟧   dtm{b>a} dsm{b>a}
+:e e                               ⦉b⦊ [e] ⟦d⟧   dtm{b>c} dsm{b>a}
+<M-f>  (back to d)                 ⦉b⦊ [d] ⟦e⟧   dtm{b>c e-swap>b} dsm{b>a e>d}
+<M-;><M-t>  (on d)                 ⦉b⦊ [d] ⟦e⟧   dtm{b>c e-swap>b} dsm{b>a e>d}  «No secondary relationship found for restoration. It means you hadn't d»
+<M-;><M-t>  (again)                ⦉b⦊ [d] ⟦e⟧   dtm{b>c e-swap>b} dsm{b>a e>d}  «No secondary relationship found for restoration. It means you hadn't d»
+<M-;><M-t>  (again)                ⦉b⦊ [d] ⟦e⟧   dtm{b>c e-swap>b} dsm{b>a e>d}  «No secondary relationship found for restoration. It means you hadn't d»

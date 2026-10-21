@@ -1,0 +1,26 @@
+-- plugin: ex_b, history_view = window
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:vsplit                            win2 ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+<M-;><M-c>                         win2 ⦉-⦊ [a] ⟦-⟧  p=[a]on   dtm{} dsm{}
+<M-m> <C-w>p                       win1 ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e c                               win1 ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+<C-w>p                             win2 ⦉-⦊ [a] ⟦-⟧  p=[a]on   dtm{} dsm{}
+<M-S-f>                            win2 ⦉-⦊ [a] ⟦-⟧  p=[a]on   dtm{} dsm{}  «No ternary buffer to swap with.»
+<M-n> <C-w>p                       win1 ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+<C-w>p                             win2 ⦉-⦊ [a] ⟦-⟧  p=[a]on   dtm{} dsm{}
+:close                             win1 ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e e                               win1 ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e e                               win1 ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+<M-m> <M-m> <M-v>                  win1 ⦉-⦊ [e] ⟦-⟧   dtm{} dsm{}
+<M-;><M-f>                         win1 ⦉-⦊ [e] ⟦a⟧   dtm{} dsm{}  «Secondary buffer populated from history.»
+<M-S-f>                            win1 ⦉-⦊ [e] ⟦a⟧   dtm{} dsm{}  «No ternary buffer to swap with.»
+<M-m> <M-m> <M-v>                  win1 ⦉-⦊ [e] ⟦a⟧   dtm{} dsm{}
+<M-;><M-f>                         win1 ⦉-⦊ [a] ⟦e⟧   dtm{} dsm{e-swap>a}
+:e e                               win1 ⦉-⦊ [e] ⟦a⟧   dtm{} dsm{a-swap>e e-swap>a}
+:e c                               win1 ⦉e⦊ [c] ⟦a⟧   dtm{} dsm{a-swap>e e-swap>a}
+<M-;><M-f>                         win1 ⦉e⦊ [a] ⟦c⟧   dtm{c-swap>e} dsm{a-swap>e a>e c-swap>a e-swap>a}
+<M-f>                              win1 ⦉e⦊ [c] ⟦a⟧   dtm{a-swap>e c-swap>e} dsm{a-swap>c a>e c-swap>a e-swap>a}
+<M-n> <M-v>                        win1 ⦉c⦊ [e] ⟦a⟧   dtm{a-swap>e c-swap>e} dsm{a-swap>c a>e c-swap>a e-swap>a}
+<M-;><M-t>                         win1 ⦉c⦊ [e] ⟦a⟧   dtm{a-swap>e c-swap>e} dsm{a-swap>c a>e c-swap>a e-swap>a}  «No secondary relationship found…»
+<M-;><M-c>                         win1 ⦉c⦊ [e] ⟦a⟧  p=[e]on   dtm{a-swap>e c-swap>e} dsm{a-swap>c a>e c-swap>a e-swap>a}
+:vsplit                            win3 ⦉-⦊ [e] ⟦-⟧   dtm{} dsm{}

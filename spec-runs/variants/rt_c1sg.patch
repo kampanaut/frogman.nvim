@@ -1,0 +1,115 @@
+diff -ruN a/lua/cavediver/domains/window/hooks.lua b/lua/cavediver/domains/window/hooks.lua
+--- a/lua/cavediver/domains/window/hooks.lua	2026-10-21 03:57:16.051355156 +0800
++++ b/lua/cavediver/domains/window/hooks.lua	2026-10-21 03:57:16.061033909 +0800
+@@ -50,6 +50,11 @@
+ 	-- happens when you are dealing with an empty ternary slot and it's just an ordinary 
+ 	-- swap with the secondary slot.
+ 	if triquetra.secondary_slot == new_filehash then
++		routines.rt_secondary_notes(triquetra) -- RT: D8, the same notes as <M-f>
++		if triquetra.displacement_ternary_map[triquetra.ternary_slot] == new_filehash then -- RT: Q6's guard, before the swap
++			triquetra.displacement_ternary_map[triquetra.ternary_slot] = triquetra.current_slot
++			vim.notify("Avoided conflict of ternary's remembered relationship becoming current. (plain navigation onto the secondary)", vim.log.levels.WARN)
++		end
+ 		triquetra.secondary_slot = triquetra.current_slot
+ 		triquetra.current_slot = new_filehash
+ 	elseif triquetra.current_slot ~= new_filehash then
+diff -ruN a/lua/cavediver/domains/window/routines.lua b/lua/cavediver/domains/window/routines.lua
+--- a/lua/cavediver/domains/window/routines.lua	2026-10-21 03:57:16.051446857 +0800
++++ b/lua/cavediver/domains/window/routines.lua	2026-10-21 03:57:16.059642141 +0800
+@@ -12,6 +12,44 @@
+ 
+ local M = {}
+ 
++-- RT (sandbox only): the notes written before every swap onto the secondary:
++-- <M-f>, its <M-;><M-f> fallback, and plain navigation onto the secondary (D8).
++local RT_MODE = "c1g"
++local RT_OWN_SLOT = true
++function M.rt_secondary_notes(triquetra)
++	local A, S, T = triquetra.current_slot, triquetra.secondary_slot, triquetra.ternary_slot
++	local dsm = triquetra.displacement_secondary_map
++	if RT_MODE == "base" then
++		dsm[A] = S
++	elseif RT_MODE == "c1" then -- two kinds: a swap note, like dtm's
++		dsm[A .. "-swap"] = S
++	elseif RT_MODE == "c2a" then -- skip the write on a pure toggle back
++		if dsm[S] ~= A then dsm[A] = S end
++	elseif RT_MODE == "c2b" then -- skip the write on a pure toggle back, and clear the partner's note
++		if dsm[S] == A then dsm[S] = nil else dsm[A] = S end
++	elseif RT_MODE == "c3k" then -- C3 kept in dsm: the swap note is the last partner; promote it on arrival when the partner changes
++		local old = dsm[S .. "-swap"]
++		dsm[A .. "-swap"] = S
++		if old ~= nil and old ~= A then dsm[S] = old end
++	elseif RT_MODE == "c1g" then -- C1 plus the secondary guard: S's plain note naming A is cleared
++		dsm[A .. "-swap"] = S
++		if dsm[S] == A then dsm[S] = nil end
++	elseif RT_MODE == "c3kg" then -- C3 kept in dsm, plus the secondary guard
++		local old = dsm[S .. "-swap"]
++		dsm[A .. "-swap"] = S
++		if old ~= nil and old ~= A then dsm[S] = old elseif dsm[S] == A then dsm[S] = nil end
++	elseif RT_MODE == "c3" then -- note only when the arriving buffer's partner changes
++		triquetra.rt_partner = triquetra.rt_partner or {}
++		local p = triquetra.rt_partner
++		p[A] = S
++		local old = p[S]
++		if old ~= nil and old ~= A then dsm[S] = old end
++	end
++	if T then
++		triquetra.displacement_ternary_map[A .. "-swap"] = T
++	end
++end
++
+ ---This will take in FILEPATHS and validates the input FILEPATHS, to be put as the
+ ---new primary buffers history for the triquetra.
+ ---
+@@ -114,9 +152,20 @@
+ 			if proc then
+ 				error("Duplicates detected in triquetra slots")
+ 			end
++			-- VARIANT C: the guard, before the swap, so it records the buffer being left
++			if triquetra.displacement_ternary_map[triquetra.ternary_slot] == new_filehash then
++				triquetra.displacement_ternary_map[triquetra.ternary_slot] = triquetra.current_slot
++				vim.notify(
++					"Avoided conflict of ternary's remembered relationship becoming current. Remembered relationship has been changed to remember pre-jump current buffer instead: ["
++					.. (history.get_buffer_from_hash(triquetra.ternary_slot) or "")
++					.. "] -> ["
++					.. (history.get_buffer_from_hash(triquetra.current_slot) or "")
++					.. "]", vim.log.levels.WARN)
++			end
+ 			temp = triquetra.current_slot
+ 			triquetra.current_slot = triquetra.secondary_slot
+ 			triquetra.secondary_slot = temp
++			proc = true -- VARIANT C
+ 		end
+ 
+ 		if not proc then
+@@ -483,6 +532,7 @@
+ 			triquetra.secondary_slot = triquetra.ternary_slot
+ 			triquetra.displacement_secondary_map[triquetra.secondary_slot] =
+ 				triquetra.displacement_ternary_map[triquetra.secondary_slot]
++			triquetra.displacement_secondary_map[triquetra.secondary_slot .. "-swap"] = nil -- RT: graduation clears the swap note
+ 			triquetra.ternary_slot = nil
+ 			vim.notify("Secondary buffer set to ternary slot. Ternary slot graduated.", vim.log.levels.INFO)
+ 		elseif #history.data.ordered.crux >= 2 then
+@@ -493,10 +543,7 @@
+ 		end
+ 	else
+ 		if triquetra.current_slot then
+-			triquetra.displacement_secondary_map[triquetra.current_slot] = triquetra.secondary_slot
+-			if triquetra.ternary_slot then
+-				triquetra.displacement_ternary_map[triquetra.current_slot .. "-swap"] = triquetra.ternary_slot
+-			end
++			M.rt_secondary_notes(triquetra) -- RT
+ 		else
+ 			error("It's not okay to have a secondary slot without a current slot.")
+ 		end
+@@ -717,7 +764,9 @@
+ 
+ 	local remembered_relationship = remembered_mapping[triquetra.current_slot .. "-swap"]
+ 
+-	if remembered_relationship == nil or remembered_relationship == triquetra.ternary_slot then
++	local rt_skip = triquetra.ternary_slot
++	if RT_OWN_SLOT then rt_skip = triquetra[type .. "_slot"] end -- RT: compare with the restored type's own slot
++	if remembered_relationship == nil or remembered_relationship == rt_skip then
+ 		remembered_relationship = remembered_mapping[triquetra.current_slot]
+ 	end
+ 

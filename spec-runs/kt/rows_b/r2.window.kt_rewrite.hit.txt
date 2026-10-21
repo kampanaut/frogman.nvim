@@ -1,0 +1,14 @@
+-- plugin: kt_rewrite, window view
+:e a                       win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=1
+<M-S-f>                    win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=1  «No ternary buffer to swap with.»
+:e c                       win1  ⦉a⦊ [c] ⟦-⟧   dtm{} dsm{}   ordered c=2 a=1
+:e d                       win1  ⦉c⦊ [d] ⟦-⟧   dtm{c>a} dsm{}   ordered d=3 c=2 a=1
+<M-f>                      win1  ⦉-⦊ [d] ⟦c⟧   dtm{c>a} dsm{c>a}   ordered d=3 c=2 a=1  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+:e d                       win1  ⦉-⦊ [d] ⟦c⟧   dtm{c>a} dsm{c>a}   ordered d=4 c=2 a=1
+<M-f>                      win1  ⦉-⦊ [c] ⟦d⟧   dtm{c>a} dsm{c>a d-swap>c}   ordered c=5 d=4 a=1
+<M-;><M-f>                 win1  ⦉-⦊ [d] ⟦c⟧   dtm{c>a} dsm{c-swap>d c>a d-swap>c}   ordered d=6 c=5 a=1
+:vsplit                    win2  ⦉-⦊ [d] ⟦-⟧   dtm{} dsm{}   ordered d=6 c=5 a=1
+<C-w>p                     win1  ⦉-⦊ [d] ⟦c⟧   dtm{c>a} dsm{c-swap>d c>a d-swap>c}   ordered d=6 c=5 a=1
+<M-f>                      win1  ⦉-⦊ [c] ⟦d⟧   dtm{c>a} dsm{c-swap>d c>a d-swap>c}   ordered d=9 c=9 a=7
+:vsplit                    win3  ⦉-⦊ [c] ⟦-⟧   dtm{} dsm{}   ordered d=9 c=9 a=7
+<M-f>                      win3  ⦉-⦊ [c] ⟦c⟧   dtm{} dsm{}   ordered d=9 c=9 a=7  «Secondary buffer populated from history.»

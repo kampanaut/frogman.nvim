@@ -1,0 +1,11 @@
+-- plugin: kt_drop
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e e                               ⦉a⦊ [e] ⟦-⟧   dtm{} dsm{}
+:e b                               ⦉e⦊ [b] ⟦-⟧   dtm{e>a} dsm{}
+:e c                               ⦉b⦊ [c] ⟦-⟧   dtm{b>e e>a} dsm{}
+<M-f>                              ⦉-⦊ [c] ⟦b⟧   dtm{b>e e>a} dsm{b>e}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+<M-m> <M-m> <M-v>                  ⦉-⦊ [e] ⟦b⟧   dtm{b>e e>a} dsm{b>e}  «Checkpoint saved: »
+:e a                               ⦉e⦊ [a] ⟦b⟧   dtm{b>e e>a} dsm{b>e}
+<M-f>                              ⦉e⦊ [b] ⟦a⟧   dtm{a-swap>e e>a} dsm{a-swap>b b>e}  «KT-t sec drop b>e => -»
+<M-;><M-r>                         ⦉e⦊ [b] ⟦a⟧   dtm{a-swap>e e>a} dsm{a-swap>b b>e}  «No ternary relationship found for restoration. It means you hadn't dis»
+<M-;><M-r>                         ⦉e⦊ [b] ⟦a⟧   dtm{a-swap>e e>a} dsm{a-swap>b b>e}  «No ternary relationship found for restoration. It means you hadn't dis»

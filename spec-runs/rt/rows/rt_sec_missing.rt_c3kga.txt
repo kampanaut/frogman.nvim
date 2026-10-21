@@ -1,0 +1,11 @@
+-- plugin: rt_c3kga
+:e f                               ⦉-⦊ [f] ⟦-⟧   dtm{} dsm{}
+:e b                               ⦉f⦊ [b] ⟦-⟧   dtm{} dsm{}
+<M-f>  (f graduates)               ⦉-⦊ [b] ⟦f⟧   dtm{} dsm{}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+<M-f>  (to f)                      ⦉-⦊ [f] ⟦b⟧   dtm{} dsm{b-swap>f}
+:e e                               ⦉f⦊ [e] ⟦b⟧   dtm{} dsm{b-swap>f}
+<M-f>  (to b: partner e, b remembers f) ⦉f⦊ [b] ⟦e⟧   dtm{e-swap>f} dsm{b-swap>f b>f e-swap>b}
+:bdelete f, f.txt deleted on disk  ⦉f⦊ [b] ⟦e⟧   dtm{e-swap>f} dsm{b-swap>f b>f e-swap>b}
+<M-;><M-t>  (on b)                 ⦉f⦊ [b] ⟦e⟧   dtm{e-swap>f} dsm{b-swap>f e-swap>b}  «Remembered secondary is not found in filesystem anymore.»
+<M-;><M-t>  (again)                ⦉f⦊ [b] ⟦e⟧   dtm{e-swap>f} dsm{b-swap>f e-swap>b}  «Remembered secondary is not found in filesystem anymore.»
+<M-;><M-t>  (again)                ⦉f⦊ [b] ⟦e⟧   dtm{e-swap>f} dsm{b-swap>f e-swap>b}  «Remembered secondary is not found in filesystem anymore.»

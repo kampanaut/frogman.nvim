@@ -1,0 +1,24 @@
+diff -ruN a/lua/cavediver/domains/window/routines.lua b/lua/cavediver/domains/window/routines.lua
+--- a/lua/cavediver/domains/window/routines.lua	2026-10-21 03:57:16.537730787 +0800
++++ b/lua/cavediver/domains/window/routines.lua	2026-10-21 03:57:16.552632947 +0800
+@@ -114,9 +114,20 @@
+ 			if proc then
+ 				error("Duplicates detected in triquetra slots")
+ 			end
++			-- VARIANT C: the guard, before the swap, so it records the buffer being left
++			if triquetra.displacement_ternary_map[triquetra.ternary_slot] == new_filehash then
++				triquetra.displacement_ternary_map[triquetra.ternary_slot] = triquetra.current_slot
++				vim.notify(
++					"Avoided conflict of ternary's remembered relationship becoming current. Remembered relationship has been changed to remember pre-jump current buffer instead: ["
++					.. (history.get_buffer_from_hash(triquetra.ternary_slot) or "")
++					.. "] -> ["
++					.. (history.get_buffer_from_hash(triquetra.current_slot) or "")
++					.. "]", vim.log.levels.WARN)
++			end
+ 			temp = triquetra.current_slot
+ 			triquetra.current_slot = triquetra.secondary_slot
+ 			triquetra.secondary_slot = temp
++			proc = true -- VARIANT C
+ 		end
+ 
+ 		if not proc then

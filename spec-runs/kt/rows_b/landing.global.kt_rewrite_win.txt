@@ -1,0 +1,6 @@
+-- plugin: kt_rewrite_win, global view
+:e a                       win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=1
+:vsplit                    win2  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=1
+:e c                       win2  ⦉a⦊ [c] ⟦-⟧   dtm{} dsm{}   ordered c=2 a=1
+<M-m> <C-w>p               win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered c=2 a=1  «Checkpoint saved: »  «cycle cancelled, its window back on c»
+<M-f>                      win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered c=2 a=1  ERROR: WV-fill-assert: ordered[1] c isn't the window's current a

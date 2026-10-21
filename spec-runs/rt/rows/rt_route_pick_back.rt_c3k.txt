@@ -1,0 +1,9 @@
+-- plugin: rt_c3k
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e b                               ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}
+:e c                               ⦉b⦊ [c] ⟦-⟧   dtm{b>a} dsm{}
+<M-f>  (b graduates)               ⦉-⦊ [c] ⟦b⟧   dtm{b>a} dsm{b>a}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+<M-f>  (to b)                      ⦉-⦊ [b] ⟦c⟧   dtm{b>a} dsm{b>a c-swap>b}
+<M-m>  (cycle one step)            ⦉-⦊ [b] ⟦c⟧   dtm{b>a} dsm{b>a c-swap>b}  «Checkpoint saved: »
+<M-v>  (pick c, the secondary)     ⦉-⦊ [c] ⟦b⟧   dtm{b>a} dsm{b>a c-swap>b}
+<M-;><M-t>  (on c)                 ⦉-⦊ [c] ⟦b⟧   dtm{b>a} dsm{b>a c-swap>b}  «No secondary relationship found for restoration. It means you hadn't d»

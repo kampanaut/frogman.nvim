@@ -1,0 +1,10 @@
+-- plugin: rt_c3kga
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e c                               ⦉a⦊ [c] ⟦-⟧   dtm{} dsm{}
+:e e                               ⦉c⦊ [e] ⟦-⟧   dtm{c>a} dsm{}
+:e b                               ⦉e⦊ [b] ⟦-⟧   dtm{c>a e>c} dsm{}
+<M-f>                              ⦉-⦊ [b] ⟦e⟧   dtm{c>a e>c} dsm{e>c}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+:e c                               ⦉b⦊ [c] ⟦e⟧   dtm{c>a e>c} dsm{e>c}
+<M-S-f>                            ⦉c⦊ [b] ⟦e⟧   dtm{c-swap>b c>a e>c} dsm{e>c}
+<M-f>                              ⦉c⦊ [e] ⟦b⟧   dtm{b-swap>c c-swap>b c>a e>c} dsm{b-swap>e e>c}
+<M-;><M-r>                         ⦉c⦊ [e] ⟦b⟧   dtm{b-swap>c c-swap>b c>a e>c} dsm{b-swap>e e>c}  ERROR: This is impossible. Remembered ternary is the same as current ternary. It should

@@ -1,0 +1,5 @@
+-- plugin: kt_rewrite, global view
+:e a                       win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:vsplit                    win2  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+<M-m> <C-w>p               win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}  «Checkpoint saved: »  (still cycling)
+<M-;><M-f>                 win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}  ERROR: This should not happen. Cycling origins not found for window: 1000  (still cycling)

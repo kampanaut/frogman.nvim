@@ -1,0 +1,8 @@
+-- plugin: kt_rewrite_win, window view
+:e a                       win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=1
+:e b                       win1  ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}   ordered b=2 a=1
+:vsplit                    win2  ⦉-⦊ [b] ⟦-⟧   dtm{} dsm{}   ordered b=2 a=1
+<C-w>p                     win1  ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}   ordered b=2 a=1
+:e c                       win1  ⦉b⦊ [c] ⟦-⟧   dtm{b>a} dsm{}   ordered b=4 c=4 a=3
+:vsplit                    win3  ⦉-⦊ [c] ⟦-⟧   dtm{} dsm{}   ordered b=4 c=4 a=3
+<M-f>                      win3  ⦉-⦊ [c] ⟦-⟧   dtm{} dsm{}   ordered b=4 c=4 a=3  ERROR: WV-fill-assert: ordered[1] b isn't the window's current c

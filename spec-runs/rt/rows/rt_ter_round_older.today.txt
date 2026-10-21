@@ -1,0 +1,10 @@
+-- plugin: today
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e b                               ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}
+:e c                               ⦉b⦊ [c] ⟦-⟧   dtm{b>a} dsm{}
+:e d  (c's plain note: b)          ⦉c⦊ [d] ⟦-⟧   dtm{b>a c>b} dsm{}
+:e c  (onto the ternary: no note)  ⦉d⦊ [c] ⟦-⟧   dtm{b>a c>b} dsm{}
+<M-S-f>                            ⦉c⦊ [d] ⟦-⟧   dtm{b>a c-swap>d c>b} dsm{}
+<M-S-f>  (back)                    ⦉d⦊ [c] ⟦-⟧   dtm{b>a c-swap>d c>b d-swap>c} dsm{}
+<M-;><M-r>                         ⦉b⦊ [c] ⟦-⟧   dtm{b>a c-swap>d c>d d-swap>c} dsm{}  «Restored ternary slot to: 57ee7eb11657c516 (b.txt)»
+<M-;><M-r>  (again)                ⦉d⦊ [c] ⟦-⟧   dtm{b>a c-swap>d c>b d-swap>c} dsm{}  «Restored ternary slot to: 4ba018cb91c52222 (d.txt)»

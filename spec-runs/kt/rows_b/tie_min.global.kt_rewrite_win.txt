@@ -1,0 +1,8 @@
+-- plugin: kt_rewrite_win, global view
+:e a                       win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=1
+:e b                       win1  ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}   ordered b=2 a=1
+:vsplit                    win2  ⦉-⦊ [b] ⟦-⟧   dtm{} dsm{}   ordered b=2 a=1
+<C-w>p                     win1  ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}   ordered b=2 a=1
+:e c                       win1  ⦉b⦊ [c] ⟦-⟧   dtm{b>a} dsm{}   ordered c=3 b=2 a=1
+:vsplit                    win3  ⦉-⦊ [c] ⟦-⟧   dtm{} dsm{}   ordered c=3 b=2 a=1
+<M-f>                      win3  ⦉-⦊ [c] ⟦b⟧   dtm{} dsm{}   ordered c=3 b=2 a=1  «Secondary buffer populated from history.»

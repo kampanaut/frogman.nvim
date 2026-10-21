@@ -1,0 +1,11 @@
+diff -ruN a/lua/cavediver/domains/window/routines.lua b/lua/cavediver/domains/window/routines.lua
+--- a/lua/cavediver/domains/window/routines.lua	2026-10-21 03:57:16.504596351 +0800
++++ b/lua/cavediver/domains/window/routines.lua	2026-10-21 03:57:16.517633600 +0800
+@@ -117,6 +117,7 @@
+ 			temp = triquetra.current_slot
+ 			triquetra.current_slot = triquetra.secondary_slot
+ 			triquetra.secondary_slot = temp
++			proc = true -- VARIANT B
+ 		end
+ 
+ 		if not proc then

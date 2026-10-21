@@ -1,0 +1,13 @@
+-- plugin: rt_tb
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e b                               ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}
+:e e                               ⦉b⦊ [e] ⟦-⟧   dtm{b>a} dsm{}
+:e c                               ⦉e⦊ [c] ⟦-⟧   dtm{b>a e>b} dsm{}
+:e e                               ⦉c⦊ [e] ⟦-⟧   dtm{b>a e>b} dsm{}
+<M-;><M-r>                         ⦉b⦊ [e] ⟦-⟧   dtm{b>a e>c} dsm{}  «Restored ternary slot to: 57ee7eb11657c516 (b.txt)»
+:e b                               ⦉e⦊ [b] ⟦-⟧   dtm{b>a e>c} dsm{}
+<M-f>                              ⦉-⦊ [b] ⟦e⟧   dtm{b>a e>c} dsm{e>c}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+:e c                               ⦉b⦊ [c] ⟦e⟧   dtm{b>a e>c} dsm{e>c}
+<M-S-f>                            ⦉c⦊ [b] ⟦e⟧   dtm{b>a c-swap>b e>c} dsm{e>c}
+<M-f>                              ⦉c⦊ [e] ⟦b⟧   dtm{b-swap>c b>a c-swap>b} dsm{b>e e>c}  «RT-bonus: dropped a plain ternary note equal to the ternary kept on ar»
+<M-;><M-r>                         ⦉c⦊ [e] ⟦b⟧   dtm{b-swap>c b>a c-swap>b} dsm{b>e e>c}  «No ternary relationship found for restoration. It means you hadn't dis»

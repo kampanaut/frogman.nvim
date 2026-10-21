@@ -1,0 +1,13 @@
+-- P13 check: d remembers b (its secondary before e), then a pure toggle d->e->d, then the restore.
+dofile(os.getenv("CDV_SPEC") .. "/t/rt_fmt.lua")
+ROW(":e a", E"a") ROW(":e b", E"b") ROW(":e c", E"c")
+ROW("<M-f>  (b graduates)", F)
+ROW(":e d", E"d")
+ROW(":e b  (plain, onto the secondary)", E"b")
+ROW(":e e", E"e")
+ROW("<M-f>  (back to d: d remembers b)", F)
+ROW("<M-f>  (to e)", F)
+ROW("<M-f>  (back to d)", F)
+ROW("<M-;><M-t>  (on d: b?)", RS)
+ROW("<M-;><M-t>  (again)", RS)
+ROWS_DONE()

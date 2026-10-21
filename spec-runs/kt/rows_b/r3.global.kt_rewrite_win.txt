@@ -1,0 +1,11 @@
+-- plugin: kt_rewrite_win, global view
+:e a                       win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=1
+<M-f>                      win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=1  «Cannot populate secondary slot - insufficent history.»
+:vsplit                    win2  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=1
+:e e                       win2  ⦉a⦊ [e] ⟦-⟧   dtm{} dsm{}   ordered e=2 a=1
+<M-f>                      win2  ⦉-⦊ [e] ⟦a⟧   dtm{} dsm{}   ordered e=2 a=1  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+:e e                       win2  ⦉-⦊ [e] ⟦a⟧   dtm{} dsm{}   ordered e=3 a=1
+<M-n> <M-v>                win2  ⦉-⦊ [a] ⟦e⟧   dtm{} dsm{}   ordered a=4 e=3  «Checkpoint saved: »
+<C-w>p                     win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=4 e=3
+<M-m> <M-v>                win1  ⦉-⦊ [e] ⟦-⟧   dtm{} dsm{}   ordered e=5 a=4  «Checkpoint saved: »
+<M-f>                      win1  ⦉-⦊ [e] ⟦a⟧   dtm{} dsm{}   ordered e=5 a=4  «Secondary buffer populated from history.»

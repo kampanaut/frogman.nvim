@@ -1,0 +1,10 @@
+-- plugin: today
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e b                               ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}
+:e c                               ⦉b⦊ [c] ⟦-⟧   dtm{b>a} dsm{}
+<M-f>  (b graduates)               ⦉-⦊ [c] ⟦b⟧   dtm{b>a} dsm{b>a}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+<M-f>  (to b; b's note is a)       ⦉-⦊ [b] ⟦c⟧   dtm{b>a} dsm{b>a c>b}
+<M-f>  (to c)                      ⦉-⦊ [c] ⟦b⟧   dtm{b>a} dsm{b>c c>b}
+<M-f>  (back to b)                 ⦉-⦊ [b] ⟦c⟧   dtm{b>a} dsm{b>c c>b}
+<M-;><M-t>  (on b)                 ⦉-⦊ [b] ⟦c⟧   dtm{b>a} dsm{b>c c>b}  ERROR: This is impossible. Remembered secondary is the same as current secondary. It sh
+<M-;><M-t>  (again)                ⦉-⦊ [b] ⟦c⟧   dtm{b>a} dsm{b>c c>b}  ERROR: This is impossible. Remembered secondary is the same as current secondary. It sh

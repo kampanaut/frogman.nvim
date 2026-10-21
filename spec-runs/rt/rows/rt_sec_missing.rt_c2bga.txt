@@ -1,0 +1,11 @@
+-- plugin: rt_c2bga
+:e f                               ⦉-⦊ [f] ⟦-⟧   dtm{} dsm{}
+:e b                               ⦉f⦊ [b] ⟦-⟧   dtm{} dsm{}
+<M-f>  (f graduates)               ⦉-⦊ [b] ⟦f⟧   dtm{} dsm{}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+<M-f>  (to f)                      ⦉-⦊ [f] ⟦b⟧   dtm{} dsm{b>f}
+:e e                               ⦉f⦊ [e] ⟦b⟧   dtm{} dsm{b>f}
+<M-f>  (to b: partner e, b remembers f) ⦉f⦊ [b] ⟦e⟧   dtm{e-swap>f} dsm{b>f e>b}
+:bdelete f, f.txt deleted on disk  ⦉f⦊ [b] ⟦e⟧   dtm{e-swap>f} dsm{b>f e>b}
+<M-;><M-t>  (on b)                 ⦉f⦊ [b] ⟦e⟧   dtm{e-swap>f} dsm{e>b}  «Remembered secondary is not found in filesystem anymore.»
+<M-;><M-t>  (again)                ⦉f⦊ [b] ⟦e⟧   dtm{e-swap>f} dsm{e>b}  «No secondary relationship found for restoration. It means you hadn't d»
+<M-;><M-t>  (again)                ⦉f⦊ [b] ⟦e⟧   dtm{e-swap>f} dsm{e>b}  «No secondary relationship found for restoration. It means you hadn't d»

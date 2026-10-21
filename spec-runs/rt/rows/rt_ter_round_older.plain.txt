@@ -1,0 +1,10 @@
+-- plugin: plain
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e b                               ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}
+:e c                               ⦉b⦊ [c] ⟦-⟧   dtm{b>a} dsm{}
+:e d  (c's plain note: b)          ⦉c⦊ [d] ⟦-⟧   dtm{b>a c>b} dsm{}
+:e c  (onto the ternary: no note)  ⦉d⦊ [c] ⟦-⟧   dtm{b>a c>b} dsm{}
+<M-S-f>                            ⦉c⦊ [d] ⟦-⟧   dtm{b>a c>d} dsm{}
+<M-S-f>  (back)                    ⦉d⦊ [c] ⟦-⟧   dtm{b>a c>d d>c} dsm{}
+<M-;><M-r>                         ⦉d⦊ [c] ⟦-⟧   dtm{b>a c>d d>c} dsm{}  ERROR: This is impossible. Remembered ternary is the same as current ternary. It should
+<M-;><M-r>  (again)                ⦉d⦊ [c] ⟦-⟧   dtm{b>a c>d d>c} dsm{}  ERROR: This is impossible. Remembered ternary is the same as current ternary. It should

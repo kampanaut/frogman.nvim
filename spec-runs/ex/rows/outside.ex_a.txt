@@ -1,0 +1,17 @@
+-- plugin: ex_a, history_view = global
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e e                               ⦉a⦊ [e] ⟦-⟧   dtm{} dsm{}
+:e d                               ⦉e⦊ [d] ⟦-⟧   dtm{e>a} dsm{}
+<M-S-f>                            ⦉d⦊ [e] ⟦-⟧   dtm{d-swap>e e>a} dsm{}
+:e b                               ⦉e⦊ [b] ⟦-⟧   dtm{d-swap>e e>d} dsm{}
+:e d                               ⦉b⦊ [d] ⟦-⟧   dtm{b>e d-swap>e e>d} dsm{}
+<M-n> <M-v>                        ⦉b⦊ [a] ⟦-⟧   dtm{b>e d-swap>e e>d} dsm{}
+<M-f>                              ⦉-⦊ [a] ⟦b⟧   dtm{b>e d-swap>e e>d} dsm{b>e}  «…graduated.»
+:e b                               ⦉-⦊ [b] ⟦a⟧   dtm{b>e d-swap>e e>d} dsm{a-swap>b b>e}
+<M-f>                              ⦉-⦊ [a] ⟦b⟧   dtm{b>e d-swap>e e>d} dsm{a-swap>b b-swap>a b>e}
+:e e                               ⦉a⦊ [e] ⟦b⟧   dtm{b>e d-swap>e e>d} dsm{a-swap>b b-swap>a b>e}
+<M-m> <M-m> <M-v>                  ⦉a⦊ [b] ⟦e⟧   dtm{b>e d-swap>e e>d} dsm{a-swap>b b-swap>a b>a}  «secondary note b>e becomes b>a»
+<M-;><M-t>                         ⦉e⦊ [b] ⟦a⟧   dtm{b>d d-swap>e e>d} dsm{a-swap>b b-swap>a b>e}  «Restored secondary slot to a» «ternary note b>e becomes b>d»
+<M-;><M-r>                         ⦉d⦊ [b] ⟦a⟧   dtm{b>e d-swap>e e>d} dsm{a-swap>b b-swap>a b>e}  «Restored ternary slot to d»
+<M-;><M-r>                         ⦉e⦊ [b] ⟦a⟧   dtm{b>d d-swap>e e>d} dsm{a-swap>b b-swap>a b>e}  «Restored ternary slot to e»
+<M-;><M-t>                         ⦉a⦊ [b] ⟦e⟧   dtm{b>d d-swap>e e>d} dsm{a-swap>b b-swap>a b>a}  «Restored secondary slot to e»

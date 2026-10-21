@@ -1,0 +1,15 @@
+-- plugin: rt_tb
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+<M-f>                              ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}  «Cannot populate secondary slot - insufficent history.»
+:e d                               ⦉a⦊ [d] ⟦-⟧   dtm{} dsm{}
+:e a                               ⦉d⦊ [a] ⟦-⟧   dtm{} dsm{}
+<M-m> <M-v>                        ⦉a⦊ [d] ⟦-⟧   dtm{a-swap>d} dsm{}  «Checkpoint saved: »
+:e d                               ⦉a⦊ [d] ⟦-⟧   dtm{a-swap>d} dsm{}
+:e c                               ⦉d⦊ [c] ⟦-⟧   dtm{a-swap>d d>a} dsm{}
+<M-;><M-f>                         ⦉-⦊ [c] ⟦d⟧   dtm{a-swap>d d>a} dsm{d>a}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+<M-f>                              ⦉-⦊ [d] ⟦c⟧   dtm{a-swap>d d>a} dsm{c>d d>a}
+<M-S-f>                            ⦉-⦊ [d] ⟦c⟧   dtm{a-swap>d d>a} dsm{c>d d>a}  «No ternary buffer to swap with.»
+<M-S-f>                            ⦉-⦊ [d] ⟦c⟧   dtm{a-swap>d d>a} dsm{c>d d>a}  «No ternary buffer to swap with.»
+:e a                               ⦉d⦊ [a] ⟦c⟧   dtm{a-swap>d d>a} dsm{c>d d>a}
+<M-S-f>                            ⦉a⦊ [d] ⟦c⟧   dtm{a-swap>d} dsm{c>d d>a}  «RT-bonus: dropped a plain ternary note equal to the ternary kept on ar»
+<M-;><M-r>                         ⦉a⦊ [d] ⟦c⟧   dtm{a-swap>d} dsm{c>d d>a}  «No ternary relationship found for restoration. It means you hadn't dis»

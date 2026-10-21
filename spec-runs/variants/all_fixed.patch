@@ -1,0 +1,379 @@
+diff -ruN a/lua/cavediver/domains/history/routines.lua b/lua/cavediver/domains/history/routines.lua
+--- a/lua/cavediver/domains/history/routines.lua	2026-10-21 03:57:15.261910974 +0800
++++ b/lua/cavediver/domains/history/routines.lua	2026-10-21 03:57:15.272074650 +0800
+@@ -188,10 +188,12 @@
+ 	end
+ 	table.sort(window_buffers, function(a, b) return a.time > b.time end)
+ 
+-	data.history_index = data.history_index + #window_buffers - 1
++	-- ALL (sandbox only): the window view's tie fixed. The window's n buffers take the n fresh times
++	-- [i, i+n-1] and the next free time becomes i+n, so the next buffer recorded ranks strictly first.
++	data.history_index = data.history_index + #window_buffers
+ 	-- Assign increments based on rank
+ 	for rank, buffer in ipairs(window_buffers) do
+-		global_copy[buffer.hash] = data.history_index - rank + 1
++		global_copy[buffer.hash] = data.history_index - rank
+ 	end
+ 
+ 	data.crux = global_copy
+diff -ruN a/lua/cavediver/domains/navigation/hooks.lua b/lua/cavediver/domains/navigation/hooks.lua
+--- a/lua/cavediver/domains/navigation/hooks.lua	2026-10-21 03:57:15.262192829 +0800
++++ b/lua/cavediver/domains/navigation/hooks.lua	2026-10-21 03:57:15.271656838 +0800
+@@ -46,3 +46,51 @@
+ 		navigationSM:to(navigationSM:state(), {}, states.mode.WINENTER)
+ 	end
+ })
++
++-- WV (sandbox only), decided and unbuilt (A12, T175): jumping to another window cancels an active cycle.
++-- The cycling window goes back to its start, navigation goes back to normal, history is attached, nothing is recorded.
++-- Runs synchronously in WinEnter, after navigation's own WinEnter work (the walks never give the event loop a turn,
++-- so a scheduled cancel would never run there).
++local wv_cycling_window = nil
++navigationSM:on(states.NORMAL, states.CYCLING, "wv_note_cycling_window", function(context)
++	wv_cycling_window = (context.window and context.window.current_crux) or vim.api.nvim_get_current_win()
++end, 0.5, true, states.mode.CYCLE)
++
++local function wv_nm(h)
++	if h == nil then return "-" end
++	local n = _G.NAME and _G.NAME(h) or h:sub(1, 6)
++	return (n:gsub("%.txt", ""))
++end
++
++vim.api.nvim_create_autocmd("WinEnter", {
++	callback = function(_)
++		if navigationSM:state() ~= states.CYCLING then return end
++		local cw = vim.api.nvim_get_current_win()
++		local cyc = wv_cycling_window
++		if cyc == nil or cyc == cw then return end
++		-- 1. The cycling window back on its start while history is still detached, so the BufEnter this causes records nothing.
++		local origin = history.get_cycling_origins(cyc)
++		local start = origin and origin.current_slot
++		if start and vim.api.nvim_win_is_valid(cyc) then
++			local ob = history.get_buffer_from_hash(start)
++			if ob and vim.api.nvim_win_get_buf(cyc) ~= ob then vim.api.nvim_win_set_buf(cyc, ob) end
++			local t = require('cavediver.domains.window.data').crux[cyc]
++			if t then t.current_slot = start end
++		end
++		-- 2. Navigation back with no mode. WV-land (the other reading): history attaches as an ordinary entry into the
++		-- window you landed in, recording its buffer (UPDATE mode). Its reconcile runs on that window, whose current
++		-- slot is already that buffer, so no slot moves.
++		navigationSM:to(states.NORMAL)
++		local all_wr = require('cavediver.domains.window.routines') -- ALL: no Q9 pick note on the cancel's attach
++		all_wr.all_in_cancel = true
++		local all_ok, all_err = pcall(function()
++			history.sm:to(history.states.ATTACHED, { buf = vim.api.nvim_get_current_buf() }, history.states.mode.UPDATE)
++		end)
++		all_wr.all_in_cancel = false
++		if not all_ok then error(all_err, 0) end
++		local ui = require('cavediver.domains.ui')
++		ui.sm.loop:to(ui.states.LOOP.SELF)
++		wv_cycling_window = nil
++		vim.notify("WV-cancel: cycle cancelled, start " .. wv_nm(start), vim.log.levels.DEBUG)
++	end,
++})
+diff -ruN a/lua/cavediver/domains/window/hooks.lua b/lua/cavediver/domains/window/hooks.lua
+--- a/lua/cavediver/domains/window/hooks.lua	2026-10-21 03:57:15.263144921 +0800
++++ b/lua/cavediver/domains/window/hooks.lua	2026-10-21 03:57:15.269536646 +0800
+@@ -50,8 +50,15 @@
+ 	-- happens when you are dealing with an empty ternary slot and it's just an ordinary 
+ 	-- swap with the secondary slot.
+ 	if triquetra.secondary_slot == new_filehash then
++		local kt_A, kt_T0 = triquetra.current_slot, triquetra.ternary_slot -- KT
++		routines.rt_secondary_notes(triquetra) -- RT: D8, the same notes as <M-f>
++		if triquetra.displacement_ternary_map[triquetra.ternary_slot] == new_filehash then -- RT: Q6's guard, before the swap
++			triquetra.displacement_ternary_map[triquetra.ternary_slot] = triquetra.current_slot
++			vim.notify("Avoided conflict of ternary's remembered relationship becoming current. (plain navigation onto the secondary)", vim.log.levels.WARN)
++		end
+ 		triquetra.secondary_slot = triquetra.current_slot
+ 		triquetra.current_slot = new_filehash
++		routines.kt_ter_rewrite(triquetra, "e-sec", new_filehash, kt_A, kt_T0, kt_T0) -- KT
+ 	elseif triquetra.current_slot ~= new_filehash then
+ 		-- Only create displacement mapping if NOT in cycling mode
+ 		-- and the new bufnr is not the current alternative slot.
+@@ -91,6 +98,7 @@
+ 		-- Always update slots
+ 		triquetra.ternary_slot = triquetra.current_slot
+ 		triquetra.current_slot = new_filehash
++		routines.rt_sec_check(triquetra, new_filehash, triquetra.secondary_slot, "nav", triquetra.secondary_slot) -- RT
+ 	end
+ end, 2, true, history.states.mode.UPDATE)
+ 
+diff -ruN a/lua/cavediver/domains/window/routines.lua b/lua/cavediver/domains/window/routines.lua
+--- a/lua/cavediver/domains/window/routines.lua	2026-10-21 03:57:15.263241250 +0800
++++ b/lua/cavediver/domains/window/routines.lua	2026-10-21 03:57:15.268910100 +0800
+@@ -12,6 +12,118 @@
+ 
+ local M = {}
+ 
++-- RT (sandbox only): the notes written before every swap onto the secondary:
++-- <M-f>, its <M-;><M-f> fallback, and plain navigation onto the secondary (D8).
++local RT_MODE = "c3kg"
++local RT_OWN_SLOT = true
++-- KT (sandbox only): "Keep the older one" for the ternary memory, on every arrival that skips the stale-note
++-- check in navigation (hooks.lua, displacement_mangement). N arrives, A is left, T0 is the ternary before the
++-- arrival, T1 the ternary after it. When N's plain ternary note names T1, it is rewritten, after the arrival's
++-- own writes (the order navigation uses):
++--   T1 is A and N was the ternary -> dtm[A], the pre-jump stored ternary      (navigation's first case)
++--   T1 is A and N was not         -> T0, the pre-jump ternary                 (navigation's second case)
++--   T1 is T0 (the ternary stays)  -> "literal": T0 again (the second case as worded: no change)
++--                                    "kept":    dtm[T0], the kept ternary's own plain note
++-- KT_MODE "drop" drops the note on every one of these arrivals instead (the same-base comparison for dropping).
++local KT_MODE = "kept"
++local function kt_nm(h)
++	if h == nil then return "-" end
++	local n = _G.NAME and _G.NAME(h) or h:sub(1, 6)
++	return (n:gsub("%.txt", ""))
++end
++function M.kt_ter_rewrite(triquetra, kind, N, A, T0, T1)
++	local dtm = triquetra.displacement_ternary_map
++	if N == nil or T1 == nil or dtm[N] ~= T1 then return end
++	local new, case
++	if KT_MODE == "drop" then
++		new, case = nil, "drop"
++	elseif T1 == A then
++		if N == T0 then new, case = dtm[A], "c1" else new, case = T0, "c2" end
++	elseif KT_MODE == "literal" then
++		new, case = T0, "c2="
++	else
++		new, case = dtm[T0], "kept"
++	end
++	dtm[N] = new
++	vim.notify(string.format("KT-t %s %s %s>%s => %s", kind, case, kt_nm(N), kt_nm(T1), kt_nm(new)), vim.log.levels.DEBUG)
++end
++
++-- RT: drop the current buffer's plain secondary note when it names the window's secondary.
++-- KT: "Keep the older one" for the secondary memory on the other arrivals: rewrite x's stale plain note to the
++-- older partner when one is known (x's swap note, when it differs from the secondary), else drop it.
++-- site: where it ran; s0: the secondary slot's occupant before this event (logged as a candidate only).
++function M.rt_sec_check(triquetra, x, s, site, s0)
++	local dsm = triquetra.displacement_secondary_map
++	if x and s and dsm[x] == s then
++		local older = dsm[x .. "-swap"]
++		local out
++		if older ~= nil and older ~= s and older ~= x then dsm[x] = older; out = "rw" else dsm[x] = nil; out = "drop" end
++		vim.notify(string.format("KT-s %s %s %s>%s => %s swap=%s prev=%s", site or "?", out, kt_nm(x), kt_nm(s),
++			kt_nm(dsm[x]), kt_nm(older), kt_nm(s0)), vim.log.levels.DEBUG)
++	end
++end
++
++-- EX (sandbox only): the stale-note check where a slot changes under the current buffer x without a buffer
++-- becoming current (the restores, graduation, the history fill), and after a cleanup pass that moved a slot.
++-- Ternary map: when x's plain note names the ternary, it becomes, by EX_MODE:
++--   "own"  : the new ternary's own plain note dtm[T]                                    (a)
++--   "left" : t_left, the buffer that just left the ternary (at <M-;><M-t>'s exchange, the new secondary)  (b)
++--   "drop" : nothing                                                                    (c)
++-- A result naming x itself or T is dropped instead ("guard"). mode_override forces a rule (cleanup arrivals use
++-- "own", the decided rule where the ternary stays put).
++-- Secondary map: the decided rule, rt_sec_check (x's swap note when older, else dropped), in every mode.
++local EX_MODE = "own"
++function M.ex_slot_check(triquetra, site, t_left, s_left, mode_override)
++	local x = triquetra.current_slot
++	if x == nil then return end
++	local dtm = triquetra.displacement_ternary_map
++	local T = triquetra.ternary_slot
++	if T ~= nil and dtm[x] == T then
++		local mode = mode_override or EX_MODE
++		local new
++		if mode == "own" then new = dtm[T] elseif mode == "left" then new = t_left else new = nil end
++		local out
++		if new ~= nil and (new == x or new == T) then out = "guard"; new = nil end
++		dtm[x] = new
++		out = out or ((new == nil) and "nothing" or ((new == triquetra.secondary_slot) and "secondary" or "outside"))
++		vim.notify(string.format("EX-t %s %s %s>%s => %s %s", site, mode, kt_nm(x), kt_nm(T), kt_nm(new), out), vim.log.levels.DEBUG)
++	end
++	M.rt_sec_check(triquetra, x, triquetra.secondary_slot, "ex-" .. site, s_left)
++end
++function M.rt_secondary_notes(triquetra)
++	local A, S, T = triquetra.current_slot, triquetra.secondary_slot, triquetra.ternary_slot
++	local dsm = triquetra.displacement_secondary_map
++	if RT_MODE == "base" then
++		dsm[A] = S
++	elseif RT_MODE == "c1" then -- two kinds: a swap note, like dtm's
++		dsm[A .. "-swap"] = S
++	elseif RT_MODE == "c2a" then -- skip the write on a pure toggle back
++		if dsm[S] ~= A then dsm[A] = S end
++	elseif RT_MODE == "c2b" then -- skip the write on a pure toggle back, and clear the partner's note
++		if dsm[S] == A then dsm[S] = nil else dsm[A] = S end
++	elseif RT_MODE == "c3k" then -- C3 kept in dsm: the swap note is the last partner; promote it on arrival when the partner changes
++		local old = dsm[S .. "-swap"]
++		dsm[A .. "-swap"] = S
++		if old ~= nil and old ~= A then dsm[S] = old end
++	elseif RT_MODE == "c1g" then -- C1 plus the secondary guard: S's plain note naming A is cleared
++		dsm[A .. "-swap"] = S
++		if dsm[S] == A then dsm[S] = nil end
++	elseif RT_MODE == "c3kg" then -- C3 kept in dsm, plus the secondary guard
++		local old = dsm[S .. "-swap"]
++		dsm[A .. "-swap"] = S
++		if old ~= nil and old ~= A then dsm[S] = old elseif dsm[S] == A then dsm[S] = nil end
++	elseif RT_MODE == "c3" then -- note only when the arriving buffer's partner changes
++		triquetra.rt_partner = triquetra.rt_partner or {}
++		local p = triquetra.rt_partner
++		p[A] = S
++		local old = p[S]
++		if old ~= nil and old ~= A then dsm[S] = old end
++	end
++	if T then
++		triquetra.displacement_ternary_map[A .. "-swap"] = T
++	end
++end
++
+ ---This will take in FILEPATHS and validates the input FILEPATHS, to be put as the
+ ---new primary buffers history for the triquetra.
+ ---
+@@ -102,6 +214,10 @@
+ 	local triquetra = data.crux[winid]
+ 	local temp, proc
+ 	if triquetra and triquetra.current_slot ~= new_filehash then
++		local kt_A, kt_T0, kt_S0 = triquetra.current_slot, triquetra.ternary_slot, triquetra.secondary_slot -- KT
++		M.rt_sec_check(triquetra, new_filehash, (triquetra.secondary_slot == new_filehash) and triquetra.current_slot or triquetra.secondary_slot,
++			(new_filehash == triquetra.ternary_slot) and "rec-ter" or ((new_filehash == triquetra.secondary_slot) and "rec-sec" or "rec-out"),
++			triquetra.secondary_slot) -- RT
+ 		-- Reconcile the triquetra slots if we selected a buffer part of the relationship
+ 		if triquetra.ternary_slot == new_filehash then
+ 			triquetra.displacement_ternary_map[triquetra.current_slot .. "-swap"] = triquetra.ternary_slot
+@@ -114,9 +230,20 @@
+ 			if proc then
+ 				error("Duplicates detected in triquetra slots")
+ 			end
++			-- VARIANT C: the guard, before the swap, so it records the buffer being left
++			if triquetra.displacement_ternary_map[triquetra.ternary_slot] == new_filehash then
++				triquetra.displacement_ternary_map[triquetra.ternary_slot] = triquetra.current_slot
++				vim.notify(
++					"Avoided conflict of ternary's remembered relationship becoming current. Remembered relationship has been changed to remember pre-jump current buffer instead: ["
++					.. (history.get_buffer_from_hash(triquetra.ternary_slot) or "")
++					.. "] -> ["
++					.. (history.get_buffer_from_hash(triquetra.current_slot) or "")
++					.. "]", vim.log.levels.WARN)
++			end
+ 			temp = triquetra.current_slot
+ 			triquetra.current_slot = triquetra.secondary_slot
+ 			triquetra.secondary_slot = temp
++			proc = true -- VARIANT C
+ 		end
+ 
+ 		if not proc then
+@@ -129,8 +256,21 @@
+ 					.. (history.get_buffer_from_hash(triquetra.current_slot) or "")
+ 					.. "]", vim.log.levels.WARN)
+ 			end
++			local all_start = triquetra.current_slot -- ALL
+ 			triquetra.current_slot = new_filehash
++			-- ALL (sandbox only): the Q9 pick note. A cycling pick of a buffer outside the slots notes the start on the
++			-- picked buffer and clears its older swap note. Not on the window-jump cancel's attach (M.all_in_cancel).
++			if not M.all_in_cancel and all_start ~= nil then
++				triquetra.displacement_ternary_map[new_filehash] = all_start
++				triquetra.displacement_ternary_map[new_filehash .. "-swap"] = nil
++				vim.notify("ALL-q9 " .. kt_nm(new_filehash) .. ">" .. kt_nm(all_start), vim.log.levels.DEBUG)
++			end
++		end
++		if M.all_in_cancel then -- ALL: marker, a reconcile that moved a slot during the window-jump cancel (expected never)
++			vim.notify("ALL-cancel-reconcile-moved " .. kt_nm(kt_A) .. "->" .. kt_nm(new_filehash), vim.log.levels.DEBUG)
+ 		end
++		M.kt_ter_rewrite(triquetra, (new_filehash == kt_T0) and "ter" or ((new_filehash == kt_S0) and "sec" or "out"),
++			new_filehash, kt_A, kt_T0, (new_filehash == kt_T0) and kt_A or kt_T0) -- KT
+ 	end
+ end
+ 
+@@ -141,6 +281,8 @@
+ ---@return nil
+ function M.cleanup_triquetras(bufnr_ondelete)
+ 	local set_cache_from_window_triquetra = require("cavediver").ui.routines.set_cache_from_window_triquetra
++	local ex_before = {} -- EX
++	for w, t in pairs(data.crux) do ex_before[w] = { t.current_slot, t.secondary_slot, t.ternary_slot } end -- EX
+ 	for winid, triquetra in pairs(data.crux) do
+ 		local current_bufnr = history.get_buffer_from_hash(triquetra.current_slot)
+ 		local filepath, bufnr
+@@ -451,6 +593,14 @@
+ 		set_cache_from_window_triquetra(winid)
+ 		::continue::
+ 	end
++	for w, t in pairs(data.crux) do -- EX: only windows this pass moved
++		local b = ex_before[w]
++		if b and (b[1] ~= t.current_slot or b[2] ~= t.secondary_slot or b[3] ~= t.ternary_slot) then
++			M.ex_slot_check(t, (b[1] ~= t.current_slot) and "cleanup-arrive" or "cleanup",
++				(b[3] ~= t.ternary_slot) and b[3] or nil, (b[2] ~= t.secondary_slot) and b[2] or nil,
++				(b[1] ~= t.current_slot) and "own" or nil)
++		end
++	end
+ end
+ 
+ ---Swap with secondary buffer in the target window. It actually just jumps to the secondary buffer.
+@@ -483,20 +633,26 @@
+ 			triquetra.secondary_slot = triquetra.ternary_slot
+ 			triquetra.displacement_secondary_map[triquetra.secondary_slot] =
+ 				triquetra.displacement_ternary_map[triquetra.secondary_slot]
++			triquetra.displacement_secondary_map[triquetra.secondary_slot .. "-swap"] = nil -- RT: graduation clears the swap note
+ 			triquetra.ternary_slot = nil
++			M.rt_sec_check(triquetra, triquetra.current_slot, triquetra.secondary_slot, "grad", nil) -- RT
++			M.ex_slot_check(triquetra, "grad", triquetra.secondary_slot, nil) -- EX
+ 			vim.notify("Secondary buffer set to ternary slot. Ternary slot graduated.", vim.log.levels.INFO)
+ 		elseif #history.data.ordered.crux >= 2 then
++			-- ALL (sandbox only): the fill assertion. The ordered list's first entry must be the window's current buffer.
++			local all_first = history.get_hash_from_buffer(history.data.ordered.crux[1].buf)
++			if all_first ~= triquetra.current_slot then
++				error("ALL-fill-assert: ordered[1] " .. kt_nm(all_first) .. " isn't the window's current " .. kt_nm(triquetra.current_slot))
++			end
+ 			triquetra.secondary_slot = history.get_hash_from_buffer(history.data.ordered.crux[2].buf)
++			M.ex_slot_check(triquetra, "hist-fill", nil, nil) -- EX
+ 			vim.notify("Secondary buffer populated from history.", vim.log.levels.INFO)
+ 		else
+ 			vim.notify("Cannot populate secondary slot - insufficent history.", vim.log.levels.WARN)
+ 		end
+ 	else
+ 		if triquetra.current_slot then
+-			triquetra.displacement_secondary_map[triquetra.current_slot] = triquetra.secondary_slot
+-			if triquetra.ternary_slot then
+-				triquetra.displacement_ternary_map[triquetra.current_slot .. "-swap"] = triquetra.ternary_slot
+-			end
++			M.rt_secondary_notes(triquetra) -- RT
+ 		else
+ 			error("It's not okay to have a secondary slot without a current slot.")
+ 		end
+@@ -649,9 +805,12 @@
+ 		end
+ 	end
+ 	if triquetra.current_slot ~= triquetra.primary_buffer[1] then -- We only do displacment if we are not already in the primary buffer.
++		local kt_A, kt_T0 = triquetra.current_slot, triquetra.ternary_slot -- KT
+ 		triquetra.displacement_ternary_map[triquetra.current_slot .. "-swap"] = triquetra.ternary_slot
+ 		triquetra.ternary_slot = triquetra.current_slot
+ 		triquetra.current_slot = triquetra.primary_buffer[1]
++		M.rt_sec_check(triquetra, triquetra.current_slot, triquetra.secondary_slot, "prim", triquetra.secondary_slot) -- RT
++		M.kt_ter_rewrite(triquetra, "prim", triquetra.current_slot, kt_A, kt_T0, kt_A) -- KT
+ 	else
+ 		vim.notify("Already in primary buffer, no displacement performed.", vim.log.levels.INFO)
+ 	end
+@@ -717,7 +876,9 @@
+ 
+ 	local remembered_relationship = remembered_mapping[triquetra.current_slot .. "-swap"]
+ 
+-	if remembered_relationship == nil or remembered_relationship == triquetra.ternary_slot then
++	local rt_skip = triquetra.ternary_slot
++	if RT_OWN_SLOT then rt_skip = triquetra[type .. "_slot"] end -- RT: compare with the restored type's own slot
++	if remembered_relationship == nil or remembered_relationship == rt_skip then
+ 		remembered_relationship = remembered_mapping[triquetra.current_slot]
+ 	end
+ 
+@@ -738,11 +899,13 @@
+ 		error("This is impossible. Remembered " ..
+ 			type .. " is the same as current " .. type .. ". It should be different for flip flop.")
+ 	else
++		local ex_t0, ex_s0 = triquetra.ternary_slot, triquetra.secondary_slot -- EX
+ 		local ui_get_basename = require('cavediver.domains.ui').routines.get_smart_basename
+ 		if type == "ternary" then
+ 			if remembered_relationship == triquetra.secondary_slot then
+ 				triquetra.secondary_slot = triquetra.ternary_slot
+ 				triquetra.ternary_slot = remembered_relationship
++				M.rt_sec_check(triquetra, triquetra.current_slot, triquetra.secondary_slot, "ter-restore", triquetra.ternary_slot) -- RT
+ 			else
+ 				triquetra.ternary_slot = remembered_relationship
+ 			end
+@@ -757,6 +920,9 @@
+ 			vim.notify("Restored " .. type .. " slot to: " .. remembered_relationship .. " (" .. ui_get_basename(remembered_relationship) .. ")", vim.log.levels.INFO)
+ 		end
+ 		triquetra["displacement_" .. type .. "_map"][triquetra.current_slot] = current_relationship
++		local ex_exch = (triquetra.ternary_slot ~= ex_t0) and (triquetra.secondary_slot ~= ex_s0) -- EX
++		M.ex_slot_check(triquetra, (type == "ternary" and "R" or "S") .. (ex_exch and "-exch" or ""),
++			(triquetra.ternary_slot ~= ex_t0) and ex_t0 or nil, (triquetra.secondary_slot ~= ex_s0) and ex_s0 or nil) -- EX
+ 	end
+ 	loop_sm:to(loop_states.SELF)
+ end

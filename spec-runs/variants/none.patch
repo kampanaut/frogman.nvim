@@ -1,0 +1,30 @@
+diff -ruN a/lua/cavediver/domains/window/routines.lua b/lua/cavediver/domains/window/routines.lua
+--- a/lua/cavediver/domains/window/routines.lua	2026-10-21 03:57:15.715178718 +0800
++++ b/lua/cavediver/domains/window/routines.lua	2026-10-21 03:57:15.742648054 +0800
+@@ -104,7 +104,7 @@
+ 	if triquetra and triquetra.current_slot ~= new_filehash then
+ 		-- Reconcile the triquetra slots if we selected a buffer part of the relationship
+ 		if triquetra.ternary_slot == new_filehash then
+-			triquetra.displacement_ternary_map[triquetra.current_slot .. "-swap"] = triquetra.ternary_slot
++			-- (variant: swaps write nothing)
+ 			temp = triquetra.current_slot
+ 			triquetra.current_slot = triquetra.ternary_slot
+ 			triquetra.ternary_slot = temp
+@@ -495,7 +495,7 @@
+ 		if triquetra.current_slot then
+ 			triquetra.displacement_secondary_map[triquetra.current_slot] = triquetra.secondary_slot
+ 			if triquetra.ternary_slot then
+-				triquetra.displacement_ternary_map[triquetra.current_slot .. "-swap"] = triquetra.ternary_slot
++				-- (variant: swaps write nothing)
+ 			end
+ 		else
+ 			error("It's not okay to have a secondary slot without a current slot.")
+@@ -649,7 +649,7 @@
+ 		end
+ 	end
+ 	if triquetra.current_slot ~= triquetra.primary_buffer[1] then -- We only do displacment if we are not already in the primary buffer.
+-		triquetra.displacement_ternary_map[triquetra.current_slot .. "-swap"] = triquetra.ternary_slot
++		-- (variant: swaps write nothing)
+ 		triquetra.ternary_slot = triquetra.current_slot
+ 		triquetra.current_slot = triquetra.primary_buffer[1]
+ 	else

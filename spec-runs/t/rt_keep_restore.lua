@@ -1,0 +1,11 @@
+-- P13 check: b holds an older note written by a restore, then a pure toggle, then the restore.
+dofile(os.getenv("CDV_SPEC") .. "/t/rt_fmt.lua")
+ROW(":e a", E"a") ROW(":e b", E"b") ROW(":e c", E"c")
+ROW("<M-f>  (b graduates)", F)
+ROW("<M-f>  (to b)", F)
+ROW("<M-;><M-t>  (on b: a back, b's note c)", RS)
+ROW("<M-f>  (to a)", F)
+ROW("<M-f>  (back to b)", F)
+ROW("<M-;><M-t>  (on b: c?)", RS)
+ROW("<M-;><M-t>  (again)", RS)
+ROWS_DONE()

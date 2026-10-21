@@ -1,0 +1,6 @@
+-- plugin: kt_rewrite, global view
+:e a                       win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=1
+:vsplit                    win2  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=1
+:e c                       win2  ⦉a⦊ [c] ⟦-⟧   dtm{} dsm{}   ordered c=2 a=1
+<M-m> <C-w>p               win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered c=2 a=1  «Checkpoint saved: »  (still cycling)
+<M-f>                      win1  ⦉-⦊ [a] ⟦a⟧   dtm{} dsm{}   ordered c=2 a=1  «Secondary buffer populated from history.»  (still cycling)

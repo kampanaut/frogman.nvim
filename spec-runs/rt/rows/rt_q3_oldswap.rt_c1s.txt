@@ -1,0 +1,14 @@
+-- plugin: rt_c1s
+:e d                               ⦉-⦊ [d] ⟦-⟧   dtm{} dsm{}
+:e b                               ⦉d⦊ [b] ⟦-⟧   dtm{} dsm{}
+<M-f>  (d graduates)               ⦉-⦊ [b] ⟦d⟧   dtm{} dsm{}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+<M-f>  (to d)                      ⦉-⦊ [d] ⟦b⟧   dtm{} dsm{b-swap>d}
+<M-f>  (back to b: b's partner was d) ⦉-⦊ [b] ⟦d⟧   dtm{} dsm{b-swap>d d-swap>b}
+:bdelete d  (the secondary)        ⦉-⦊ [b] ⟦-⟧   dtm{} dsm{b-swap>d d-swap>b}
+:e c                               ⦉b⦊ [c] ⟦-⟧   dtm{} dsm{b-swap>d d-swap>b}
+:e b  (onto the ternary)           ⦉c⦊ [b] ⟦-⟧   dtm{} dsm{b-swap>d d-swap>b}
+:e a  (b's plain ternary note: c)  ⦉b⦊ [a] ⟦-⟧   dtm{b>c} dsm{b-swap>d d-swap>b}
+<M-f>  (b graduates: Q3 copies b>c) ⦉-⦊ [a] ⟦b⟧   dtm{b>c} dsm{b-swap>d b>c d-swap>b}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+<M-f>  (to b)                      ⦉-⦊ [b] ⟦a⟧   dtm{b>c} dsm{a-swap>b b-swap>d b>c d-swap>b}
+<M-;><M-t>  (on b: c, per Q3)      ⦉-⦊ [b] ⟦d⟧   dtm{b>c} dsm{a-swap>b b-swap>d b>a d-swap>b}  «Restored secondary slot to: 4ba018cb91c52222 (<path>»
+<M-;><M-t>  (again)                ⦉-⦊ [b] ⟦a⟧   dtm{b>c} dsm{a-swap>b b-swap>d b>d d-swap>b}  «Restored secondary slot to: 8522f50aac9c8a0d (a.txt)»

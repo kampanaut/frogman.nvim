@@ -1,0 +1,15 @@
+-- plugin: rt_q6
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+<M-f>                              ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}  «Cannot populate secondary slot - insufficent history.»
+:e d                               ⦉a⦊ [d] ⟦-⟧   dtm{} dsm{}
+:e a                               ⦉d⦊ [a] ⟦-⟧   dtm{} dsm{}
+<M-m> <M-v>                        ⦉a⦊ [d] ⟦-⟧   dtm{a-swap>d} dsm{}  «Checkpoint saved: »
+:e d                               ⦉a⦊ [d] ⟦-⟧   dtm{a-swap>d} dsm{}
+:e c                               ⦉d⦊ [c] ⟦-⟧   dtm{a-swap>d d>a} dsm{}
+<M-;><M-f>                         ⦉-⦊ [c] ⟦d⟧   dtm{a-swap>d d>a} dsm{d>a}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+<M-f>                              ⦉-⦊ [d] ⟦c⟧   dtm{a-swap>d d>a} dsm{c>d d>a}
+<M-S-f>                            ⦉-⦊ [d] ⟦c⟧   dtm{a-swap>d d>a} dsm{c>d d>a}  «No ternary buffer to swap with.»
+<M-S-f>                            ⦉-⦊ [d] ⟦c⟧   dtm{a-swap>d d>a} dsm{c>d d>a}  «No ternary buffer to swap with.»
+:e a                               ⦉d⦊ [a] ⟦c⟧   dtm{a-swap>d d>a} dsm{c>d d>a}
+<M-S-f>                            ⦉a⦊ [d] ⟦c⟧   dtm{a-swap>d d>a} dsm{c>d d>a}
+<M-;><M-r>                         ⦉a⦊ [d] ⟦c⟧   dtm{a-swap>d d>a} dsm{c>d d>a}  ERROR: This is impossible. Remembered ternary is the same as current ternary. It should

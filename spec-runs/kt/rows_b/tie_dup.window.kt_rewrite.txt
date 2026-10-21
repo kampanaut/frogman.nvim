@@ -1,0 +1,11 @@
+-- plugin: kt_rewrite, window view
+:e a                       win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=1
+:e b                       win1  ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}   ordered b=2 a=1
+:vsplit                    win2  ⦉-⦊ [b] ⟦-⟧   dtm{} dsm{}   ordered b=2 a=1
+<C-w>p                     win1  ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}   ordered b=2 a=1
+:e c                       win1  ⦉b⦊ [c] ⟦-⟧   dtm{b>a} dsm{}   ordered b=4 c=4 a=3
+:vsplit                    win3  ⦉-⦊ [c] ⟦-⟧   dtm{} dsm{}   ordered b=4 c=4 a=3
+<M-f>                      win3  ⦉-⦊ [c] ⟦c⟧   dtm{} dsm{}   ordered b=4 c=4 a=3  «Secondary buffer populated from history.»
+:e d                       win3  ⦉c⦊ [d] ⟦c⟧   dtm{} dsm{}   ordered d=5 c=4 b=2 a=1
+<M-S-f>                    win3  ⦉d⦊ [c] ⟦c⟧   dtm{d-swap>c} dsm{}   ordered d=5 c=4 b=2 a=1  ERROR: Duplicates detected in triquetra slots
+:e e                       win3  ⦉c⦊ [e] ⟦c⟧   dtm{c>d d-swap>c} dsm{}   ordered e=6 d=5 c=4 b=2 a=1

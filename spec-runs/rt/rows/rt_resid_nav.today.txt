@@ -1,0 +1,13 @@
+-- plugin: today
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e c                               ⦉a⦊ [c] ⟦-⟧   dtm{} dsm{}
+<M-S-f>                            ⦉c⦊ [a] ⟦-⟧   dtm{c-swap>a} dsm{}
+<M-S-f>                            ⦉a⦊ [c] ⟦-⟧   dtm{a-swap>c c-swap>a} dsm{}
+:e d                               ⦉c⦊ [d] ⟦-⟧   dtm{a-swap>c c>a} dsm{}
+<M-f>                              ⦉-⦊ [d] ⟦c⟧   dtm{a-swap>c c>a} dsm{c>a}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+<M-;><M-f>                         ⦉-⦊ [c] ⟦d⟧   dtm{a-swap>c c>a} dsm{c>a d>c}
+<M-;><M-r>                         ⦉a⦊ [c] ⟦d⟧   dtm{a-swap>c} dsm{c>a d>c}  «Restored ternary slot to: 8522f50aac9c8a0d (a.txt)»
+<M-S-f>                            ⦉c⦊ [a] ⟦d⟧   dtm{a-swap>c c-swap>a} dsm{c>a d>c}
+<M-;><M-f>                         ⦉c⦊ [d] ⟦a⟧   dtm{a-swap>c c-swap>a} dsm{a>d c>a d>c}
+:e c                               ⦉d⦊ [c] ⟦a⟧   dtm{a-swap>c c-swap>a} dsm{a>d c>a d>c}
+<M-;><M-t>                         ⦉d⦊ [c] ⟦a⟧   dtm{a-swap>c c-swap>a} dsm{a>d c>a d>c}  ERROR: This is impossible. Remembered secondary is the same as current secondary. It sh

@@ -1,0 +1,10 @@
+-- Item 2: c leaves by navigation and comes back through the ternary; its partner is still a.
+dofile(os.getenv("CDV_SPEC") .. "/t/rt_fmt.lua")
+ROW(":e a", E"a") ROW(":e c", E"c")
+ROW("<M-f>  (a graduates)", F)
+ROW("<M-f>  (to a)", F)
+ROW("<M-f>  (back to c)", F)
+ROW(":e e", E"e")
+ROW("<M-S-f>  (back to c)", G)
+ROW("<M-;><M-t>  (on c)", RS)
+ROWS_DONE()

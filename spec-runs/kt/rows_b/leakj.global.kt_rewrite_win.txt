@@ -1,0 +1,5 @@
+-- plugin: kt_rewrite_win, global view
+:e a                       win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:vsplit                    win2  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+<M-m> <C-w>p               win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}  «Checkpoint saved: »  «cycle cancelled, its window back on a»
+<M-;><M-f>                 win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}  «Cannot populate secondary slot - insufficent history.»

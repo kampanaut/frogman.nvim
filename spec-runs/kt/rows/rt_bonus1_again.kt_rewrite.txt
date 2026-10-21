@@ -1,0 +1,11 @@
+-- plugin: kt_rewrite
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e c                               ⦉a⦊ [c] ⟦-⟧   dtm{} dsm{}
+:e e                               ⦉c⦊ [e] ⟦-⟧   dtm{c>a} dsm{}
+:e b                               ⦉e⦊ [b] ⟦-⟧   dtm{c>a e>c} dsm{}
+<M-f>                              ⦉-⦊ [b] ⟦e⟧   dtm{c>a e>c} dsm{e>c}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+:e c                               ⦉b⦊ [c] ⟦e⟧   dtm{c>a e>c} dsm{e>c}
+<M-S-f>                            ⦉c⦊ [b] ⟦e⟧   dtm{c-swap>b c>a e>c} dsm{e>c}
+<M-f>                              ⦉c⦊ [e] ⟦b⟧   dtm{b-swap>c c-swap>b c>a e>a} dsm{b-swap>e e>c}  «KT-t sec kept e>c => a»
+<M-;><M-r>                         ⦉a⦊ [e] ⟦b⟧   dtm{b-swap>c c-swap>b c>a e>c} dsm{b-swap>e e>c}  «Restored ternary slot to: 8522f50aac9c8a0d (a.txt)»
+<M-;><M-r>                         ⦉c⦊ [e] ⟦b⟧   dtm{b-swap>c c-swap>b c>a e>a} dsm{b-swap>e e>c}  «Restored ternary slot to: 493d34c13cd1cd29 (c.txt)»

@@ -1,0 +1,8 @@
+-- plugin: rt_c3k
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e b                               ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}
+:e c                               ⦉b⦊ [c] ⟦-⟧   dtm{b>a} dsm{}
+<M-f>  (b graduates: dsm b>a)      ⦉-⦊ [c] ⟦b⟧   dtm{b>a} dsm{b>a}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+<M-f>  (to b)                      ⦉-⦊ [b] ⟦c⟧   dtm{b>a} dsm{b>a c-swap>b}
+<M-;><M-t>  (on b: a as the secondary) ⦉-⦊ [b] ⟦a⟧   dtm{b>a} dsm{b>c c-swap>b}  «Restored secondary slot to: 8522f50aac9c8a0d (a.txt)»
+<M-;><M-t>  (again)                ⦉-⦊ [b] ⟦c⟧   dtm{b>a} dsm{b>a c-swap>b}  «Restored secondary slot to: 493d34c13cd1cd29 (c.txt)»

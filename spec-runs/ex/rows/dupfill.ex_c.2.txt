@@ -1,0 +1,13 @@
+-- plugin: ex_c, history_view = window
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e d                               ⦉a⦊ [d] ⟦-⟧   dtm{} dsm{}
+<M-f>                              ⦉-⦊ [d] ⟦a⟧   dtm{} dsm{}  «…graduated.»
+:vsplit                            win2 ⦉-⦊ [d] ⟦-⟧   dtm{} dsm{}
+<C-w>p                             win1 ⦉-⦊ [d] ⟦a⟧   dtm{} dsm{}
+<M-f>                              win1 ⦉-⦊ [a] ⟦d⟧   dtm{} dsm{d-swap>a}
+:vsplit                            win3 ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+<M-f>                              win3 ⦉-⦊ [a] ⟦d⟧   dtm{} dsm{}  «Secondary buffer populated from history.»
+<M-f>                              win3 ⦉-⦊ [d] ⟦a⟧   dtm{} dsm{a-swap>d}
+:e b                               win3 ⦉d⦊ [b] ⟦a⟧   dtm{} dsm{a-swap>d}
+<M-f>                              win3 ⦉d⦊ [a] ⟦b⟧   dtm{b-swap>d} dsm{a-swap>d a>d b-swap>a}
+<M-;><M-t>                         win3 ⦉b⦊ [a] ⟦d⟧   dtm{b-swap>d} dsm{a-swap>d a>b b-swap>a}  «Restored secondary slot to d»

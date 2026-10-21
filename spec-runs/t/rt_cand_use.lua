@@ -1,0 +1,12 @@
+-- Candidates: the case that must keep working (t/b5_A_use.lua with a real plain :e): d's old secondary b comes back, then flip-flops.
+dofile(os.getenv("CDV_SPEC") .. "/t/rt_fmt.lua")
+ROW(":e a", E"a") ROW(":e b", E"b") ROW(":e c", E"c")
+ROW("<M-f>  (b graduates)", F)
+ROW(":e d", E"d")
+ROW(":e b  (plain, onto the secondary)", E"b")
+ROW(":e e", E"e")
+ROW("<M-f>  (back to d)", F)
+ROW("<M-;><M-t>  (on d)", RS)
+ROW("<M-;><M-t>  (again)", RS)
+ROW("<M-;><M-t>  (again)", RS)
+ROWS_DONE()

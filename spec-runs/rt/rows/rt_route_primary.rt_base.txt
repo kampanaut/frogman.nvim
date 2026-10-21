@@ -1,0 +1,8 @@
+-- plugin: rt_base
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e b                               ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}
+:e c                               ⦉b⦊ [c] ⟦-⟧   dtm{b>a} dsm{}
+<M-;><M-f>  (no primary: b graduates) ⦉-⦊ [c] ⟦b⟧   dtm{b>a} dsm{b>a}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+<M-;><M-f>  (to b)                 ⦉-⦊ [b] ⟦c⟧   dtm{b>a} dsm{b>a c>b}
+<M-;><M-f>  (back to c)            ⦉-⦊ [c] ⟦b⟧   dtm{b>a} dsm{b>c c>b}
+<M-;><M-t>  (on c)                 ⦉-⦊ [c] ⟦b⟧   dtm{b>a} dsm{b>c c>b}  ERROR: This is impossible. Remembered secondary is the same as current secondary. It sh

@@ -1,0 +1,1 @@
+**Is everything at zero? Yes.** With every fix in, 900,000 walk steps under both views give 0 I23 breaks, 0 I1 breaks, 0 fill assertions, 0 restore throws, 0 "Duplicates detected", and no other error or hook failure. The window-view runs now repeat exactly.

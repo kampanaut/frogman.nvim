@@ -1,0 +1,11 @@
+-- plugin: today
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e b                               ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}
+:e c                               ⦉b⦊ [c] ⟦-⟧   dtm{b>a} dsm{}
+<M-f>  (b graduates)               ⦉-⦊ [c] ⟦b⟧   dtm{b>a} dsm{b>a}  «…graduated.»
+<M-f>                              ⦉-⦊ [b] ⟦c⟧   dtm{b>a} dsm{b>a c>b}
+<M-f>                              ⦉-⦊ [c] ⟦b⟧   dtm{b>a} dsm{b>c c>b}
+:e a                               ⦉c⦊ [a] ⟦b⟧   dtm{b>a} dsm{b>c c>b}
+<M-f>                              ⦉c⦊ [b] ⟦a⟧   dtm{a-swap>c b>a} dsm{a>b b>c c>b}
+<M-;><M-t>                         ⦉a⦊ [b] ⟦c⟧   dtm{a-swap>c b>a} dsm{a>b b>a c>b}  «Restored secondary slot to c»
+<M-;><M-r>                         ⦉a⦊ [b] ⟦c⟧   dtm{a-swap>c b>a} dsm{a>b b>a c>b}  ERROR: Remembered ternary is the same as current ternary.

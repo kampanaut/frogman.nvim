@@ -1,0 +1,11 @@
+-- plugin: rt_c3kg
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e b                               ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}
+:e c                               ⦉b⦊ [c] ⟦-⟧   dtm{b>a} dsm{}
+<M-f>  (b graduates)               ⦉-⦊ [c] ⟦b⟧   dtm{b>a} dsm{b>a}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+<M-f>  (to b)                      ⦉-⦊ [b] ⟦c⟧   dtm{b>a} dsm{b>a c-swap>b}
+<M-;><M-t>  (on b: a back, b's note c) ⦉-⦊ [b] ⟦a⟧   dtm{b>a} dsm{b>c c-swap>b}  «Restored secondary slot to: 8522f50aac9c8a0d (a.txt)»
+<M-f>  (to a)                      ⦉-⦊ [a] ⟦b⟧   dtm{b>a} dsm{b-swap>a b>c c-swap>b}
+<M-f>  (back to b)                 ⦉-⦊ [b] ⟦a⟧   dtm{b>a} dsm{a-swap>b b-swap>a b>c c-swap>b}
+<M-;><M-t>  (on b: c?)             ⦉-⦊ [b] ⟦c⟧   dtm{b>a} dsm{a-swap>b b-swap>a b>a c-swap>b}  «Restored secondary slot to: 493d34c13cd1cd29 (c.txt)»
+<M-;><M-t>  (again)                ⦉-⦊ [b] ⟦a⟧   dtm{b>a} dsm{a-swap>b b-swap>a b>c c-swap>b}  «Restored secondary slot to: 8522f50aac9c8a0d (a.txt)»

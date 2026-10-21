@@ -1,0 +1,9 @@
+-- plugin: kt_literal
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e d                               ⦉a⦊ [d] ⟦-⟧   dtm{} dsm{}
+:e c                               ⦉d⦊ [c] ⟦-⟧   dtm{d>a} dsm{}
+<M-;><M-f>                         ⦉-⦊ [c] ⟦d⟧   dtm{d>a} dsm{d>a}  «Secondary buffer set to ternary slot. Ternary slot graduated.»
+<M-f>                              ⦉-⦊ [d] ⟦c⟧   dtm{d>a} dsm{c-swap>d d>a}
+:e a                               ⦉d⦊ [a] ⟦c⟧   dtm{d>a} dsm{c-swap>d d>a}
+<M-S-f>                            ⦉a⦊ [d] ⟦c⟧   dtm{a-swap>d} dsm{c-swap>d d>a}  «KT-t ter c1 d>a => -»
+<M-;><M-r>                         ⦉a⦊ [d] ⟦c⟧   dtm{a-swap>d} dsm{c-swap>d d>a}  «No ternary relationship found for restoration. It means you hadn't dis»

@@ -1,0 +1,21 @@
+-- plugin: kt_rewrite_sec, history_view = global
+:e a                               ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}
+:e b                               ⦉a⦊ [b] ⟦-⟧   dtm{} dsm{}
+<M-S-f>                            ⦉b⦊ [a] ⟦-⟧   dtm{b-swap>a} dsm{}
+:e d                               ⦉a⦊ [d] ⟦-⟧   dtm{a>b b-swap>a} dsm{}
+<M-m> <M-m> <M-v>                  ⦉a⦊ [b] ⟦-⟧   dtm{a>d b-swap>a} dsm{}  «Avoided conflict…»
+<M-S-f>                            ⦉b⦊ [a] ⟦-⟧   dtm{a>d b-swap>a} dsm{}
+<M-f>                              ⦉-⦊ [a] ⟦b⟧   dtm{a>d b-swap>a} dsm{}  «…graduated.»
+:e e                               ⦉a⦊ [e] ⟦b⟧   dtm{a>d b-swap>a} dsm{}
+:e d                               ⦉e⦊ [d] ⟦b⟧   dtm{a>d b-swap>a e>a} dsm{}
+<M-m> <M-m> <M-v>                  ⦉e⦊ [a] ⟦b⟧   dtm{a>d b-swap>a e>d} dsm{}  «Avoided conflict…»
+<M-;><M-c>                         ⦉e⦊ [a] ⟦b⟧  p=[a]on   dtm{a>d b-swap>a e>d} dsm{}
+:e b                               ⦉e⦊ [b] ⟦a⟧  p=[a]on   dtm{a-swap>e a>d b-swap>a e>d} dsm{a-swap>b}
+:e a                               ⦉e⦊ [a] ⟦b⟧  p=[a]on   dtm{a-swap>e a>d b-swap>e e>d} dsm{a-swap>b b-swap>a}
+:e e                               ⦉a⦊ [e] ⟦b⟧  p=[a]on   dtm{a-swap>e a>d b-swap>e e>d} dsm{a-swap>b b-swap>a}
+<M-n> <M-v>                        ⦉a⦊ [d] ⟦b⟧  p=[a]on   dtm{a-swap>e a>e b-swap>e e>d} dsm{a-swap>b b-swap>a}  «Avoided conflict…»
+:e e                               ⦉d⦊ [e] ⟦b⟧  p=[a]on   dtm{a-swap>e a>e b-swap>e d>a e>a} dsm{a-swap>b b-swap>a}  «The stored ternary of the new buffer is already the ternary…»
+<M-f>                              ⦉d⦊ [b] ⟦e⟧  p=[a]on   dtm{a-swap>e a>e b-swap>e d>a e-swap>d e>a} dsm{a-swap>b b-swap>a b>a e-swap>b}
+<M-;><M-f>                         ⦉b⦊ [a] ⟦e⟧  p=[a]on   dtm{a-swap>e a>e b-swap>d d>a e-swap>d e>a} dsm{a-swap>b b-swap>a b>a e-swap>b}
+<M-;><M-t>                         ⦉e⦊ [a] ⟦b⟧  p=[a]on   dtm{a-swap>e a>e b-swap>d d>a e-swap>d e>a} dsm{a-swap>b a>e b-swap>a b>a e-swap>b}  «Restored secondary slot to b»
+<M-;><M-r>                         ⦉e⦊ [a] ⟦b⟧  p=[a]on   dtm{a-swap>e a>e b-swap>d d>a e-swap>d e>a} dsm{a-swap>b a>e b-swap>a b>a e-swap>b}  ERROR: Remembered ternary is the same as current ternary.

@@ -1,0 +1,8 @@
+-- plugin: kt_rewrite_win_strict, global view
+:e a                       win1  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=1
+:vsplit                    win2  ⦉-⦊ [a] ⟦-⟧   dtm{} dsm{}   ordered a=1
+:e c                       win2  ⦉a⦊ [c] ⟦-⟧   dtm{} dsm{}   ordered c=2 a=1
+:e b                       win2  ⦉c⦊ [b] ⟦-⟧   dtm{c>a} dsm{}   ordered b=3 c=2 a=1
+:vsplit                    win3  ⦉-⦊ [b] ⟦-⟧   dtm{} dsm{}   ordered b=3 c=2 a=1
+<M-m> <C-w>p               win2  ⦉c⦊ [b] ⟦-⟧   dtm{c>a} dsm{}   ordered b=3 c=2 a=1  «Checkpoint saved: »  «cycle cancelled, its window back on b»
+<M-f>                      win2  ⦉-⦊ [b] ⟦c⟧   dtm{c>a} dsm{c>a}   ordered b=3 c=2 a=1  «Secondary buffer set to ternary slot. Ternary slot graduated.»

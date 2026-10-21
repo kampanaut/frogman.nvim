@@ -1,0 +1,8 @@
+vim.cmd("e a.txt"); vim.cmd("e b.txt"); vim.cmd("e c.txt"); CDV.toggle_secondary(); FLUSH()
+local w = vim.api.nvim_get_current_win()
+STATE("setup")
+vim.cmd("terminal"); vim.wait(300, function() return false end)
+P("after :terminal in same window", T(w) .. " buftype=" .. vim.bo.buftype)
+P("terminal buffer registered", tostring(H.get_hash_from_buffer(vim.api.nvim_get_current_buf()) ~= nil))
+vim.cmd("e a.txt"); STATE("back with :e a")
+DONE()

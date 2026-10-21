@@ -1,0 +1,18 @@
+diff -ruN a/lua/cavediver/domains/window/routines.lua b/lua/cavediver/domains/window/routines.lua
+--- a/lua/cavediver/domains/window/routines.lua	2026-10-21 03:57:15.338372314 +0800
++++ b/lua/cavediver/domains/window/routines.lua	2026-10-21 03:57:15.353655309 +0800
+@@ -723,6 +723,14 @@
+ 
+ 	local filepath = history.get_filepath_from_hash(remembered_relationship)
+ 
++	-- [variant C] a swap note whose file is missing: say so, keep it, fall back to the plain note
++	local swap = remembered_mapping[triquetra.current_slot .. "-swap"]
++	if remembered_relationship == swap and filepath and (not filepath:match("^NONAME_")) and vim.fn.filereadable(filepath) == 0 then
++		vim.notify("[variant C] the swap note's file isn't on disk right now; using the plain note", vim.log.levels.WARN)
++		remembered_relationship = remembered_mapping[triquetra.current_slot]
++		filepath = history.get_filepath_from_hash(remembered_relationship)
++	end
++
+ 	if not remembered_relationship then
+ 		vim.notify(
+ 			"No " ..
