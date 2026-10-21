@@ -27,7 +27,7 @@ First draft, 2026-10-20. A behavioural specification of cavediver, written so th
 **What each behaviour is labelled.**
 - **intended**: the code agrees with the author's answers, the README or the desk, or, where all are silent, with the old spec (SPEC). An answer that confirms it is cited as (Qn).
 - **decided (2026-10-20)**: the author settled the behaviour in the answers of 2026-10-20, and the code has to change to match. A **Decided (2026-10-20):** line under the action says how.
-- **bug (desk)**: the desk already lists it under "Bugs found along the way" (DESK:2409).
+- **bug (desk)**: the desk already lists it under "Bugs found along the way" (DESK:2428).
 - **bug (new)**: a defect the desk doesn't list.
 - **unclear → Qn**: the intent can't be told from the sources. It becomes question Qn in section 8. After 2026-10-20 none are left.
 
@@ -54,18 +54,18 @@ One line each, with its source and how today's code stands against it. P13–P21
 
 | ID | Principle | Source | Today |
 |---|---|---|---|
-| P1 | What's shown on the screen is what cavediver knows, always. | DESK:18, DESK:1762 | Not held. Slots, the registry and the caches are copies updated after the fact, and cleanup changes the screen to fit the model (A20, A21). |
-| P2 | The settle rule: act after the editor settles, never inside the event, and look at what's on screen then. | DESK:13, DESK:81, DESK:1764 | Not held. Everything runs inside `BufEnter`/`BufDelete`/`WinEnter`, and healing switches buffers from inside `BufDelete` (`window/routines.lua:269`, `:306`). |
-| P3 | Session-manager agnostic, no adapters. Two exports: the manager restores buffers and layout, then cavediver lays its triquetras over what came back. | DESK:12, DESK:732 | Partly. The two exports exist (`init.lua:374-375`), but the README makes resession a requirement (README:44) and the load matches windows by position (`storage/routines.lua:199-209`). |
-| P4 | Cooperate rather than force: wherever cavediver bends the editor or other plugins to its model, that gets fixed. | DESK:20, DESK:2064 | Not held. The save switches oil windows (`storage/routines.lua:500-510`), cleanup wipes buffers, cavediver owns the winbar, and plugins are special-cased by name. |
-| P5 | Regular files only. Cavediver tracks regular file buffers and No Name buffers, nothing else. | README:366, DESK:36, DESK:2143, `history/routines.lua:41` | Partly. Today's rule is `buftype ""` with no `://` or otter name (`history/routines.lua:276`), with no check that the buffer is listed (M3). |
-| P6 | The registry is the authority: hash → buffer and hash → path decide what a hash means. | DESK:1345, `window/hooks.lua:25` | Held as a design. Its gaps are listed under I2. |
+| P1 | What's shown on the screen is what cavediver knows, always. | DESK:19, DESK:1781 | Not held. Slots, the registry and the caches are copies updated after the fact, and cleanup changes the screen to fit the model (A20, A21). |
+| P2 | The settle rule: act after the editor settles, never inside the event, and look at what's on screen then. | DESK:14, DESK:82, DESK:1783 | Not held. Everything runs inside `BufEnter`/`BufDelete`/`WinEnter`, and healing switches buffers from inside `BufDelete` (`window/routines.lua:269`, `:306`). |
+| P3 | Session-manager agnostic, no adapters. Two exports: the manager restores buffers and layout, then cavediver lays its triquetras over what came back. | DESK:13, DESK:751 | Partly. The two exports exist (`init.lua:374-375`), but the README makes resession a requirement (README:44) and the load matches windows by position (`storage/routines.lua:199-209`). |
+| P4 | Cooperate rather than force: wherever cavediver bends the editor or other plugins to its model, that gets fixed. | DESK:21, DESK:2083 | Not held. The save switches oil windows (`storage/routines.lua:500-510`), cleanup wipes buffers, cavediver owns the winbar, and plugins are special-cased by name. |
+| P5 | Regular files only. Cavediver tracks regular file buffers and No Name buffers, nothing else. | README:366, DESK:37, DESK:2162, `history/routines.lua:41` | Partly. Today's rule is `buftype ""` with no `://` or otter name (`history/routines.lua:276`), with no check that the buffer is listed (M3). |
+| P6 | The registry is the authority: hash → buffer and hash → path decide what a hash means. | DESK:1364, `window/hooks.lua:25` | Held as a design. Its gaps are listed under I2. |
 | P7 | The user never registers a buffer by hand; registration is automatic. | `window/routines.lua:37` | Held. |
-| P8 | Cleanup repairs only cavediver's own data and never touches a buffer or a window. | DESK:18, DESK:1840 | Not held (A21). |
-| P9 | Missing files aren't forgotten. A pointer to a file gone from disk is kept, and says so when it's used. | DESK:19, DESK:2003 | Not held. Slots, closed entries and buffers whose file is missing are dropped or wiped (A21, A22). |
-| P10 | Follow along: displacement maps and history never keep anything alive. Their entries go once what they point at is no longer known. | DESK:82, DESK:2010 | Not held. The maps are never pruned (M7), and history entries go as soon as the buffer is unregistered. |
-| P11 | Errors in the state machine shouldn't happen. An error from `to()` is a loud bug, a bug inside a hook is caught with a stack trace, and the save hook is critical. | DESK:1135-1138 | Partly. Hook errors are caught with the message only (`engine/helpers.lua:36-43`), and the save hook isn't critical. |
-| P12 | Nothing runs at `require`. `setup()` creates the autocmds (in one augroup), the commands and the timers, and can be re-run. | DESK:2158 | Not held. Autocmds and user commands are created at require (`init.lua:369` and every `hooks.lua`), with no augroup. |
+| P8 | Cleanup repairs only cavediver's own data and never touches a buffer or a window. | DESK:19, DESK:1859 | Not held (A21). |
+| P9 | Missing files aren't forgotten. A pointer to a file gone from disk is kept, and says so when it's used. | DESK:20, DESK:2022 | Not held. Slots, closed entries and buffers whose file is missing are dropped or wiped (A21, A22). |
+| P10 | Follow along: displacement maps and history never keep anything alive. Their entries go once what they point at is no longer known. | DESK:83, DESK:2029 | Not held. The maps are never pruned (M7), and history entries go as soon as the buffer is unregistered. |
+| P11 | Errors in the state machine shouldn't happen. An error from `to()` is a loud bug, a bug inside a hook is caught with a stack trace, and the save hook is critical. | DESK:1154-1157 | Partly. Hook errors are caught with the message only (`engine/helpers.lua:36-43`), and the save hook isn't critical. |
+| P12 | Nothing runs at `require`. `setup()` creates the autocmds (in one augroup), the commands and the timers, and can be re-run. | DESK:2177 | Not held. Autocmds and user commands are created at require (`init.lua:369` and every `hooks.lua`), with no augroup. |
 | P13 | You can always get back to what once was: the secondary and the ternary can always be restored. | README:7; confirmed by the author (2026-10-20) | Partly. The restores work (A11), but closed secondaries and primaries get pruned (A21), and some routes make a restore throw instead (A11; the decided fix is "Keep the older one", M7). |
 | P14 | The secondary is yours: it changes only when you act. | README:353, SPEC:41, SPEC:299; confirmed by the author (2026-10-20) | Held. Going to the secondary by plain navigation counts as acting, and swaps it (A1). The author's check: `:e b`, `:e c`, `<M-f>` (graduation), `:e d`, then `:e b` gives `{c=b s=d t=c}`. |
 | P15 | The ternary is your previous buffer, filled in on every jump that isn't to the secondary, and not on a cycling pick. | README:347; confirmed by the author (2026-10-20) | Held (A1, A13). A pick of an outside buffer leaves the ternary alone and will note the start on the picked buffer instead (Q9). |
@@ -75,21 +75,21 @@ One line each, with its source and how today's code stands against it. P13–P21
 | P19 | A restore flip-flops instead of being used up, with one remembered entry per buffer for each kind of note, overwritten by the next displacement. | SPEC:523-544, README:349; confirmed by the author (2026-10-20); the "for each kind of note" rewording confirmed by the author (2026-10-21) | Held (A11). The ternary map keeps a plain note and a swap note per buffer, and a restore uses one of them (Q2). Decided (2026-10-20 evening), "Keep the older one": the secondary map keeps the same two kinds, and a note that has gone stale is rewritten to the older one (M7). |
 | P20 | Keys are predictable: `<M-S-f>` always does the same swap, and restoring is only ever explicit. | SPEC:512-521; confirmed by the author (2026-10-20) | Held. The swap also writes a `-swap` note, which SPEC:240 rules out; Q2 keeps the note (D7). |
 | P21 | Identity comes from the file name: a hash of the name, so relationships survive restarts. | README:12, STATUS:34-40; confirmed by the author (2026-10-20) | Held, but hashing goes through the shell (M1). |
-| P22 | Privacy: the session file is usage data and stays protected. | DESK:1522, `init.lua:4`, `storage/routines.lua:113` | Weak. It's XOR with the cwd as the key (S1), which DESK:1542 shows leaks the key. |
-| P23 | Drift between cavediver's file and the manager's is designed out, not detected. | DESK:1037 | Not held (S1). |
-| P24 | A save is a snapshot and never changes the running state. | DESK:936, DESK:1133 | Not held. A save runs `cleanup_system` (which can wipe buffers) and switches oil windows (`storage/routines.lua:692`, `:500`). |
-| P25 | Two invariants: a path is never forgotten while anything references its hash, and every triquetra comes with its window's history entry. | DESK:83, DESK:1039-1045, DESK:1107 | Both violated today (I2, I3). |
-| P26 | Cokeline is required, as part of the UI. Harpoon is optional, through a provider. | DESK:2107, DESK:2125, README:42-47 | Harpoon is required and loaded without a guard (`history/routines.lua:332`, `ui/routines.lua:339`). |
-| P27 | Cavediver reconciles any conflict between its model and the editor, "smartly". The four kinds of conflict decide who wins. | DESK:1762, DESK:1899 | Today that's healing inside cleanup (A21). |
+| P22 | Privacy: the session file is usage data and stays protected. | DESK:1541, `init.lua:4`, `storage/routines.lua:113` | Weak. It's XOR with the cwd as the key (S1), which DESK:1561 shows leaks the key. |
+| P23 | Drift between cavediver's file and the manager's is designed out, not detected. | DESK:1056 | Not held (S1). |
+| P24 | A save is a snapshot and never changes the running state. | DESK:955, DESK:1152 | Not held. A save runs `cleanup_system` (which can wipe buffers) and switches oil windows (`storage/routines.lua:692`, `:500`). |
+| P25 | Two invariants: a path is never forgotten while anything references its hash, and every triquetra comes with its window's history entry. | DESK:84, DESK:1058-1064, DESK:1126 | Both violated today (I2, I3). |
+| P26 | Cokeline is required, as part of the UI. Harpoon is optional, through a provider. | DESK:2126, DESK:2144, README:42-47 | Harpoon is required and loaded without a guard (`history/routines.lua:332`, `ui/routines.lua:339`). |
+| P27 | Cavediver reconciles any conflict between its model and the editor, "smartly". The four kinds of conflict decide who wins. | DESK:1781, DESK:1918 | Today that's healing inside cleanup (A21). |
 
 ## 2. The model
 
 ### M1. Identity and hashing
 
 - A buffer's **name** is `nvim_buf_get_name(buf)`. A buffer with an empty name is called `NONAME_<bufnr>` instead (`history/routines.lua:43-45`, `:283`, `window/routines.lua:171-173`).
-- Its **hash** is `string.sub(vim.fn.system('echo "' .. name .. '" | sha256sum'), 1, 16)` (`history/routines.lua:22-29`). For ordinary names that's the first 16 hex characters of sha256(name .. "\n"). It runs the user's shell once per call, and it's called on every `BufEnter` of a registered buffer (`:283`, `:288`). Names containing `"`, `$` or a backslash are mangled by the shell, and every name with a `"` hashes to the shell's error text, so all such files collide (DESK:2112-2121, DESK:2422, reproduced there). **bug (desk)**
+- Its **hash** is `string.sub(vim.fn.system('echo "' .. name .. '" | sha256sum'), 1, 16)` (`history/routines.lua:22-29`). For ordinary names that's the first 16 hex characters of sha256(name .. "\n"). It runs the user's shell once per call, and it's called on every `BufEnter` of a registered buffer (`:283`, `:288`). Names containing `"`, `$` or a backslash are mangled by the shell, and every name with a `"` hashes to the shell's error text, so all such files collide (DESK:2131-2140, DESK:2441, reproduced there). **bug (desk)**
 - The **session file** is named after the first 32 characters of the same shell sha256 of the cwd, plus `.json`, inside `session_dir` (`storage/routines.lua:613-630`).
-- **Decided:** hash with `vim.fn.sha256(name .. "\n")` (DESK:1437, DESK:2112). A No Name id is unique across sessions, built from `os.time()` and `vim.uv.hrtime()` and kept in a buffer variable (DESK:2270-2278). The file is named `sha256(directory .. name)` (DESK:1055).
+- **Decided:** hash with `vim.fn.sha256(name .. "\n")` (DESK:1456, DESK:2131). A No Name id is unique across sessions, built from `os.time()` and `vim.uv.hrtime()` and kept in a buffer variable (DESK:2289-2297). The file is named `sha256(directory .. name)` (DESK:1074).
 
 ### M2. The registry
 
@@ -113,7 +113,7 @@ A path is forgotten in three places:
 - a reopened No Name buffer, which takes a new name (`:432`)
 - an empty No Name buffer being closed (`:473`)
 
-Each of these can leave a slot holding a hash with no path (I2, DESK:1043).
+Each of these can leave a slot holding a hash with no path (I2, DESK:1062).
 
 ### M3. Which buffers are tracked
 
@@ -127,7 +127,7 @@ Each of these can leave a slot holding a hash with no path (I2, DESK:1043).
 - **A `BufWritePost`** on an unregistered buffer runs the same update (`history/hooks.lua:76-88`).
 - **The session load** registers every loaded buffer with `buftype ""` or filetype `image_nvim` whose name has no `://` (`storage/routines.lua:163-175`).
 
-**Decided:** a tracked buffer is listed, has `buftype ""` (or `nowrite` on an existing regular file), and has a name that's empty or a plain path. A missing file says nothing about it (DESK:36, DESK:2143). The otter, `image_nvim` and `://` special cases become properties (DESK:2129-2139).
+**Decided:** a tracked buffer is listed, has `buftype ""` (or `nowrite` on an existing regular file), and has a name that's empty or a plain path. A missing file says nothing about it (DESK:37, DESK:2162). The otter, `image_nvim` and `://` special cases become properties (DESK:2148-2158).
 
 ### M4. History
 
@@ -144,7 +144,7 @@ Fields in `history/data.lua`:
 How history is updated:
 - `track_buffer(hash)` (`:208-235`) does all of the following:
   - writes `history_index` into `crux` and `global`, then increments it
-  - writes into the window history of `find_most_recent_tracked_window()`, which is the last-entered window that has a triquetra, not necessarily the window showing the buffer (DESK:2457) **bug (desk)**
+  - writes into the window history of `find_most_recent_tracked_window()`, which is the last-entered window that has a triquetra, not necessarily the window showing the buffer (DESK:2476) **bug (desk)**
   - removes the hash from the closed stack (`:229-234`)
 - Called with a time (session load), `track_buffer` writes `history_index`, not the time, into `global` (`:215`). **bug (desk)**
 - `untrack_buffer` (`:241-259`) removes the hash from `crux`, `global` and every window's history, then rebuilds both ordered lists.
@@ -179,7 +179,7 @@ Window view, as run in s17: window 1 visits a, b, c, then window 2 (`:vsplit`) v
   - It looks up the path and removes the newest matching entry from the closed stack.
   - **A No Name hash:**
     - It creates a new listed buffer with the cached lines and filetype.
-    - It sets the cached cursor on **the current window**, before the buffer is shown there (DESK:2454). **bug (desk)**
+    - It sets the cached cursor on **the current window**, before the buffer is shown there (DESK:2473). **bug (desk)**
     - It drops the cache and registers the buffer under its new `NONAME_<newbufnr>`. It tracks the buffer and forgets the old path if the name differs.
   - **A file:** if the file is readable it runs `bufadd`, `bufload` and `buflisted = true`, then registers and tracks the buffer.
   - In both cases it then runs `update_buffer_history` and rebuilds the lists, and returns the bufnr. When the file is missing it returns `nil`, and the hash is already off the closed stack, since that step comes first (`:413-418`).
@@ -508,7 +508,7 @@ Examples **[run s01, s02]**:
 
 **Label:** intended (README:347-349, README:353, SPEC:221-226, P14). The dsm write is skipped when you reach the secondary by plain navigation, while README:355 says "every time you jump to secondary". See D8.
 
-**Decided:** the slotting happens at the end of the tick against the window's own buffer, never the focused one, and a later `buftype` change undoes the arrival (DESK:1769-1770).
+**Decided:** the slotting happens at the end of the tick against the window's own buffer, never the focused one, and a later `buftype` change undoes the arrival (DESK:1788-1789).
 
 **Decided (2026-10-20):** going to the secondary by plain navigation is one of Q6's routes onto the secondary. The guard runs before the swap and rewrites `dtm[T]` to the buffer being left (A6).
 
@@ -552,7 +552,7 @@ Oil (`acwrite`) keeps it. Coming back gives a fresh `{c=X}`: the secondary, tern
 
 Untracked buffers are never registered, so they never reach a slot. **Label:** intended per README:332, "When a window switches to a non-regular buffer then it will clean the triquetra".
 
-**Decided: the visiting rule** (DESK:50, DESK:1766-1775):
+**Decided: the visiting rule** (DESK:51, DESK:1785-1794):
 - A window that has a triquetra keeps it while it shows anything untracked. Its current slot stays the file it was last on, and may be a closed buffer.
 - Windows born untracked (`:help`, `:copen`, `:split | terminal`) and floats never get a triquetra.
 - The winbar shows the visit, e.g. `main.lua ← [help]`.
@@ -596,7 +596,7 @@ A `BufEnter` usually follows when the window shows a different buffer. A1 then r
 2. **W shows something other than its current slot**, while the current slot's buffer is open: switch W back to the current slot's buffer, INFO "Jumped back to windows current buffer.", stop. This is what happens while cycling **[run s04]**.
 3. **The secondary is empty.** No buffer switch:
    - With a ternary T: `s := T`, `dsm[T] := dtm[T]`, `t := nil`. INFO "Secondary buffer set to ternary slot. Ternary slot graduated."
-   - Otherwise, with at least 2 entries in the ordered history: `s := hash(ordered[2])`. INFO "Secondary buffer populated from history." That entry can be the current buffer when history is stale after a cycle, which puts one buffer in two slots (DESK:2444). **bug (desk)**
+   - Otherwise, with at least 2 entries in the ordered history: `s := hash(ordered[2])`. INFO "Secondary buffer populated from history." That entry can be the current buffer when history is stale after a cycle, which puts one buffer in two slots (DESK:2463). **bug (desk)**
    - Otherwise: WARN "Cannot populate secondary slot - insufficent history."
 4. **The secondary S is set:**
    - Write `dsm[A] := S`, and `dtm[A-swap] := T` when there's a ternary T.
@@ -622,7 +622,7 @@ Examples **[run s01]**:
 - Copying `dtm[T]` into `dsm[T]` on graduation is intended (Q3). The author's reason: the graduated buffer's predecessor can then come back either as the ternary (`<M-;><M-r>`) or as the secondary (`<M-;><M-t>`).
 - In the swap path, `reconcile_triquetra`'s "avoided conflict" guard (`window/routines.lua:122-131`) also runs. Its write is a no-op there, because `c` has already become S, but its WARN still appears whenever `dtm[T] = S` **[run s18]**. **bug (new)** (Q6). The conflict is real and the warning isn't spurious: the guard runs too late to do its job. The author's repro, observed: `:e a`, `:e b`, `:e c`, `:e b`, `<M-f>`, `:e a`, `<M-f>`, `<M-f>` (the warning, no change), `<M-S-f>`, `<M-;><M-r>`, which throws (T150).
 
-**Decided:** while visiting, `<M-f>` takes you back to the current slot first (DESK:1773). Today's step 2 already does that.
+**Decided:** while visiting, `<M-f>` takes you back to the current slot first (DESK:1792). Today's step 2 already does that.
 
 **Decided (2026-10-20):** the guard runs **before** the swap on every route onto the secondary, so `dtm[T]` is rewritten to the buffer being left (Q6). The routes:
 - `<M-f>` (this action)
@@ -650,7 +650,7 @@ Setting `proc = true` in the secondary branch alone isn't the fix: it keeps the 
 
 Example **[run s01]**: `{c=d s=b t=c}` → `{c=c s=b t=d}` with `dtm{d-swap→c}`. Again → `{c=d … t=c}`, adding `c-swap→d`.
 
-- If cleanup clears the ternary between steps 3 and 4, step 4 calls the rename with `nil` as the old hash. The first press throws "attempt to concatenate local 'old_hash'" (`window/data.lua:137`); a second press throws "Duplicates detected in triquetra slots" (`window/routines.lua:115`). The desk reproduces it with `:e 1.txt`, `:e 2.txt`, `<M-n>`, `:bdelete`, `<M-S-f>`, `<M-S-f>` (DESK:2450). **bug (desk)**
+- If cleanup clears the ternary between steps 3 and 4, step 4 calls the rename with `nil` as the old hash. The first press throws "attempt to concatenate local 'old_hash'" (`window/data.lua:137`); a second press throws "Duplicates detected in triquetra slots" (`window/routines.lua:115`). The desk reproduces it with `:e 1.txt`, `:e 2.txt`, `<M-n>`, `:bdelete`, `<M-S-f>`, `<M-S-f>` (DESK:2469). **bug (desk)**
 
 **Label:** the swap is intended (SPEC:114-135). The `-swap` write is intended (Q2).
 
@@ -733,7 +733,7 @@ Then a UI refresh and `redraw!`.
 | Condition | Effect |
 |---|---|
 | nil | WARN "No <type> relationship found for restoration. …" |
-| no path for it | **throws** "This impossible error should never happen. …" (DESK:2430) **bug (desk)**; D9 decides the fix (below) |
+| no path for it | **throws** "This impossible error should never happen. …" (DESK:2449) **bug (desk)**; D9 decides the fix (below) |
 | not a No Name buffer, and its file is unreadable | WARN "Remembered <type> is not found in filesystem anymore.", `map[A] := nil`. `map[A-swap]` isn't cleared, so a stale `-swap` entry keeps being found. **bug (new)**; D9 decides the fix (below) |
 | equals `cur` | **throws** "This is impossible. Remembered <type> is the same as current <type>. …" |
 | ternary type, equals the secondary | `s := t`, `t := remembered` |
@@ -793,7 +793,7 @@ Which way left and right move depends on cokeline's buffer order: `compare_buffe
 
 **Label:** intended (README:382-384, Q1, Q19). SPEC:194 and SPEC:393, which have the current slot follow the cycle, are out of date (D10).
 
-**Decided (2026-10-20):** only when cokeline is missing, a step goes through cavediver's own ordered history instead (the order the bufferline would show), so `<M-n>`/`<M-m>` still cycle. With cokeline installed nothing changes: cycling stays on cokeline and cokeline stays required. DESK.md:2107 ("Cycling stays on it") and the Dropped line at DESK.md:3087 get narrowed to say so at the next desk sync. Today a missing cokeline leaves navigation in `cycling` with history detached until `<M-v>` **[run s21]** (T171).
+**Decided (2026-10-20):** only when cokeline is missing, a step goes through cavediver's own ordered history instead (the order the bufferline would show), so `<M-n>`/`<M-m>` still cycle. With cokeline installed nothing changes: cycling stays on cokeline and cokeline stays required. DESK.md:2126 ("Cycling stays on it") and the Dropped line at DESK.md:3146 get narrowed to say so at the next desk sync. Today a missing cokeline leaves navigation in `cycling` with history detached until `<M-v>` **[run s21]** (T171).
 
 **Decided (2026-10-20 evening):** jumping to another window ends the cycle by **cancelling** it: the cycling window returns to its start and nothing is recorded (P18; Q7, picking stays `<M-v>`'s job). Any `WinEnter` into another window counts, floats included (the primary pop-up, a picker's prompt, `:help`). It acts on the cycling window, after the editor settles. The author: "I guess we have to quit cycling mode when we jump windows." Today a cycle leaks across windows: work in the other window isn't recorded and doesn't move its slots, and `<M-v>` pressed there "picks" in that window, dropping its current buffer **[run `t/b7_jump.lua`]** (T175).
 
@@ -867,7 +867,7 @@ SPEC:197-205, which has the slot keys act on the cycled-to buffer, is out of dat
    - B is shown in another window: "Can't delete buffer because it's shown in another window."
    - The history view has 1 entry or fewer: "Can't delete buffer because it's the only one left".
 2. **Picking where W goes.** Find B's index i in `ordered.crux`, with n entries:
-   - If B isn't in it (help, a terminal, any untracked buffer), it **throws** "This is impossible: Current buffer not found in ordered history." at `history/routines.lua:588` (DESK:2446). The author saw it in `:help` and in a `:terminal`. **bug (desk)**
+   - If B isn't in it (help, a terminal, any untracked buffer), it **throws** "This is impossible: Current buffer not found in ordered history." at `history/routines.lua:588` (DESK:2465). The author saw it in `:help` and in a `:terminal`. **bug (desk)**
    - `i = 1` with `n ≥ 2` → `ordered[2]`.
    - `i > 1` → `ordered[(i % n) + 1]`, which is the next older entry, wrapping to the newest after the oldest.
 3. **Closing.** Switch W to that buffer (A1 runs), then `bw! B`. Its `BufDelete` runs A19, which pushes B on the closed stack and caches its text if it's a No Name buffer.
@@ -878,12 +878,12 @@ SPEC:197-205, which has the slot keys act on the cycled-to buffer, is out of dat
 - In both, the closed buffer stays in the ternary, where `<M-S-f>` reopens it.
 
 **Labels:**
-- The landing rule is intended: the code is right and the comment at `:584`, "go to most recent (first in list)", is wrong (DESK:2148, DESK:2459). **bug (desk, comment)**
+- The landing rule is intended: the code is right and the comment at `:584`, "go to most recent (first in list)", is wrong (DESK:2167, DESK:2478). **bug (desk, comment)**
 - The `bw!` is intended today.
 
 **Decided:**
-- `:bdelete` for files, so Neovim keeps the buffer's marks. No Name scratches may still be wiped (DESK:2149).
-- The close key keeps its own landing rule (DESK:2148).
+- `:bdelete` for files, so Neovim keeps the buffer's marks. No Name scratches may still be wiped (DESK:2168).
+- The close key keeps its own landing rule (DESK:2167).
 - The keymap descriptions for `close_buffer` and `open_primary_buffer_history` both read "Toggle current buffer as primary" (`init.lua:111`, `:117`) (D3).
 
 **Decided (2026-10-20): `<M-.>` on an untracked buffer** (Q17):
@@ -898,12 +898,12 @@ SPEC:197-205, which has the slot keys act on the cycled-to buffer, is out of dat
 - Otherwise:
   1. Pop the newest hash and `reopen_filehash` it (M5).
   2. On success, switch the current window to it (A1 runs, so the buffer becomes current and the old current moves to the ternary).
-  3. When the file is missing, the hash is gone from the stack and **nothing is reported** (DESK:2435). **bug (desk)**
-- A reopened No Name buffer comes back under a new hash, and nothing renames slots that pointed at the old one (DESK:2280). **bug (desk)**
+  3. When the file is missing, the hash is gone from the stack and **nothing is reported** (DESK:2454). **bug (desk)**
+- A reopened No Name buffer comes back under a new hash, and nothing renames slots that pointed at the old one (DESK:2299). **bug (desk)**
 
 **[run s05]**: closed `[c,f]`, at e → shows f, `{c=f t=e}`, closed `[c]`.
 
-**Decided:** a missing file says so when it's used, and its pointer is kept (DESK:2003). A reopened No Name buffer gets a fresh id, and everything that pointed at its old hash is renamed (DESK:2280).
+**Decided:** a missing file says so when it's used, and its pointer is kept (DESK:2022). A reopened No Name buffer gets a fresh id, and everything that pointed at its old hash is renamed (DESK:2299).
 
 ### A17. `toggle_window`, `<M-,>`
 
@@ -914,7 +914,7 @@ SPEC:197-205, which has the slot keys act on the cycled-to buffer, is out of dat
 
 **[run s07]**: it toggles between two splits.
 
-**Label:** intended (README:311). **Decided:** the minimap skip becomes a configurable list, defaulting to `minimap` and `neominimap` (DESK:2137).
+**Label:** intended (README:311). **Decided:** the minimap skip becomes a configurable list, defaulting to `minimap` and `neominimap` (DESK:2156).
 
 ### A18. Primary queue window, `<M-;>F` (`open_primary_buffer_history`)
 
@@ -945,7 +945,7 @@ SPEC:197-205, which has the slot keys act on the cycled-to buffer, is out of dat
   - Not loaded and unregistered: a `NONAME_` name is rejected. Otherwise the path is registered **and pushed onto the closed stack** (`:54`).
   - Errors are collected into one ERROR notification, and **the valid lines are saved anyway**.
   - `primary_enabled := #valid > 0`, so saving **re-enables a disabled primary** (D5). The queue becomes the hashes of the valid paths.
-  - A relative path that's loaded under its absolute name gives `nil` there, so the queue gets a hole (DESK:2458). **bug (desk)**
+  - A relative path that's loaded under its absolute name gives `nil` there, so the queue gets a hole (DESK:2477). **bug (desk)**
 
 **Labels:**
 - Editing, reordering, deleting and promoting with `<CR>` are intended (README:21-32).
@@ -980,7 +980,7 @@ Closing a buffer that a slot holds:
 
 **Labels:** a closed slot reopens when used (README:15, I4). Pruning is the bug.
 
-**Decided:** a deleted buffer's window is landed after the delete, in that window, in the order ternary → secondary → primary → most recent, with no extra wipe. When nothing in that order exists, the window keeps Neovim's empty buffer, and `:enew` runs only when Neovim showed something else (DESK:1912). Plain Neovim usually lands the same way (DESK:3189). `<M-.>` keeps its own rule (A15).
+**Decided:** a deleted buffer's window is landed after the delete, in that window, in the order ternary → secondary → primary → most recent, with no extra wipe. When nothing in that order exists, the window keeps Neovim's empty buffer, and `:enew` runs only when Neovim showed something else (DESK:1931). Plain Neovim usually lands the same way (DESK:3252). `<M-.>` keeps its own rule (A15).
 
 ### A20. Renames and writes
 
@@ -989,13 +989,13 @@ Closing a buffer that a slot holds:
 - When the new name isn't on disk yet (`:file new`), the missing-file branch of A21 wipes the buffer with `bw!`, unsaved edits included.
 - `:saveas` loses edits through the healing switch.
 
-All of this is DESK:2423-2425. **bug (desk)**
+All of this is DESK:2442-2444. **bug (desk)**
 
-**`:w name` on a No Name buffer** goes through `BufDelete` and re-creation, which leaves a ghost entry on the closed stack (DESK:2436). **bug (desk)**
+**`:w name` on a No Name buffer** goes through `BufDelete` and re-creation, which leaves a ghost entry on the closed stack (DESK:2455). **bug (desk)**
 
 **`BufWritePost` on an unregistered buffer** registers it (M3).
 
-**Decided: the disk decides** (DESK:1905):
+**Decided: the disk decides** (DESK:1924):
 - If the old name still exists as a file afterwards, the rename is a copy and the old name goes on the closed stack.
 - Otherwise it's a move: every reference follows to the new hash, and nothing goes on the stack.
 
@@ -1012,7 +1012,7 @@ All of this is DESK:2423-2425. **bug (desk)**
      - the window shows the buffer being deleted → skip
      - the window shows the same file, or an `acwrite` buffer:
        - try ternary, then secondary, then `primary[1]`. The first open one becomes `c` and is tracked; a candidate that fails to track is wiped with `bw!`.
-       - when one is found, **switch the *current* window** to it (not necessarily this triquetra's window, DESK:2428) and wipe the window's old buffer 100 ms later
+       - when one is found, **switch the *current* window** to it (not necessarily this triquetra's window, DESK:2447) and wipe the window's old buffer 100 ms later
        - when none is found: drop the triquetra if the slot's path is known, else take the most recent buffer, else `:enew` inside a pcall
      - the window shows something else → drop the triquetra
 2. **The secondary.** Cleared when any of these holds (`:333-358`):
@@ -1030,13 +1030,13 @@ All of this is DESK:2423-2425. **bug (desk)**
 6. Refresh the window's UI cache.
 
 **Labels:**
-- Healing the current slot when the window shows another tracked file is intended (DESK:1910, "re-pointed").
+- Healing the current slot when the window shows another tracked file is intended (DESK:1929, "re-pointed").
 - That the re-point drops the old current from the triquetra is decided (2026-10-20) to change (Q18).
-- The switches and wipes exist to clear away files deleted on purpose, in oil or outside nvim (DESK:1822). The desk reverses them.
+- The switches and wipes exist to clear away files deleted on purpose, in oil or outside nvim (DESK:1841). The desk reverses them.
 
 **Decided (2026-10-20):** a re-point without an event acts like plain navigation (A1): the old current goes into the ternary (Q18).
 
-**Decided:** cleanup never touches a buffer or a window (DESK:1840-1857):
+**Decided:** cleanup never touches a buffer or a window (DESK:1859-1876):
 - A slot pointing at an open buffer is kept, whatever the disk says.
 - A missing file stays fully tracked.
 - The evolved-window check gives way to the visiting rule.
@@ -1047,7 +1047,7 @@ All of this is DESK:2423-2425. **bug (desk)**
 
 1. **Stale registrations:** for each registered buffer that's no longer valid, run `detach_filehash_from_crux`, which:
    - removes the hash from the history view, global and window history
-   - **`bw!`s whatever `vim.fn.bufnr(path)` finds**, which can be a different buffer (DESK:2429) **bug (desk)**
+   - **`bw!`s whatever `vim.fn.bufnr(path)` finds**, which can be a different buffer (DESK:2448) **bug (desk)**
    - unregisters the buffer
 2. **History of buffers that aren't valid:** a history entry is kept only if its buffer is registered and it's a No Name buffer, has no path, or its file is readable. Otherwise it's detached as above, `bw!` included. That's the missing-file wipe **[run s08]**: the notification "CAVEDIVER CLEANUP REPORT: … Orphaned files: …/brandnew.txt".
 3. **Closed-stack pruning:** remove entries with no path, entries whose file is gone, and entries that are open again. It reads `filepath:match` before the nil check, and removes entries inside an `ipairs` loop (`:736`, `:754`). **bug (desk)**
@@ -1056,7 +1056,7 @@ All of this is DESK:2423-2425. **bug (desk)**
 
 When the total is above 0, it notifies "CAVEDIVER CLEANUP REPORT: …" at INFO.
 
-**Decided:** the 4 s timer stays as a safety net that only repairs cavediver's own data. The stale pass re-points to the file's live buffer, found by exact name, and never wipes. History follows along. Closed entries whose file is missing stay (DESK:1844-1857).
+**Decided:** the 4 s timer stays as a safety net that only repairs cavediver's own data. The stale pass re-points to the file's live buffer, found by exact name, and never wipes. History follows along. Closed entries whose file is missing stay (DESK:1863-1876).
 
 ### A23. Debug commands
 
@@ -1091,7 +1091,7 @@ These take no action. They return live tables, not copies:
   Calling it twice starts a second pair of timers and remaps the keys **[inferred]**. `setup()` with no argument throws (M13).
 - Until a load or a first `BufEnter`, nothing is registered. The buffer nvim starts on isn't tracked until something enters it.
 
-**Decided:** nothing runs at require. `setup()` creates everything inside one `cavediver` augroup with `clear = true`, and running it again replaces it all. `setup()` with no argument uses the defaults. `disable()` clears the augroup and stops the timers (DESK:2158).
+**Decided:** nothing runs at require. `setup()` creates everything inside one `cavediver` augroup with `clear = true`, and running it again replaces it all. `setup()` with no argument uses the defaults. `disable()` clears the augroup and stops the timers (DESK:2177).
 
 ### A26. The flight recorder (decided 2026-10-21, not built)
 
@@ -1117,27 +1117,27 @@ Each is a statement a test can check after any action. Status:
 
 | ID | Invariant | Status |
 |---|---|---|
-| I1 | Within one triquetra, current, secondary and ternary hold three different hashes, or are empty. | **Violated.** Asserted at `window/routines.lua:115` and `window/hooks.lua:64`, but nothing dedupes. Known routes: `<M-f>`'s history fallback picking the current buffer, a rename with a nil hash in `<M-S-f>` (DESK:2450), the save substituting `primary[1]` into a No Name current slot (DESK:2421). Decided: the sources get fixed and the assertion stays (DESK:1920). The primary queue isn't covered: its `[1]` may share a slot's buffer (Q16). |
-| I2 | Every hash held anywhere has a path in `hash_filepath_registry`: slots, primary queues, both displacement maps (`-swap` keys included), history, and the closed stack. | **Violated.** Paths are forgotten at `history/routines.lua:292`, `:432` and `:473` while slots or maps still point at them, so a save throws at `storage/routines.lua:122` (DESK:1043). Slots are pruned at the next transition (A21); maps never are. Decided: "a path is never forgotten while anything references its hash" (DESK:83). |
-| I3 | Every triquetra has its window's history entry (`crux_internals.window[winid]`). | **Violated** by `:vsplit` **[run s16]**, and the save then throws at `storage/routines.lua:340`. Decided: they're created together (DESK:83). |
+| I1 | Within one triquetra, current, secondary and ternary hold three different hashes, or are empty. | **Violated.** Asserted at `window/routines.lua:115` and `window/hooks.lua:64`, but nothing dedupes. Known routes: `<M-f>`'s history fallback picking the current buffer, a rename with a nil hash in `<M-S-f>` (DESK:2469), the save substituting `primary[1]` into a No Name current slot (DESK:2440). Decided: the sources get fixed and the assertion stays (DESK:1939). The primary queue isn't covered: its `[1]` may share a slot's buffer (Q16). |
+| I2 | Every hash held anywhere has a path in `hash_filepath_registry`: slots, primary queues, both displacement maps (`-swap` keys included), history, and the closed stack. | **Violated.** Paths are forgotten at `history/routines.lua:292`, `:432` and `:473` while slots or maps still point at them, so a save throws at `storage/routines.lua:122` (DESK:1062). Slots are pruned at the next transition (A21); maps never are. Decided: "a path is never forgotten while anything references its hash" (DESK:84). |
+| I3 | Every triquetra has its window's history entry (`crux_internals.window[winid]`). | **Violated** by `:vsplit` **[run s16]**, and the save then throws at `storage/routines.lua:340`. Decided: they're created together (DESK:84). |
 | I4 | A slot or primary entry holding a closed hash keeps it until it's used, and using it reopens the buffer. | **Enforced** for the ternary. **Violated** for the secondary and primary entries by the wrong-slot check (`window/routines.lua:345`, `:401`) **[run s05, s06]**. README:15 intends it. |
 | I5 | The registry is a bijection: `buffers[h] = b` exactly when `hashes[b] = h`, and likewise for paths. | **Enforced** by the writers (M2) **[code]**. A buffer renamed with no events is tracked under a new hash that isn't registered (`history/routines.lua:288`) **[inferred]**. |
-| I6 | A registered buffer number is a valid buffer. | **Eventually enforced** by the stale pass of `cleanup_system` (A22), which also wipes, and that's a bug. Unlisted buffers and `noautocmd` wipes fire no `BufDelete`, so the registry is stale for up to one tick. Decided: re-point to the live buffer, never wipe (DESK:1844). |
+| I6 | A registered buffer number is a valid buffer. | **Eventually enforced** by the stale pass of `cleanup_system` (A22), which also wipes, and that's a bug. Unlisted buffers and `noautocmd` wipes fire no `BufDelete`, so the registry is stale for up to one tick. Decided: re-point to the live buffer, never wipe (DESK:1863). |
 | I7 | A hash on the closed stack has no open buffer. | **Eventually enforced**: `track_buffer` removes it on a visit (`history/routines.lua:229`), and the cleanup pass does too (A22). |
 | I8 | A window's current slot is the hash of the buffer the window shows, except: **(a)** while cycling, when it stays the cycle's start, which is intended (Q1); **(b)** while visiting, under the decided rule. | **Enforced** at every `BufEnter` and re-pointed by cleanup. **Violated** when `displacement_mangement` aborts on duplicates (A1, "Duplicates detected in current triquetra"). |
-| I9 | Every triquetra belongs to a valid, non-floating window. | **Enforced** by `WinClosed`, the getter's float check, and cleanup. **Violated** by `:file new`, which closes the window through a wipe and leaves a triquetra for a dead window (DESK:2425). |
-| I10 | Only tracked buffers are registered (M3). | **Enforced at registration.** A buffer whose `buftype` changes later stays registered until re-entry or cleanup, which is how transient `:copen` and `:terminal` buffers get in (DESK:2434). Decided: the listed-only rule, and undo on `OptionSet` (DESK:1770, DESK:2143). |
+| I9 | Every triquetra belongs to a valid, non-floating window. | **Enforced** by `WinClosed`, the getter's float check, and cleanup. **Violated** by `:file new`, which closes the window through a wipe and leaves a triquetra for a dead window (DESK:2444). |
+| I10 | Only tracked buffers are registered (M3). | **Enforced at registration.** A buffer whose `buftype` changes later stays registered until re-entry or cleanup, which is how transient `:copen` and `:terminal` buffers get in (DESK:2453). Decided: the listed-only rule, and undo on `OptionSet` (DESK:1789, DESK:2162). |
 | I11 | `ordered.crux` is newest first and holds only open, registered buffers. | **Enforced** at each rebuild (`history/routines.lua:307-325`). It's frozen on purpose while cycling. |
-| I12 | Cavediver never wipes or discards a buffer with unsaved changes. | **Violated.** A new unsaved file is wiped at the next navigation **[run s08, s09]**; renames lose edits (DESK:2423); the stale pass wipes a reloaded copy (DESK:2429). Decided: cleanup never touches a buffer, and missing files stay tracked (DESK:1840, DESK:1906). |
-| I13 | Cavediver changes only the window an action is about. | **Violated:** healing switches the focused window (`window/routines.lua:306`, DESK:2428), and so does `reopen_filehash`'s cursor (DESK:2454). Decided: the pick after a delete lands in the window that showed the buffer (DESK:1912). |
-| I14 | Every saved file can be written whatever state cavediver's data is in. | **Violated:** `"FUCKING BAD"`, `next(nil)`, a hash with no path (DESK:1039-1045). Decided (DESK:1039). |
-| I15 | Hashes are a pure function of the name: the first 16 hex characters of sha256(name .. "\n"). | **Violated** for names with shell metacharacters (DESK:2422). Decided: `vim.fn.sha256` (DESK:2112). |
-| I16 | A No Name id is never reused, across sessions too. | **Violated:** bufnr reuse (DESK:2266-2268). Decided (DESK:2270). |
-| I17 | Displacement-map and history entries point only at things still known through open buffers, slots, primary queues or the closed stack (follow along). | **Not enforced**: the maps are never pruned. Decided (DESK:2010). |
+| I12 | Cavediver never wipes or discards a buffer with unsaved changes. | **Violated.** A new unsaved file is wiped at the next navigation **[run s08, s09]**; renames lose edits (DESK:2442); the stale pass wipes a reloaded copy (DESK:2448). Decided: cleanup never touches a buffer, and missing files stay tracked (DESK:1859, DESK:1925). |
+| I13 | Cavediver changes only the window an action is about. | **Violated:** healing switches the focused window (`window/routines.lua:306`, DESK:2447), and so does `reopen_filehash`'s cursor (DESK:2473). Decided: the pick after a delete lands in the window that showed the buffer (DESK:1931). |
+| I14 | Every saved file can be written whatever state cavediver's data is in. | **Violated:** `"FUCKING BAD"`, `next(nil)`, a hash with no path (DESK:1058-1064). Decided (DESK:1058). |
+| I15 | Hashes are a pure function of the name: the first 16 hex characters of sha256(name .. "\n"). | **Violated** for names with shell metacharacters (DESK:2441). Decided: `vim.fn.sha256` (DESK:2131). |
+| I16 | A No Name id is never reused, across sessions too. | **Violated:** bufnr reuse (DESK:2285-2287). Decided (DESK:2289). |
+| I17 | Displacement-map and history entries point only at things still known through open buffers, slots, primary queues or the closed stack (follow along). | **Not enforced**: the maps are never pruned. Decided (DESK:2029). |
 | I18 | The primary queue has no duplicate entries. | **Enforced** by `set_primary` (`window/routines.lua:697-700`). The popup can introduce duplicates, since `update_primary_buffer` doesn't dedupe **[code]**. |
 | I19 | An empty primary queue may be switched on or off; nothing forces it off. `<M-;><M-x>` on an empty queue always queues the current buffer and switches on (A9). | **Holds** for the state: pruning leaves `p=[]on` **[run s06, s19]**, and `jump_to_primary` falls back to `<M-f>` either way. **Violated** for the key: the first press on `p=[]on` gives `p=[A]off` **[run s19]**. decided (2026-10-20) (Q14). |
-| I20 | Storage: `load_session` only from `bare`, `save_session` from `bare` or `idle`, and storage is `idle` after either. | **Enforced**: anything else throws from `to()` **[run s10]**. Decided: `idle → bare → loading` (DESK:1265). |
-| I21 | A transition always completes: the state changes even when a hook fails. | **Enforced** (`engine/helpers.lua:32-45`). Decided exception: the critical save hook re-throws and leaves storage at `idle` (DESK:1138). |
+| I20 | Storage: `load_session` only from `bare`, `save_session` from `bare` or `idle`, and storage is `idle` after either. | **Enforced**: anything else throws from `to()` **[run s10]**. Decided: `idle → bare → loading` (DESK:1284). |
+| I21 | A transition always completes: the state changes even when a hook fails. | **Enforced** (`engine/helpers.lua:32-45`). Decided exception: the critical save hook re-throws and leaves storage at `idle` (DESK:1157). |
 | I22 | A file appears at most once in a closed pool (today, the one closed stack). Closing a file that's already there moves it to the newest position; a merge of pools keeps only the newer entry. | **Not enforced**, but no route found that breaks it today **[run s20]**. With the desk's per-tab pools and the merge picker, a merge is the route. decided (2026-10-20) (Q15). |
 | I23 | No buffer is current while its note names the buffer already in the slot that note restores into. For the current buffer X and each map, the note a restore would read is X's swap note when it's set and isn't the slot's occupant, otherwise X's plain note; that note never names the occupant of the ternary (dtm) or the secondary (dsm). A plain note behind a valid swap note may name it: the restore never reads it. | **Violated** today: every restore throw is this state (A11), 161 secondary and 14 ternary throws in 1,500 walks **[run]**. Decided (2026-10-20 evening), "Keep the older one" (A1, M7, Q13), with the check also at the secondary restore's exchange (decided 2026-10-21): 0 breaks over 900,000 walk steps with every fix in **[sim, variant `all_fixed`]** (T189, T206). Checked by T190. |
 
@@ -1151,8 +1151,8 @@ Each is a statement a test can check after any action. Status:
 
 **State machine.**
 - Save is `→ saving → idle`, from `bare` or `idle`.
-- Load is `→ loading → idle`, **only from `bare`**. So any load after the first save or load in a process throws `Transition 'idle->loading' is not registered` from `to()`. It escapes resession's hook, and session switching breaks **[run s10]**, DESK:1235-1241.
-- Both hooks run inside `pcall`, so a failure inside a save or load is only a notification, and storage still goes to `idle`. With a read-only session directory, resession's file is written and cavediver's isn't (DESK:2433).
+- Load is `→ loading → idle`, **only from `bare`**. So any load after the first save or load in a process throws `Transition 'idle->loading' is not registered` from `to()`. It escapes resession's hook, and session switching breaks **[run s10]**, DESK:1254-1260.
+- Both hooks run inside `pcall`, so a failure inside a save or load is only a notification, and storage still goes to `idle`. With a read-only session directory, resession's file is written and cavediver's isn't (DESK:2452).
 
 **File.**
 - Path: `session_dir/<first 32 hex of the shell sha256 of cwd>.json`. It's plain JSON, created as `{}` first if it's missing.
@@ -1167,23 +1167,23 @@ Each is a statement a test can check after any action. Status:
      - Anything else is saved as the path XOR'd with the cwd and base64-encoded (`obfuscate_filehash_if_needed`, `:117-128`).
      - A hash with neither a buffer nor a path throws.
      - Both maps are written raw, `-swap` keys included.
-   - **`closed`**: the closed hashes, as XOR'd paths. Every path inside the cwd begins with a run of zero bytes, so the output is all `A`s in base64 **[run s10]**, DESK:1542.
+   - **`closed`**: the closed hashes, as XOR'd paths. Every path inside the cwd begins with a run of zero bytes, so the output is all `A`s in base64 **[run s10]**, DESK:1561.
    - **`noname_content`**: keyed by the XOR'd `NONAME_` name. Each line is XOR'd; filetype and cursor are stored in clear.
    - `primary_enabled` isn't saved.
-3. In the saved entry only (the live triquetra is untouched), a current slot holding an open No Name buffer is replaced by `primary[1]`, else the ternary (which is then left out of the entry), else the secondary (likewise), else the string `"FUCKING BAD"`, which throws, so the whole save fails (`:437-453`). The `primary[1]` branch can leave the same file in the secondary as well, which starts the duplicate-slot error after a restart (DESK:2421).
+3. In the saved entry only (the live triquetra is untouched), a current slot holding an open No Name buffer is replaced by `primary[1]`, else the ternary (which is then left out of the entry), else the secondary (likewise), else the string `"FUCKING BAD"`, which throws, so the whole save fails (`:437-453`). The `primary[1]` branch can leave the same file in the secondary as well, which starts the duplicate-slot error after a restart (DESK:2440).
 4. **Oil windows** that have a triquetra are switched to their current-slot file under `eventignore=BufEnter,BufLeave` and never switched back (`:500-510`). Autosave does this mid-session.
 
 **Load** (`load_history`, `storage/routines.lua:639-677`):
-1. Read and `json_decode` the file, each inside `pcall`. If either fails, or the data lacks `buffers` or `windows`, it's a **silent fresh start**, and the next save overwrites the file (DESK:2439).
+1. Read and `json_decode` the file, each inside `pcall`. If either fails, or the data lacks `buffers` or `windows`, it's a **silent fresh start**, and the next save overwrites the file (DESK:2458).
 2. With data:
    - **`load_buffer_history`** registers every **loaded** buffer with `buftype ""` or `image_nvim` and no `://`. It then runs `track_buffer(hash, time)` for every saved global entry, including entries that aren't open.
-   - **`load_closed_buffers`** clears the stack. Each entry is deciphered and registered, and `NONAME_` entries get their content restored. It throws when the content is missing or already present, or when a closed file already has a buffer (`bufexists`). A throw stops the rest of the load (DESK:2452).
+   - **`load_closed_buffers`** clears the stack. Each entry is deciphered and registered, and `NONAME_` entries get their content restored. It throws when the content is missing or already present, or when a closed file already has a buffer (`bufexists`). A throw stops the rest of the load (DESK:2471).
    - **`load_window_buffer_relationships`** matches saved entries to the windows whose buffer is `buftype ""` with no `://`, **by position** in `nvim_list_wins()`.
      - A value with an open buffer resolves to its hash.
-     - Anything else is deciphered as a path. When the buffer wasn't restored, or was restored unloaded, that gives noise, and the slot comes back empty or the current slot gets healed **[run s11]**, DESK:1360.
+     - Anything else is deciphered as a path. When the buffer wasn't restored, or was restored unloaded, that gives noise, and the slot comes back empty or the current slot gets healed **[run s11]**, DESK:1379.
      - The No Name current-slot branch never runs, because of a key mismatch (`:244`) **bug (desk)**.
      - `primary_enabled` comes back as "queue not empty" **[run s12]**: `p=[b]off` at save gave `p=[b]on`.
-   - **`initialise_crux_internals`** maps the saved window histories onto the same window list by position, then rebuilds the view, now and again after 210 ms. A count mismatch throws `table index is nil` (`history/routines.lua:144`, DESK:1362).
+   - **`initialise_crux_internals`** maps the saved window histories onto the same window list by position, then rebuilds the view, now and again after 210 ms. A count mismatch throws `table index is nil` (`history/routines.lua:144`, DESK:1381).
 3. Without data: a **fresh start**. Cavediver's state is cleared and every loaded buffer registered (`repopulate_history`), and every window gets `{c=X}` (`repopulate_window_relationships`).
 4. Then `cleanup_system` runs, and history → `attached` with the current buffer.
 
@@ -1191,25 +1191,25 @@ Each is a statement a test can check after any action. Status:
 
 ### S2. Decided (DESK, not implemented)
 
-**Contract and API** (DESK:730-775):
+**Contract and API** (DESK:749-794):
 - Cavediver is manager agnostic, with no adapters.
 - `save_session(name?, opts?)`, where `opts.tab` marks a tab session, and `load_session(name?)`. Neither takes a directory: cavediver reads it itself, `getcwd(-1, -1)` for the whole editor or the tab's directory for a tab session.
-- A written contract says who calls the two functions and when: resession, native `:mksession`, and no manager, with the table at DESK:745-752. It includes saving the outgoing session through the manager before a switch, and saving a tab session on `TabClosedPre`.
+- A written contract says who calls the two functions and when: resession, native `:mksession`, and no manager, with the table at DESK:764-771. It includes saving the outgoing session through the manager before a switch, and saving a tab session on `TabClosedPre`.
 
-**Loading** (DESK:1257-1269, DESK:775, DESK:1142):
+**Loading** (DESK:1276-1288, DESK:794, DESK:1161):
 - `load_session` from `idle` goes `idle → bare`, where every domain tears down its own state, then `bare → loading` as at startup.
 - Repeat calls within one native restore are skipped by a flag that `vim.schedule` re-arms. A later reload is a full load.
 - Cavediver reloads by itself after Neovim's `:restart` session, ignoring the flag.
 - One post-restore callback replaces the 200 ms and 210 ms delays.
 
-**The file** (DESK:1520-1609):
+**The file** (DESK:1539-1628):
 - AES-256-GCM through OpenSSL 3's `libcrypto` over FFI.
 - PBKDF2 with 200,000 rounds and a random salt; the key is the scope's directory.
 - A clear `CDV1` version header covered by the tag.
 - A main file named `sha256(directory .. "\n" .. name)` (the separator decided 2026-10-21, T255), plus one hashed file per No Name text in `<main>.d/`. The scratch files are written first, the main file last as the commit point, and unreferenced scratches are swept.
 - Atomic writes in mode 0600. No count limit. A migration script converts old files once.
 
-**Contents** (DESK:1409-1437):
+**Contents** (DESK:1428-1456):
 - References are saved as hashes and resolved at runtime.
 - A `paths` table holds hash → path for everything the registry knows, plus **outsiders**: untracked buffers that windows showed, like `oil:///…`.
 - Each window entry records `shows`.
@@ -1219,12 +1219,12 @@ Each is a statement a test can check after any action. Status:
   - no match waits for `BufEnter`
 - Windows are matched by what they show, keeping order for the same file. An unmatched entry is dropped; an unmatched window starts fresh.
 
-**Save-as-closed** (DESK:1611-1621):
+**Save-as-closed** (DESK:1630-1640):
 - Open, non-empty No Name buffers are saved like closed ones.
 - At load they're reopened in the background, marked modified, hidden, under a fresh id, and every reference to them is renamed.
 - No Name buffers closed with `<M-.>` stay on the stack.
 
-**Checks** (DESK:1653-1670):
+**Checks** (DESK:1672-1689):
 
 | The file | The load |
 |---|---|
@@ -1235,13 +1235,13 @@ Each is a statement a test can check after any action. Status:
 
 A reference that resolves to nothing is kept and says so when it's used.
 
-**Errors and drift** (DESK:1035-1057, DESK:1135-1138):
+**Errors and drift** (DESK:1054-1076, DESK:1154-1157):
 - The save hook is critical: an environment failure throws into the manager's hook, so neither file is saved.
 - Cavediver's own data can't make the save fail (I2, I3, I14).
 - References are saved only together with the manager; records may be refreshed on their own.
 - With two instances, the last writer wins.
 
-**Tab sessions** (DESK:919-947):
+**Tab sessions** (DESK:938-966):
 - The scope is written into the file.
 - There's one **pool** per session: its closed stack, No Name texts, and a visit overlay ranked above the global history.
 - Closes go to the pool of the current tab, and `<M-S-w>` reopens from it.
@@ -1250,9 +1250,9 @@ A reference that resolves to nothing is kept and says so when it's used.
 - A closed tab is saved through the manager, or kept with no tab and a notice.
 - The unnamed session's records are refreshed at tab-session saves.
 
-**Oil** (DESK:2066-2076): oil windows come back as oil, and cavediver sets `vim.w.oil_original_buffer` from the triquetra's current slot.
+**Oil** (DESK:2085-2095): oil windows come back as oil, and cavediver sets `vim.w.oil_original_buffer` from the triquetra's current slot.
 
-**Closed-stack picker** (DESK:2334-2357): `:CavediverClosed`, plus a keymap, is an editable buffer.
+**Closed-stack picker** (DESK:2353-2376): `:CavediverClosed`, plus a keymap, is an editable buffer.
 - Each pool is a header, and its closed entries are listed under it.
 - A No Name entry shows as `[No Name] "first line…" filetype`, with its close time.
 - Pools merge by cutting and pasting lines.
@@ -1269,7 +1269,7 @@ An entry marked **settled by Qn** was settled by the answers of 2026-10-20, and 
 
 **Keys and configuration**
 
-- **D1. `toggle_primary` and `set_primary` keys swapped.** `configs.lua:126-127` binds `toggle_primary = "<M-;><M-x>"` and `set_primary = "<M-;><M-c>"`. README:319-320 has them the other way round. SPEC:292 says the primary is set with `<M-;><M-x>`. The desk lists this as the README being out of date (DESK:2470).
+- **D1. `toggle_primary` and `set_primary` keys swapped.** `configs.lua:126-127` binds `toggle_primary = "<M-;><M-x>"` and `set_primary = "<M-;><M-c>"`. README:319-320 has them the other way round. SPEC:292 says the primary is set with `<M-;><M-x>`. The desk lists this as the README being out of date (DESK:2489).
   - **Settled by Q8:** the code wins. The README has the two keys swapped, a bug, so README:319-320 changes; SPEC:292 is out of date. Only `toggle_primary`'s keymap description changes in the code (A9).
 - **D2. README's defaults block vs `configs.lua`.**
   - The colours differ (README:228-298 against `configs.lua:29-105`).
@@ -1282,7 +1282,7 @@ An entry marked **settled by Qn** was settled by the answers of 2026-10-20, and 
   - **Settled (2026-10-20):** each key gets its own description: `toggle_primary` "Switch the primary on or off" (Q8), `close_buffer` "Close the current buffer", `open_primary_buffer_history` "Open the primary queue". `cycle_select`'s annotation copies the author's own description of that key, "Select cycling buffer and attach history" (`init.lua:86`) (T169). The `cycle_select` annotation copying the author's own description was confirmed by the author (2026-10-20, late evening).
 - **D4. Hashing dependency.**
   - Today: README:47 requires `openssl` "for hashing file names and directories", but the code runs `sha256sum` through the shell (`history/routines.lua:24`, `storage/routines.lua:619`).
-  - Decided: `vim.fn.sha256` for hashing, and `libcrypto` only for encryption (DESK:1522, DESK:2112).
+  - Decided: `vim.fn.sha256` for hashing, and `libcrypto` only for encryption (DESK:1541, DESK:2131).
   - **Settled (2026-10-20):** README:47 says `libcrypto` (OpenSSL 3) is needed to encrypt the session file, and hashing needs nothing extra.
 
 **Primary**
@@ -1319,9 +1319,9 @@ An entry marked **settled by Qn** was settled by the answers of 2026-10-20, and 
   - SPEC:170-178: when the remembered value is missing, invalid or the same as the slot, show "No different ternary relationship to restore". The code throws when it's the same (`window/routines.lua:737-739`) and when it has no path (`:732-733`).
   - SPEC:493-495: an invalid file gives the message. The code warns and clears only `map[A]`, not `map[A-swap]` (`:734-736`).
   - SPEC:700 needs an open buffer for the remembered value; the code needs a path and a readable file.
-  - **Partly settled by Q13:** the throw when the remembered value equals the slot stays, as an assertion, and SPEC:176 is out of date. The other three cases (the throw when the remembered value has no path, a desk bug at DESK:2430; the invalid-file case that clears only `map[A]`; SPEC:700's open-buffer requirement) are settled below.
-  - **Settled by the desk (2026-10-20 evening):** the no-path throw goes, because a note at an unknown hash is cleared when used (DESK:1917, :1919, :2010, :2430; T68) **[run `t/pkB_d9_nopath.lua`]**. SPEC:700's open-buffer requirement is out of date: a closed hash is kept and reopened when used (DESK:1916, README:15) **[run `t/pkB_d9_closed.lua`]**. What a restore does when the remembered file is missing from disk, **settled (2026-10-20 evening)** in the author's words: "well, if the thing is closed we may skip it. if it's open we can go through and flip-flop with it.." For both restores (one function, `window/routines.lua:713-762`): Confirmed by the author (2026-10-20, late evening), after being recorded from a reading of their words.
-    - The remembered file is missing and **closed** (no buffer): it's skipped and kept, as DESK:2003 keeps pointers. A skipped swap note falls back to the plain note. If that's missing and closed too, the restore says so and changes nothing.
+  - **Partly settled by Q13:** the throw when the remembered value equals the slot stays, as an assertion, and SPEC:176 is out of date. The other three cases (the throw when the remembered value has no path, a desk bug at DESK:2449; the invalid-file case that clears only `map[A]`; SPEC:700's open-buffer requirement) are settled below.
+  - **Settled by the desk (2026-10-20 evening):** the no-path throw goes, because a note at an unknown hash is cleared when used (DESK:1936, :1938, :2029, :2449; T68) **[run `t/pkB_d9_nopath.lua`]**. SPEC:700's open-buffer requirement is out of date: a closed hash is kept and reopened when used (DESK:1935, README:15) **[run `t/pkB_d9_closed.lua`]**. What a restore does when the remembered file is missing from disk, **settled (2026-10-20 evening)** in the author's words: "well, if the thing is closed we may skip it. if it's open we can go through and flip-flop with it.." For both restores (one function, `window/routines.lua:713-762`): Confirmed by the author (2026-10-20, late evening), after being recorded from a reading of their words.
+    - The remembered file is missing and **closed** (no buffer): it's skipped and kept, as DESK:2022 keeps pointers. A skipped swap note falls back to the plain note. If that's missing and closed too, the restore says so and changes nothing.
     - The remembered file is missing but its **buffer is open**: the restore goes through and flip-flops with it, saying the file isn't on disk.
     - Today it instead deletes the plain note and stops on the swap note forever **[run `t/b6_rows.lua`, `t/b6_open.lua`; the rule in variant `d9U`]** (T67, T173, T174).
     - Under "Keep the older one" the rule covers the secondary map's swap keys too (M7, T193).
@@ -1351,11 +1351,11 @@ An entry marked **settled by Qn** was settled by the answers of 2026-10-20, and 
 
 **Closed buffers and cleanup**
 
-- **D13. Closed buffers reopening.** README:15 ("Closed buffers reopen when accessed through relationships") and STATUS:37, STATUS:382-392 say a closed slot reopens. The code prunes closed secondaries and primary entries because the check reads the wrong slot (`window/routines.lua:345`, `:401`) **[run s05, s06]**. The desk lists this (DESK:2451).
-  - **Settled (2026-10-20):** a code bug. Each staleness check reads its own entry (DESK:2451), as the comment under each check says (`window/routines.lua:346-348`). README:15 stays as written; I4, T42 and T56 stand **[run `t/pkA_d13.lua`]**.
-- **D14. A second trigger for the new-file wipe.** The desk's repro stays on the new file and waits, so the cleanup tick wipes it, `bw!` from `history/routines.lua:678` (DESK:2427, DESK:3187). Navigating away instead wipes it sooner, at the **next `BufEnter`**, from `window/routines.lua:428` inside `cleanup_triquetras` (A21 step 5) **[run s09]**. Both triggers exist. DESK:1851 already lists that path (healing's missing-file wipe, `:417-449`) for removal, so the decided fix covers it; the bug entry just names only the timer.
-  - **Settled (2026-10-20):** the decided fix already covers both triggers (DESK:1840, :1846, :1851). At the next desk sync, the bug entry (DESK:2427) gains the faster route and the dead window ("Sooner still, the next `BufEnter` anywhere wipes it…"), and its repro (DESK:3187) gains "Or skip the wait…" **[run `t/pkA_d14.lua`]**.
-- **D16. Comment on `<M-.>`.** "go to most recent (first in list)" (`history/routines.lua:584`), while the code goes one step older. Known on the desk, and the code is right (DESK:2459).
+- **D13. Closed buffers reopening.** README:15 ("Closed buffers reopen when accessed through relationships") and STATUS:37, STATUS:382-392 say a closed slot reopens. The code prunes closed secondaries and primary entries because the check reads the wrong slot (`window/routines.lua:345`, `:401`) **[run s05, s06]**. The desk lists this (DESK:2470).
+  - **Settled (2026-10-20):** a code bug. Each staleness check reads its own entry (DESK:2470), as the comment under each check says (`window/routines.lua:346-348`). README:15 stays as written; I4, T42 and T56 stand **[run `t/pkA_d13.lua`]**.
+- **D14. A second trigger for the new-file wipe.** The desk's repro stays on the new file and waits, so the cleanup tick wipes it, `bw!` from `history/routines.lua:678` (DESK:2446, DESK:3250). Navigating away instead wipes it sooner, at the **next `BufEnter`**, from `window/routines.lua:428` inside `cleanup_triquetras` (A21 step 5) **[run s09]**. Both triggers exist. DESK:1870 already lists that path (healing's missing-file wipe, `:417-449`) for removal, so the decided fix covers it; the bug entry just names only the timer.
+  - **Settled (2026-10-20):** the decided fix already covers both triggers (DESK:1859, :1865, :1870). At the next desk sync, the bug entry (DESK:2446) gains the faster route and the dead window ("Sooner still, the next `BufEnter` anywhere wipes it…"), and its repro (DESK:3250) gains "Or skip the wait…" **[run `t/pkA_d14.lua`]**.
+- **D16. Comment on `<M-.>`.** "go to most recent (first in list)" (`history/routines.lua:584`), while the code goes one step older. Known on the desk, and the code is right (DESK:2478).
   - **Settled (2026-10-20):** the one branch comment becomes `-- Otherwise go to most recent relative to the one deleted (next in list, wraps around)`, built from the author's words, "the most recent is relative to the one deleted". The other branch comment stays.
 - **D22. The cleanup report.** STATUS:143-158 shows counts by category. The code notifies the total and lists the paths (`history/init.lua:43-72`).
   - **Settled (2026-10-20):** closed by archiving STATUS.
@@ -1373,7 +1373,7 @@ An entry marked **settled by Qn** was settled by the answers of 2026-10-20, and 
   - `get_smart_basename` is nil (`init.lua:455`) **[run s16]**.
   - `ui_machines.winbar` doesn't exist (`ui/init.lua:99`, `:106`, `:138`).
   - The bufferline and indicator transitions aren't registered (`ui/init.lua:84-121`).
-  - **Settled (2026-10-20):** the claim is archived with STATUS. The gaps stay bugs: `get_smart_basename` is nil (T120), and the missing winbar machine and bufferline transitions are on the desk (DESK:2463).
+  - **Settled (2026-10-20):** the claim is archived with STATUS. The gaps stay bugs: `get_smart_basename` is nil (T120), and the missing winbar machine and bufferline transitions are on the desk (DESK:2482).
 - **D24. STATUS's config example.** STATUS:477-498 shows `auto_save`, `save_interval`, `ui.winbar_enabled` and `cleanup_interval = 300 -- 5 minutes`. None of these match `configs.lua`.
   - **Settled (2026-10-20):** closed by archiving STATUS.
 - **D25. Small comment slips in the code.**
@@ -1386,17 +1386,17 @@ An entry marked **settled by Qn** was settled by the answers of 2026-10-20, and 
 **Today against Decided**
 
 The sources differ here until the code catches up with the desk; each entry is settled.
-- **D26. Windows showing something untracked.** README:332: the triquetra is cleaned, which matches the code. The desk's visiting rule keeps it (DESK:1766).
+- **D26. Windows showing something untracked.** README:332: the triquetra is cleaned, which matches the code. The desk's visiting rule keeps it (DESK:1785).
   - **Settled (2026-10-20):** the README follows the desk. Only README:332's middle sentence changes, and "tiquetra" is fixed: "When a window switches to a non-regular buffer then it will keep the triquetra associated to that window, and the current slot stays on the file you were on, so `<m-f>` brings you back to it. The winbar shows it like `main.lua ← [help]`." The code follows in build step 3.
-- **D27. Requirements.** README:44-47 requires resession, cokeline, harpoon and openssl. The desk keeps cokeline required, makes harpoon optional, takes no session-manager dependency, and uses `libcrypto` (DESK:732, DESK:741, DESK:2107, DESK:2125).
+- **D27. Requirements.** README:44-47 requires resession, cokeline, harpoon and openssl. The desk keeps cokeline required, makes harpoon optional, takes no session-manager dependency, and uses `libcrypto` (DESK:751, DESK:760, DESK:2126, DESK:2144).
   - **Settled (2026-10-20):** README:44-47 becomes: "neovim 0.12+"; "nvim-cokeline"; "openssl 3 (system installed, its libcrypto is used for encrypting the session files. Hashing is done with neovim's built-in `vim.fn.sha256`)"; "harpoon (optional, harpooned buffers are marked in the bufferline)"; "telescope.nvim (optional, used for adding files in the primary buffer pop-up)"; "a session manager (optional, resession.nvim is used in the examples below)". The lazy.nvim example's `dependencies` follows: cokeline in, harpoon out, and its comment goes.
   - The README's cokeline section ("The cavediver plugin can work without the bufferline…") was approved as: "The cavediver plugin can work without the bufferline, but it reduces the experience a lot. Cycling with `<m-n>` and `<m-m>` goes through cokeline, and it's what lets you visualise the visit history of all your buffers, so that you can know how you can end up to your current buffer." (typos "browsers" and "now" fixed). Its middle sentence no longer holds after A12's decision that cycling falls back without cokeline. **Settled (2026-10-20):** README.md:109-111 becomes "The cavediver plugin can work without the bufferline, but it reduces the experience a lot. Cokeline is what lets you visualise the visit history of all your buffers, so that you can know how you can end up to your current buffer."
 - **D28. Session wiring.**
   - README:93-99 passes `vim.loop.cwd()` and wires only `pre_save` and `post_load`.
-  - The desk passes the session name and the tab, reads the directory inside cavediver, and adds `pre_load` and `TabClosedPre` (DESK:739, DESK:756-773).
-  - **Settled (2026-10-20):** README:67-105 becomes "Session manager setup". It keeps the author's two opening lines, then says what has to happen (`save_session(name)` before the editor is torn down, `load_session(name)` after the manager's restore, the outgoing session saved before a switch, a tab session saved before its tab closes), then the wiring for resession (the author's `buf_filter` kept, the four hooks from DESK:756-773), native sessions (`SessionWritePost`/`SessionLoadPost` with `vim.v.this_session`, and `:mksession!` before `:source`ing another) and no manager (`save_session()` on `VimLeavePre`, `load_session()` by hand).
-- **D29. Session-file protection.** "XOR-obfuscated session persistence" (`init.lua:4`, STATUS:307) against AES-GCM (DESK:1522).
-  - **Settled (2026-10-20):** the XOR docstrings (`storage/routines.lua:58`, `:61`, `:85`, `:86`) leave with the XOR code (DESK:1524). The header at `init.lua:4` changes in build step 5, together with the encryption, to "---hash-based buffer tracking, and encrypted session persistence." STATUS:307 goes with STATUS. No README line says XOR.
+  - The desk passes the session name and the tab, reads the directory inside cavediver, and adds `pre_load` and `TabClosedPre` (DESK:758, DESK:775-792).
+  - **Settled (2026-10-20):** README:67-105 becomes "Session manager setup". It keeps the author's two opening lines, then says what has to happen (`save_session(name)` before the editor is torn down, `load_session(name)` after the manager's restore, the outgoing session saved before a switch, a tab session saved before its tab closes), then the wiring for resession (the author's `buf_filter` kept, the four hooks from DESK:775-792), native sessions (`SessionWritePost`/`SessionLoadPost` with `vim.v.this_session`, and `:mksession!` before `:source`ing another) and no manager (`save_session()` on `VimLeavePre`, `load_session()` by hand).
+- **D29. Session-file protection.** "XOR-obfuscated session persistence" (`init.lua:4`, STATUS:307) against AES-GCM (DESK:1541).
+  - **Settled (2026-10-20):** the XOR docstrings (`storage/routines.lua:58`, `:61`, `:85`, `:86`) leave with the XOR code (DESK:1543). The header at `init.lua:4` changes in build step 5, together with the encryption, to "---hash-based buffer tracking, and encrypted session persistence." STATUS:307 goes with STATUS. No README line says XOR.
 
 ## 7. Candidate tests
 
@@ -1466,7 +1466,7 @@ The setups use `a.txt` … `f.txt` in a sandbox directory. T149 onwards came wit
 - T42 [target] After `:bdelete` of the secondary's buffer and one more `:e`, the secondary still holds the closed hash, and `<M-f>` reopens it and takes it off the closed stack.
 - T43 [target] After a cycle, `<M-f>` with secondary and ternary empty never puts the current buffer in the secondary.
 - T44 [today] With the secondary closed and its file then deleted on disk, `<M-f>` warns "Removed secondary file not found in filesystem" and empties the slot. Paired with T45. Because of I4, the secondary only survives long enough for this when the window's ternary is closed too, and `<M-f>` has to come before any other history event.
-- T45 [target] With the secondary's file deleted on disk, the pointer is kept and `<M-f>` says the file is missing (DESK:2003).
+- T45 [target] With the secondary's file deleted on disk, the pointer is kept and `<M-f>` says the file is missing (DESK:2022).
 - T150 [target] Q6's ten keys, as the author ran them: `:e a`, `:e b`, `:e c`, `:e b`, `<M-f>`, `:e a`, `<M-f>`, `<M-f>`, `<M-S-f>`, `<M-;><M-r>`. The third `<M-f>` rewrites the ternary's note to the buffer it leaves (`dtm[b] := c`), and the restore doesn't throw: it gives `{c=b s=a t=c}` **[sim, variants `rt_q6` and `kt_rewrite_sec`]**. Today the third `<M-f>` warns with no change, and the restore throws "Remembered ternary is the same as current ternary".
 
 **`<M-S-f>` (A7)**
@@ -1677,7 +1677,7 @@ The settled doc and comment changes, which a test can't hold. Each is checked by
 - The engine (Q20): the class declares the shared `transition_modes` table, the factory comment at `engine/init.lua:18` stops implying modes are per machine, and the per-machine wording at `helpers.lua:258` and `:276` is reworded or dropped.
 - `ui/routines.lua:374`: the meaningless 30 in `math.max(#ordered, 30)` goes (Q5).
 - The old spec: SPEC:906-909 is marked as not built (D21).
-- The desk, at its next sync: DESK.md:2107 and the Dropped line at DESK.md:3087 narrowed to the cokeline fallback (A12); the bug entry at DESK.md:2427 and its repro at DESK.md:3187 gain the faster trigger (D14).
+- The desk, at its next sync: DESK.md:2126 and the Dropped line at DESK.md:3146 narrowed to the cokeline fallback (A12); the bug entry at DESK.md:2446 and its repro at DESK.md:3250 gain the faster trigger (D14).
 
 **Negative cases (T207–T249)**
 
@@ -1692,7 +1692,7 @@ Each checks that something doesn't happen, or that a bad or impossible action is
 - T214 [target] (P24, A22) A save leaves the closed stack as it was: with b closed and outside the slots, deleting b.txt and saving straight away keeps b on the stack. Today the save's `cleanup_system` drops it (S1 save step 1, A22 step 3).
 - T215 [target] (P26) With harpoon not installed, `:e`, `<M-f>`, `<M-S-f>`, `<M-;><M-c>`, `<M-;><M-r>` and the UI ticks raise nothing and report no hook failure. Today every history update fails at `history/routines.lua:332` with "module 'harpoon' not found".
 - T216 [target] (I16) A No Name id isn't reused across sessions: two fresh processes that each run `:e a`, `:enew` get the same buffer number and different ids. Today both are `NONAME_<bufnr>`, so the hashes are equal.
-- T217 [target] (I10, A1, A2) A buffer that turns into something untracked isn't left registered or in a slot. Two routes: a buffer entered as `buftype ""` and then set to `nofile`, as a plugin's scratch is, followed by `:e b`; and `:copen`, which enters its buffer before it's a quickfix buffer (DESK:2434), so its window gets no triquetra either. Today both stay registered, the first in the ternary and the second as the quickfix window's current slot.
+- T217 [target] (I10, A1, A2) A buffer that turns into something untracked isn't left registered or in a slot. Two routes: a buffer entered as `buftype ""` and then set to `nofile`, as a plugin's scratch is, followed by `:e b`; and `:copen`, which enters its buffer before it's a quickfix buffer (DESK:2453), so its window gets no triquetra either. Today both stay registered, the first in the ternary and the second as the quickfix window's current slot.
 - T218 [target] (I18) A repeated file in the primary queue window is refused loudly: from `[b,a]on`, the lines `a`, `b`, `a` save `[a,b]` and report the repeat at error level, like a typo'd path under Q11's partial save. Today `[a,b,a]`: `update_primary_buffer` doesn't dedupe. Decided 2026-10-21 (the author: "Refuse loudly").
 - T219 [char] (I19, Q14) An empty queue that's switched on stays on: from `p=[]on`, `:e c`, `<M-f>`, `<M-;><M-f>`, `:e a`, `<M-S-f>` and the UI ticks leave `p=[]on`.
 - T220 [target] (M11, D23) The winbar and indicator toggles work at runtime: `hide_winbar()` empties the winbar and it stays empty through the refresh, `show_winbar()` brings it back, and `hide_indicators()`/`show_indicators()` switch the indicators off and on. Today the winbar machine doesn't exist and the indicator transitions aren't registered, so each throws; nothing calls them, and a `:set winbar=` by hand is written back within a tick (`ui/routines.lua:551`) **[run 2026-10-21]**. Decided 2026-10-21: build them (the author: "Build them"); how they're exposed, key or command, is decided later. The bufferline pair is T123.
@@ -1710,10 +1710,10 @@ Each checks that something doesn't happen, or that a bad or impossible action is
 - T232 [target] (A17) `<M-,>` skips a previous window whose filetype is `neominimap`, as it does `minimap` (T94): it warns "No valid previous window to toggle to." and stays.
 - T233 [char] (A18) With no triquetra (a `:help` window, while the other window's queue is `[a]on`), `<M-;>F` says "No triquetra found for current window." and opens no window.
 - T234 [char] (A18, Q11) The pop-up refuses what cavediver doesn't track and keeps the good lines: from `[b,a]on`, the lines `a`, a blank line, the path of a loaded help file, `NONAME_999` and `b` save `[a,b]on`, with one error naming the help file and `NONAME_999`; the blank line is dropped without a word.
-- T235 [target] (A18) A relative path in the primary queue window is resolved against the current directory, as `:e` does: the lines `./b.txt`, `a` save `[b,a]`, with no hole, and the pop-up redraws them as `b.txt`, `a.txt`. Today the line passes validation as typed, then its hash is looked up by the typed string, finds nothing, and leaves slot 1 empty, so the primary is lost and every loop over the queue sees it as empty (`window/routines.lua:74`; DESK:2458) **[run 2026-10-21]**. Decided 2026-10-21 (the author: "I thought we can type relative paths. In fact it's easier to type relative paths right?", then "Resolve it"). The pop-up keeps showing each entry by its shortest unique name, `b.txt`, or `src/b.txt` when another `b.txt` exists (the author, 2026-10-21: "Shortest name (today)").
+- T235 [target] (A18) A relative path in the primary queue window is resolved against the current directory, as `:e` does: the lines `./b.txt`, `a` save `[b,a]`, with no hole, and the pop-up redraws them as `b.txt`, `a.txt`. Today the line passes validation as typed, then its hash is looked up by the typed string, finds nothing, and leaves slot 1 empty, so the primary is lost and every loop over the queue sees it as empty (`window/routines.lua:74`; DESK:2477) **[run 2026-10-21]**. Decided 2026-10-21 (the author: "I thought we can type relative paths. In fact it's easier to type relative paths right?", then "Resolve it"). The pop-up keeps showing each entry by its shortest unique name, `b.txt`, or `src/b.txt` when another `b.txt` exists (the author, 2026-10-21: "Shortest name (today)").
 - T236 [target] (A5) Closing another window first doesn't stop the pop-up's buffer going when the pop-up closes: `:vsplit`, `:close`, then `<M-;>F` and `:close` in the pop-up delete its buffer, as they do when no window was closed first. Today the first close uses up the `once` handler (`ui/hooks.lua:113`). And `<M-;>F` opens the pop-up again afterwards: today the left-over buffer keeps its name, and the next `<M-;>F` fails with "E95: Buffer with this name already exists" (`ui/routines.lua:66`); `q` and `<C-c>` don't hit this, since `close_window` deletes the buffer itself **[run 2026-10-21]**. Kept as a fix test, with the reopen check added (the author, 2026-10-21: "Keep + add reopen").
 - T237 [char] (A19) With nothing left to land on, the window keeps Neovim's empty buffer and no `:enew` runs: `:e a`, `:bdelete a.txt` leave the window on the buffer Neovim put there, with no buffer added. It holds today already (found 2026-10-21), so it's [char]: a guard that stays true when the decided code lands.
-- T238 [target] (A20) `:w new.txt` on a No Name buffer with text leaves no ghost entry on the closed stack: the old name isn't a file, so it's a move. Today the old `NONAME_` hash is pushed (DESK:2436). Its notes follow too (the decided move, DESK:1905): a No Name buffer whose note says its ternary was a gives `new>a` after `:w new.txt`, with no dangling hash. Today the closed stack gets `NONAME_2`, `<M-S-w>` reopens it as a new No Name buffer holding a second copy of the saved text, and the note dangles as `?274b55>a` **[run 2026-10-21]**. Kept as a fix test, with the notes check added (the author, 2026-10-21: "Keep + notes follow").
+- T238 [target] (A20) `:w new.txt` on a No Name buffer with text leaves no ghost entry on the closed stack: the old name isn't a file, so it's a move. Today the old `NONAME_` hash is pushed (DESK:2455). Its notes follow too (the decided move, DESK:1924): a No Name buffer whose note says its ternary was a gives `new>a` after `:w new.txt`, with no dangling hash. Today the closed stack gets `NONAME_2`, `<M-S-w>` reopens it as a new No Name buffer holding a second copy of the saved text, and the note dangles as `?274b55>a` **[run 2026-10-21]**. Kept as a fix test, with the notes check added (the author, 2026-10-21: "Keep + notes follow").
 - T239 [target] (A21) A slot pointing at an open buffer is kept whatever the disk says: at `⦉c⦊ [d] ⟦b⟧`, deleting b.txt and c.txt (both still open), UI ticks and a `cleanup_system` pass leave the slots and both registrations as they were. Today both slots are cleared.
 - T240 [target] (A25) `disable()` clears the `cavediver` augroup and stops the timers, and afterwards `:e c` changes no slot and records nothing. Today there's no `disable`.
 - T241 [target] (A26) The recorder never records raw keystrokes: text typed in insert mode (`QZQZQZ`) before the restore assertion fires doesn't show up as steps in the dump, whatever its format, file or scratch buffer.
@@ -1722,7 +1722,7 @@ Each checks that something doesn't happen, or that a bad or impossible action is
 - T244 [target] (S2) A load into fewer windows than were saved matches by what they show and drops the unmatched entry, with no error: two windows saved (`⦉c⦊ [d] ⟦-⟧` in the split, `⦉a⦊ [b] ⟦-⟧`) and one restored on b give `⦉a⦊ [b] ⟦-⟧`. Today "table index is nil" (`history/routines.lua:144`).
 - T245 [target] (S2) A session file with a newer header gives "made by a newer cavediver" and is left alone: a file starting `CDV9` is unchanged after the load. Today the load is a silent fresh start.
 - T246 [char] (S2) A No Name buffer closed with `<M-.>` stays on the closed stack across a save and a load, and `<M-S-w>` then brings its text back. It holds today already (found 2026-10-21), so it's [char]: a guard that stays true when the decided code lands.
-- T247 [target] (I13, A21) A cleanup heal in another window doesn't switch the focused window or wipe what that window shows: window 2 on `⦉x⦊ [c] ⟦-⟧` shows an `acwrite` buffer, and `:bdelete c.txt` from window 1 leaves window 1 focused on b and window 2 on its buffer. Today window 1 is switched to x (DESK:2428).
+- T247 [target] (I13, A21) A cleanup heal in another window doesn't switch the focused window or wipe what that window shows: window 2 on `⦉x⦊ [c] ⟦-⟧` shows an `acwrite` buffer, and `:bdelete c.txt` from window 1 leaves window 1 focused on b and window 2 on its buffer. Today window 1 is switched to x (DESK:2447).
 - T248 [char] (A12) With no cokeline, a cycle step raises nothing and `<M-v>` still ends the cycle: navigation `normal`, history attached, the slots unchanged **[run s21]**.
 - T249 [char] (A1, A11) No note names its own buffer: random walks with T190's mix, in one window and across windows, check after every action that no map holds `X>X` or `X-swap>X`. The decided check drops a stale note when the note it would copy names the current buffer (A11), and runs after Q6's guard so two notes naming each other can't leave one behind (A1). It holds today already (found 2026-10-21), so it's [char]: a guard that stays true when the decided code lands.
 
@@ -1763,7 +1763,7 @@ Each checks a rule the spec states as intended or decided that no earlier test c
 - T281 [char] (I7) After a cleanup pass, no hash on the closed stack has an open buffer: random walks with T279's mix, a `cleanup_system` pass forced after every action ("eventually enforced").
 - T282 [target] (I8) A window's current slot is the hash of the buffer it shows, except in the window a cycle runs in and during a visit: random walks with T128's mix, cycles left open across a window jump included. Today the walks break it through the cycle leak: work in another window while a cycle is open isn't recorded (A12). I8's status also names a second route, "Duplicates detected" leaving the slots behind (A1). The cycling exception covers only the window that's cycling; every other window must match what it shows at every step (confirmed by the author, 2026-10-21: "Only the cycling one").
 - T283 [char] (I9) Every triquetra belongs to a valid, non-floating window: random walks with T128's mix plus `:enew`, `<M-.>` and `<M-S-w>`.
-- T284 [target] (I9) `:file` onto a name not on disk, in a split, leaves no triquetra for a dead window: `:e a`, `:vsplit`, `:e b`, `:file new.txt`. Today the wipe closes the window and its triquetra stays (DESK:2425).
+- T284 [target] (I9) `:file` onto a name not on disk, in a split, leaves no triquetra for a dead window: `:e a`, `:vsplit`, `:e b`, `:file new.txt`. Today the wipe closes the window and its triquetra stays (DESK:2444).
 - T285 [target] (I14) A save with a slot holding a hash with no path succeeds and reports nothing: at `⦉c⦊ [d] ⟦b⟧`, the secondary set by hand to an unknown hash, then `save_session` in the same call. Today the save hook fails with "This must not be possible…".
 - T286 [target] (I21) The critical save hook throws to the caller and storage is `idle` afterwards: T143's read-only session directory. Today the save returns normally.
 - T287 [target] (I23, A21, final section) The check runs at a cleanup pass that moved a window's slots: T163's re-point, with d's secondary note set by hand to b, the window's secondary under today's re-point and the decided one alike; once d is current I23 holds and `<M-;><M-t>` doesn't throw. Today the note stays.
@@ -1775,47 +1775,47 @@ Each checks a rule the spec states as intended or decided that no earlier test c
 **The session file, S2 (T292–T332)**
 
 Each checks a rule S2 states as decided, or a desk line S2 rests on, that no earlier test checks, found by mapping S2 against the tests (2026-10-21), and cites the rule. Most save in one process and load in a fresh one, passing the cwd as the session's name, so they hold under today's API and the decided one alike. Where S2 leaves a format or a mechanism open, the test matches loosely and says so.
-- T292 [target] (S2 Contract and API; DESK:739, DESK:1055) `save_session()` and `load_session()` take no directory: with no argument the save writes a file whose name starts with `sha256(getcwd(-1, -1))`, and `load_session()` in a fresh process brings back `⦉c⦊ [d] ⟦b⟧`. A nameless save is named `sha256(directory)` alone, with no separator (decided 2026-10-21, the author: "directory alone"); the separator is only used with a name. Today the save throws "CWD is required to save session".
-- T293 [target] (S2 Contract and API; DESK:739, DESK:1127) A whole-editor save is keyed by the global directory, not by a tab-local `:tcd`: `save_session('work')` from a tab with `:tcd sub` writes a file named after `sha256(getcwd(-1, -1) .. "\n" .. 'work')`, and none after the tab's directory. Today the name is the shell sha256 of `work`.
-- T294 [target] (S2 Contract and API, Tab sessions; DESK:930, DESK:1055) A tab session is keyed by its tab's directory: `save_session('t', { tab = … })` from a tab with `:tcd sub` writes a file whose name starts with `sha256(<project>/sub .. "\n" .. 't')`. The spec makes the scope's directory the key and names the file `sha256(directory .. "\n" .. name)` (T255); that the name takes the tab's directory is read from the two together.
-- T295 [target] (S2 Loading; DESK:1265) A load from idle goes `idle → bare → loading`: after a save, `load_session` adds `idle->bare` and then `bare->loading` to the storage machine's history. Today it throws "Transition 'idle->loading' is not registered" (T137).
-- T296 [target] (S2 Loading; DESK:1263, DESK:1265) Every domain tears its own state down at `idle → bare`: saved at `⦉b⦊ [c] ⟦-⟧`, then `:e d`, `:e x`, `:bdelete d.txt` and a cycle step left open, the window put back on c and a load give `⦉b⦊ [c] ⟦-⟧`, an empty closed stack, navigation `normal`, history attached, and x unregistered.
-- T297 [target] (S2 Loading; DESK:1267, DESK:1269) The repeat flag is re-armed by `vim.schedule`: three `load_session` calls in one batch, a 30 ms wait, then a fourth call give two loads, and every call returns normally. With T145, this tells `vim.schedule` apart from a timer and from no flag.
-- T298 [target] (S2 Loading; DESK:775) Cavediver loads again by itself after Neovim's `:restart` session, ignoring the flag: two windows saved at `⦉c⦊ [d] ⟦-⟧` and `⦉a⦊ [b] ⟦-⟧`, a startup load, and then the restart session sourced in the same batch give two loads and the saved slots. `:restart` can't run inside a test's child, so the child is started with `__NVIM_STARTREASON=restart` in its environment, an undocumented Neovim 0.12 internal that sets `v:startreason`, and the restart session is a `:mksession!` file named `restart_session_…`. Today there's one load, and the window on b comes back `⦉d⦊ [b] ⟦-⟧`, as in the desk's repro.
-- T299 [target] (S2 Loading; DESK:1142) One post-restore callback replaces the 210 ms delay: the load makes no timer, and 30 ms after it `last_valid_window` is the current window and the bufferline order is what it still is 300 ms later. The require-time probe is T254. Today the load makes a timer, and `last_valid_window` is still the old window.
-- T300 [target] (S2 Loading; DESK:1267) A later reload brings no No Name text back twice: with a No Name text open in the ternary at save, a load and then a second load leave exactly one buffer holding it.
-- T301 [target] (S2 The file; DESK:1535) The main file starts with the clear version header `CDV1`. Today it starts with `{"`.
-- T302 [target] (S2 The file; DESK:1522) Nothing in the session files is in clear: with b closed and a No Name text open, no file under `session_dir` parses as JSON or holds the project's directory, a file name or the No Name text. Today the file is JSON.
-- T303 [target] (S2 The file; DESK:1522) The file goes through `libcrypto`, not a command: a save, and a load in a fresh process, make no `vim.fn.system`, `io.popen` or `vim.system` call. Today the file's name comes from the shell's `sha256sum`. Hashing on `:e` is T222.
-- T304 [target] (S2 The file; DESK:1536) Every write is atomic: a second save puts a new file in place by renaming it over the first (the main file's inode changes), and leaves no other regular file in `session_dir`. Today `writefile` rewrites the same file.
-- T305 [target] (S2 The file; DESK:1528, DESK:1536, DESK:1617) One file per No Name text sits in `<main>.d/`, each in mode 0600: a No Name text closed with `<M-.>`, another open, and an empty one shown give exactly two files there, `rw-------` with a umask of 022. The directory is found as the one in `session_dir` whose name ends in `.d`.
-- T306 [target] (S2 The file; DESK:1528, DESK:1529) Scratch files are named per version, written only when they change, and swept once nothing references them: a second save with the text unchanged keeps the same file and bytes; after the text changes, the next save leaves one file under a new name.
-- T307 [target] (S2 The file; DESK:1529) The main file is the commit point, in two cases put together from the files of two saves (v1, then v2). A crash before the main file lands (the first main file, with both scratch files beside it) loads with the v1 text back and not v2; a crash after it (v1's scratch left beside v2's) is swept by the next save.
-- T308 [target] (S2 The file; DESK:1529) A damaged scratch file loses one scratch, not the session: with two open No Name texts saved and one byte flipped in one scratch file, the load gives back `⦉a⦊ [b] ⟦-⟧` and exactly one of the two texts.
-- T309 [char] (S2 The file; DESK:1530) No count limit: 150 files closed with `:bdelete` are all on the closed stack after a save and a load in a fresh process. It holds today already, so it's [char]: a guard that stays true when the decided code lands.
-- T310 [target] (S2 Checks; DESK:1522, DESK:1664, DESK:1666) A file only decrypts in its own directory: a file saved as `work` in one project, copied to the name `work` takes in a second project (`sha256(directory .. "\n" .. 'work')` with that project's directory), gives "failed its integrity check (edited or corrupted)" there and a fresh start, `⦉-⦊ [b] ⟦-⟧` with an empty closed stack. Matched on "integrity check". The edited byte is T144.
-- T311 [target] (S2 Checks; DESK:1664) A cut-off file, the saved file cut to half its length, gives the integrity notification and a fresh start, as T144's edited byte does. Today it's a silent fresh start.
-- T312 [target] (S2 Checks; DESK:1663) A file with no header, plain JSON in today's format at the main file's name, gives a message naming the migration script at load. Matched on "migration script". The newer header is T245.
-- T313 [target] (S2 Checks; DESK:1670) A reference that resolves to nothing at load is kept, says so when it's used, and works again when its file comes back: saved at `⦉c⦊ [d] ⟦b⟧`, with b.txt deleted and not restored, the load keeps `⦉c⦊ [d] ⟦b⟧`; `<M-f>` gives a message, raises nothing and changes no slot; with b.txt written back, `<M-f>` gives `⦉c⦊ [b] ⟦d⟧`. Today the secondary comes back empty.
-- T314 [target] (S2 Contents; DESK:1413, DESK:1417) A restored buffer the file doesn't know waits for `BufEnter`: x, loaded and hidden at the load but never saved, isn't registered by the load, and is once `:e x` enters it. Today the load registers every loaded buffer.
-- T315 [target] (S2 Contents; DESK:1421) Windows on the same file keep their saved order, and a window that matches nothing starts fresh: saved as `⦉c⦊ [b] ⟦-⟧` (the split, listed first) and `⦉a⦊ [b] ⟦-⟧`, and restored behind a new first-listed window on e, the windows read `⦉-⦊ [e] ⟦-⟧`, `⦉c⦊ [b] ⟦-⟧` and `⦉a⦊ [b] ⟦-⟧`. Today each window takes the entry at its position.
-- T316 [target] (S2 Save-as-closed; DESK:1615, DESK:2280) A No Name buffer reopened at load gets a fresh id, and every reference to its old hash is renamed: a No Name text in the ternary (`:e a`, `:enew` with text, `:e b`) comes back as the ternary under a hash that differs from the saved one, and no slot, queue, note or history entry keeps the old hash. Today the text isn't reopened.
-- T317 [char] (S2 Errors and drift; DESK:1051) With two editors on one project, the last writer wins: both save in turn without an error, and a fresh process loads the second one's `⦉c⦊ [d] ⟦-⟧`. It holds today already, so it's [char]: a guard that stays true when the decided code lands.
-- T318 [target] (S2 Tab sessions; DESK:930) A tab session's file says its scope, and its load works on the current tab only: a session saved with `{ tab = … }` from a tab at `⦉c⦊ [d] ⟦-⟧`, loaded by name alone into a second tab of a fresh process, gives that tab `⦉c⦊ [d] ⟦-⟧` and leaves the first tab at `⦉x⦊ [t] ⟦-⟧`. Today the first tab gets `⦉c⦊ [d] ⟦-⟧` and the second `⦉-⦊ [d] ⟦-⟧`.
-- T319 [target] (S2 Tab sessions; DESK:933) Closes go to the pool of the tab they happen in, and `<M-S-w>` reopens from the current tab's: in T318's state, after `:bdelete x.txt` in the first tab and then `:bdelete c.txt` in the session's tab, `<M-S-w>` in the first tab reopens x and in the session's tab c. Today the first tab gets c.
-- T320 [target] (S2 Tab sessions; DESK:932, DESK:935) The session's tab ranks its own visits first, and a buffer belongs to every tab that visited it: in T318's state, `:e a`, `:e b` in the first tab and `:e a` in the session's tab leave a, c and d as the first three in the session tab's bufferline order. Only membership is checked; the spec doesn't fix the order inside the overlay.
-- T321 [target] (S2 Tab sessions; DESK:936) Saves are snapshots: in T318's state, with x closed in the first tab, c in the session's tab and e in the first tab, a second apart, a whole-editor `save_session()` leaves the pools apart in memory (`<M-S-w>` in the first tab reopens e, then x), and a fresh process loading that file has one stack merged by close time (`<M-S-w>` reopens e, c, x).
-- T322 [target] (S2 Tab sessions; DESK:937) A tab session's tab closed with nothing wired to save it keeps its pool, with no tab, and gives a notice: in T318's state, `:tabclose` on the session's tab, with no `TabClosedPre` hook calling `save_session`, gives a notification; and with c closed in that tab first, `:CavediverClosed` still lists c afterwards. The wording isn't fixed, so any notification that isn't a hook failure counts.
-- T323 [target] (S2 Tab sessions, Errors and drift; DESK:938, DESK:1049) A tab-session save refreshes the unnamed session's records and leaves its references: with the whole editor saved by `save_session()` at `⦉x⦊ [t] ⟦-⟧`, the tab session loaded into a second tab, x closed and e visited in the first tab, and the tab session saved, a fresh process's `load_session()` has x on the closed stack and still `⦉x⦊ [t] ⟦-⟧`.
-- T332 [target] (S2 Tab sessions; DESK:932, DESK:935, DESK:1621) A pool holds its own No Name texts: in T318's state, a No Name text left in the session's tab's history and another left in the first tab's, a save of the tab session alone, and a load of it into a second tab of a fresh process bring back the session tab's text and not the first tab's. Today open No Name texts aren't saved.
-- T324 [target] (S2 Oil; DESK:2068, DESK:2074) An oil window comes back as oil, with `vim.w.oil_original_buffer` set from its current slot: a window at `⦉a⦊ [b] ⟦-⟧` showing an oil listing at save, restored on the listing, still shows it after the load, keeps `⦉a⦊ [b] ⟦-⟧`, and has `oil_original_buffer` set to b's buffer, with the oil buffer itself unregistered. Oil is stood in for by an `acwrite` buffer named `oil://<project>/`. Today the window gets no triquetra.
-- T325 [target] (S2 Closed-stack picker; DESK:2348, DESK:2352, DESK:2355) `:CavediverClosed` opens an editable buffer that lists the closed entries, newest first, and no open buffer: with b and then c closed, the buffer is modifiable, a line naming c.txt sits above one naming b.txt, and no line names a.txt or d.txt. Entries are found by the file name they hold, since the spec gives no format for them. Today there's no such command.
-- T326 [target] (S2 Closed-stack picker; DESK:2349) A No Name entry shows its first line in quotes, its filetype and its close time: a No Name buffer holding `TODO: fix the thing` with filetype lua, closed with `<M-.>`, is listed on a line holding `[No Name]`, `"TODO: fix the`, `lua` and a digit. The format is an example, so the pieces are matched on their own.
-- T327 [target] (S2 Closed-stack picker; DESK:2352) Reordering the picker's lines reorders the stack: with c on top of b, swapping their lines and `:w` make `<M-S-w>` in the window you came from reopen b.
-- T328 [target] (S2 Closed-stack picker; DESK:2353) `<CR>` reopens the entry under the cursor in the window you came from: on b's line it puts b in that window and leaves c alone on the stack. `<CR>` is typed with `feedkeys`, since the picker's mapping isn't known in advance.
-- T329 [target] (S2 Closed-stack picker; DESK:2351) Deleting a file's line and `:w` discard it: with b and c closed, deleting c's line leaves b alone on the stack.
-- T330 [target] (S2 Closed-stack picker, Tab sessions; DESK:2348) Each pool is a header with its closed entries under it: in T318's state, with x closed in the first tab and c in the session's tab, the picker's first line is a header, and a header sits between the lines naming x and c. A header is any non-empty line that names neither entry.
-- T331 [target] (S2 Closed-stack picker, Tab sessions; DESK:2350) Pools merge by moving lines: in T330's state, c's line moved under x's and `:w` make `<M-S-w>` in the first tab reopen x and then c, and leave nothing for `<M-S-w>` in the session's tab.
+- T292 [target] (S2 Contract and API; DESK:758, DESK:1074) `save_session()` and `load_session()` take no directory: with no argument the save writes a file whose name starts with `sha256(getcwd(-1, -1))`, and `load_session()` in a fresh process brings back `⦉c⦊ [d] ⟦b⟧`. A nameless save is named `sha256(directory)` alone, with no separator (decided 2026-10-21, the author: "directory alone"); the separator is only used with a name. Today the save throws "CWD is required to save session".
+- T293 [target] (S2 Contract and API; DESK:758, DESK:1146) A whole-editor save is keyed by the global directory, not by a tab-local `:tcd`: `save_session('work')` from a tab with `:tcd sub` writes a file named after `sha256(getcwd(-1, -1) .. "\n" .. 'work')`, and none after the tab's directory. Today the name is the shell sha256 of `work`.
+- T294 [target] (S2 Contract and API, Tab sessions; DESK:949, DESK:1074) A tab session is keyed by its tab's directory: `save_session('t', { tab = … })` from a tab with `:tcd sub` writes a file whose name starts with `sha256(<project>/sub .. "\n" .. 't')`. The spec makes the scope's directory the key and names the file `sha256(directory .. "\n" .. name)` (T255); that the name takes the tab's directory is read from the two together.
+- T295 [target] (S2 Loading; DESK:1284) A load from idle goes `idle → bare → loading`: after a save, `load_session` adds `idle->bare` and then `bare->loading` to the storage machine's history. Today it throws "Transition 'idle->loading' is not registered" (T137).
+- T296 [target] (S2 Loading; DESK:1282, DESK:1284) Every domain tears its own state down at `idle → bare`: saved at `⦉b⦊ [c] ⟦-⟧`, then `:e d`, `:e x`, `:bdelete d.txt` and a cycle step left open, the window put back on c and a load give `⦉b⦊ [c] ⟦-⟧`, an empty closed stack, navigation `normal`, history attached, and x unregistered.
+- T297 [target] (S2 Loading; DESK:1286, DESK:1288) The repeat flag is re-armed by `vim.schedule`: three `load_session` calls in one batch, a 30 ms wait, then a fourth call give two loads, and every call returns normally. With T145, this tells `vim.schedule` apart from a timer and from no flag.
+- T298 [target] (S2 Loading; DESK:794) Cavediver loads again by itself after Neovim's `:restart` session, ignoring the flag: two windows saved at `⦉c⦊ [d] ⟦-⟧` and `⦉a⦊ [b] ⟦-⟧`, a startup load, and then the restart session sourced in the same batch give two loads and the saved slots. `:restart` can't run inside a test's child, so the child is started with `__NVIM_STARTREASON=restart` in its environment, an undocumented Neovim 0.12 internal that sets `v:startreason`, and the restart session is a `:mksession!` file named `restart_session_…`. Today there's one load, and the window on b comes back `⦉d⦊ [b] ⟦-⟧`, as in the desk's repro.
+- T299 [target] (S2 Loading; DESK:1161) One post-restore callback replaces the 210 ms delay: the load makes no timer, and 30 ms after it `last_valid_window` is the current window and the bufferline order is what it still is 300 ms later. The require-time probe is T254. Today the load makes a timer, and `last_valid_window` is still the old window.
+- T300 [target] (S2 Loading; DESK:1286) A later reload brings no No Name text back twice: with a No Name text open in the ternary at save, a load and then a second load leave exactly one buffer holding it.
+- T301 [target] (S2 The file; DESK:1554) The main file starts with the clear version header `CDV1`. Today it starts with `{"`.
+- T302 [target] (S2 The file; DESK:1541) Nothing in the session files is in clear: with b closed and a No Name text open, no file under `session_dir` parses as JSON or holds the project's directory, a file name or the No Name text. Today the file is JSON.
+- T303 [target] (S2 The file; DESK:1541) The file goes through `libcrypto`, not a command: a save, and a load in a fresh process, make no `vim.fn.system`, `io.popen` or `vim.system` call. Today the file's name comes from the shell's `sha256sum`. Hashing on `:e` is T222.
+- T304 [target] (S2 The file; DESK:1555) Every write is atomic: a second save puts a new file in place by renaming it over the first (the main file's inode changes), and leaves no other regular file in `session_dir`. Today `writefile` rewrites the same file.
+- T305 [target] (S2 The file; DESK:1547, DESK:1555, DESK:1636) One file per No Name text sits in `<main>.d/`, each in mode 0600: a No Name text closed with `<M-.>`, another open, and an empty one shown give exactly two files there, `rw-------` with a umask of 022. The directory is found as the one in `session_dir` whose name ends in `.d`.
+- T306 [target] (S2 The file; DESK:1547, DESK:1548) Scratch files are named per version, written only when they change, and swept once nothing references them: a second save with the text unchanged keeps the same file and bytes; after the text changes, the next save leaves one file under a new name.
+- T307 [target] (S2 The file; DESK:1548) The main file is the commit point, in two cases put together from the files of two saves (v1, then v2). A crash before the main file lands (the first main file, with both scratch files beside it) loads with the v1 text back and not v2; a crash after it (v1's scratch left beside v2's) is swept by the next save.
+- T308 [target] (S2 The file; DESK:1548) A damaged scratch file loses one scratch, not the session: with two open No Name texts saved and one byte flipped in one scratch file, the load gives back `⦉a⦊ [b] ⟦-⟧` and exactly one of the two texts.
+- T309 [char] (S2 The file; DESK:1549) No count limit: 150 files closed with `:bdelete` are all on the closed stack after a save and a load in a fresh process. It holds today already, so it's [char]: a guard that stays true when the decided code lands.
+- T310 [target] (S2 Checks; DESK:1541, DESK:1683, DESK:1685) A file only decrypts in its own directory: a file saved as `work` in one project, copied to the name `work` takes in a second project (`sha256(directory .. "\n" .. 'work')` with that project's directory), gives "failed its integrity check (edited or corrupted)" there and a fresh start, `⦉-⦊ [b] ⟦-⟧` with an empty closed stack. Matched on "integrity check". The edited byte is T144.
+- T311 [target] (S2 Checks; DESK:1683) A cut-off file, the saved file cut to half its length, gives the integrity notification and a fresh start, as T144's edited byte does. Today it's a silent fresh start.
+- T312 [target] (S2 Checks; DESK:1682) A file with no header, plain JSON in today's format at the main file's name, gives a message naming the migration script at load. Matched on "migration script". The newer header is T245.
+- T313 [target] (S2 Checks; DESK:1689) A reference that resolves to nothing at load is kept, says so when it's used, and works again when its file comes back: saved at `⦉c⦊ [d] ⟦b⟧`, with b.txt deleted and not restored, the load keeps `⦉c⦊ [d] ⟦b⟧`; `<M-f>` gives a message, raises nothing and changes no slot; with b.txt written back, `<M-f>` gives `⦉c⦊ [b] ⟦d⟧`. Today the secondary comes back empty.
+- T314 [target] (S2 Contents; DESK:1432, DESK:1436) A restored buffer the file doesn't know waits for `BufEnter`: x, loaded and hidden at the load but never saved, isn't registered by the load, and is once `:e x` enters it. Today the load registers every loaded buffer.
+- T315 [target] (S2 Contents; DESK:1440) Windows on the same file keep their saved order, and a window that matches nothing starts fresh: saved as `⦉c⦊ [b] ⟦-⟧` (the split, listed first) and `⦉a⦊ [b] ⟦-⟧`, and restored behind a new first-listed window on e, the windows read `⦉-⦊ [e] ⟦-⟧`, `⦉c⦊ [b] ⟦-⟧` and `⦉a⦊ [b] ⟦-⟧`. Today each window takes the entry at its position.
+- T316 [target] (S2 Save-as-closed; DESK:1634, DESK:2299) A No Name buffer reopened at load gets a fresh id, and every reference to its old hash is renamed: a No Name text in the ternary (`:e a`, `:enew` with text, `:e b`) comes back as the ternary under a hash that differs from the saved one, and no slot, queue, note or history entry keeps the old hash. Today the text isn't reopened.
+- T317 [char] (S2 Errors and drift; DESK:1070) With two editors on one project, the last writer wins: both save in turn without an error, and a fresh process loads the second one's `⦉c⦊ [d] ⟦-⟧`. It holds today already, so it's [char]: a guard that stays true when the decided code lands.
+- T318 [target] (S2 Tab sessions; DESK:949) A tab session's file says its scope, and its load works on the current tab only: a session saved with `{ tab = … }` from a tab at `⦉c⦊ [d] ⟦-⟧`, loaded by name alone into a second tab of a fresh process, gives that tab `⦉c⦊ [d] ⟦-⟧` and leaves the first tab at `⦉x⦊ [t] ⟦-⟧`. Today the first tab gets `⦉c⦊ [d] ⟦-⟧` and the second `⦉-⦊ [d] ⟦-⟧`.
+- T319 [target] (S2 Tab sessions; DESK:952) Closes go to the pool of the tab they happen in, and `<M-S-w>` reopens from the current tab's: in T318's state, after `:bdelete x.txt` in the first tab and then `:bdelete c.txt` in the session's tab, `<M-S-w>` in the first tab reopens x and in the session's tab c. Today the first tab gets c.
+- T320 [target] (S2 Tab sessions; DESK:951, DESK:954) The session's tab ranks its own visits first, and a buffer belongs to every tab that visited it: in T318's state, `:e a`, `:e b` in the first tab and `:e a` in the session's tab leave a, c and d as the first three in the session tab's bufferline order. Only membership is checked; the spec doesn't fix the order inside the overlay.
+- T321 [target] (S2 Tab sessions; DESK:955) Saves are snapshots: in T318's state, with x closed in the first tab, c in the session's tab and e in the first tab, a second apart, a whole-editor `save_session()` leaves the pools apart in memory (`<M-S-w>` in the first tab reopens e, then x), and a fresh process loading that file has one stack merged by close time (`<M-S-w>` reopens e, c, x).
+- T322 [target] (S2 Tab sessions; DESK:956) A tab session's tab closed with nothing wired to save it keeps its pool, with no tab, and gives a notice: in T318's state, `:tabclose` on the session's tab, with no `TabClosedPre` hook calling `save_session`, gives a notification; and with c closed in that tab first, `:CavediverClosed` still lists c afterwards. The wording isn't fixed, so any notification that isn't a hook failure counts.
+- T323 [target] (S2 Tab sessions, Errors and drift; DESK:957, DESK:1068) A tab-session save refreshes the unnamed session's records and leaves its references: with the whole editor saved by `save_session()` at `⦉x⦊ [t] ⟦-⟧`, the tab session loaded into a second tab, x closed and e visited in the first tab, and the tab session saved, a fresh process's `load_session()` has x on the closed stack and still `⦉x⦊ [t] ⟦-⟧`.
+- T332 [target] (S2 Tab sessions; DESK:951, DESK:954, DESK:1640) A pool holds its own No Name texts: in T318's state, a No Name text left in the session's tab's history and another left in the first tab's, a save of the tab session alone, and a load of it into a second tab of a fresh process bring back the session tab's text and not the first tab's. Today open No Name texts aren't saved.
+- T324 [target] (S2 Oil; DESK:2087, DESK:2093) An oil window comes back as oil, with `vim.w.oil_original_buffer` set from its current slot: a window at `⦉a⦊ [b] ⟦-⟧` showing an oil listing at save, restored on the listing, still shows it after the load, keeps `⦉a⦊ [b] ⟦-⟧`, and has `oil_original_buffer` set to b's buffer, with the oil buffer itself unregistered. Oil is stood in for by an `acwrite` buffer named `oil://<project>/`. Today the window gets no triquetra.
+- T325 [target] (S2 Closed-stack picker; DESK:2367, DESK:2371, DESK:2374) `:CavediverClosed` opens an editable buffer that lists the closed entries, newest first, and no open buffer: with b and then c closed, the buffer is modifiable, a line naming c.txt sits above one naming b.txt, and no line names a.txt or d.txt. Entries are found by the file name they hold, since the spec gives no format for them. Today there's no such command.
+- T326 [target] (S2 Closed-stack picker; DESK:2368) A No Name entry shows its first line in quotes, its filetype and its close time: a No Name buffer holding `TODO: fix the thing` with filetype lua, closed with `<M-.>`, is listed on a line holding `[No Name]`, `"TODO: fix the`, `lua` and a digit. The format is an example, so the pieces are matched on their own.
+- T327 [target] (S2 Closed-stack picker; DESK:2371) Reordering the picker's lines reorders the stack: with c on top of b, swapping their lines and `:w` make `<M-S-w>` in the window you came from reopen b.
+- T328 [target] (S2 Closed-stack picker; DESK:2372) `<CR>` reopens the entry under the cursor in the window you came from: on b's line it puts b in that window and leaves c alone on the stack. `<CR>` is typed with `feedkeys`, since the picker's mapping isn't known in advance.
+- T329 [target] (S2 Closed-stack picker; DESK:2370) Deleting a file's line and `:w` discard it: with b and c closed, deleting c's line leaves b alone on the stack.
+- T330 [target] (S2 Closed-stack picker, Tab sessions; DESK:2367) Each pool is a header with its closed entries under it: in T318's state, with x closed in the first tab and c in the session's tab, the picker's first line is a header, and a header sits between the lines naming x and c. A header is any non-empty line that names neither entry.
+- T331 [target] (S2 Closed-stack picker, Tab sessions; DESK:2369) Pools merge by moving lines: in T330's state, c's line moved under x's and `:w` make `<M-S-w>` in the first tab reopen x and then c, and leave nothing for `<M-S-w>` in the session's tab.
 
 ## 8. Questions for the author
 
