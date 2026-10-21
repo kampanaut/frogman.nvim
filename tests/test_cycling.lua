@@ -409,8 +409,8 @@ T['T155 [target] a pick of an outside buffer notes the start, and <M-;><M-r> bri
 	eq(child.note('dtm', 'b'), 'd')
 end
 
--- The flight recorder (A26). It isn't built; the dump's location,
--- stdpath('state')/cavediver/, is the spec's proposal.
+-- The flight recorder (A26). It isn't built; its dumps go under
+-- stdpath('state')/cavediver/.
 
 -- Buffers open now.
 local function bufs()
@@ -562,7 +562,7 @@ T['T204 [target] a session load and a cleanup re-point appear in the dump, tagge
 	eq(tagged, true)
 end
 
-T['T205 [target] a failure that repeats gives one dump, and the dump window is not tracked'] = function()
+T['T205 [target] a failure that repeats gives one dump, and the dump window is nofile, unlisted, untracked and unrecorded'] = function()
 	-- Nothing tracked yet, so the bufferline's colour callback throws on every
 	-- call, as it would on every redraw.
 	local files_before, bufs_before = child.dumps(), bufs()
@@ -580,14 +580,79 @@ T['T205 [target] a failure that repeats gives one dump, and the dump window is n
 
 	local scratch = new_items(bufs_before, bufs())
 	eq(#scratch > 0, true)
+	local dump_wins, dump_names = {}, {}
 	for _, b in ipairs(scratch) do
+		eq(child.lua('return { vim.bo[...].buftype, vim.bo[...].buflisted }', { b, b }), { 'nofile', false })
 		eq(child.lua('return require("cavediver.domains.history").get_hash_from_buffer(...)', { b }), vim.NIL)
+		local name = child.lua('return vim.api.nvim_buf_get_name(...)', { b })
+		if name ~= '' then table.insert(dump_names, name) end
 		local wins = child.lua('return vim.fn.win_findbuf(...)', { b })
 		for _, w in ipairs(wins) do
 			eq(child.lua('return require("cavediver.domains.window").data.crux[...] == nil', { w }), true)
+			table.insert(dump_wins, w)
 		end
 	end
 	eq(child.ordered(), '')
+
+	-- Entering the dump window isn't recorded: after a visit there, a second,
+	-- different failure (a hook bound by hand to fail, as in T275) dumps
+	-- steps that never name that window or its buffer. Matched by whole word,
+	-- since the dump's format is open.
+	for _, w in ipairs(dump_wins) do
+		child.lua('vim.api.nvim_set_current_win(...)', { w })
+		child.settle()
+		child.cmd('wincmd p')
+		child.settle()
+	end
+	child.lua([[
+		require('cavediver.domains.history').sm:on('attached', 'attached', 't205_breaks', function() error('planted') end, 5, true)
+	]])
+	local files_mid = child.dumps()
+	child.steps({ ':e a', ':e b' })
+	child.settle(300)
+	local second = Extra.new_files(files_mid, child.dumps())
+	eq(#second > 0, true)
+	for _, f in ipairs(second) do
+		local text = table.concat(read_file(f), '\n')
+		for _, w in ipairs(dump_wins) do
+			eq(text:find('%f[%w]' .. w .. '%f[%W]') == nil, true)
+		end
+		for _, name in ipairs(dump_names) do
+			eq(text:find(name, 1, true) == nil, true)
+		end
+	end
+end
+
+-- T200's route. The scratch buffer isn't opened inside the failing call, only
+-- once the editor settles; and files are named by alias and basename, never by
+-- their full path, in the file and in the scratch buffer alike.
+T['T333 [target] a dump opens after the editor settles, and names files by alias and basename, never by full path'] = function()
+	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
+	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')
+	stale_secondary_note(child)
+	local files_before, bufs_before = child.dumps(), bufs()
+	local during = child.lua([[
+		local ok = _G.CDV_TEST.press('<M-;><M-t>')
+		return { ok = ok, bufs = vim.api.nvim_list_bufs() }
+	]])
+	eq(during.ok, false)
+	eq(new_items(bufs_before, during.bufs), {})
+	child.settle(300)
+	local scratch = new_items(bufs_before, bufs())
+	eq(#scratch > 0, true)
+
+	local root = child.lua('return _G.CDV_TEST.root')
+	local files = Extra.new_files(files_before, child.dumps())
+	eq(#files > 0, true)
+	local texts = {}
+	for _, f in ipairs(files) do table.insert(texts, table.concat(read_file(f), '\n')) end
+	for _, b in ipairs(scratch) do
+		table.insert(texts, table.concat(child.lua('return vim.api.nvim_buf_get_lines(..., 0, -1, false)', { b }), '\n'))
+	end
+	for _, text in ipairs(texts) do
+		eq(text:find(root, 1, true) == nil, true)
+		eq(text:find('c.txt', 1, true) ~= nil, true)
+	end
 end
 
 return T
