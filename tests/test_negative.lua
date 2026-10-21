@@ -251,7 +251,7 @@ T['T217 [target] (I10, A1) a buffer whose buftype turns nofile after it is enter
 	eq(Neg.in_slots(child, h), false)
 end
 
--- :copen enters the new quickfix buffer before its buftype is set (DESK:2434).
+-- :copen enters the new quickfix buffer before its buftype is set (DESK:2453).
 T['T217 [target] (I10, A2) a :copen quickfix buffer is not left registered, and its window gets no triquetra'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.lua('vim.fn.setqflist({ { filename = "a.txt", lnum = 1, text = "x" } })')
@@ -636,7 +636,7 @@ T['T237 [char] (A19) with nothing left to land on, the window keeps Neovim\'s em
 	eq(#child.lua('return vim.api.nvim_list_bufs()'), got.n)
 end
 
--- The decided move (DESK:1905): no ghost on the closed stack, and the No Name's notes follow to the new name.
+-- The decided move (DESK:1924): no ghost on the closed stack, and the No Name's notes follow to the new name.
 T['T238 [target] (A20) :w name on a No Name buffer is a move: no ghost on the closed stack, and its notes follow'] = function()
 	child.steps({ ':e a', ':enew' })
 	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "draft" })')
@@ -850,7 +850,7 @@ end
 
 -- The split shows an oil-like buffer (acwrite) and keeps its triquetra; its
 -- current slot's file is then closed from the first window, which has the
--- focus (A21's healing branch, DESK:2428).
+-- focus (A21's healing branch, DESK:2447).
 T['T247 [target] (I13, A21) a cleanup heal in another window does not switch the focused window or wipe what that window shows'] = function()
 	child.steps({ ':e a', ':e b' })
 	local w1 = child.win()
