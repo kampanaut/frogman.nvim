@@ -43,7 +43,7 @@ T['T102 [char] :bdelete of the ternary keeps it as a closed hash'] = function()
 	eq(child.closed(), 'b')
 end
 
-T['T103 [target] :bdelete of the secondary keeps the secondary (I4)'] = function()
+T['T103 [char] :bdelete of the secondary keeps the secondary (I4)'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 	child.cmd('bdelete b.txt')
@@ -52,7 +52,7 @@ T['T103 [target] :bdelete of the secondary keeps the secondary (I4)'] = function
 	eq(child.closed(), 'b')
 end
 
-T['T104 [target] :bdelete of a primary entry keeps it in the queue (I4)'] = function()
+T['T104 [char] :bdelete of a primary entry keeps it in the queue (I4)'] = function()
 	child.steps({ ':e a', '<M-;><M-c>', ':e b', ':e c' })
 	eq(child.primary(), '[a]on')
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
@@ -67,7 +67,7 @@ T['T105 [char] closing an empty No Name buffer does not push it on the closed st
 	eq(child.closed(), '')
 end
 
-T['T106 [target] :file new.lua keeps unsaved edits'] = function()
+T['T106 [char] :file new.lua keeps unsaved edits'] = function()
 	child.steps({ ':e a' })
 	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "edited" })')
 	child.cmd('file new.lua')
@@ -77,7 +77,7 @@ T['T106 [target] :file new.lua keeps unsaved edits'] = function()
 	eq(st.lines, { 'edited' })
 end
 
-T['T106 [target] :saveas new.lua keeps unsaved edits'] = function()
+T['T106 [char] :saveas new.lua keeps unsaved edits'] = function()
 	child.steps({ ':e a' })
 	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "edited" })')
 	child.cmd('saveas new.lua')
@@ -118,7 +118,7 @@ T['T108 [char] cleanup re-points the current slot to the registered buffer the w
 	eq(current(), 'a')
 end
 
-T['T109 [target] a new unsaved file keeps its buffer, text and tracking after :e a (I12)'] = function()
+T['T109 [char] a new unsaved file keeps its buffer, text and tracking after :e a (I12)'] = function()
 	child.cmd('edit brandnew.txt')
 	child.settle()
 	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "hello" })')
@@ -127,7 +127,7 @@ T['T109 [target] a new unsaved file keeps its buffer, text and tracking after :e
 	eq(buffer_state('brandnew.txt'), { valid = true, lines = { 'hello' }, registered = true, in_history = true })
 end
 
-T['T110 [target] a file deleted on disk while shown stays shown and tracked after 4.6 s'] = function()
+T['T110 [char] a file deleted on disk while shown stays shown and tracked after 4.6 s'] = function()
 	child.steps({ ':e a', ':e b' })
 	remove_on_disk('b.txt')
 	for _ = 1, 10 do child.settle(460) end
@@ -140,7 +140,7 @@ end
 -- The ternary restore puts b in the ternary while the buffer last left is d,
 -- which is where Neovim's own pick (the jumplist) goes. Neovim closes any other
 -- window that shows the deleted buffer, so this is the one-window case.
-T['T111 [target] :bdelete of the shown buffer lands the window on its ternary'] = function()
+T['T111 [char] :bdelete of the shown buffer lands the window on its ternary'] = function()
 	child.steps({ ':e a', ':e b', ':e c', ':e d', ':e c', '<M-;><M-r>' })
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
 	child.cmd('bdelete c.txt')
@@ -159,7 +159,7 @@ end
 
 -- b's buffer is wiped without events and a copy of b.txt loaded the same way,
 -- so the registry still holds the old buffer number. Then the timer's pass.
-T['T113 [target] a stale registration re-points to a copy reloaded under noautocmd and wipes nothing'] = function()
+T['T113 [char] a stale registration re-points to a copy reloaded under noautocmd and wipes nothing'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	local got = child.lua([[
 		local H = require('cavediver.domains.history')

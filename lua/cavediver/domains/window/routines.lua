@@ -134,6 +134,111 @@ function M.reconcile_triquetra(winid, new_bufnr)
 	end
 end
 
+---Land a window whose buffer got deleted, once the delete is over. It goes to the ternary,
+---then the secondary, then the primary, then the most recent buffer. With nothing to land on
+---it keeps the empty buffer Neovim gave it, and only makes one if Neovim showed something else.
+---
+---Neovim's own pick in between isn't recorded as a visit (see `M.is_landing_pick()`).
+---
+---@param winid WinId The window that was showing the deleted buffer
+---@param deleted_bufnr Bufnr The buffer being deleted
+---@return nil
+function M.land_after_delete(winid, deleted_bufnr)
+	local landing = { deleted = deleted_bufnr, pick = nil }
+	data.landing[winid] = landing
+	vim.schedule(function()
+		if data.landing[winid] == landing then
+			data.landing[winid] = nil
+		end
+		local triquetra = data.crux[winid]
+		if not triquetra or not vim.api.nvim_win_is_valid(winid) then
+			return -- neovim closed the window, nothing to land.
+		end
+		-- still listed and still shown: it wasn't deleted, it was renamed.
+		if
+			vim.api.nvim_buf_is_valid(deleted_bufnr) and
+			vim.bo[deleted_bufnr].buflisted and
+			vim.api.nvim_win_get_buf(winid) == deleted_bufnr
+		then
+			return
+		end
+		-- the window moved on since neovim's pick (another :e in the same batch), so that's where it is.
+		if landing.pick and vim.api.nvim_win_get_buf(winid) ~= landing.pick then
+			return
+		end
+
+		local function open(filehash)
+			local bufnr = history.get_buffer_from_hash(filehash)
+			if bufnr and bufnr ~= deleted_bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+				return bufnr
+			end
+		end
+
+		local landing_bufnr
+		if triquetra.ternary_slot and open(triquetra.ternary_slot) then
+			landing_bufnr = open(triquetra.ternary_slot)
+			triquetra.current_slot = triquetra.ternary_slot
+			triquetra.ternary_slot = nil
+		elseif triquetra.secondary_slot and open(triquetra.secondary_slot) then
+			landing_bufnr = open(triquetra.secondary_slot)
+			triquetra.current_slot = triquetra.secondary_slot
+			triquetra.secondary_slot = nil
+		elseif triquetra.primary_buffer[1] and open(triquetra.primary_buffer[1]) then
+			landing_bufnr = open(triquetra.primary_buffer[1])
+			triquetra.current_slot = triquetra.primary_buffer[1]
+		else
+			-- the most recent buffer, in the bufferline's order (it follows history_view).
+			for _, item in ipairs(history.get_ordered_buffers()) do
+				local filehash = history.get_hash_from_buffer(item.buf)
+				if filehash and open(filehash) then
+					landing_bufnr = item.buf
+					triquetra.current_slot = filehash
+					break
+				end
+			end
+		end
+
+		vim.api.nvim_win_call(winid, function()
+			if landing_bufnr then
+				vim.api.nvim_set_current_buf(landing_bufnr)
+				return
+			end
+			local shown = vim.api.nvim_get_current_buf()
+			local is_empty = vim.api.nvim_buf_get_name(shown) == "" and
+				vim.bo[shown].buftype == "" and
+				not vim.bo[shown].modified and
+				vim.api.nvim_buf_line_count(shown) == 1 and
+				vim.api.nvim_buf_get_lines(shown, 0, 1, false)[1] == ""
+			if not is_empty then
+				-- a new buffer, not :enew, which would reuse an empty scratch and change it.
+				vim.api.nvim_set_current_buf(vim.api.nvim_create_buf(true, false))
+			else
+				-- neovim's pick wasn't recorded, so record it now.
+				history.sm:to(history.sm:state(), { buf = shown }, history.states.mode.UPDATE)
+			end
+		end)
+	end)
+end
+
+---Whether this BufEnter is neovim's own pick for a window whose buffer is being deleted. Only
+---the first one counts, and only once the buffer has left the buffer list (a rename keeps it).
+---
+---@param winid WinId
+---@param bufnr Bufnr The buffer being entered
+---@return boolean
+function M.is_landing_pick(winid, bufnr)
+	local landing = data.landing[winid]
+	if
+		not landing or
+		landing.pick or
+		(vim.api.nvim_buf_is_valid(landing.deleted) and vim.bo[landing.deleted].buflisted)
+	then
+		return false
+	end
+	landing.pick = bufnr
+	return true
+end
+
 ---Cleanup all the triquetras. Remove any triquetra that references
 ---to unregistered buffers.
 ---
@@ -181,6 +286,13 @@ function M.cleanup_triquetras(bufnr_ondelete)
 
 				if cbufnr == bufnr_ondelete then
 					-- print("skipped because it's the buffer being deleted: ".. (cbufnr or "nil"))
+					-- we can't switch buffers inside the delete, so the window lands after it's over.
+					M.land_after_delete(winid, cbufnr)
+					goto continue
+				end
+				if cbufhash == triquetra.current_slot and vim.bo[cbufnr].buftype == "" then
+					-- the window still shows the current slot's file, it's only unregistered for the moment
+					-- (a rename in progress, or a reload without events). there's nothing to heal.
 					goto continue
 				end
 				if cbufhash == triquetra.current_slot or vim.bo[cbufnr].buftype == "acwrite" then -- it means that the buffer didn't evolved to anything new. it was still deleted, so we fallback.
@@ -195,9 +307,6 @@ function M.cleanup_triquetras(bufnr_ondelete)
 						triquetra.ternary_slot = nil
 						bufnr = history.get_buffer_from_hash(triquetra.current_slot)
 						resolved = history.routines.update_buffer_history(bufnr)
-						if not resolved and bufnr and vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_is_loaded(bufnr) then
-							vim.cmd("bw! " .. bufnr)
-						end
 						-- print("#1")
 					end
 					if not resolved and triquetra.secondary_slot and history.get_buffer_from_hash(triquetra.secondary_slot) then
@@ -205,18 +314,12 @@ function M.cleanup_triquetras(bufnr_ondelete)
 						triquetra.secondary_slot = nil
 						bufnr = history.get_buffer_from_hash(triquetra.current_slot)
 						resolved = history.routines.update_buffer_history(bufnr)
-						if not resolved and bufnr and vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_is_loaded(bufnr) then
-							vim.cmd("bw! " .. bufnr)
-						end
 						-- print("#2")
 					end
 					if not resolved and triquetra.primary_buffer[1] and history.get_buffer_from_hash(triquetra.primary_buffer[1]) then
 						triquetra.current_slot = triquetra.primary_buffer[1]
 						bufnr = history.get_buffer_from_hash(triquetra.current_slot)
 						resolved = history.routines.update_buffer_history(bufnr)
-						if not resolved and bufnr and vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_is_loaded(bufnr) then
-							vim.cmd("bw! " .. bufnr)
-						end
 						-- print("#3")
 					end
 
@@ -303,12 +406,14 @@ function M.cleanup_triquetras(bufnr_ondelete)
 					::apply::
 					candidate_bufnr = history.get_buffer_from_hash(triquetra.current_slot)
 					if candidate_bufnr then
-						vim.api.nvim_set_current_buf(candidate_bufnr)
-						vim.defer_fn(function()
-							if vim.api.nvim_buf_is_valid(cbufnr) and vim.api.nvim_buf_is_loaded(cbufnr) then
-								vim.cmd("bw! " .. cbufnr)
-							end
-						end, 100)
+						-- a window showing something we don't track (oil) keeps showing it.
+						if vim.bo[cbufnr].buftype ~= "acwrite" then
+							vim.schedule(function()
+								if vim.api.nvim_win_is_valid(winid) and vim.api.nvim_buf_is_valid(candidate_bufnr) then
+									vim.api.nvim_win_set_buf(winid, candidate_bufnr)
+								end
+							end)
+						end
 					else
 						error("This is impossible. Like how the fuck did the current slot become nil???")
 					end
@@ -339,10 +444,10 @@ function M.cleanup_triquetras(bufnr_ondelete)
 				(
 					not filepath:match("^NONAME_") and
 					(
-						vim.fn.filereadable(filepath) == 0 or
+						(bufnr == nil and vim.fn.filereadable(filepath) == 0) or
 						(
 							bufnr == nil and
-							not history.routines.is_filehash_closed(triquetra.ternary_slot)
+							not history.routines.is_filehash_closed(triquetra.secondary_slot)
 						-- i.e. if the buffer is not registered (typically means that buffer is closed) and
 						-- it is not registered as closed in the closed buffers list. something is wrong
 						-- with the triquetra, so we just remove it.
@@ -366,7 +471,7 @@ function M.cleanup_triquetras(bufnr_ondelete)
 				(
 					not filepath:match("^NONAME_") and
 					(
-						vim.fn.filereadable(filepath) == 0 or
+						(bufnr == nil and vim.fn.filereadable(filepath) == 0) or
 						(
 							bufnr == nil and
 							not history.routines.is_filehash_closed(triquetra.ternary_slot)
@@ -395,10 +500,10 @@ function M.cleanup_triquetras(bufnr_ondelete)
 				(
 					not filepath:match("^NONAME_") and
 					(
-						vim.fn.filereadable(filepath) == 0 or
+						(bufnr == nil and vim.fn.filereadable(filepath) == 0) or
 						(
 							bufnr == nil and
-							not history.routines.is_filehash_closed(triquetra.ternary_slot)
+							not history.routines.is_filehash_closed(pfilehash)
 						-- i.e. if the buffer is not registered (typically means that buffer is closed) and
 						-- it is not registered as closed in the closed buffers list. something is wrong
 						-- with the triquetra, so we just remove it.
@@ -419,32 +524,6 @@ function M.cleanup_triquetras(bufnr_ondelete)
 			bufnr = history.get_buffer_from_hash(triquetra.current_slot)
 			if bufnr then
 				history.routines.unregister_buffer(bufnr)
-			end
-		elseif not filepath:match("^NONAME_") and vim.fn.filereadable(filepath) == 0 then
-			bufnr = history.get_buffer_from_hash(triquetra.current_slot)
-			if bufnr then
-				history.routines.unregister_buffer(bufnr)
-				if bufnr ~= -1 and vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_is_loaded(bufnr) then
-					vim.cmd("bw! " .. bufnr)
-				end
-			end
-			if triquetra.ternary_slot then
-				triquetra.current_slot = triquetra.ternary_slot
-				triquetra.ternary_slot = nil
-			elseif triquetra.secondary_slot then
-				triquetra.current_slot = triquetra.secondary_slot
-				triquetra.secondary_slot = nil
-			elseif triquetra.primary_buffer and #triquetra.primary_buffer > 0 then
-				triquetra.current_slot = triquetra.primary_buffer[1]
-			elseif #history.get_ordered_buffers() > 0 then
-				local candidate_hash = history.get_hash_from_buffer(history.get_ordered_buffers()[1].buf)
-				if candidate_hash then
-					triquetra.current_slot = candidate_hash
-				else
-					data.unregister_triquetra(winid)
-				end
-			else
-				data.unregister_triquetra(winid)
 			end
 		end
 

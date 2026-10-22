@@ -282,8 +282,12 @@ function M.update_buffer_history(cbufnr)
 		if is_no_name_buffer(cbufnr) then
 			filehash = M.get_filehash("NONAME_" .. tostring(cbufnr))
 		elseif
-			vim.fn.filereadable(filename) == 1
-			and vim.fn.isdirectory(filename) == 0
+			vim.fn.isdirectory(filename) == 0 and
+			(
+				vim.fn.filereadable(filename) == 1 or
+				-- a missing file says nothing, it's not written yet or it's gone for now.
+				(vim.bo[cbufnr].buftype == "" and not filename:match("://"))
+			)
 		then
 			filehash = M.get_filehash(filename)
 		else
@@ -656,15 +660,12 @@ function M.get_hash_from_filepath(filepath)
 	return data.hash_filepath_registry.hashes[filepath]
 end
 
----A short routine on cleaning up the buffer from the system
+---A short routine on forgetting a filehash from the system. It only touches cavediver's own
+---data, never a buffer.
 ---
----@param filepath Filepath 
+---@param filepath Filepath
 ---@param filehash Filehash
 local function detach_filehash_from_crux(filepath, filehash)
-	local bufnr = -1
-	if filepath then
-		bufnr = vim.fn.bufnr(filepath)
-	end
 	data.crux[filehash] = nil
 	data.crux_internals.global[filehash] = nil
 	for winid, _ in pairs(data.crux_internals.window) do
@@ -673,18 +674,31 @@ local function detach_filehash_from_crux(filepath, filehash)
 		end
 	end
 
-	if bufnr ~= -1 and vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_is_loaded(bufnr) then
-		vim.b[bufnr].skip_bufdelete = true -- Prevents BufDelete hook from running
-		vim.cmd("bw! " .. bufnr)
-	end
 	if filehash == nil then
 		return
 	end
-	bufnr = data.hash_buffer_registry.buffers[filehash]
+	local bufnr = data.hash_buffer_registry.buffers[filehash]
 	if bufnr then
 		data.hash_buffer_registry.hashes[bufnr] = nil
 	end
 	data.hash_buffer_registry.buffers[filehash] = nil
+end
+
+---Find the buffer that holds this exact filepath, if any. `vim.fn.bufnr()` would pattern-match,
+---so the names are compared as they are.
+---
+---@param filepath Filepath|nil
+---@return Bufnr|nil
+local function find_buffer_by_filepath(filepath)
+	if not filepath or filepath:match("^NONAME_") then
+		return nil
+	end
+	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+		if vim.api.nvim_buf_get_name(bufnr) == filepath then
+			return bufnr
+		end
+	end
+	return nil
 end
 
 ---Comprehensive system cleanup and validation.
@@ -712,6 +726,15 @@ function M.cleanup_system()
 		if vim.api.nvim_buf_is_valid(bufnr) then
 			goto continue
 		end
+		-- the same file can be open as another buffer (e.g. reloaded without events), then we
+		-- track that one instead of forgetting the file.
+		local live_bufnr = find_buffer_by_filepath(filepath)
+		if live_bufnr then
+			data.hash_buffer_registry.hashes[bufnr] = nil
+			data.hash_buffer_registry.buffers[filehash] = live_bufnr
+			data.hash_buffer_registry.hashes[live_bufnr] = filehash
+			goto continue
+		end
 		detach_filehash_from_crux(filepath, filehash)
 		table.insert(report.stale_hashes, filehash)
 		report.stale_hash_entries = report.stale_hash_entries + 1
@@ -721,7 +744,9 @@ function M.cleanup_system()
 	-- 1. Clean orphaned history entries (filehashes in crux without buffer registration)
 	for filehash, _ in pairs(data.crux) do
 		local filepath = data.hash_filepath_registry.filepaths[filehash]
-		if data.hash_buffer_registry.buffers[filehash] and (not filepath or filepath:match("^NONAME_") or vim.fn.filereadable(filepath) == 1) then
+		-- a registered buffer stays whatever the disk says: its file may not be written yet, or
+		-- may come back.
+		if data.hash_buffer_registry.buffers[filehash] then
 			goto continue
 		end
 		detach_filehash_from_crux(filepath, filehash)

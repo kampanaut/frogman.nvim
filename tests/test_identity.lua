@@ -125,7 +125,7 @@ T['T13 [target] an unlisted buftype "" buffer that a plugin creates and enters i
 	eq(registered(), false)
 end
 
-T['T14 [target] a buffer whose file is not written yet stays registered after it is left and re-entered'] = function()
+T['T14 [char] a buffer whose file is not written yet stays registered after it is left and re-entered'] = function()
 	child.steps({ ':e a', ':e brandnew.txt' })
 	local first = child.lua([[
 		local H = require('cavediver.domains.history')

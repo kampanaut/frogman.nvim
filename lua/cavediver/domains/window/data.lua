@@ -19,6 +19,11 @@ local M = {}
 ---@type table<number, WindowTriquetra>
 M.crux = {}
 
+---Windows whose buffer got deleted and that land once the delete is over: the buffer being
+---deleted, and neovim's own pick once it's entered.
+---@type table<WinId, { deleted: Bufnr, pick: Bufnr|nil }>
+M.landing = {}
+
 local history = require('cavediver.domains.history')
 
 ---Create a new empty window buffer relationship.

@@ -78,7 +78,7 @@ T['T41 [char] when the window shows a buffer other than its current slot, <M-f> 
 	eq(K.has(K.messages(child), 'Jumped back to windows current buffer.'), true)
 end
 
-T['T42 [target] after :bdelete of the secondary and one more :e, the secondary keeps the closed hash, and <M-f> reopens it'] = function()
+T['T42 [char] after :bdelete of the secondary and one more :e, the secondary keeps the closed hash, and <M-f> reopens it'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
 	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')
 	child.cmd('bdelete b.txt')
@@ -109,7 +109,7 @@ T['T43 [target] after a cycle, <M-f> with secondary and ternary empty never puts
 end
 
 T['T44 [today] with the secondary closed and its file deleted, <M-f> warns "Removed secondary file not found in filesystem" and empties the slot'] = function()
-	-- The secondary b only survives its close while the ternary c is closed too (I4).
+	-- The ternary c is closed too; a closed secondary stays in its slot either way (I4).
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 	child.cmd('bdelete c.txt')

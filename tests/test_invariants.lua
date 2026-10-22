@@ -66,13 +66,13 @@ end
 
 -- I12. Route: a new file, not on disk yet, with a typed line. Cavediver's
 -- vim.cmd and nvim_buf_delete calls are checked.
-T['T131 [target] I12: no buffer with unsaved changes is wiped by cavediver'] = function()
+T['T131 [char] I12: no buffer with unsaved changes is wiped by cavediver'] = function()
 	walk('I12', join(ACTS, rep(2, { 'new file' }), { '<M-.>', '<M-S-w>' }), 4)
 end
 
 -- I13. Routes: healing after a file goes missing switches or closes windows,
 -- so several windows and files deleted (and written back) on disk.
-T['T132 [target] I13: a slot action switches only the target window\'s buffer'] = function()
+T['T132 [char] I13: a slot action switches only the target window\'s buffer'] = function()
 	walk('I13', join(MWY, rep(2, { 'rm/mk' }), { '<M-;><M-x>' }), 5)
 end
 

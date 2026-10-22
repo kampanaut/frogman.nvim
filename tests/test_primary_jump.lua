@@ -91,8 +91,8 @@ T['T55 [char] while cycling away from the start, it returns to the start, keeps 
 	eq(child.notes(), notes)
 end
 
-T['T56 [target] with a closed primary, the jump reopens it'] = function()
-	-- The ternary b stays open, so today's cleanup prunes the closed primary.
+T['T56 [char] with a closed primary, the jump reopens it'] = function()
+	-- The ternary b stays open; the closed primary stays in the queue (I4).
 	child.steps({ ':e a', '<M-;><M-c>', ':e b', ':e c' })
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
 	child.cmd('bdelete a.txt')
