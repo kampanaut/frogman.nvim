@@ -1,6 +1,6 @@
 # Test review sheet
 
-386 cases in 24 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+388 cases in 24 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -11,7 +11,7 @@
 
 **State set by hand** (49): T184 (keep_older), T192 (keep_older), T107 (cleanup), T108 (cleanup), T113 (cleanup), T163 (cleanup), T91 (closing), T203 (cycling), T204 (cycling), T205 (cycling), T251 (decisions), T257 (decisions), T263 (decisions), T263 (decisions), T264 (decisions), T265 (decisions), T267 (decisions), T271 (decisions), T271 (decisions), T273 (decisions), T275 (decisions), T276 (decisions), T280 (decisions), T285 (decisions), T287 (decisions), T20 (history), T12 (identity), T157 (invariants), T25 (lifecycle), T34 (navigation), T35 (navigation), T219 (negative), T241 (negative), T242 (negative), T243 (negative), T243 (negative), T243 (negative), T247 (negative), T66 (restores), T68 (restores), T296 (s2), T298 (s2), T299 (s2), T315 (s2), T316 (s2), T138 (sessions), T146 (sessions), T147 (sessions), T148 (sessions)
 
-**Random walk** (22): T190 (keep_older), T190 (keep_older), T190 (keep_older), T190 (keep_older), T171 (cycling), T279 (decisions), T281 (decisions), T282 (decisions), T283 (decisions), T149 (history), T149 (history), T128 (invariants), T129 (invariants), T130 (invariants), T131 (invariants), T132 (invariants), T133 (invariants), T334 (invariants), T154 (invariants), T249 (negative), T249 (negative), T299 (s2)
+**Random walk** (24): T190 (keep_older), T190 (keep_older), T190 (keep_older), T190 (keep_older), T335 (keep_older), T335 (keep_older), T171 (cycling), T279 (decisions), T281 (decisions), T282 (decisions), T283 (decisions), T149 (history), T149 (history), T128 (invariants), T129 (invariants), T130 (invariants), T131 (invariants), T132 (invariants), T133 (invariants), T334 (invariants), T154 (invariants), T249 (negative), T249 (negative), T299 (s2)
 
 **Routes changed by the porting agents** so a target fails for the right reason:
 - T111 (test_cleanup.lua): route changed so it fails for the right reason (the first route passed by luck)
@@ -25,9 +25,9 @@
 
 **Doc checks**: everything in `tests/test_docs.lua` (README and comment wording).
 
-## tests/test_keep_older.lua (21 cases: 2 char, 19 target)
+## tests/test_keep_older.lua (23 cases: 23 char)
 
-**T177 [target]** the round trip onto the secondary and back: <M-;><M-t> on c says "No secondary relationship found"  
+**T177 [char]** the round trip onto the secondary and back: <M-;><M-t> on c says "No secondary relationship found"  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `<M-f>`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
 `<M-;><M-t> (via clean)` → `eq(K.has(msgs, 'No secondary relationship found'), true)`  
 → `slots = '⦉-⦊ [c] ⟦b⟧'`  
@@ -36,7 +36,7 @@ note: <M-f> (b graduates), <M-f> (to b), <M-f> (back to c).
 spec: ("Keep the older one") The round trip onto the secondary and back: `:e a`, `:e b`, `:e c`, `<M-f>` (b graduates), `<M-f>` (to b), `<M-f>` (back to c), then `<M-;><M-t>` on c doesn't throw. It says "No secondary relationship found", since c has no secondary from before; the window…  
 `tests/test_keep_older.lua:29`
 
-**T178 [target]** T177's keys, then <M-f> back to b: <M-;><M-t> on b brings back a, then c  
+**T178 [char]** T177's keys, then <M-f> back to b: <M-;><M-t> on b brings back a, then c  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `<M-f>`, `<M-f>`, `<M-;><M-t>`, `<M-f>` → `slots = '⦉-⦊ [b] ⟦c⟧'`  
 `<M-;><M-t> (via clean)` → `slots = '⦉-⦊ [b] ⟦a⟧'`  
 `<M-;><M-t> (via clean)` → `slots = '⦉-⦊ [b] ⟦c⟧'`  
@@ -46,20 +46,20 @@ spec: ("Keep the older one", Q3) T177's keys, then one more `<M-f>` back to b: `
 **T179 [char]** the round trip by plain navigation: <M-;><M-t> on d says "No secondary relationship found"  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:e b`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 `<M-;><M-t> (via clean)` → `eq(K.has(msgs, 'No secondary relationship found'), true)`  
-note: Holds today already (no notes on this route yet), and stays true under the decided fix.  
-spec: (D8) The same round trip by plain navigation: `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:e b`, `:e d`, then `<M-;><M-t>` on d says "No secondary relationship found". With D8's notes written the way `<M-f>` writes them today, it throws **[sim `rt_cand_round_e`, variants `rt_base`,… (spec tag: [target])  
+note: The round trip leaves d no secondary note to restore.  
+spec: (D8) The same round trip by plain navigation: `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:e b`, `:e d`, then `<M-;><M-t>` on d says "No secondary relationship found". With D8's notes written as a plain note (`dsm[A] := S`, as in `rt_base`), it throws **[sim `rt_cand_round_e`, vari…  
 `tests/test_keep_older.lua:53`
 
-**T179 [target]** the round trip by plain navigation writes D8's notes along the way (A1's example)  
+**T179 [char]** the round trip by plain navigation writes D8's notes along the way (A1's example)  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 `:e b` → `slots = '⦉c⦊ [b] ⟦d⟧'`  
 → `eq(K.dsm(child), 'dsm{b>a d-swap>b}')`  
 `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 → `eq(K.dsm(child), 'dsm{b-swap>d b>a d-swap>b}')`  
-spec: (D8) The same round trip by plain navigation: `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:e b`, `:e d`, then `<M-;><M-t>` on d says "No secondary relationship found". With D8's notes written the way `<M-f>` writes them today, it throws **[sim `rt_cand_round_e`, variants `rt_base`,…  
+spec: (D8) The same round trip by plain navigation: `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:e b`, `:e d`, then `<M-;><M-t>` on d says "No secondary relationship found". With D8's notes written as a plain note (`dsm[A] := S`, as in `rt_base`), it throws **[sim `rt_cand_round_e`, vari…  
 `tests/test_keep_older.lua:60`
 
-**T180 [target]** after a round trip, the buffer's older secondary comes back  
+**T180 [char]** after a round trip, the buffer's older secondary comes back  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:e b`, `:e e`, `<M-f>`, `<M-f>`, `<M-f>` → `slots = '⦉b⦊ [d] ⟦e⟧'`  
 `<M-;><M-t> (via clean)` → `slots = '⦉e⦊ [d] ⟦b⟧'`  
 → `eq(K.has(msgs, 'Restored secondary slot to'), true)`  
@@ -68,7 +68,7 @@ spec: (D8) The same round trip by plain navigation: `:e a`, `:e b`, `:e c`, `<M-
 spec: ("Keep the older one") After a round trip, the buffer's older secondary comes back: `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:e b`, `:e e`, `<M-f>`, `<M-f>`, `<M-f>` give `⦉b⦊ [d] ⟦e⟧`. d remembers b, its secondary before e: `<M-;><M-t>` on d gives `⦉e⦊ [d] ⟦b⟧` ("Restored secon…  
 `tests/test_keep_older.lua:71`
 
-**T181 [target]** with nothing older on record, a stale secondary note is dropped  
+**T181 [char]** with nothing older on record, a stale secondary note is dropped  
 `:e a`, `:e d`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦d⟧'`  
 → `eq(K.note(child, 'dsm', 'd'), 'a')`  
 `:e a`, `<M-f>` → `slots = '⦉c⦊ [d] ⟦a⟧'`  
@@ -78,7 +78,7 @@ note: <M-f> (d graduates, dsm{d→a}), :e a, <M-f> (to d, whose secondary is now
 spec: ("Keep the older one") With nothing older on record, a stale secondary note is dropped: `:e a`, `:e d`, `:e c`, `<M-f>` (d graduates, `dsm{d→a}`), `:e a`, `<M-f>` (to d, whose secondary is now a). d's note naming a is dropped, and `<M-;><M-t>` says "No secondary relationship foun…  
 `tests/test_keep_older.lua:82`
 
-**T182 [target]** the check on other arrivals, secondary map: at the last :e c the stale note is dropped  
+**T182 [char]** the check on other arrivals, secondary map: at the last :e c the stale note is dropped  
 `:e a`, `:e c`, `<M-S-f>`, `<M-S-f>`, `:e d`, `<M-f>`, `<M-;><M-f>`, `<M-;><M-r>`, `<M-S-f>`, `<M-;><M-f>`, `:e c` → `slots = '⦉d⦊ [c] ⟦a⟧'`  
 → `eq(K.note(child, 'dsm', 'c'), nil)`  
 `<M-;><M-t> (via clean)` → `eq(K.has(msgs, 'No secondary relationship found'), true)`  
@@ -86,7 +86,7 @@ note: The primary queue is empty, so <M-;><M-f> acts as <M-f>.
 spec: ("Keep the older one") The check on other arrivals, secondary map: `:e a`, `:e c`, `<M-S-f>`, `<M-S-f>`, `:e d`, `<M-f>`, `<M-;><M-f>`, `<M-;><M-r>`, `<M-S-f>`, `<M-;><M-f>`, `:e c`, `<M-;><M-t>` (the primary queue is empty, so `<M-;><M-f>` acts as `<M-f>`). At the last `:e c`, c…  
 `tests/test_keep_older.lua:94`
 
-**T183 [target]** a stale secondary note is rewritten to the buffer's swap note when that names another buffer  
+**T183 [char]** a stale secondary note is rewritten to the buffer's swap note when that names another buffer  
 `:e a`, `:e e`, `<M-f>`, `:e d`, `<M-;><M-f>`, `<M-S-f>`, `<M-;><M-f>`, `<M-f>` → `slots = '⦉a⦊ [e] ⟦d⟧'`  
 `<M-v>`, `<M-v>` → `slots = '⦉e⦊ [d] ⟦a⟧'`  
 → `eq(K.note(child, 'dsm', 'd'), 'e')`  
@@ -96,7 +96,7 @@ note: Pick a (the ternary), then d (the secondary). d's note d>a named the secon
 spec: ("Keep the older one") A stale secondary note is rewritten to the buffer's swap note when that names another buffer: `:e a`, `:e e`, `<M-f>`, `:e d`, `<M-;><M-f>`, `<M-S-f>`, `<M-;><M-f>`, `<M-f>` give `⦉a⦊ [e] ⟦d⟧`. Cycle to a (the ternary) and `<M-v>`; cycle to d (the secondary…  
 `tests/test_keep_older.lua:106`
 
-**T184 [target]** graduation clears the graduated buffer's old swap note, so <M-;><M-t> brings back dtm[b]'s buffer (Q3) ⚑ state set by hand  
+**T184 [char]** graduation clears the graduated buffer's old swap note, so <M-;><M-t> brings back dtm[b]'s buffer (Q3) ⚑ state set by hand  
 `:e d`, `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 → `eq(K.note(child, 'dtm', 'b'), 'a')`  
 `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
@@ -108,7 +108,7 @@ note: Secondary empty, ternary b with dtm[b] = a; b's old swap note dsm[b-swap] 
 spec: ("Keep the older one", Q3) With the secondary empty and the ternary b holding an old swap note `dsm[b-swap]` (set it directly: with the decided cleanup, no key seems to empty a secondary once it's set **[inferred]**), `<M-f>` graduates b with `dsm[b] := dtm[b]` and clears `dsm[b-…  
 `tests/test_keep_older.lua:126`
 
-**T185 [target]** where the ternary stays put, a stale ternary note becomes the ternary's own note  
+**T185 [char]** where the ternary stays put, a stale ternary note becomes the ternary's own note  
 `:e a`, `:e c`, `:e e`, `:e b`, `<M-f>`, `:e c`, `<M-S-f>`, `<M-f>` → `slots = '⦉c⦊ [e] ⟦b⟧'`  
 → `eq(K.note(child, 'dtm', 'e'), 'a')`  
 `<M-;><M-r> (via clean)` → `slots = '⦉a⦊ [e] ⟦b⟧'`  
@@ -117,7 +117,7 @@ note: e's note e>c named the ternary c; it becomes c's own note, a.
 spec: ("Keep the older one") Where the ternary stays put, a stale ternary note becomes the ternary's own note: `:e a`, `:e c`, `:e e`, `:e b`, `<M-f>`, `:e c`, `<M-S-f>`, `<M-f>` give `⦉c⦊ [e] ⟦b⟧`, and e's note `e>c`, naming the ternary c, becomes c's own note, `e>a`. `<M-;><M-r>` the…  
 `tests/test_keep_older.lua:142`
 
-**T186 [target]** where the ternary changes, a stale note with nothing older is dropped (by <M-S-f>)  
+**T186 [char]** where the ternary changes, a stale note with nothing older is dropped (by <M-S-f>)  
 `:e a`, `:e d`, `:e c`, `<M-;><M-f>`, `<M-f>`, `:e a`, `<M-S-f>` → `slots = '⦉a⦊ [d] ⟦c⟧'`  
 → `eq(K.note(child, 'dtm', 'd'), nil)`  
 `<M-;><M-r> (via clean)` → `eq(K.has(msgs, 'No ternary relationship found'), true)`  
@@ -129,11 +129,11 @@ spec: ("Keep the older one") Where the ternary changes, the check acts as naviga
 `:e a`, `:e d`, `:e c`, `<M-;><M-f>`, `<M-f>`, `:e a`, `:e d` → `slots = '⦉a⦊ [d] ⟦c⟧'`  
 → `eq(K.note(child, 'dtm', 'd'), nil)`  
 `<M-;><M-r> (via clean)` → `eq(K.has(msgs, 'No ternary relationship found'), true)`  
-note: Holds today already: this route goes through the stale-note check in navigation.  
-spec: ("Keep the older one") Where the ternary changes, the check acts as navigation's does, and drops when there's nothing older: `:e a`, `:e d`, `:e c`, `<M-;><M-f>` (an empty queue, so d graduates), `<M-f>`, `:e a`, `<M-S-f>` give `⦉a⦊ [d] ⟦c⟧`. d's note `d>a` names the new ternary … (spec tag: [target])  
+note: This route goes through navigation's own stale-note check.  
+spec: ("Keep the older one") Where the ternary changes, the check acts as navigation's does, and drops when there's nothing older: `:e a`, `:e d`, `:e c`, `<M-;><M-f>` (an empty queue, so d graduates), `<M-f>`, `:e a`, `<M-S-f>` give `⦉a⦊ [d] ⟦c⟧`. d's note `d>a` names the new ternary …  
 `tests/test_keep_older.lua:163`
 
-**T187 [target]** a primary jump uses navigation's second case: b's stale note becomes e, the pre-jump ternary  
+**T187 [char]** a primary jump uses navigation's second case: b's stale note becomes e, the pre-jump ternary  
 `:e a`, `:e b`, `<M-;><M-c>`, `:e e`, `:e a`, `<M-;><M-f>` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
 → `primary = '[b]on'`  
 → `eq(K.note(child, 'dtm', 'b'), 'e')`  
@@ -142,7 +142,7 @@ spec: ("Keep the older one") Where the ternary changes, the check acts as naviga
 spec: ("Keep the older one") A primary jump uses navigation's second case: `:e a`, `:e b`, `<M-;><M-c>`, `:e e`, `:e a`, `<M-;><M-f>` give `⦉a⦊ [b] ⟦-⟧` with `p=[b]on`, and b's note `b>a`, naming the new ternary a, becomes e, the pre-jump ternary. `<M-;><M-r>` gives `⦉e⦊ [b] ⟦-⟧`, and …  
 `tests/test_keep_older.lua:171`
 
-**T188 [target]** where the ternary's own note is the window's secondary, the restore exchanges the ternary and the secondary  
+**T188 [char]** where the ternary's own note is the window's secondary, the restore exchanges the ternary and the secondary  
 `:e a`, `:e b`, `:e e`, `<M-f>`, `<M-f>`, `:e a`, `:e d`, `:e e`, `:e b`, `<M-;><M-t>`, `:e e` → `slots = '⦉b⦊ [e] ⟦a⟧'`  
 → `eq(K.notes_for(child, { 'a', 'b' }):match('^dtm%b{}'), 'dtm{a>b b>a}')`  
 `:e a` → `slots = '⦉b⦊ [a] ⟦e⟧'`  
@@ -154,7 +154,7 @@ note: Plain navigation onto the secondary: Q6's guard rewrites b's note to e, an
 spec: ("Keep the older one") Where the ternary's own note is the window's secondary, the restore exchanges the ternary and the secondary: `:e a`, `:e b`, `:e e`, `<M-f>`, `<M-f>`, `:e a`, `:e d`, `:e e`, `:e b`, `<M-;><M-t>`, `:e e` give `⦉b⦊ [e] ⟦a⟧` with `dtm{a>b b>a}`. Then `:e a`, …  
 `tests/test_keep_older.lua:182`
 
-**T189 [target]** (Q13) the slot exchange: b's stale note is dropped and <M-;><M-r> says "No ternary relationship found"  
+**T189 [char]** (Q13) the slot exchange: b's stale note is dropped and <M-;><M-r> says "No ternary relationship found"  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `<M-f>`, `<M-f>`, `:e a`, `<M-f>` → `slots = '⦉c⦊ [b] ⟦a⟧'`  
 → `eq(K.note(child, 'dtm', 'b'), 'a')`  
 → `eq(K.note(child, 'dsm', 'b-swap'), 'c')`  
@@ -164,30 +164,38 @@ note: c is the ternary, so the two slots exchange.
 spec: (Q13) The route the tested fix leaves: `:e a`, `:e b`, `:e c`, `<M-f>`, `<M-f>`, `<M-f>`, `:e a`, `<M-f>` give `⦉c⦊ [b] ⟦a⟧`, with b's ternary note `b>a` and its secondary swap note `b-swap>c`. `<M-;><M-t>` brings back c, which is the ternary, so the two slots exchange: `⦉a⦊ [b] …  
 `tests/test_keep_older.lua:198`
 
-**T190 [target]** I23 over random walks: one window, global view ⚑ random walk  
+**T190 [char]** I23 over random walks: one window, global view ⚑ random walk  
 spec: I23 as a property test, alongside T154: random walks over `:e` on five files, `<M-f>`, `<M-S-f>`, both restores, cycling picks, `<M-;><M-c>` and `<M-;><M-f>`, in one window and across windows, with `history_view` set to `"global"` and to `"window"`. After every action, for the cu…  
 `tests/test_keep_older.lua:230`
 
-**T190 [target]** I23 over random walks: one window, window view ⚑ random walk  
+**T190 [char]** I23 over random walks: one window, window view ⚑ random walk  
 spec: I23 as a property test, alongside T154: random walks over `:e` on five files, `<M-f>`, `<M-S-f>`, both restores, cycling picks, `<M-;><M-c>` and `<M-;><M-f>`, in one window and across windows, with `history_view` set to `"global"` and to `"window"`. After every action, for the cu…  
 `tests/test_keep_older.lua:231`
 
-**T190 [target]** I23 over random walks: several windows, global view ⚑ random walk  
+**T190 [char]** I23 over random walks: several windows, global view ⚑ random walk  
 spec: I23 as a property test, alongside T154: random walks over `:e` on five files, `<M-f>`, `<M-S-f>`, both restores, cycling picks, `<M-;><M-c>` and `<M-;><M-f>`, in one window and across windows, with `history_view` set to `"global"` and to `"window"`. After every action, for the cu…  
 `tests/test_keep_older.lua:232`
 
-**T190 [target]** I23 over random walks: several windows, window view ⚑ random walk  
+**T190 [char]** I23 over random walks: several windows, window view ⚑ random walk  
 spec: I23 as a property test, alongside T154: random walks over `:e` on five files, `<M-f>`, `<M-S-f>`, both restores, cycling picks, `<M-;><M-c>` and `<M-;><M-f>`, in one window and across windows, with `history_view` set to `"global"` and to `"window"`. After every action, for the cu…  
 `tests/test_keep_older.lua:233`
 
-**T192 [target]** rename_hash_in_triquetras(old, new) moves dsm[old-swap] to dsm[new-swap] and renames values in both maps ⚑ state set by hand  
+**T335 [char]** no key raises over random walks: one window, both views ⚑ random walk  
+spec: (Q13) No key raises over random walks: T190's walks (one window and several, under both views) count every key that throws, and none does. Every route that reaches a throw, an assertion included, is a bug to hunt (Q13). It found `reopen_filehash` failing on a No Name buffer with …  
+`tests/test_keep_older.lua:246`
+
+**T335 [char]** no key raises over random walks: several windows, both views ⚑ random walk  
+spec: (Q13) No key raises over random walks: T190's walks (one window and several, under both views) count every key that throws, and none does. Every route that reaches a throw, an assertion included, is a bug to hunt (Q13). It found `reopen_filehash` failing on a No Name buffer with …  
+`tests/test_keep_older.lua:250`
+
+**T192 [char]** rename_hash_in_triquetras(old, new) moves dsm[old-swap] to dsm[new-swap] and renames values in both maps ⚑ state set by hand  
 `:e x`, `:e b`, `:e c`, `:e d`, `:e a` → `notes = 'dtm{a-swap>b c>a} dsm{a-swap>b a>c d>a}'`  
 → `notes = 'dtm{c>x x-swap>b} dsm{d>x x-swap>b x>c}'`  
 note: Set up directly: a is renamed to x.  
-spec: ("Keep the older one") `rename_hash_in_triquetras(old, new)` moves `dsm[old-swap]` to `dsm[new-swap]` and renames values in both maps, as it already does for `dtm[old-swap]` (`window/data.lua:146-149`). Set it up directly, or with a No Name buffer that holds both kinds of seconda…  
-`tests/test_keep_older.lua:235`
+spec: ("Keep the older one") `rename_hash_in_triquetras(old, new)` moves `dsm[old-swap]` to `dsm[new-swap]` and renames values in both maps, as it already does for `dtm[old-swap]` (`window/data.lua:166-169`). Set it up directly, or with a No Name buffer that holds both kinds of seconda…  
+`tests/test_keep_older.lua:255`
 
-**T193 [target]** (D9) the missing-file rule on the secondary map: <M-;><M-t> says the file is missing, changes no slot, keeps both notes  
+**T193 [char]** (D9) the missing-file rule on the secondary map: <M-;><M-t> says the file is missing, changes no slot, keeps both notes  
 `:e f`, `:e b`, `<M-f>`, `<M-f>`, `:e e`, `<M-f>` → `slots = '⦉f⦊ [b] ⟦e⟧'`  
 → `eq(K.notes_for(child, { 'b' }):match('dsm%b{}'), 'dsm{b-swap>f b>f}')`  
 → `eq({ ok, err }, { true, nil })`  
@@ -196,9 +204,9 @@ spec: ("Keep the older one") `rename_hash_in_triquetras(old, new)` moves `dsm[ol
 → `eq(K.notes_for(child, { 'b' }):match('dsm%b{}'), 'dsm{b-swap>f b>f}')`  
 note: <M-f> (f graduates), <M-f> (to f), :e e, <M-f> (to b). :bdelete f, delete f.txt on disk, and press, in one go.  
 spec: (D9) The missing-file rule on the secondary map: `:e f`, `:e b`, `<M-f>` (f graduates), `<M-f>` (to f), `:e e`, `<M-f>` (to b) give `⦉f⦊ [b] ⟦e⟧` with `dsm{b-swap>f b>f}`. After `:bdelete f` and deleting f.txt on disk, `<M-;><M-t>` on b says the file is missing, changes no slot, …  
-`tests/test_keep_older.lua:254`
+`tests/test_keep_older.lua:274`
 
-## tests/test_cleanup.lua (15 cases: 12 char, 3 target)
+## tests/test_cleanup.lua (15 cases: 13 char, 2 target)
 
 **T102 [char]** :bdelete of the ternary keeps it as a closed hash  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -296,14 +304,14 @@ spec: A stale registration with a copy reloaded under `noautocmd` re-points to t
 spec: A closed entry whose file is gone from disk stays on the stack.  
 `tests/test_cleanup.lua:182`
 
-**T163 [target]** a re-point to the shown buffer moves the old current into the ternary (Q18) ⚑ state set by hand  
+**T163 [char]** a re-point to the shown buffer moves the old current into the ternary (Q18) ⚑ state set by hand  
 `:e d`, `:e b`, `:e c`, `<M-f>`, `:e a` → `slots = '⦉c⦊ [a] ⟦b⟧'`  
 `:noautocmd buffer d.txt`, `:bwipeout a.txt` → `slots = '⦉a⦊ [d] ⟦b⟧'`  
 note: {c=A s=S t=T} is {c=a s=b t=c}; X is d, outside the slots. The window is put on d without a BufEnter, then a's buffer is wiped (A21 step 1 re-points).  
-spec: When cleanup re-points a window's current slot to the registered buffer X the window shows (A21 step 1), with X outside the slots, `{c=A s=S t=T}` becomes `{c=X s=S t=A}`, as plain navigation would. Today it's `{c=X s=S t=T}`. Set it up by showing X without a `BufEnter` (`noautoc…  
+spec: When cleanup re-points a window's current slot to the registered buffer X the window shows (A21 step 1), with X outside the slots, `{c=A s=S t=T}` becomes `{c=X s=S t=A}`, as plain navigation would. Set it up by showing X without a `BufEnter` (`noautocmd`) after A's buffer is gon…  
 `tests/test_cleanup.lua:195`
 
-## tests/test_closing.lua (20 cases: 9 char, 11 target)
+## tests/test_closing.lua (20 cases: 15 char, 5 target)
 
 **T80 [char]** <M-.> on the newest lands on the next, closes it, and keeps it in the ternary  
 `:e d`, `:e e`, `:e f` → `ordered = 'f,e,d'`  
@@ -350,25 +358,25 @@ spec: It refuses with a modified named buffer, a buffer shown in two windows, or
 spec: It refuses with a modified named buffer, a buffer shown in two windows, or a single entry, each with its warning and nothing changed.  
 `tests/test_closing.lua:99`
 
-**T83 [target]** <M-.> on a modified No Name buffer closes it and caches its lines, filetype and cursor  
+**T83 [char]** <M-.> on a modified No Name buffer closes it and caches its lines, filetype and cursor  
 `:e a` → `eq(type(h), 'string')`  
 → `eq(child.lua('return vim.bo.modified'), true)`  
 → `eq(child.lua('return vim.api.nvim_win_get_cursor(0)'), { 2, 1 })`  
 `<M-.>` → `eq(child.lua('return vim.api.nvim_buf_is_valid(...)', { buf }), false)`  
 → `eq(child.lua('return require("cavediver.domains.history").data.closed_buffers'), { h })`  
 → `eq(`  
-note: [target] until delete_buffer reads the cursor before it switches the window away (history/routines.lua:593, :597; today the cursor comes back as {1,0}).  
-spec: On a modified No Name buffer it closes it and caches its lines, filetype and cursor. Today the cursor comes back as `{1,0}`: `delete_buffer` switches the window away before the wipe (bug, found 2026-10-21; the author: "Bug: keep the cursor").  
+note: delete_buffer keeps the cursor before it switches the window away (history/routines.lua:704), so the cache doesn't fall back to {1,0}.  
+spec: On a modified No Name buffer it closes it and caches its lines, filetype and cursor. `delete_buffer` switches the window away before the wipe, so it keeps the cursor on the buffer first (`vim.b[bufnr].cavediver_cursor`), and the cursor doesn't come back as `{1,0}` (bug, found 202…  
 `tests/test_closing.lua:110`
 
-**T84 [target]** <M-.> in :help does not throw  
+**T84 [char]** <M-.> in :help does not throw  
 `:e a`, `:e b`, `:help` → `eq(child.lua('return vim.bo.buftype'), 'help')`  
 `<M-.>` → `eq({ ok, err }, { true, nil })`  
 → `eq(Extra.at_least(child.messages()), {})`  
 spec: In `:help` it doesn't throw. What it does instead is T164–T167 (Q17).  
 `tests/test_closing.lua:127`
 
-**T85 [target]** <M-.> on a file keeps its marks for when it is reopened  
+**T85 [char]** <M-.> on a file keeps its marks for when it is reopened  
 `:e a`, `:e b` → `eq(child.lua('return vim.api.nvim_buf_get_mark(0, "k")'), { 1, 0 })`  
 `<M-.>` → `shown = 'a'`  
 `<M-S-w>` → `shown = 'b'`  
@@ -448,7 +456,7 @@ note: Visit a nofile scratch in the same window.
 spec: Q17, a visiting window: in a window with `{c=a s=b}` that's visiting an untracked buffer (a `nofile` scratch, or help shown with `:buffer`), `<M-.>` closes the visited buffer, and the window shows a with `{c=a s=b}` intact. It needs the visiting rule (T27).  
 `tests/test_closing.lua:249`
 
-**T165 [target]** <M-.> in a help window closes the help buffer and leaves a alone  
+**T165 [char]** <M-.> in a help window closes the help buffer and leaves a alone  
 `:e a`, `:help` → `eq(child.lua('return vim.bo.buftype'), 'help')`  
 `<M-.>` → `eq({ ok, err }, { true, nil })`  
 → `eq(Extra.at_least(child.messages()), {})`  
@@ -459,7 +467,7 @@ spec: Q17, a visiting window: in a window with `{c=a s=b}` that's visiting an un
 spec: Q17, a window born untracked: `:e a`, `:help`, then `<M-.>` in the help window. The help buffer is closed, Neovim closes the help window, nothing throws, and a's window and triquetra are unchanged.  
 `tests/test_closing.lua:269`
 
-**T166 [target]** <M-.> on help in the only window closes the help buffer  
+**T166 [char]** <M-.> on help in the only window closes the help buffer  
 `:help`, `:only` → `eq(child.lua('return vim.bo.buftype'), 'help')`  
 `<M-.>` → `eq({ ok, err }, { true, nil })`  
 → `eq(child.lua('return vim.api.nvim_buf_is_loaded(...)', { help_buf }), false)`  
@@ -468,7 +476,7 @@ spec: Q17, a window born untracked: `:e a`, `:help`, then `<M-.>` in the help wi
 spec: Q17, the only window: `:help`, `:only`, `<M-.>`. The help buffer is closed, nothing throws, and the window shows what Neovim picks.  
 `tests/test_closing.lua:286`
 
-**T167 [target]** <M-.> on a running terminal refuses with a message  
+**T167 [char]** <M-.> on a running terminal refuses with a message  
 `:e a`, `:e b`, `:terminal sleep 1000` → `eq(child.lua('return vim.bo.buftype'), 'terminal')`  
 → `eq(child.lua('return vim.fn.jobwait({ vim.bo.channel }, 0)[1]'), -1)`  
 `<M-.>` → `eq({ ok, err }, { true, nil })`  
@@ -477,7 +485,7 @@ spec: Q17, the only window: `:help`, `:only`, `<M-.>`. The help buffer is closed
 spec: Q17, a running terminal: `<M-.>` on a `:terminal` whose job is still running refuses with a message, and the terminal stays.  
 `tests/test_closing.lua:300`
 
-## tests/test_cycling.lua (27 cases: 13 char, 14 target)
+## tests/test_cycling.lua (27 cases: 22 char, 5 target)
 
 **T69 [char]** <M-m> from normal starts cycling and leaves the current slot  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -568,15 +576,15 @@ spec: (D15) The cycle's start is the window's current slot, live: `:e a`, `:e b`
 → `slots = '⦉d⦊ [c] ⟦b⟧'`  
 → `eq(child.state(), CYCLING)`  
 `<M-f>` → `slots = '⦉d⦊ [b] ⟦c⟧'`  
-→ `eq(plain == 'b' or swap == 'b', true)`  
+→ `eq(child.note('dsm', 'c-swap'), 'b')`  
 → `eq(child.state(), CYCLING)`  
 `<M-;><M-r>` → `slots = '⦉a⦊ [b] ⟦c⟧'`  
 … and 1 more  
-note: c's secondary note names b: the plain note today, the swap note once T191 lands.  
+note: c's secondary note names b: <M-f> writes the swap note (D8, T191).  
 spec: (P18) While cycling, with the window back on its current slot, `<M-f>` and `<M-;><M-r>` do their normal job, notes included: set up with `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:e c` (`⦉d⦊ [c] ⟦b⟧`, with b's note `b>a`), then `<M-n>` and a first `<M-f>` that only takes the wind…  
 `tests/test_cycling.lua:159`
 
-**T175 [target]** jumping to another window cancels the cycle  
+**T175 [char]** jumping to another window cancels the cycle  
 `:e a`, `:e b`, `:vsplit`, `:e x`, `:wincmd p`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 → `slots = '⦉b⦊ [x] ⟦-⟧'`  
 → `ordered = 'c,b,x,a'`  
@@ -588,23 +596,23 @@ spec: (P18) While cycling, with the window back on its current slot, `<M-f>` and
 … and 3 more  
 note: win1: ⦉b⦊ [c] ⟦-⟧; win2: ⦉b⦊ [x] ⟦-⟧. Nothing was recorded for a, the cycled-to buffer: it's still the oldest.  
 spec: (A12) Cycling in win1, then `<C-w>p` to win2: win1 shows its start again, navigation is `normal`, history is attached, and nothing was recorded for the cycled-to buffer. Then `:e d` in win2 moves win2's slots and records d.  
-`tests/test_cycling.lua:178`
+`tests/test_cycling.lua:177`
 
-**T176 [target]** <M-f> fills an empty secondary from the ordered list, asserting its first entry  
+**T176 [char]** <M-f> fills an empty secondary from the ordered list, asserting its first entry  
 `:e a`, `:e b`, `:vsplit` → `slots = '⦉-⦊ [b] ⟦-⟧'`  
 → `ordered = 'b,a'`  
 `<M-f>` → `slots = '⦉-⦊ [b] ⟦a⟧'`  
 `:e a`, `:e b`, `:vsplit`, `<M-f> (via _G.CDV_TEST.press)` → `eq(res[1], false)`  
 note: A fresh split: an empty secondary and no ternary. Again from a fresh split, with the ordered list's first two entries swapped by hand, so its first entry isn't the window's current buffer.  
 spec: (D11) With an empty secondary and no ternary, `<M-f>` fills from the ordered list's second entry, and throws if the first entry isn't the window's current buffer.  
-`tests/test_cycling.lua:209`
+`tests/test_cycling.lua:208`
 
-**T197 [target]** under the window view the ordered list never ties after two splits  
+**T197 [char]** under the window view the ordered list never ties after two splits  
 `:e a`, `:e b`, `:vsplit`, `:wincmd p`, `:e c`, `:vsplit`, `<M-f>` → `eq(runs[i], { first_is_shown = true, ok = true, errors = {}, distinct = true })`  
 spec: (D11) Under `history_view = "window"`, after `:e a`, `:e b`, `:vsplit`, `<C-w>p`, `:e c`, `:vsplit`, the ordered list's first entry is the window's current buffer on every run (no tie), and `<M-f>` doesn't trip the fill assertion.  
-`tests/test_cycling.lua:233`
+`tests/test_cycling.lua:232`
 
-**T198 [target]** a jump away from a cycle records the landing, and <M-f> there fills  
+**T198 [char]** a jump away from a cycle records the landing, and <M-f> there fills  
 `:e a`, `:vsplit`, `:e c` → `slots = '⦉a⦊ [c] ⟦-⟧'`  
 `<M-m>` → `shown = 'a'`  
 `:wincmd p` → `eq(child.win(), win1)`  
@@ -615,9 +623,9 @@ spec: (D11) Under `history_view = "window"`, after `:e a`, `:e b`, `:vsplit`, `<
 → `slots = '⦉-⦊ [a] ⟦c⟧'`  
 note: The cycle in the second window is cancelled. The landing in the first window is recorded.  
 spec: (A12) `:e a`, `:vsplit`, `:e c`, `<M-m>`, `<C-w>p`: the cycle in the second window is cancelled (it's back on c), the landing in the first window is recorded (the ordered list starts with a), and `<M-f>` there fills c without tripping the fill assertion.  
-`tests/test_cycling.lua:263`
+`tests/test_cycling.lua:262`
 
-**T206 [target]** the secondary restore's exchange rewrites b's stale note to e's own note  
+**T206 [char]** the secondary restore's exchange rewrites b's stale note to e's own note  
 `:e a`, `:e e`, `:e d`, `<M-S-f>`, `:e b`, `:e d`, `<M-n>`, `<M-v>`, `<M-f>`, `:e b`, `<M-f>`, `:e e`, `<M-m>`, `<M-m>`, `<M-v>` → `slots = '⦉a⦊ [b] ⟦e⟧'`  
 `<M-;><M-t>` → `slots = '⦉e⦊ [b] ⟦a⟧'`  
 → `eq(child.note('dtm', 'e'), 'd')`  
@@ -627,17 +635,17 @@ spec: (A12) `:e a`, `:vsplit`, `:e c`, `<M-m>`, `<C-w>p`: the cycle in the secon
 `<M-;><M-r>` → `eq({ ok, err }, { true, nil })`  
 → `slots = '⦉e⦊ [b] ⟦a⟧'`  
 spec: (I23) `:e a`, `:e e`, `:e d`, `<M-S-f>`, `:e b`, `:e d`, `<M-n> <M-v>`, `<M-f>`, `:e b`, `<M-f>`, `:e e`, `<M-m> <M-m> <M-v>`, `<M-;><M-t>`: b's stale note becomes e's own note, d; `<M-;><M-r>` gives `⦉d⦊ [b] ⟦a⟧`, and again `⦉e⦊ [b] ⟦a⟧`.  
-`tests/test_cycling.lua:287`
+`tests/test_cycling.lua:286`
 
-**T171 [target]** with no cokeline, <M-n> and <M-m> step through the ordered history as with it ⚑ random walk  
+**T171 [char]** with no cokeline, <M-n> and <M-m> step through the ordered history as with it ⚑ random walk  
 → `eq(with_cokeline.shown, { 'c', 'b', 'c' })`  
 → `eq(with_cokeline.slots, '⦉d⦊ [c] ⟦-⟧')`  
 → `eq(with_cokeline.state, NORMAL)`  
 → `eq(child.lua('return (pcall(require, "cokeline.mappings"))'), false)`  
 → `eq(cycle_walk(), with_cokeline)`  
 note: d,c,b,a: <M-m> twice to b, <M-n> back to c, then <M-v> picks c, the ternary.  
-spec: (A12) With no cokeline installed, `<M-n>` and `<M-m>` step through cavediver's ordered history in the same directions as with cokeline, and `<M-v>` picks as usual. Today the step only prints and navigation stays in `cycling` **[run s21]**.  
-`tests/test_cycling.lua:318`
+spec: (A12) With no cokeline installed, `<M-n>` and `<M-m>` step through cavediver's ordered history in the same directions as with cokeline, and `<M-v>` picks as usual. **[run s21]** recorded the step only printing, before the fallback, and navigation staying in `cycling`.  
+`tests/test_cycling.lua:317`
 
 **T79 [char]** <M-n> steps left, toward newer buffers, and <M-m> right, toward older  
 `:e a`, `:e b`, `:e c` → `eq(cmp, { c_before_b = true, b_before_a = true, a_before_c = false })`  
@@ -647,20 +655,19 @@ spec: (A12) With no cokeline installed, `<M-n>` and `<M-m>` step through cavediv
 → `eq(child.lua('return _G.CDV_STEPS'), { 1, 1, -1 })`  
 note: Runs against the stub, not the real cokeline: checks the step each key asks cokeline for, and that cavediver's bufferline order puts the newer buffer on the left.  
 spec: Through the real cokeline order, `<M-n>` steps left, toward newer buffers, and `<M-m>` steps right, toward older ones (Q19).  
-`tests/test_cycling.lua:330`
+`tests/test_cycling.lua:329`
 
-**T152 [target]** a cycling pick of the secondary rewrites the ternary's note to the start  
+**T152 [char]** a cycling pick of the secondary rewrites the ternary's note to the start  
 `:e a`, `:e b`, `:e c`, `:e b`, `<M-f>`, `:e a`, `<M-f>` → `slots = '⦉b⦊ [c] ⟦a⟧'`  
 → `eq(child.note('dtm', 'b'), 'a')`  
 `<M-m>` → `shown = 'a'`  
 `<M-v>` → `slots = '⦉b⦊ [a] ⟦c⟧'`  
 → `eq(child.note('dtm', 'b'), 'c')`  
-→ `eq(Extra.has(child.messages(), 'Avoided conflict'), false)`  
 note: {c=c s=a t=b} with dtm[b] = a.  
-spec: Q6 on a cycling pick of the secondary: with `{c=A s=S t=T}` and `dtm[T] = S`, cycling to S and pressing `<M-v>` gives `{c=S s=A t=T}` and rewrites `dtm[T]` to A. Today it warns "Avoided conflict…" and `dtm[T]` stays S **[inferred]**.  
-`tests/test_cycling.lua:366`
+spec: Q6 on a cycling pick of the secondary: with `{c=A s=S t=T}` and `dtm[T] = S`, cycling to S and pressing `<M-v>` gives `{c=S s=A t=T}` and rewrites `dtm[T]` to A. The guard's warning comes with the rewrite: the conflict is real and the warning isn't spurious (A6). With the guard a…  
+`tests/test_cycling.lua:365`
 
-**T172 [target]** a pick of an outside buffer writes its plain note and clears its swap note  
+**T172 [char]** a pick of an outside buffer writes its plain note and clears its swap note  
 `:e a`, `:e b`, `<M-S-f>` → `eq(child.note('dtm', 'b-swap'), 'a')`  
 `:e c`, `:e d`, `:e e` → `slots = '⦉d⦊ [e] ⟦-⟧'`  
 `<M-n>` → `shown = 'b'`  
@@ -671,9 +678,9 @@ spec: Q6 on a cycling pick of the secondary: with `{c=A s=S t=T}` and `dtm[T] = 
 `<M-;><M-r>` → `slots = '⦉d⦊ [b] ⟦-⟧'`  
 … and 1 more  
 spec: (Q9) `:e a`, `:e b`, `<M-S-f>` (b gets `dtm[b-swap]=a`), `:e c`, `:e d`, `:e e`, cycle to b, `<M-v>`: `dtm[b] = e` and no `dtm[b-swap]`; `<M-;><M-r>` gives `t=e`, again `t=d`, again `t=e`.  
-`tests/test_cycling.lua:380`
+`tests/test_cycling.lua:378`
 
-**T155 [target]** a pick of an outside buffer notes the start, and <M-;><M-r> brings it back  
+**T155 [char]** a pick of an outside buffer notes the start, and <M-;><M-r> brings it back  
 → `eq(child.note('dtm', 'b-swap'), '-')`  
 `<M-n>`, `<M-n>` → `shown = 'b'`  
 `<M-v>` → `slots = '⦉d⦊ [b] ⟦c⟧'`  
@@ -681,7 +688,7 @@ spec: (Q9) `:e a`, `:e b`, `<M-S-f>` (b gets `dtm[b-swap]=a`), `:e c`, `:e d`, `
 `<M-;><M-r>` → `slots = '⦉e⦊ [b] ⟦c⟧'`  
 → `eq(child.note('dtm', 'b'), 'd')`  
 spec: `{c=e s=c t=d}` with no `dtm[b-swap]`: cycle to b, `<M-v>` → `{c=b s=c t=d}` and `dtm[b] = e`. Then `<M-;><M-r>` brings the start back: `{c=b s=c t=e}`, with `dtm{b→d}` by the flip-flop (Q9).  
-`tests/test_cycling.lua:399`
+`tests/test_cycling.lua:397`
 
 **T200 [target]** the restore assertion dumps the last steps to a file and a scratch buffer  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
@@ -692,14 +699,14 @@ spec: `{c=e s=c t=d}` with no `dtm[b-swap]`: cycle to b, `<M-v>` → `{c=b s=c t
 → `eq(found, true)`  
 note: A file whose last row is the failing step, on c's slots. A scratch buffer holds the same rows.  
 spec: (A26) When the restore assertion fires, a file appears under `stdpath("state")/cavediver/` and a scratch buffer opens, both holding the last steps as rows: action or event, window, `⦉t⦊ [c] ⟦s⟧` and notes, ending at the failing step.  
-`tests/test_cycling.lua:452`
+`tests/test_cycling.lua:450`
 
 **T203 [target]** a planted rule break dumps at the next step ⚑ state set by hand  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 `:vsplit`, `:e d`, `:e e`, `:e x` → `eq(#Extra.new_files(before, child.dumps()), 1)`  
 note: A planted stale note, not a real route: every real route into a rule break is one the decided fixes remove, so the recorder is tested on its own. The note is planted in the other window, so the step taken in this window can't repair it first. Plant in the first window: c's ternary note names b, whic  
 spec: (A26) A planted rule break dumps at the next step: with c current in one window and b its ternary, c's ternary note is set to b by hand, and a step in the other window (`:e x`) produces one dump. The break is planted because every real route into one is a route the decided fixes …  
-`tests/test_cycling.lua:488`
+`tests/test_cycling.lua:486`
 
 **T204 [target]** a session load and a cleanup re-point appear in the dump, tagged load and timer ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
@@ -711,7 +718,7 @@ spec: (A26) A planted rule break dumps at the next step: with c current in one w
 → `eq(tagged, true)`  
 note: Save a session from this child... ...and load it in a second one, with the files open as a session manager would leave them.  
 spec: (A26) A session load and a cleanup re-point appear in the dump as steps tagged `load` and `timer`.  
-`tests/test_cycling.lua:503`
+`tests/test_cycling.lua:501`
 
 **T205 [target]** a failure that repeats gives one dump, and the dump window is nofile, unlisted, untracked and unrecorded ⚑ state set by hand  
 → `eq(errs, 10)`  
@@ -725,7 +732,7 @@ spec: (A26) A session load and a cleanup re-point appear in the dump as steps ta
 … and 2 more  
 note: Nothing tracked yet, so the bufferline's colour callback throws on every call, as it would on every redraw. Entering the dump window isn't recorded: after a visit there, a second,  
 spec: (A26) A failure that repeats (a highlight callback throwing on every redraw) gives one dump, and the dump window is neither recorded nor tracked: its buffer is `nofile` and unlisted, with no hash, no triquetra and no place in the bufferline, and after a visit to its window, a sec…  
-`tests/test_cycling.lua:565`
+`tests/test_cycling.lua:563`
 
 **T333 [target]** a dump opens after the editor settles, and names files by alias and basename, never by full path  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
@@ -737,9 +744,9 @@ spec: (A26) A failure that repeats (a highlight callback throwing on every redra
 → `eq(text:find('c.txt', 1, true) ~= nil, true)`  
 note: T200's route. The scratch buffer isn't opened inside the failing call, only once the editor settles; and files are named by alias and basename, never by their full path, in the file and in the scratch buffer alike.  
 spec: (A26) A dump opens its scratch buffer only once the editor settles, and names files by alias and basename, never by full path: on T200's route, no buffer is added inside the failing call, the scratch buffer is there once it settles, and neither it nor the file holds the project's…  
-`tests/test_cycling.lua:629`
+`tests/test_cycling.lua:627`
 
-## tests/test_decisions.lua (52 cases: 24 char, 28 target)
+## tests/test_decisions.lua (52 cases: 37 char, 15 target)
 
 **T250 [target]** (P2, A1) the slotting happens after the event, not inside it  
 `:e a`, `:e b` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
@@ -834,15 +841,15 @@ note: The primary a sits in the ternary, then the secondary, then the current sl
 spec: (M8, Q16) The primary may share a slot's buffer: with `p=[a]on`, `:e b` puts a in the ternary, `<M-f>` in the secondary and `<M-f>` again in the current slot; the queue stays `[a]on` throughout and over the UI ticks, and nothing reports an error.  
 `tests/test_decisions.lua:242`
 
-**T259 [target]** (M7, A6, A8) the <M-;><M-f> fallback onto the secondary writes the swap notes, as <M-f> does  
+**T259 [char]** (M7, A6, A8) the <M-;><M-f> fallback onto the secondary writes the swap notes, as <M-f> does  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `eq({ child.slots(), child.primary() }, { '⦉c⦊ [d] ⟦b⟧', '[]off' })`  
 `<M-;><M-f>` → `slots = '⦉c⦊ [b] ⟦d⟧'`  
 → `eq({ dsm_d_swap = child.note('dsm', 'd-swap'), dtm_d_swap = child.note('dtm', 'd-swap'), dsm_d = child.note('dsm', 'd') },`  
 note: From ⦉c⦊ [d] ⟦b⟧ with an empty queue, <M-;><M-f> acts as <M-f> (T191's notes).  
-spec: (M7, A6, A8) The `<M-;><M-f>` fallback onto the secondary writes the same notes as `<M-f>`: from `⦉c⦊ [d] ⟦b⟧` with an empty queue, `<M-;><M-f>` gives `⦉c⦊ [b] ⟦d⟧` with `dsm{d-swap>b}`, `dtm{d-swap>c}` and no plain secondary note for d (T191's notes). Today `dsm{d>b}`.  
+spec: (M7, A6, A8) The `<M-;><M-f>` fallback onto the secondary writes the same notes as `<M-f>`: from `⦉c⦊ [d] ⟦b⟧` with an empty queue, `<M-;><M-f>` gives `⦉c⦊ [b] ⟦d⟧` with `dsm{d-swap>b}`, `dtm{d-swap>c}` and no plain secondary note for d (T191's notes).  
 `tests/test_decisions.lua:257`
 
-**T260 [target]** (A1, A13) a pick of the ternary: its stale note becomes the left buffer's own note, dropped when it has none  
+**T260 [char]** (A1, A13) a pick of the ternary: its stale note becomes the left buffer's own note, dropped when it has none  
 `:e a`, `:e d`, `:e c`, `<M-;><M-f>`, `<M-f>`, `:e a` → `slots = '⦉d⦊ [a] ⟦c⟧'`  
 → `eq(child.note('dtm', 'd'), 'a')`  
 `<M-v>` → `slots = '⦉a⦊ [d] ⟦c⟧'`  
@@ -850,10 +857,10 @@ spec: (M7, A6, A8) The `<M-;><M-f>` fallback onto the secondary writes the same 
 `<M-;><M-r> (via press)` → `eq({ ok, err }, { true, nil })`  
 → `eq(Extra.has(msgs, 'No ternary relationship found'), true)`  
 note: T186's keys up to ⦉d⦊ [a] ⟦c⟧, where d's note d>a names a; then a pick of d, the ternary, in place of <M-S-f>.  
-spec: (A1, A13) The check on a pick of the ternary: T186's keys up to `⦉d⦊ [a] ⟦c⟧` (d's note `d>a`), then cycle to d and `<M-v>`, give `⦉a⦊ [d] ⟦c⟧`; d's note names the new ternary a, which has no plain note, so it's dropped and `<M-;><M-r>` says "No ternary relationship found". Today…  
+spec: (A1, A13) The check on a pick of the ternary: T186's keys up to `⦉d⦊ [a] ⟦c⟧` (d's note `d>a`), then cycle to d and `<M-v>`, give `⦉a⦊ [d] ⟦c⟧`; d's note names the new ternary a, which has no plain note, so it's dropped and `<M-;><M-r>` says "No ternary relationship found".  
 `tests/test_decisions.lua:268`
 
-**T261 [target]** (A1, A8) a primary jump onto the ternary: its stale note becomes the left buffer's own note, dropped when it has none  
+**T261 [char]** (A1, A8) a primary jump onto the ternary: its stale note becomes the left buffer's own note, dropped when it has none  
 `:e a`, `:e d`, `<M-;><M-c>`, `:e c`, `<M-f>`, `<M-f>`, `:e a` → `eq({ child.slots(), child.primary() }, { '⦉d⦊ [a] ⟦c⟧', '[d]on' })`  
 → `eq(child.note('dtm', 'd'), 'a')`  
 `<M-;><M-f>` → `slots = '⦉a⦊ [d] ⟦c⟧'`  
@@ -864,7 +871,7 @@ note: The same state with d as the primary, reached by a primary jump onto d, th
 spec: (A1, A8) The check on a primary jump onto the ternary: `:e a`, `:e d`, `<M-;><M-c>`, `:e c`, `<M-f>`, `<M-f>`, `:e a` give `⦉d⦊ [a] ⟦c⟧` with `p=[d]on` and d's note `d>a`; `<M-;><M-f>` gives `⦉a⦊ [d] ⟦c⟧`, d's stale note becomes a's own note, none, so it's dropped, and `<M-;><M-r…  
 `tests/test_decisions.lua:282`
 
-**T262 [target]** (A1, A13) a pick of the secondary: a stale ternary note becomes the ternary's own note  
+**T262 [char]** (A1, A13) a pick of the secondary: a stale ternary note becomes the ternary's own note  
 `:e a`, `:e c`, `:e e`, `:e b`, `<M-f>`, `:e c`, `<M-S-f>` → `slots = '⦉c⦊ [b] ⟦e⟧'`  
 → `eq(child.note('dtm', 'e'), 'c')`  
 `<M-v>` → `slots = '⦉c⦊ [e] ⟦b⟧'`  
@@ -873,10 +880,10 @@ spec: (A1, A8) The check on a primary jump onto the ternary: `:e a`, `:e d`, `<M
 → `slots = '⦉a⦊ [e] ⟦b⟧'`  
 `<M-;><M-r>` → `slots = '⦉c⦊ [e] ⟦b⟧'`  
 note: T185's keys up to ⦉c⦊ [b] ⟦e⟧, where e's note e>c names c; then a pick of e, the secondary, in place of <M-f>. c stays put, so e's note becomes c's own, a.  
-spec: (A1, A13) The check on a pick of the secondary: T185's keys up to `⦉c⦊ [b] ⟦e⟧` (e's note `e>c`), then cycle to e and `<M-v>`, give `⦉c⦊ [e] ⟦b⟧`; the ternary c stays put, so e's note becomes c's own note, `e>a`. `<M-;><M-r>` gives `⦉a⦊ [e] ⟦b⟧`, and again `⦉c⦊ [e] ⟦b⟧`. Today th…  
+spec: (A1, A13) The check on a pick of the secondary: T185's keys up to `⦉c⦊ [b] ⟦e⟧` (e's note `e>c`), then cycle to e and `<M-v>`, give `⦉c⦊ [e] ⟦b⟧`; the ternary c stays put, so e's note becomes c's own note, `e>a`. `<M-;><M-r>` gives `⦉a⦊ [e] ⟦b⟧`, and again `⦉c⦊ [e] ⟦b⟧`.  
 `tests/test_decisions.lua:296`
 
-**T263 [target]** (A7, M7) <M-S-f> runs the secondary map's check on the buffer it brings in ⚑ state set by hand  
+**T263 [char]** (A7, M7) <M-S-f> runs the secondary map's check on the buffer it brings in ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 `<M-S-f>` → `slots = '⦉d⦊ [c] ⟦b⟧'`  
 → `eq(Neg.i23(child), nil)`  
@@ -886,7 +893,7 @@ note: The arriving buffer's plain secondary note names the window's secondary, s
 spec: (A7, A8, M7) The secondary map's check runs on `<M-S-f>` and on a primary jump, with the stale note planted. At `⦉c⦊ [d] ⟦b⟧` with `c>b` set on dsm, `<M-S-f>` gives `⦉d⦊ [c] ⟦b⟧`; with `p=[x]on` and `x>b` set on dsm, `<M-;><M-f>` gives `⦉d⦊ [x] ⟦b⟧`. In both the note names the se…  
 `tests/test_decisions.lua:313`
 
-**T263 [target]** (A8, M7) a primary jump runs the secondary map's check on the primary ⚑ state set by hand  
+**T263 [char]** (A8, M7) a primary jump runs the secondary map's check on the primary ⚑ state set by hand  
 `:e x`, `<M-;><M-c>`, `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `eq({ child.slots(), child.primary() }, { '⦉c⦊ [d] ⟦b⟧', '[x]on' })`  
 `<M-;><M-f>` → `slots = '⦉d⦊ [x] ⟦b⟧'`  
 → `eq(Neg.i23(child), nil)`  
@@ -895,7 +902,7 @@ spec: (A7, A8, M7) The secondary map's check runs on `<M-S-f>` and on a primary 
 spec: (A7, A8, M7) The secondary map's check runs on `<M-S-f>` and on a primary jump, with the stale note planted. At `⦉c⦊ [d] ⟦b⟧` with `c>b` set on dsm, `<M-S-f>` gives `⦉d⦊ [c] ⟦b⟧`; with `p=[x]on` and `x>b` set on dsm, `<M-;><M-f>` gives `⦉d⦊ [x] ⟦b⟧`. In both the note names the se…  
 `tests/test_decisions.lua:325`
 
-**T264 [target]** (A11, I23) the ternary restore's exchange is followed by the secondary map's check ⚑ state set by hand  
+**T264 [char]** (A11, I23) the ternary restore's exchange is followed by the secondary map's check ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e a`, `:e b` → `slots = '⦉c⦊ [b] ⟦a⟧'`  
 → `eq(child.note('dtm', 'b'), 'a')`  
 `<M-;><M-r>` → `slots = '⦉a⦊ [b] ⟦c⟧'`  
@@ -905,7 +912,7 @@ note: T62's exchange: b's note b>a names the secondary a, so <M-;><M-r> swaps th
 spec: (A11, I23) The ternary restore's exchange is followed by the secondary map's check: at T62's `⦉c⦊ [b] ⟦a⟧` with `b>c` set on dsm, `<M-;><M-r>` exchanges to `⦉a⦊ [b] ⟦c⟧`; b's secondary note now names the secondary, so it's rewritten or dropped (I23 holds), and `<M-;><M-t>` doesn'…  
 `tests/test_decisions.lua:341`
 
-**T265 [target]** (A11) at the secondary restore's exchange, a stale ternary note is dropped when the ternary's own note names the current buffer ⚑ state set by hand  
+**T265 [char]** (A11) at the secondary restore's exchange, a stale ternary note is dropped when the ternary's own note names the current buffer ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 `<M-;><M-t>` → `slots = '⦉b⦊ [d] ⟦c⟧'`  
 → `eq(child.note('dtm', 'd'), '-')`  
@@ -915,7 +922,7 @@ note: At ⦉c⦊ [d] ⟦b⟧, set by hand: d's secondary note names c (the terna
 spec: (A11, final section) At the secondary restore's exchange the stale ternary note is dropped when the ternary's own note would name the current buffer: at `⦉c⦊ [d] ⟦b⟧` with `d>c` on dsm and `d>b`, `b>d` on dtm (set by hand), `<M-;><M-t>` exchanges to `⦉b⦊ [d] ⟦c⟧`, d's ternary not…  
 `tests/test_decisions.lua:356`
 
-**T266 [target]** (A11, D9) a restore onto an open buffer whose file is gone flip-flops and says the file isn't on disk  
+**T266 [char]** (A11, D9) a restore onto an open buffer whose file is gone flip-flops and says the file isn't on disk  
 `:e b`, `:e a`, `:e c`, `:e f`, `:e a`, `<M-S-f>`, `:e d`, `:e a` → `slots = '⦉d⦊ [a] ⟦-⟧'`  
 → `eq(K.notes_for(child, { 'a' }), 'dtm{a-swap>f a>b} dsm{}')`  
 → `eq(child.lua([[return vim.fn.bufloaded('f.txt')]]), 1)`  
@@ -923,13 +930,13 @@ spec: (A11, final section) At the secondary restore's exchange the stale ternary
 → `slots = want`  
 → `eq({ want, said }, { want, true })`  
 note: a ends up with the plain note a>b and the swap note a-swap>f, ternary d (T173's state). f.txt is deleted on disk while f's buffer stays open. Each press that brings f back says so, in one WARN line (wording locked 2026-10-21).  
-spec: (A11, D9) A note at a file deleted on disk whose buffer is still open flip-flops and says the file isn't on disk: T173's keys and checks, and each press that brings f back gives a message besides "Restored ternary slot to…". Today the restore stops with "not found in filesystem a…  
+spec: (A11, D9) A note at a file deleted on disk whose buffer is still open flip-flops and says the file isn't on disk: T173's keys and checks, and each press that brings f back gives a message besides "Restored ternary slot to…". The message is locked (the author, 2026-10-21: "(a) one…  
 `tests/test_decisions.lua:372`
 
-**T267 [target]** (A11, D9) a note at a hash with no path is cleared when it's used ⚑ state set by hand  
+**T267 [char]** (A11, D9) a note at a hash with no path is cleared when it's used ⚑ state set by hand  
 `:e a`, `:e b`, `<M-;><M-r>` → `eq({ ok, err }, { true, nil })`  
 → `eq(child.lua([[`  
-spec: (A11, D9) A note at a hash with no path is cleared when it's used: T68's state, and after `<M-;><M-r>` no note holds the unknown hash. Today the restore throws "This impossible error should never happen".  
+spec: (A11, D9) A note at a hash with no path is cleared when it's used: T68's state, and after `<M-;><M-r>` no note holds the unknown hash.  
 `tests/test_decisions.lua:396`
 
 **T268 [target]** (A2) the winbar shows the visit, like "a.txt ← [help]"  
@@ -991,7 +998,7 @@ spec: (A19) A deleted buffer's window lands in the order ternary, secondary, pri
 **T272 [char]** (A20) a rename whose old file still exists is a copy: the old name goes on the closed stack  
 `:e a`, `:e b`, `:saveas g.txt` → `eq(child.lua('return vim.fn.filereadable(_G.CDV_TEST.root .. "/b.txt")'), 1)`  
 → `eq(vim.tbl_contains(vim.split(child.closed(), ','), 'b'), true)`  
-note: :saveas writes g.txt and leaves b.txt on disk. What happens to the window afterwards is T106's (today the healing switch takes it to a).  
+note: :saveas writes g.txt and leaves b.txt on disk. What happens to the window afterwards is T106's.  
 spec: (A20) The disk decides, the copy half: `:e a`, `:e b`, `:saveas g.txt` leave b.txt on disk, so the rename is a copy and b goes on the closed stack. It holds today already, so it's [char]: a guard that stays true when the decided code lands. What `:saveas` does to the window is T1…  
 `tests/test_decisions.lua:559`
 
@@ -1062,9 +1069,9 @@ note: Checked after a cleanup pass forced after every action ("eventually").
 spec: (I7) After a cleanup pass, no hash on the closed stack has an open buffer: random walks with T279's mix, a `cleanup_system` pass forced after every action ("eventually enforced").  
 `tests/test_decisions.lua:751`
 
-**T282 [target]** (I8) the current slot is the shown buffer outside cycling and visits, over random walks ⚑ random walk  
+**T282 [char]** (I8) the current slot is the shown buffer outside cycling and visits, over random walks ⚑ random walk  
 note: Cycles left open across a window jump (Y1, Y2), as in T128.  
-spec: (I8) A window's current slot is the hash of the buffer it shows, except in the window a cycle runs in and during a visit: random walks with T128's mix, cycles left open across a window jump included. Today the walks break it through the cycle leak: work in another window while a …  
+spec: (I8) A window's current slot is the hash of the buffer it shows, except in the window a cycle runs in and during a visit: random walks with T128's mix, cycles left open across a window jump included. A cycle left open across a window jump is cancelled, so work in the other window…  
 `tests/test_decisions.lua:756`
 
 **T283 [char]** (I9) every triquetra belongs to a valid, non-floating window, over random walks ⚑ random walk  
@@ -1090,18 +1097,18 @@ note: T143's read-only session directory. The transition is abandoned, so storag
 spec: (I21) The critical save hook throws to the caller, and the abandoned transition leaves storage where it was: `idle` after a load or a save, `bare` before either. T143's read-only session directory, saved from a fresh process (so `bare`).  
 `tests/test_decisions.lua:798`
 
-**T287 [target]** (I23, A21) a cleanup re-point runs the check on the buffer it makes current ⚑ state set by hand  
+**T287 [char]** (I23, A21) a cleanup re-point runs the check on the buffer it makes current ⚑ state set by hand  
 `:e d`, `:e b`, `:e c`, `<M-f>`, `:e a` → `slots = '⦉c⦊ [a] ⟦b⟧'`  
 `:noautocmd buffer d.txt`, `:bwipeout a.txt` → `eq({ child.slots():match('%[(.-)%]'), child.slots():match('⟦(.-)⟧$') }, { 'd', 'b' })`  
 → `eq(Neg.i23(child), nil)`  
 `<M-;><M-t>` → `eq({ ok, err }, { true, nil })`  
 note: T163's re-point: the window put on d without a BufEnter, then a's buffer wiped. d's secondary note names b, the window's secondary, set by hand; the secondary stays b either way, so the note is stale once d is current.  
-spec: (I23, A21, final section) The check runs at a cleanup pass that moved a window's slots: T163's re-point, with d's secondary note set by hand to b, the window's secondary under today's re-point and the decided one alike; once d is current I23 holds and `<M-;><M-t>` doesn't throw. …  
+spec: (I23, A21, final section) The check runs at a cleanup pass that moved a window's slots: T163's re-point, with d's secondary note set by hand to b, the window's secondary; once d is current I23 holds and `<M-;><M-t>` doesn't throw.  
 `tests/test_decisions.lua:815`
 
-**T288 [target]** (D11) under the window view, :close leaves no tie: :e a after it ranks a first  
+**T288 [char]** (D11) under the window view, :close leaves no tie: :e a after it ranks a first  
 `:e a`, `:e b`, `:vsplit`, `:close`, `:e a` → `eq(Dec.leftmost(child), nil)`  
-spec: (D11, bug found while porting) Under the window view, `:close` leaves no tie: `:e a`, `:e b`, `:vsplit`, `:close`, `:e a` put a strictly first in the bufferline order. Today a and b tie.  
+spec: (D11, bug found while porting) Under the window view, `:close` leaves no tie: `:e a`, `:e b`, `:vsplit`, `:close`, `:e a` put a strictly first in the bufferline order.  
 `tests/test_decisions.lua:828`
 
 **T289 [target]** (D25) the window machine is gone: its file, its SHOWING_ constants and its require  
@@ -1266,7 +1273,7 @@ spec: Transition modes are one table shared by every machine: a mode registered 
 spec: `sm.history` keeps every transition: after 1,000 transitions on one machine, its history holds all 1,000 (Q21).  
 `tests/test_engine.lua:139`
 
-## tests/test_history.lua (9 cases: 6 char, 3 target)
+## tests/test_history.lua (9 cases: 7 char, 2 target)
 
 **T15 [char]** after visiting a, b, c, ordered.crux is c,b,a  
 `:e a`, `:e b`, `:e c` → `ordered = 'c,b,a'`  
@@ -1312,15 +1319,16 @@ spec: `track_buffer(h, t)` stores `t` in the global history.
 spec: A property test over random visits, with `history_view` set to `"global"` and to `"window"`, across windows: after any visit, the visited buffer is leftmost in the bufferline order (`compare_buffers`). The author's check: two windows, back into window A, `:e e` gave `e=7 b=6 a=5 …  
 `tests/test_history.lua:152`
 
-**T149 [target]** random visits across windows, window view: the visited buffer is leftmost ⚑ random walk  
+**T149 [char]** random visits across windows, window view: the visited buffer is leftmost ⚑ random walk  
 → `eq(walks('window'), nil)`  
-note: Under the window view this half fails today: the view's rebuild ties two buffers (history/routines.lua:191, :194; T197), on a window jump and on :close alike, e.g. :e a, :e b, :vsplit, :close, :e a gives a=4 b=4. It passes once that tie is fixed.  
-spec: A property test over random visits, with `history_view` set to `"global"` and to `"window"`, across windows: after any visit, the visited buffer is leftmost in the bufferline order (`compare_buffers`). The author's check: two windows, back into window A, `:e e` gave `e=7 b=6 a=5 … (spec tag: [char])  
+note: Under the window view the rebuild gives every buffer its own time (history/routines.lua:271, :274; T197), on a window jump and on :close alike, e.g. after :e a, :e b, :vsplit, :close, :e a, a and b don't share one.  
+spec: A property test over random visits, with `history_view` set to `"global"` and to `"window"`, across windows: after any visit, the visited buffer is leftmost in the bufferline order (`compare_buffers`). The author's check: two windows, back into window A, `:e e` gave `e=7 b=6 a=5 …  
 `tests/test_history.lua:159`
 
-**T149 [char]** the author's check (Q4): back into window A, :e e gives e=7 b=6 a=5 d=4 c=3  
-`:e a`, `:e b`, `:vsplit`, `:e c`, `:e d`, `:e e` → `eq(X.times(child), 'e=7 b=6 a=5 d=4 c=3')`  
+**T149 [char]** the author's check (Q4): back into window A, :e e gives e=8 b=7 a=5 d=4 c=3  
+`:e a`, `:e b`, `:vsplit`, `:e c`, `:e d`, `:e e` → `eq(X.times(child), 'e=8 b=7 a=5 d=4 c=3')`  
 → `eq(X.leftmost(child), nil)`  
+note: e=7 b=6 a=5 d=4 c=3 before the tie fix, which gives the window's buffers one more time each on the rebuild: the same order.  
 spec: A property test over random visits, with `history_view` set to `"global"` and to `"window"`, across windows: after any visit, the visited buffer is leftmost in the bufferline order (`compare_buffers`). The author's check: two windows, back into window A, `:e e` gave `e=7 b=6 a=5 …  
 `tests/test_history.lua:163`
 
@@ -1369,54 +1377,54 @@ spec: An unlisted `buftype ""` buffer that a plugin creates and enters isn't reg
 spec: A buffer whose file isn't written yet stays registered after it's left and re-entered.  
 `tests/test_identity.lua:133`
 
-## tests/test_invariants.lua (9 cases: 6 char, 3 target)
+## tests/test_invariants.lua (9 cases: 9 char)
 
-**T128 [target]** I1: no duplicate among a triquetra's current, secondary and ternary ⚑ random walk; walks raised to 100 so the break shows up (about 3% of walks break today)  
-note: I1. Route: <M-f>'s history fill while a cycle in another window holds the history (T198), so several windows and cycles left open across a jump. About 3% of these walks break I1 today (4 of 120, 2 of 60 measured), so this one takes 100 walks.  
+**T128 [char]** I1: no duplicate among a triquetra's current, secondary and ternary ⚑ random walk; walks raised to 100 so the break shows up (about 3% of walks break today)  
+note: I1. Route: <M-f>'s history fill while a cycle in another window holds the history (T198), so several windows and cycles left open across a jump. The route is rare, so this one takes 100 walks.  
 spec: I1: no duplicate among a triquetra's current, secondary and ternary.  
-`tests/test_invariants.lua:51`
+`tests/test_invariants.lua:50`
 
 **T129 [char]** I2: every hash referenced anywhere has a path ⚑ random walk; :enew and <M-.> doubled in the walk mix to reach the break more often  
-note: I2. Routes: an empty No Name buffer closed while notes or slots name it, a reopened No Name buffer. :enew and <M-.> are doubled: with them single, about 5% of walks break I2 today (3 of 60 measured), doubled about 12%.  
+note: I2. Routes: an empty No Name buffer closed while notes or slots name it, a reopened No Name buffer. :enew and <M-.> are doubled, so more walks reach it.  
 spec: I2: every hash referenced anywhere has a path.  
-`tests/test_invariants.lua:58`
+`tests/test_invariants.lua:56`
 
 **T130 [char]** I3: every triquetra has a history entry ⚑ random walk  
 note: I3. Route: :vsplit.  
 spec: I3: every triquetra has a history entry.  
-`tests/test_invariants.lua:63`
+`tests/test_invariants.lua:61`
 
 **T131 [char]** I12: no buffer with unsaved changes is wiped by cavediver ⚑ random walk  
 note: I12. Route: a new file, not on disk yet, with a typed line. Cavediver's vim.cmd and nvim_buf_delete calls are checked.  
 spec: I12: no buffer with unsaved changes is ever wiped by cavediver. Wrap `vim.cmd` and `nvim_buf_delete`.  
-`tests/test_invariants.lua:69`
+`tests/test_invariants.lua:67`
 
 **T132 [char]** I13: a slot action switches only the target window's buffer ⚑ random walk  
 note: I13. Routes: healing after a file goes missing switches or closes windows, so several windows and files deleted (and written back) on disk.  
 spec: I13: a slot action switches only the target window's buffer.  
-`tests/test_invariants.lua:75`
+`tests/test_invariants.lua:73`
 
 **T133 [char]** I11: ordered.crux is newest first and holds only registered open buffers ⚑ random walk  
 note: Checked after every action that isn't a cycling key or pick, while navigation is normal (the list is frozen on purpose while cycling).  
 spec: I11: `ordered.crux` is sorted, newest first, and holds only registered open buffers after any non-cycling action.  
-`tests/test_invariants.lua:81`
+`tests/test_invariants.lua:79`
 
 **T334 [char]** I14: a save never throws on cavediver's own data, over random walks ⚑ random walk  
 note: I14. A save after every action, over the one-window, several-window and closing mixes: the save hook is critical, so any throw on cavediver's own data would reach the session manager's save.  
 spec: (I14) A save never throws on cavediver's own data: random walks over the one-window, several-window and closing mixes (`:enew`, `<M-.>`, `<M-S-w>`, a new file with text) call `save_session(cwd)` after every action, and no call throws. The save hook is critical (I21), so a throw w…  
-`tests/test_invariants.lua:88`
+`tests/test_invariants.lua:86`
 
-**T154 [target]** no restore throws "Remembered … is the same as current …" (Q13) ⚑ random walk  
+**T154 [char]** no restore throws "Remembered … is the same as current …" (Q13) ⚑ random walk  
 note: The spec's single-window walks.  
 spec: No restore throws: `<M-;><M-r>` and `<M-;><M-t>` never throw "Remembered … is the same as current …" (Q13). Random walks with Q6's fix still found the ternary restore throwing 13 times in 1,500; those routes were traced to arrivals that skip the stale-note check in navigation, an…  
-`tests/test_invariants.lua:95`
+`tests/test_invariants.lua:93`
 
-**T157 [target]** I19: <M-;><M-x> on an empty queue that is switched on gives p=[A]on (Q14) ⚑ state set by hand  
+**T157 [char]** I19: <M-;><M-x> on an empty queue that is switched on gives p=[A]on (Q14) ⚑ state set by hand  
 `:e a` → `primary = '[]on'`  
 `<M-;><M-x>` → `primary = '[a]on'`  
-note: The empty, switched-on queue is set directly (the spec's route to it, a primary file deleted on disk, stops working once missing files stay tracked).  
-spec: (Q14) I19, A9: on an empty queue that's switched on, one `<M-;><M-x>` gives `p=[A]on`. Today it gives `p=[A]off` **[run s19]**. The test sets the empty, switched-on state directly: s19's route, deleting the open primary's file on disk, keeps the primary in the queue (A21) **[infe…  
-`tests/test_invariants.lua:101`
+note: The empty, switched-on queue is set directly (a primary file deleted on disk doesn't empty the queue, since missing files stay tracked).  
+spec: (Q14) I19, A9: on an empty queue that's switched on, one `<M-;><M-x>` gives `p=[A]on`. **[run s19]** recorded it giving `p=[A]off`, before the fix. The test sets the empty, switched-on state directly: s19's route, deleting the open primary's file on disk, keeps the primary in the…  
+`tests/test_invariants.lua:99`
 
 ## tests/test_lifecycle.lua (7 cases: 5 char, 1 target, 1 today)
 
@@ -1479,7 +1487,7 @@ spec: `:terminal` in a window with `{c=c s=b}` drops its triquetra, as README:33
 spec: The window keeps `{c=c s=b}` while it shows the terminal, and `:e c` returns with its slots intact (the visiting rule).  
 `tests/test_lifecycle.lua:113`
 
-## tests/test_navigation.lua (11 cases: 7 char, 3 target, 1 today)
+## tests/test_navigation.lua (11 cases: 11 char)
 
 **T28 [char]** {c=a}, :e b gives {c=b t=a} with no map entries  
 `:e a` → `slots = '⦉-⦊ [a] ⟦-⟧'`  
@@ -1495,13 +1503,14 @@ spec: `{c=a}`, `:e b` → `{c=b t=a}`, with no map entries.
 spec: `{c=b t=a}`, `:e c` → `{c=c t=b}`, `dtm{b→a}`.  
 `tests/test_navigation.lua:25`
 
-**T30 [today]** :e onto the secondary swaps current and secondary and writes no map entry  
+**T30 [char]** :e onto the secondary swaps current and secondary and writes the swap notes <M-f> writes (D8)  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 → `eq(X.maps(child).dtm.c, nil)`  
 `:e b` → `slots = '⦉c⦊ [b] ⟦d⟧'`  
-→ `notes = before`  
-note: <M-f> graduates b; then :e d gives ⦉c⦊ [d] ⟦b⟧, where dtm[c] is unset (≠ b)  
-spec: Going to the secondary with `:e` swaps current and secondary and writes no map entry, when `dtm[T] ≠ S` (for `dtm[T] = S`, see T151). Paired with T191 (D8).  
+→ `eq(before, 'dtm{b>a} dsm{b>a}')`  
+→ `notes = 'dtm{b>a d-swap>c} dsm{b>a d-swap>b}'`  
+note: <M-f> graduates b; then :e d gives ⦉c⦊ [d] ⟦b⟧, where dtm[c] is unset (≠ b) d is left by a swap onto the secondary, so it gets swap notes for its secondary and ternary.  
+spec: Going to the secondary with `:e` swaps current and secondary and writes the notes `<M-f>` writes, when `dtm[T] ≠ S` (for `dtm[T] = S`, see T151): the buffer left gets `dsm[A-swap] = S` and `dtm[A-swap] = T` (D8, T191). Built in step 3.  
 `tests/test_navigation.lua:33`
 
 **T31 [char]** :e onto the ternary swaps current and ternary and does not write dtm[current]  
@@ -1510,7 +1519,7 @@ spec: Going to the secondary with `:e` swaps current and secondary and writes no
 `:e b` → `slots = '⦉c⦊ [b] ⟦-⟧'`  
 → `notes = 'dtm{b>a} dsm{}'`  
 spec: Going to the ternary with `:e` swaps current and ternary and doesn't write `dtm[current]`.  
-`tests/test_navigation.lua:44`
+`tests/test_navigation.lua:46`
 
 **T32 [char]** a plain navigation that writes dtm[A] also deletes dtm[A-swap]  
 `:e a`, `:e b`, `:e c`, `<M-S-f>`, `<M-S-f>` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -1520,7 +1529,7 @@ spec: Going to the ternary with `:e` swaps current and ternary and doesn't write
 → `eq(dtm['c-swap'], nil)`  
 note: two <M-S-f> leave c with a swap note: ⦉b⦊ [c], dtm[c-swap] = b  
 spec: A plain navigation that writes `dtm[A]` also deletes `dtm[A-swap]`.  
-`tests/test_navigation.lua:53`
+`tests/test_navigation.lua:55`
 
 **T33 [char]** with dtm[X] = A and the ternary T ≠ X, :e X from A rewrites dtm[X] := T with the "pre-jump ternary" warning  
 `:e a`, `:e b`, `:e c`, `:e a` → `slots = '⦉c⦊ [a] ⟦-⟧'`  
@@ -1531,7 +1540,7 @@ spec: A plain navigation that writes `dtm[A]` also deletes `dtm[A-swap]`.
 → `eq(warns[1].level, vim.log.levels.WARN)`  
 note: :e c from b writes dtm[b] = a; back at a (ternary c), b's note names a, the buffer :e b is about to leave.  
 spec: With `dtm[X] = A` and the ternary T ≠ X, `:e X` from A rewrites `dtm[X] := T`, with the "pre-jump ternary" warning.  
-`tests/test_navigation.lua:65`
+`tests/test_navigation.lua:67`
 
 **T34 [char]** navigation with secondary equal to ternary reports "Duplicates detected in current triquetra" ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `:e d` → `slots = '⦉c⦊ [d] ⟦c⟧'`  
@@ -1541,7 +1550,7 @@ spec: With `dtm[X] = A` and the ternary T ≠ X, `:e X` from A rewrites `dtm[X] 
 → `slots = '⦉c⦊ [d] ⟦c⟧'`  
 note: s = t can't be reached by keys here; set it directly, as run s18 does the hook stops before any slot moves (A1)  
 spec: Navigation with secondary equal to ternary reports "Duplicates detected in current triquetra".  
-`tests/test_navigation.lua:80`
+`tests/test_navigation.lua:82`
 
 **T35 [char]** entering an untracked buffer the triquetra is kept for (acwrite) leaves the slots alone ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
@@ -1549,9 +1558,9 @@ spec: Navigation with secondary equal to ternary reports "Duplicates detected in
 → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 → `notes = notes`  
 spec: Entering an untracked buffer that the getter keeps the triquetra for, such as an `acwrite` buffer, leaves the slots alone. For `:terminal` and help shown in the window, see T26 and T27.  
-`tests/test_navigation.lua:95`
+`tests/test_navigation.lua:97`
 
-**T151 [target]** Q6 on plain navigation: :e onto the secondary rewrites the ternary's note, and the restore then works  
+**T151 [char]** Q6 on plain navigation: :e onto the secondary rewrites the ternary's note, and the restore then works  
 `:e a`, `:e b`, `:e c`, `:e b`, `<M-f>`, `:e a`, `<M-f>` → `slots = '⦉b⦊ [c] ⟦a⟧'`  
 → `eq(X.maps(child).dtm.b, 'a')`  
 `:e a` → `slots = '⦉b⦊ [a] ⟦c⟧'`  
@@ -1560,19 +1569,19 @@ spec: Entering an untracked buffer that the getter keeps the triquetra for, such
 → `slots = '⦉c⦊ [b] ⟦a⟧'`  
 note: :e a reaches the secondary by plain navigation  
 spec: Q6 on plain navigation: `:e a`, `:e b`, `:e c`, `:e b`, `<M-f>`, `:e a`, `<M-f>`, then `:e a` again, which reaches the secondary by plain navigation. The ternary's note is rewritten to the buffer left (`dtm[b] := c`), and `<M-S-f>`, `<M-;><M-r>` then restores without throwing, gi…  
-`tests/test_navigation.lua:112`
+`tests/test_navigation.lua:114`
 
-**T191 [target]** (D8) plain navigation onto the secondary writes the swap notes dsm{d-swap>b} dtm{d-swap>c}, no dsm[d]  
+**T191 [char]** (D8) plain navigation onto the secondary writes the swap notes dsm{d-swap>b} dtm{d-swap>c}, no dsm[d]  
 `:e b`  
-spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary write the same notes: from `⦉c⦊ [d] ⟦b⟧`, either one gives `⦉c⦊ [b] ⟦d⟧` with the swap notes `dsm{d-swap>b}` and `dtm{d-swap>c}`, and no plain secondary note for d. Paired with T30 and T39. Plain navigatio…  
-`tests/test_navigation.lua:139`
+spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary write the same notes: from `⦉c⦊ [d] ⟦b⟧`, either one gives `⦉c⦊ [b] ⟦d⟧` with the swap notes `dsm{d-swap>b}` and `dtm{d-swap>c}`, and no plain secondary note for d. T30 and T39 pin the same notes. Plain na…  
+`tests/test_navigation.lua:141`
 
-**T191 [target]** (D8) <M-f> onto the secondary writes the swap notes dsm{d-swap>b} dtm{d-swap>c}, no dsm[d]  
+**T191 [char]** (D8) <M-f> onto the secondary writes the swap notes dsm{d-swap>b} dtm{d-swap>c}, no dsm[d]  
 `<M-f>`  
-spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary write the same notes: from `⦉c⦊ [d] ⟦b⟧`, either one gives `⦉c⦊ [b] ⟦d⟧` with the swap notes `dsm{d-swap>b}` and `dtm{d-swap>c}`, and no plain secondary note for d. Paired with T30 and T39. Plain navigatio…  
-`tests/test_navigation.lua:145`
+spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary write the same notes: from `⦉c⦊ [d] ⟦b⟧`, either one gives `⦉c⦊ [b] ⟦d⟧` with the swap notes `dsm{d-swap>b}` and `dtm{d-swap>c}`, and no plain secondary note for d. T30 and T39 pin the same notes. Plain na…  
+`tests/test_navigation.lua:147`
 
-## tests/test_negative.lua (48 cases: 24 char, 24 target)
+## tests/test_negative.lua (48 cases: 30 char, 18 target)
 
 **T207 [char]** (P5) a nofile scratch entered in a tracked window is not registered  
 `:e a`, `:e b` → `eq(registered(), true)`  
@@ -1655,7 +1664,7 @@ spec: (P24, A22) A save leaves the closed stack as it was: with b closed and out
 → `eq(Extra.at_least(child.messages()), {})`  
 → `slots = '⦉d⦊ [c] ⟦b⟧'`  
 note: Ex commands raise; keys return ok, err.  
-spec: (P26) With harpoon not installed, `:e`, `<M-f>`, `<M-S-f>`, `<M-;><M-c>`, `<M-;><M-r>` and the UI ticks raise nothing and report no hook failure. Today every history update fails at `history/routines.lua:402` with "module 'harpoon' not found".  
+spec: (P26) With harpoon not installed, `:e`, `<M-f>`, `<M-S-f>`, `<M-;><M-c>`, `<M-;><M-r>` and the UI ticks raise nothing and report no hook failure. Today every history update fails at `history/routines.lua:416` with "module 'harpoon' not found".  
 `tests/test_negative.lua:202`
 
 **T216 [target]** (I16) a No Name id is not reused across sessions  
@@ -1781,13 +1790,13 @@ spec: (A7, P9) `<M-S-f>` on a closed ternary whose file is gone from disk says s
 spec: (A11, D9) A restore switches no buffer and reopens nothing: at `⦉d⦊ [b] ⟦-⟧` with `dtm{b>a}` and a closed with `:bdelete`, `<M-;><M-r>` gives `⦉a⦊ [b] ⟦-⟧`, still showing b, with a unloaded and still on the closed stack; `<M-S-f>` then reopens a and takes it off the stack (a clos…  
 `tests/test_negative.lua:463`
 
-**T229 [target]** (A12) a jump into a float cancels the cycle, and nothing is recorded  
-spec: (A12) Any jump into another window cancels the cycle, floats and `:help` included: cycling from c with `⦉b⦊ [c] ⟦-⟧` to b, then a jump into a float, or `:help`, puts the window back on c with navigation `normal`, history attached, and the slots and the history order unchanged. To…  
+**T229 [char]** (A12) a jump into a float cancels the cycle, and nothing is recorded  
+spec: (A12) Any jump into another window cancels the cycle, floats and `:help` included: cycling from c with `⦉b⦊ [c] ⟦-⟧` to b, then a jump into a float, or `:help`, puts the window back on c with navigation `normal`, history attached, and the slots and the history order unchanged.  
 `tests/test_negative.lua:501`
 
-**T229 [target]** (A12) a jump into :help cancels the cycle, and nothing is recorded  
+**T229 [char]** (A12) a jump into :help cancels the cycle, and nothing is recorded  
 `:help`  
-spec: (A12) Any jump into another window cancels the cycle, floats and `:help` included: cycling from c with `⦉b⦊ [c] ⟦-⟧` to b, then a jump into a float, or `:help`, puts the window back on c with navigation `normal`, history attached, and the slots and the history order unchanged. To…  
+spec: (A12) Any jump into another window cancels the cycle, floats and `:help` included: cycling from c with `⦉b⦊ [c] ⟦-⟧` to b, then a jump into a float, or `:help`, puts the window back on c with navigation `normal`, history attached, and the slots and the history order unchanged.  
 `tests/test_negative.lua:510`
 
 **T230 [char]** (A13) a pick of an outside buffer or of the ternary writes no secondary note  
@@ -1796,7 +1805,7 @@ spec: (A12) Any jump into another window cancels the cycle, floats and `:help` i
 → `eq(K.dsm(child), dsm)`  
 `<M-v>` → `slots = '⦉b⦊ [d] ⟦c⟧'`  
 → `eq(K.dsm(child), dsm)`  
-spec: (A13) A pick writes no secondary notes, as today: from `⦉d⦊ [e] ⟦c⟧`, a pick of b (outside the slots) and then a pick of the ternary leave the secondary map as it was. The pick of the secondary is T73.  
+spec: (A13) A pick writes no secondary notes: from `⦉d⦊ [e] ⟦c⟧`, a pick of b (outside the slots) and then a pick of the ternary leave the secondary map as it was. The pick of the secondary is T73.  
 `tests/test_negative.lua:514`
 
 **T231 [char]** (A14, Q7) <M-;><M-f> while cycling on the start announces the origin again and changes nothing  
@@ -1856,8 +1865,8 @@ spec: (A5) Closing another window first doesn't stop the pop-up's buffer going w
 **T237 [char]** (A19) with nothing left to land on, the window keeps Neovim's empty buffer and no :enew runs  
 `:e a` → `eq(child.lua('return vim.api.nvim_get_current_buf()'), got.buf)`  
 → `eq(#child.lua('return vim.api.nvim_list_bufs()'), got.n)`  
-note: One tracked buffer only, so nothing is left to land on: Neovim puts an empty buffer in the window, read in the same call as the delete. Holds today already on this route; the rest of A19's landing order is T111's target.  
-spec: (A19) With nothing left to land on, the window keeps Neovim's empty buffer and no `:enew` runs: `:e a`, `:bdelete a.txt` leave the window on the buffer Neovim put there, with no buffer added. It holds today already (found 2026-10-21), so it's [char]: a guard that stays true when …  
+note: One tracked buffer only, so nothing is left to land on: Neovim puts an empty buffer in the window, read in the same call as the delete. The rest of A19's landing order is T111's.  
+spec: (A19) With nothing left to land on, the window keeps Neovim's empty buffer and no `:enew` runs: `:e a`, `:bdelete a.txt` leave the window on the buffer Neovim put there, with no buffer added. A guard on the landing (A19, built in step 1).  
 `tests/test_negative.lua:628`
 
 **T238 [target]** (A20) :w name on a No Name buffer is a move: no ghost on the closed stack, and its notes follow  
@@ -1896,34 +1905,34 @@ note: Text typed in insert mode, then the restore assertion (c's secondary note 
 spec: (A26) The recorder never records raw keystrokes: text typed in insert mode (`QZQZQZ`) before the restore assertion fires doesn't show up as steps in the dump, whatever its format, file or scratch buffer.  
 `tests/test_negative.lua:689`
 
-**T242 [target]** a tracked buffer wiped with noautocmd is repaired within one refresh, with no UI errors ⚑ state set by hand; wipes the window's current buffer: the bug only shows for that one  
+**T242 [char]** a tracked buffer wiped with noautocmd is repaired within one refresh, with no UI errors ⚑ state set by hand; wipes the window's current buffer: the bug only shows for that one  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 → `shown = 'b'`  
 → `slots = '⦉c⦊ [b] ⟦-⟧'`  
 → `eq(Extra.at_least(child.messages()), {})`  
-note: A bug found while porting: a tracked buffer wiped with noautocmd. The window's current buffer: wiping the ternary or a buffer outside the slots this way gives no error today. Decided 2026-10-21: the UI repairs it on the spot, within one refresh, as cleanup's re-point would (like navigation, Q18): th  
-spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't make the UI loop error: `:e a`, `:e b`, `:e c`, then `noautocmd bwipeout` of c give no hook failure over the next ticks. Today "Invalid buffer id" on every tick (`ui/routines.lua:488`). Wiping the ternary, or…  
-`tests/test_negative.lua:724`
+note: A bug found while porting: a tracked buffer wiped with noautocmd, here the window's current buffer. Decided 2026-10-21: the UI repairs it on the spot, within one refresh, as cleanup's re-point would (like navigation, Q18): the window shows b, so b is current and c the ternary.  
+spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't make the UI loop error: `:e a`, `:e b`, `:e c`, then `noautocmd bwipeout` of c give no hook failure over the next ticks. Without the repair, "Invalid buffer id" comes on every tick (`ui/routines.lua:508`); wi…  
+`tests/test_negative.lua:723`
 
-**T243 [target]** (I23) the check runs at graduation: a stale secondary note naming the graduated buffer is dropped ⚑ state set by hand  
+**T243 [char]** (I23) the check runs at graduation: a stale secondary note naming the graduated buffer is dropped ⚑ state set by hand  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
 → `eq(Neg.i23(child), nil)`  
 `<M-;><M-t>` → `eq({ ok, err }, { true, nil })`  
 note: The I23 check wherever a slot changes under the current buffer (decided 2026-10-21). Each stale note is planted by hand: no route is known that reaches these states with the other fixes in.  
 spec: (I23) The check runs wherever a slot changes under the current buffer (decided 2026-10-21), with the stale note planted: at graduation (`⦉b⦊ [c] ⟦-⟧` with `dsm{c>b}`, `<M-f>`), at the history fill (a fresh split on b with `dsm{b>a}`, `<M-f>` fills a), and at a session load (`⦉-⦊ …  
-`tests/test_negative.lua:741`
+`tests/test_negative.lua:740`
 
-**T243 [target]** (I23) the check runs at the history fill: a stale secondary note naming the filled buffer is dropped ⚑ state set by hand  
+**T243 [char]** (I23) the check runs at the history fill: a stale secondary note naming the filled buffer is dropped ⚑ state set by hand  
 `:e a`, `:e b`, `:vsplit` → `slots = '⦉-⦊ [b] ⟦-⟧'`  
 → `ordered = 'b,a'`  
 `<M-f>` → `slots = '⦉-⦊ [b] ⟦a⟧'`  
 → `eq(Neg.i23(child), nil)`  
 `<M-;><M-t>` → `eq({ ok, err }, { true, nil })`  
 spec: (I23) The check runs wherever a slot changes under the current buffer (decided 2026-10-21), with the stale note planted: at graduation (`⦉b⦊ [c] ⟦-⟧` with `dsm{c>b}`, `<M-f>`), at the history fill (a fresh split on b with `dsm{b>a}`, `<M-f>` fills a), and at a session load (`⦉-⦊ …  
-`tests/test_negative.lua:752`
+`tests/test_negative.lua:751`
 
-**T243 [target]** (I23) the check runs at a session load: a stale note from the file is dropped ⚑ state set by hand  
+**T243 [char]** (I23) the check runs at a session load: a stale note from the file is dropped ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
 → `eq(Neg.i23(child), 'dsm')`  
 → `eq(Misc.save(child), { true })`  
@@ -1931,7 +1940,7 @@ spec: (I23) The check runs wherever a slot changes under the current buffer (dec
 → `slots = '⦉-⦊ [c] ⟦b⟧'`  
 → `eq(Neg.i23(child), nil)`  
 spec: (I23) The check runs wherever a slot changes under the current buffer (decided 2026-10-21), with the stale note planted: at graduation (`⦉b⦊ [c] ⟦-⟧` with `dsm{c>b}`, `<M-f>`), at the history fill (a fresh split on b with `dsm{b>a}`, `<M-f>` fills a), and at a session load (`⦉-⦊ …  
-`tests/test_negative.lua:766`
+`tests/test_negative.lua:765`
 
 **T244 [target]** (S2) a load into fewer windows matches by what they show and drops the unmatched entry, without an error  
 `:e a`, `:e b`, `:vsplit`, `:e c`, `:e d` → `slots = '⦉c⦊ [d] ⟦-⟧'`  
@@ -1940,8 +1949,8 @@ spec: (I23) The check runs wherever a slot changes under the current buffer (dec
 → `eq(Misc.errors(child), {})`  
 → `slots = '⦉a⦊ [b] ⟦-⟧'`  
 note: Saved: the split (listed first) ⦉c⦊ [d], the first window ⦉a⦊ [b]. The manager brings back one window, on b.  
-spec: (S2) A load into fewer windows than were saved matches by what they show and drops the unmatched entry, with no error: two windows saved (`⦉c⦊ [d] ⟦-⟧` in the split, `⦉a⦊ [b] ⟦-⟧`) and one restored on b give `⦉a⦊ [b] ⟦-⟧`. Today "table index is nil" (`history/routines.lua:210`).  
-`tests/test_negative.lua:787`
+spec: (S2) A load into fewer windows than were saved matches by what they show and drops the unmatched entry, with no error: two windows saved (`⦉c⦊ [d] ⟦-⟧` in the split, `⦉a⦊ [b] ⟦-⟧`) and one restored on b give `⦉a⦊ [b] ⟦-⟧`. Today "table index is nil" (`history/routines.lua:218`).  
+`tests/test_negative.lua:786`
 
 **T245 [target]** (S2) a session file with a newer header says it was made by a newer cavediver and is left alone  
 `:e a`, `:e b` → `eq(Misc.save(child), { true })`  
@@ -1949,7 +1958,7 @@ spec: (S2) A load into fewer windows than were saved matches by what they show a
 → `eq(Extra.has(child.messages(), 'newer cavediver'), true)`  
 → `eq(bytes, 'CDV9\nfrom a later version\n')`  
 spec: (S2) A session file with a newer header gives "made by a newer cavediver" and is left alone: a file starting `CDV9` is unchanged after the load. Today the load is a silent fresh start.  
-`tests/test_negative.lua:805`
+`tests/test_negative.lua:804`
 
 **T246 [char]** (S2) a No Name buffer closed with <M-.> stays on the closed stack across a save and a load  
 `:e a`, `:enew`, `<M-.>` → `shown = 'a'`  
@@ -1960,7 +1969,7 @@ spec: (S2) A session file with a newer header gives "made by a newer cavediver" 
 `<M-S-w>` → `eq(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), { 'kept text' })`  
 note: Holds today already, and stays true under the decided file format.  
 spec: (S2) A No Name buffer closed with `<M-.>` stays on the closed stack across a save and a load, and `<M-S-w>` then brings its text back. It holds today already (found 2026-10-21), so it's [char]: a guard that stays true when the decided code lands.  
-`tests/test_negative.lua:830`
+`tests/test_negative.lua:829`
 
 **T247 [char]** (I13, A21) a cleanup heal in another window does not switch the focused window or wipe what that window shows ⚑ state set by hand; an acwrite window whose current file is :bdeleted from the focused window, to reach the healing branch  
 `:e a`, `:e b`, `:vsplit`, `:e x`, `:e c` → `slots = '⦉x⦊ [c] ⟦-⟧'`  
@@ -1973,29 +1982,31 @@ spec: (S2) A No Name buffer closed with `<M-.>` stays on the closed stack across
 → `eq(child.lua('return vim.api.nvim_buf_is_valid(...)', { acw }), true)`  
 note: The split shows an oil-like buffer (acwrite) and keeps its triquetra; its current slot's file is then closed from the first window, which has the focus (A21's healing branch, DESK:2447).  
 spec: (I13, A21) A cleanup heal in another window doesn't switch the focused window or wipe what that window shows: window 2 on `⦉x⦊ [c] ⟦-⟧` shows an `acwrite` buffer, and `:bdelete c.txt` from window 1 leaves window 1 focused on b and window 2 on its buffer.  
-`tests/test_negative.lua:854`
+`tests/test_negative.lua:853`
 
 **T248 [char]** (A12) with no cokeline, a cycle step raises nothing and <M-v> still ends the cycle  
 → `eq(child.lua('return (pcall(require, "cokeline.mappings"))'), false)`  
 `:e a`, `:e b` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
 `<M-n>` → `eq({ ok, err }, { true, nil })`  
 → `eq(child.state(), CYCLING)`  
+→ `shown = 'a'`  
 `<M-v>` → `eq({ ok, err }, { true, nil })`  
 → `eq(child.state(), NORMAL)`  
-→ `slots = '⦉a⦊ [b] ⟦-⟧'`  
-spec: (A12) With no cokeline, a cycle step raises nothing and `<M-v>` still ends the cycle: navigation `normal`, history attached, the slots unchanged **[run s21]**.  
-`tests/test_negative.lua:883`
+→ `slots = '⦉b⦊ [a] ⟦-⟧'`  
+note: the step goes through cavediver's own order, onto a (T171)  
+spec: (A12) With no cokeline, a cycle step raises nothing, steps through cavediver's own order (T171), and `<M-v>` still ends the cycle: navigation `normal`, history attached, and the pick lands where the step went (from `⦉a⦊ [b] ⟦-⟧`, `<M-n>` and `<M-v>` give `⦉b⦊ [a] ⟦-⟧`). **[run s2…  
+`tests/test_negative.lua:882`
 
 **T249 [char]** (A1, A11) no note names its own buffer, over random walks: one window ⚑ random walk  
-note: Holds today in the walks; it guards the decided code's ordering when it lands.  
-spec: (A1, A11) No note names its own buffer: random walks with T190's mix, in one window and across windows, check after every action that no map holds `X>X` or `X-swap>X`. The decided check drops a stale note when the note it would copy names the current buffer (A11), and runs after …  
-`tests/test_negative.lua:912`
-
-**T249 [char]** (A1, A11) no note names its own buffer, over random walks: several windows ⚑ random walk  
+note: It guards the decided check's order: after Q6's guard, never naming the current buffer.  
 spec: (A1, A11) No note names its own buffer: random walks with T190's mix, in one window and across windows, check after every action that no map holds `X>X` or `X-swap>X`. The decided check drops a stale note when the note it would copy names the current buffer (A11), and runs after …  
 `tests/test_negative.lua:913`
 
-## tests/test_primary_jump.lua (10 cases: 7 char, 2 target, 1 today)
+**T249 [char]** (A1, A11) no note names its own buffer, over random walks: several windows ⚑ random walk  
+spec: (A1, A11) No note names its own buffer: random walks with T190's mix, in one window and across windows, check after every action that no map holds `X>X` or `X-swap>X`. The decided check drops a stale note when the note it would copy names the current buffer (A11), and runs after …  
+`tests/test_negative.lua:914`
+
+## tests/test_primary_jump.lua (10 cases: 8 char, 1 target, 1 today)
 
 **T50 [char]** {c=e s=d t=b p=[x]on}, jump shows x, {c=x s=d t=e}, dtm{e-swap→b}  
 `:e x`, `<M-;><M-c>`, `:e d`, `:e b`, `<M-f>`, `:e e` → `slots = '⦉b⦊ [e] ⟦d⟧'`  
@@ -2072,7 +2083,7 @@ spec: With the primary's file deleted on disk, it throws "Primary buffer not fou
 spec: With the primary's file deleted on disk, it says so and keeps the pointer.  
 `tests/test_primary_jump.lua:127`
 
-**T153 [target]** Q6 on the fallback: primary disabled, {c=A s=S t=T}, dtm[T] = S; <M-;><M-f> rewrites dtm[T] to A before the swap  
+**T153 [char]** Q6 on the fallback: primary disabled, {c=A s=S t=T}, dtm[T] = S; <M-;><M-f> rewrites dtm[T] to A before the swap  
 `:e x`, `<M-;><M-x>`, `<M-;><M-x>` → `primary = '[x]off'`  
 `:e a`, `:e b`, `:e c`, `:e b`, `<M-f>`, `:e a`, `<M-f>` → `slots = '⦉b⦊ [c] ⟦a⟧'`  
 → `eq(K.note(child, 'dtm', 'b'), 'a')`  
@@ -2189,7 +2200,7 @@ spec: With no picker available, `<M-e>` gives a message and changes no line. `<M
 spec: The window's `q` and `<C-c>` mappings are described as "Save and close" (Q12).  
 `tests/test_primary_window.lua:167`
 
-## tests/test_restores.lua (10 cases: 6 char, 4 target)
+## tests/test_restores.lua (10 cases: 10 char)
 
 **T61 [char]** at b with {c=b t=d} and dtm{b→a}: restore ternary gives t=a, dtm{b→d}; again t=d, dtm{b→a}  
 `:e a`, `:e b`, `:e c`, `:e d`, `:e b` → `slots = '⦉d⦊ [b] ⟦-⟧'`  
@@ -2238,7 +2249,7 @@ spec: When `dtm[A-swap]` is set and differs from the ternary, the restore uses i
 spec: With the maps set so that the remembered value equals the slot, the restore throws "This is impossible. Remembered ternary is the same as current ternary." The assertion stays (Q13).  
 `tests/test_restores.lua:73`
 
-**T67 [target]** (D9) a -swap note at a closed file deleted on disk is skipped and kept: the plain note restores and flip-flops  
+**T67 [char]** (D9) a -swap note at a closed file deleted on disk is skipped and kept: the plain note restores and flip-flops  
 `:bdelete f.txt`, `<M-;><M-r>` → `slots = '⦉b⦊ [a] ⟦-⟧'`  
 `<M-;><M-r>` → `slots = '⦉d⦊ [a] ⟦-⟧'`  
 `<M-;><M-r>` → `slots = '⦉b⦊ [a] ⟦-⟧'`  
@@ -2246,7 +2257,7 @@ spec: With the maps set so that the remembered value equals the slot, the restor
 spec: (D9) A `-swap` entry pointing at a file that's closed and deleted on disk is skipped and kept: the restore uses the plain note (`a>b` gives `⦉b⦊ [a]`), flip-flops with it, and the `-swap` entry is still there afterwards.  
 `tests/test_restores.lua:82`
 
-**T173 [target]** (D9) a note at a file deleted on disk whose buffer is still open restores it and flip-flops with it  
+**T173 [char]** (D9) a note at a file deleted on disk whose buffer is still open restores it and flip-flops with it  
 → `eq(child.lua([[return vim.fn.bufloaded('f.txt')]]), 1)`  
 `<M-;><M-r>` → `slots = '⦉f⦊ [a] ⟦-⟧'`  
 `<M-;><M-r>` → `slots = '⦉d⦊ [a] ⟦-⟧'`  
@@ -2254,14 +2265,14 @@ spec: (D9) A `-swap` entry pointing at a file that's closed and deleted on disk 
 spec: (D9) A note pointing at a file deleted on disk whose buffer is still open restores it and flip-flops with it (`⦉f⦊ [a]`, then `⦉d⦊ [a]`, then `⦉f⦊ [a]`).  
 `tests/test_restores.lua:96`
 
-**T174 [target]** (D9) when both of a buffer's notes point at closed files deleted on disk, the restore says so, changes no slot, keeps both notes  
+**T174 [char]** (D9) when both of a buffer's notes point at closed files deleted on disk, the restore says so, changes no slot, keeps both notes  
 `:bdelete f.txt`, `:bdelete b.txt`, `<M-;><M-r>` → `eq({ ok, err }, { true, nil })`  
 → `slots = '⦉d⦊ [a] ⟦-⟧'`  
 → `eq(K.notes_for(child, { 'a' }), 'dtm{a-swap>f a>b} dsm{}')`  
 spec: (D9) When both of a buffer's notes point at closed files deleted on disk, the restore says so, changes no slot, and keeps both notes.  
 `tests/test_restores.lua:108`
 
-**T68 [target]** an unknown hash in a map doesn't make a restore throw ⚑ state set by hand  
+**T68 [char]** an unknown hash in a map doesn't make a restore throw ⚑ state set by hand  
 `:e a`, `:e b`, `<M-;><M-r>` → `eq({ ok, err }, { true, nil })`  
 → `eq(K.hook_failures(K.messages(child)), {})`  
 note: A hash that no buffer or path has.  
@@ -2606,7 +2617,7 @@ note: c's line is cut from the session's pool and pasted right under x's line.
 spec: (S2 Closed-stack picker, Tab sessions; DESK:2369) Pools merge by moving lines: in T330's state, c's line moved under x's and `:w` make `<M-S-w>` in the first tab reopen x and then c, and leave nothing for `<M-S-w>` in the session's tab.  
 `tests/test_s2.lua:955`
 
-## tests/test_secondary_key.lua (11 cases: 6 char, 3 target, 2 today)
+## tests/test_secondary_key.lua (11 cases: 9 char, 1 target, 1 today)
 
 **T36 [char]** graduation: {c=c t=b}, dtm{b→a}, <M-f> gives {c=c s=b}, dsm{b→a}, same buffer, "Ternary slot graduated"  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -2634,13 +2645,13 @@ spec: With secondary and ternary empty and two buffers in history, `<M-f>` fills
 spec: With one buffer in history, `<M-f>` warns "insufficent history".  
 `tests/test_secondary_key.lua:41`
 
-**T39 [today]** {c=c s=b}, <M-f> shows b, {c=b s=c}, dsm{c→b}  
+**T39 [char]** {c=c s=b}, <M-f> shows b, {c=b s=c}, dsm{c-swap→b}  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
 `<M-f>` → `shown = 'b'`  
 → `slots = '⦉-⦊ [b] ⟦c⟧'`  
-→ `notes = 'dtm{b>a} dsm{b>a c>b}'`  
-note: Today the note is the plain c>b (T191 moves it to c-swap>b).  
-spec: `{c=c s=b}`, `<M-f>` → shows b, `{c=b s=c}`, `dsm{c→b}`. Paired with T191, where the note goes into `dsm[c-swap]`.  
+→ `notes = 'dtm{b>a} dsm{b>a c-swap>b}'`  
+note: c is left by a swap, so its note is a swap note (T191).  
+spec: `{c=c s=b}`, `<M-f>` → shows b, `{c=b s=c}`, `dsm{c-swap→b}`: the note a swap leaves is a swap note (T191). Built in step 3.  
 `tests/test_secondary_key.lua:49`
 
 **T40 [char]** with a ternary T, <M-f> writes dtm[A-swap] = T  
@@ -2670,7 +2681,7 @@ spec: When the window shows a buffer other than its current slot, `<M-f>` switch
 spec: After `:bdelete` of the secondary's buffer and one more `:e`, the secondary still holds the closed hash, and `<M-f>` reopens it and takes it off the closed stack.  
 `tests/test_secondary_key.lua:81`
 
-**T43 [target]** after a cycle, <M-f> with secondary and ternary empty never puts the current buffer in the secondary  
+**T43 [char]** after a cycle, <M-f> with secondary and ternary empty never puts the current buffer in the secondary  
 `:e a`, `:e b`, `:vsplit`, `:wincmd p`, `:e c`, `<M-n>`, `:wincmd p` → `slots = '⦉-⦊ [b] ⟦-⟧'`  
 `<M-f>` → `eq(K.duplicate(child), false)`  
 note: The other window cycles (history frozen at c,b,a), then <C-w>p into the fresh split showing b, whose slots are empty (t/pkB_d11_dup.lua).  
@@ -2695,7 +2706,7 @@ spec: With the secondary closed and its file then deleted on disk, `<M-f>` warns
 spec: With the secondary's file deleted on disk, the pointer is kept and `<M-f>` says the file is missing (DESK:2022).  
 `tests/test_secondary_key.lua:128`
 
-**T150 [target]** Q6's ten keys: the third <M-f> rewrites dtm[b] := c, and the restore gives {c=b s=a t=c}  
+**T150 [char]** Q6's ten keys: the third <M-f> rewrites dtm[b] := c, and the restore gives {c=b s=a t=c}  
 `:e a`, `:e b`, `:e c`, `:e b`, `<M-f>`, `:e a`, `<M-f>` → `slots = '⦉b⦊ [c] ⟦a⟧'`  
 → `eq(K.note(child, 'dtm', 'b'), 'a')`  
 `<M-f>` → `eq(K.note(child, 'dtm', 'b'), 'c')`  
@@ -2885,7 +2896,7 @@ note: The desk's 1.txt and 2.txt are a and b here.
 spec: The desk's sequence (`:e 1.txt`, `:e 2.txt`, `<M-n>`, `:bdelete`, `<M-S-f>`, `<M-S-f>`) throws nothing and leaves no duplicate slot.  
 `tests/test_ternary_key.lua:44`
 
-## tests/test_ui.lua (13 cases: 6 char, 7 target)
+## tests/test_ui.lua (13 cases: 7 char, 6 target)
 
 **T115 [char]** the winbar holds the slots in order, with their highlights  
 `:e c`, `:e d`, `<M-f>`, `:e e` → `slots = '⦉d⦊ [e] ⟦c⟧'`  
@@ -2909,7 +2920,7 @@ spec: A closed ternary is shown as `⦉ … name ⦊` with no buffer number.
 spec: When the current buffer is the primary, it's shown as `⦉N⦊` in `WinbarBufnrPrimary`.  
 `tests/test_ui.lua:63`
 
-**T118 [target]** a slot closed with :bdelete shows its basename, not its full path  
+**T118 [char]** a slot closed with :bdelete shows its basename, not its full path  
 `:e a`, `:e b`, `:e c`, `:bdelete b.txt` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 → `eq(part:find('# b.txt ⦊', 1, true) ~= nil, true)`  
 spec: A slot closed with `:bdelete` shows its basename, not its full path.  

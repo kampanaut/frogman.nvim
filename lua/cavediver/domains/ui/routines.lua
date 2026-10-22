@@ -143,10 +143,12 @@ end
 ---@return string[] conflicts List of full paths with same basename
 local function find_basename_conflicts(basename, filehash)
 	local conflicts = {}
+	local own_path = history.get_filepath_from_hash(filehash)
 	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-		if (bufnr ~= history.get_buffer_from_hash(filehash)) and (history.get_filepath_from_hash(filehash) ~= nil) then
+		if (bufnr ~= history.get_buffer_from_hash(filehash)) and (own_path ~= nil) then
 			local path = vim.api.nvim_buf_get_name(bufnr)
-			if path ~= "" and vim.fn.fnamemodify(path, ":t") == basename then
+			-- a closed file's own unlisted buffer has its path too, it's not a conflict with itself.
+			if path ~= "" and path ~= own_path and vim.fn.fnamemodify(path, ":t") == basename then
 				table.insert(conflicts, path)
 			end
 		end
@@ -248,6 +250,24 @@ local function derive_cache_from_window_triquetra(winid)
 	local window_triquetra = window.get_triquetra(winid)
 	if not  window_triquetra then
 		return nil
+	end
+	-- a slot whose buffer went without events (noautocmd) leaves the registry pointing at a dead buffer.
+	-- cleanup repairs it now, as it would at its next tick: the window is re-pointed like navigation.
+	for _, filehash in ipairs({
+		window_triquetra.current_slot,
+		window_triquetra.secondary_slot,
+		window_triquetra.ternary_slot,
+		window_triquetra.primary_buffer[1],
+	}) do
+		local bufnr = history.get_buffer_from_hash(filehash)
+		if bufnr and not vim.api.nvim_buf_is_valid(bufnr) then
+			history.routines.cleanup_system()
+			window_triquetra = window.get_triquetra(winid)
+			if not window_triquetra then
+				return nil
+			end
+			break
+		end
 	end
 	local ui_triquetra = data.get_or_create_window_display_cache(winid)
 

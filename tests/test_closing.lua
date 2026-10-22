@@ -105,9 +105,9 @@ T['T82 [char] <M-.> refuses the only entry'] = function()
 	eq(snapshot(), before)
 end
 
--- [target] until delete_buffer reads the cursor before it switches the window away
--- (history/routines.lua:593, :597; today the cursor comes back as {1,0}).
-T['T83 [target] <M-.> on a modified No Name buffer closes it and caches its lines, filetype and cursor'] = function()
+-- delete_buffer keeps the cursor before it switches the window away (history/routines.lua:704),
+-- so the cache doesn't fall back to {1,0}.
+T['T83 [char] <M-.> on a modified No Name buffer closes it and caches its lines, filetype and cursor'] = function()
 	child.steps({ ':e a' })
 	local buf = noname({ 'one', 'two', 'three' }, 'lua', { 2, 1 })
 	local h = hash_of_buf(buf)
@@ -124,7 +124,7 @@ T['T83 [target] <M-.> on a modified No Name buffer closes it and caches its line
 	)
 end
 
-T['T84 [target] <M-.> in :help does not throw'] = function()
+T['T84 [char] <M-.> in :help does not throw'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.cmd('help')
 	child.settle()
@@ -135,7 +135,7 @@ T['T84 [target] <M-.> in :help does not throw'] = function()
 	eq(Extra.at_least(child.messages()), {})
 end
 
-T['T85 [target] <M-.> on a file keeps its marks for when it is reopened'] = function()
+T['T85 [char] <M-.> on a file keeps its marks for when it is reopened'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.lua('vim.api.nvim_buf_set_mark(0, "k", 1, 0, {})')
 	eq(child.lua('return vim.api.nvim_buf_get_mark(0, "k")'), { 1, 0 })
@@ -266,7 +266,7 @@ T['T164 [target] <M-.> in a window visiting an untracked buffer closes it and la
 	eq(child.slots(), '⦉-⦊ [a] ⟦b⟧')
 end
 
-T['T165 [target] <M-.> in a help window closes the help buffer and leaves a alone'] = function()
+T['T165 [char] <M-.> in a help window closes the help buffer and leaves a alone'] = function()
 	child.steps({ ':e a' })
 	local a_win = child.win()
 	child.cmd('help')
@@ -283,7 +283,7 @@ T['T165 [target] <M-.> in a help window closes the help buffer and leaves a alon
 	eq(child.slots(a_win), '⦉-⦊ [a] ⟦-⟧')
 end
 
-T['T166 [target] <M-.> on help in the only window closes the help buffer'] = function()
+T['T166 [char] <M-.> on help in the only window closes the help buffer'] = function()
 	child.cmd('help')
 	child.cmd('only')
 	child.settle()
@@ -297,7 +297,7 @@ T['T166 [target] <M-.> on help in the only window closes the help buffer'] = fun
 	eq(Extra.at_least(child.messages()), {})
 end
 
-T['T167 [target] <M-.> on a running terminal refuses with a message'] = function()
+T['T167 [char] <M-.> on a running terminal refuses with a message'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.lua('vim.o.shell = "sh"')
 	child.cmd('terminal sleep 1000')

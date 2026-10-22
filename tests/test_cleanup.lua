@@ -192,7 +192,7 @@ end
 
 -- {c=A s=S t=T} is {c=a s=b t=c}; X is d, outside the slots. The window is put
 -- on d without a BufEnter, then a's buffer is wiped (A21 step 1 re-points).
-T['T163 [target] a re-point to the shown buffer moves the old current into the ternary (Q18)'] = function()
+T['T163 [char] a re-point to the shown buffer moves the old current into the ternary (Q18)'] = function()
 	child.steps({ ':e d', ':e b', ':e c', '<M-f>', ':e a' })
 	eq(child.slots(), '⦉c⦊ [a] ⟦b⟧')
 	child.cmd('noautocmd buffer d.txt')

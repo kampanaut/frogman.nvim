@@ -66,7 +66,7 @@ T['T117 [char] the current buffer as the primary shows as ⦉N⦊ in WinbarBufnr
 	eq(in_order(winbar(), { '%#WinbarBufnrPrimary#⦉' .. bufnr('a.txt') .. '⦊ ' }), true)
 end
 
-T['T118 [target] a slot closed with :bdelete shows its basename, not its full path'] = function()
+T['T118 [char] a slot closed with :bdelete shows its basename, not its full path'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.cmd('bdelete b.txt')
 	child.settle()

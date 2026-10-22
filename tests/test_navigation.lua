@@ -30,7 +30,7 @@ T['T29 [char] {c=b t=a}, :e c gives {c=c t=b} with dtm{b>a}'] = function()
 	eq(child.notes(), 'dtm{b>a} dsm{}')
 end
 
-T['T30 [today] :e onto the secondary swaps current and secondary and writes no map entry'] = function()
+T['T30 [char] :e onto the secondary swaps current and secondary and writes the swap notes <M-f> writes (D8)'] = function()
 	-- <M-f> graduates b; then :e d gives ⦉c⦊ [d] ⟦b⟧, where dtm[c] is unset (≠ b)
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
@@ -38,7 +38,9 @@ T['T30 [today] :e onto the secondary swaps current and secondary and writes no m
 	local before = child.notes()
 	child.steps({ ':e b' })
 	eq(child.slots(), '⦉c⦊ [b] ⟦d⟧')
-	eq(child.notes(), before)
+	-- d is left by a swap onto the secondary, so it gets swap notes for its secondary and ternary.
+	eq(before, 'dtm{b>a} dsm{b>a}')
+	eq(child.notes(), 'dtm{b>a d-swap>c} dsm{b>a d-swap>b}')
 end
 
 T['T31 [char] :e onto the ternary swaps current and ternary and does not write dtm[current]'] = function()
@@ -109,7 +111,7 @@ T['T35 [char] entering an untracked buffer the triquetra is kept for (acwrite) l
 	eq(child.notes(), notes)
 end
 
-T['T151 [target] Q6 on plain navigation: :e onto the secondary rewrites the ternary\'s note, and the restore then works'] = function()
+T['T151 [char] Q6 on plain navigation: :e onto the secondary rewrites the ternary\'s note, and the restore then works'] = function()
 	child.steps({ ':e a', ':e b', ':e c', ':e b', '<M-f>', ':e a', '<M-f>' })
 	eq(child.slots(), '⦉b⦊ [c] ⟦a⟧')
 	eq(X.maps(child).dtm.b, 'a')
@@ -136,13 +138,13 @@ local function check_d_notes()
 		{ dsm_d_swap = 'b', dtm_d_swap = 'c' })
 end
 
-T['T191 [target] (D8) plain navigation onto the secondary writes the swap notes dsm{d-swap>b} dtm{d-swap>c}, no dsm[d]'] = function()
+T['T191 [char] (D8) plain navigation onto the secondary writes the swap notes dsm{d-swap>b} dtm{d-swap>c}, no dsm[d]'] = function()
 	round_setup()
 	child.steps({ ':e b' })
 	check_d_notes()
 end
 
-T['T191 [target] (D8) <M-f> onto the secondary writes the swap notes dsm{d-swap>b} dtm{d-swap>c}, no dsm[d]'] = function()
+T['T191 [char] (D8) <M-f> onto the secondary writes the swap notes dsm{d-swap>b} dtm{d-swap>c}, no dsm[d]'] = function()
 	round_setup()
 	child.steps({ '<M-f>' })
 	check_d_notes()

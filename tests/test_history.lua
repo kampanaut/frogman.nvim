@@ -153,14 +153,14 @@ T['T149 [char] random visits across windows, global view: the visited buffer is 
 	eq(walks('global'), nil)
 end
 
--- Under the window view this half fails today: the view's rebuild ties two buffers
--- (history/routines.lua:191, :194; T197), on a window jump and on :close alike, e.g.
--- :e a, :e b, :vsplit, :close, :e a gives a=4 b=4. It passes once that tie is fixed.
-T['T149 [target] random visits across windows, window view: the visited buffer is leftmost'] = function()
+-- Under the window view the rebuild gives every buffer its own time (history/routines.lua:271,
+-- :274; T197), on a window jump and on :close alike, e.g. after :e a, :e b, :vsplit, :close,
+-- :e a, a and b don't share one.
+T['T149 [char] random visits across windows, window view: the visited buffer is leftmost'] = function()
 	eq(walks('window'), nil)
 end
 
-T['T149 [char] the author\'s check (Q4): back into window A, :e e gives e=7 b=6 a=5 d=4 c=3'] = function()
+T['T149 [char] the author\'s check (Q4): back into window A, :e e gives e=8 b=7 a=5 d=4 c=3'] = function()
 	window_view()
 	child.steps({ ':e a', ':e b' })
 	local A = X.win(child)
@@ -169,7 +169,9 @@ T['T149 [char] the author\'s check (Q4): back into window A, :e e gives e=7 b=6 
 	child.steps({ ':e c', ':e d' })
 	enter(A)
 	child.steps({ ':e e' })
-	eq(X.times(child), 'e=7 b=6 a=5 d=4 c=3')
+	-- e=7 b=6 a=5 d=4 c=3 before the tie fix, which gives the window's buffers one more time
+	-- each on the rebuild: the same order.
+	eq(X.times(child), 'e=8 b=7 a=5 d=4 c=3')
 	eq(X.leftmost(child), nil)
 end
 

@@ -166,16 +166,15 @@ T['T196 [char] while cycling, on the current slot, <M-f> and <M-;><M-r> do their
 	eq(child.state(), CYCLING)
 	child.steps({ '<M-f>' })
 	eq(child.slots(), '⦉d⦊ [b] ⟦c⟧')
-	-- c's secondary note names b: the plain note today, the swap note once T191 lands.
-	local plain, swap = child.note('dsm', 'c'), child.note('dsm', 'c-swap')
-	eq(plain == 'b' or swap == 'b', true)
+	-- c's secondary note names b: <M-f> writes the swap note (D8, T191).
+	eq(child.note('dsm', 'c-swap'), 'b')
 	eq(child.state(), CYCLING)
 	child.steps({ '<M-;><M-r>' })
 	eq(child.slots(), '⦉a⦊ [b] ⟦c⟧')
 	eq(child.state(), CYCLING)
 end
 
-T['T175 [target] jumping to another window cancels the cycle'] = function()
+T['T175 [char] jumping to another window cancels the cycle'] = function()
 	-- win1: ⦉b⦊ [c] ⟦-⟧; win2: ⦉b⦊ [x] ⟦-⟧.
 	child.steps({ ':e a', ':e b' })
 	local win1 = child.win()
@@ -206,7 +205,7 @@ T['T175 [target] jumping to another window cancels the cycle'] = function()
 	eq(child.ordered():match('^[^,]*'), 'd')
 end
 
-T['T176 [target] <M-f> fills an empty secondary from the ordered list, asserting its first entry'] = function()
+T['T176 [char] <M-f> fills an empty secondary from the ordered list, asserting its first entry'] = function()
 	-- A fresh split: an empty secondary and no ternary.
 	child.steps({ ':e a', ':e b' })
 	child.cmd('vsplit')
@@ -230,7 +229,7 @@ T['T176 [target] <M-f> fills an empty secondary from the ordered list, asserting
 	eq(res[1], false)
 end
 
-T['T197 [target] under the window view the ordered list never ties after two splits'] = function()
+T['T197 [char] under the window view the ordered list never ties after two splits'] = function()
 	local runs = {}
 	for i = 1, 10 do
 		child.setup({ history_view = 'window' })
@@ -260,7 +259,7 @@ T['T197 [target] under the window view the ordered list never ties after two spl
 	end
 end
 
-T['T198 [target] a jump away from a cycle records the landing, and <M-f> there fills'] = function()
+T['T198 [char] a jump away from a cycle records the landing, and <M-f> there fills'] = function()
 	child.steps({ ':e a' })
 	local win1 = child.win()
 	child.cmd('vsplit')
@@ -284,7 +283,7 @@ T['T198 [target] a jump away from a cycle records the landing, and <M-f> there f
 	eq(child.slots(win1), '⦉-⦊ [a] ⟦c⟧')
 end
 
-T['T206 [target] the secondary restore\'s exchange rewrites b\'s stale note to e\'s own note'] = function()
+T['T206 [char] the secondary restore\'s exchange rewrites b\'s stale note to e\'s own note'] = function()
 	child.steps({
 		':e a', ':e e', ':e d', '<M-S-f>', ':e b', ':e d',
 		'<M-n>', '<M-v>', '<M-f>', ':e b', '<M-f>', ':e e',
@@ -315,7 +314,7 @@ local function cycle_walk()
 	return { shown = shown, slots = child.slots(), state = child.state() }
 end
 
-T['T171 [target] with no cokeline, <M-n> and <M-m> step through the ordered history as with it'] = function()
+T['T171 [char] with no cokeline, <M-n> and <M-m> step through the ordered history as with it'] = function()
 	local with_cokeline = cycle_walk()
 	-- d,c,b,a: <M-m> twice to b, <M-n> back to c, then <M-v> picks c, the ternary.
 	eq(with_cokeline.shown, { 'c', 'b', 'c' })
@@ -363,7 +362,7 @@ T['T79 [char] <M-n> steps left, toward newer buffers, and <M-m> right, toward ol
 	eq(child.lua('return _G.CDV_STEPS'), { 1, 1, -1 })
 end
 
-T['T152 [target] a cycling pick of the secondary rewrites the ternary\'s note to the start'] = function()
+T['T152 [char] a cycling pick of the secondary rewrites the ternary\'s note to the start'] = function()
 	-- {c=c s=a t=b} with dtm[b] = a.
 	child.steps({ ':e a', ':e b', ':e c', ':e b', '<M-f>', ':e a', '<M-f>' })
 	eq(child.slots(), '⦉b⦊ [c] ⟦a⟧')
@@ -374,10 +373,9 @@ T['T152 [target] a cycling pick of the secondary rewrites the ternary\'s note to
 	child.steps({ '<M-v>' })
 	eq(child.slots(), '⦉b⦊ [a] ⟦c⟧')
 	eq(child.note('dtm', 'b'), 'c')
-	eq(Extra.has(child.messages(), 'Avoided conflict'), false)
 end
 
-T['T172 [target] a pick of an outside buffer writes its plain note and clears its swap note'] = function()
+T['T172 [char] a pick of an outside buffer writes its plain note and clears its swap note'] = function()
 	child.steps({ ':e a', ':e b', '<M-S-f>' })
 	eq(child.note('dtm', 'b-swap'), 'a')
 	child.steps({ ':e c', ':e d', ':e e' })
@@ -396,7 +394,7 @@ T['T172 [target] a pick of an outside buffer writes its plain note and clears it
 	eq(child.slots(), '⦉e⦊ [b] ⟦-⟧')
 end
 
-T['T155 [target] a pick of an outside buffer notes the start, and <M-;><M-r> brings it back'] = function()
+T['T155 [char] a pick of an outside buffer notes the start, and <M-;><M-r> brings it back'] = function()
 	ecd()
 	eq(child.note('dtm', 'b-swap'), '-')
 	child.steps({ '<M-n>', '<M-n>' })

@@ -1,6 +1,6 @@
 -- "Keep the older one": the restore errors (M7, A1, A6-A8, A11, A13, I23).
 -- IDs are the spec's (what-is-cavediver.md, section 7). Every case here is
--- decided behaviour that today's code doesn't have yet.
+-- decided behaviour, built in step 3.
 local Helpers = dofile('tests/helpers.lua')
 local K = dofile('tests/helpers_keys.lua')
 local eq, no_eq = Helpers.eq, Helpers.expect.no_equality
@@ -26,7 +26,7 @@ end
 -- T177's keys up to the restore: the round trip onto the secondary and back.
 local ROUND_TRIP = { ':e a', ':e b', ':e c', '<M-f>', '<M-f>', '<M-f>' }
 
-T['T177 [target] the round trip onto the secondary and back: <M-;><M-t> on c says "No secondary relationship found"'] = function()
+T['T177 [char] the round trip onto the secondary and back: <M-;><M-t> on c says "No secondary relationship found"'] = function()
 	-- <M-f> (b graduates), <M-f> (to b), <M-f> (back to c).
 	child.steps(ROUND_TRIP)
 	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')
@@ -36,7 +36,7 @@ T['T177 [target] the round trip onto the secondary and back: <M-;><M-t> on c say
 	eq(K.dsm(child), 'dsm{b-swap>c b>a c-swap>b}')
 end
 
-T["T178 [target] T177's keys, then <M-f> back to b: <M-;><M-t> on b brings back a, then c"] = function()
+T["T178 [char] T177's keys, then <M-f> back to b: <M-;><M-t> on b brings back a, then c"] = function()
 	child.steps(ROUND_TRIP)
 	child.steps({ '<M-;><M-t>', '<M-f>' })
 	eq(child.slots(), '⦉-⦊ [b] ⟦c⟧')
@@ -49,7 +49,7 @@ end
 -- T179's route: the same round trip by plain navigation.
 local NAV_ROUND = { ':e a', ':e b', ':e c', '<M-f>', ':e d', ':e b', ':e d' }
 
--- Holds today already (no notes on this route yet), and stays true under the decided fix.
+-- The round trip leaves d no secondary note to restore.
 T['T179 [char] the round trip by plain navigation: <M-;><M-t> on d says "No secondary relationship found"'] = function()
 	child.steps(NAV_ROUND)
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
@@ -57,7 +57,7 @@ T['T179 [char] the round trip by plain navigation: <M-;><M-t> on d says "No seco
 	eq(K.has(msgs, 'No secondary relationship found'), true)
 end
 
-T["T179 [target] the round trip by plain navigation writes D8's notes along the way (A1's example)"] = function()
+T["T179 [char] the round trip by plain navigation writes D8's notes along the way (A1's example)"] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 	child.steps({ ':e b' })
@@ -68,7 +68,7 @@ T["T179 [target] the round trip by plain navigation writes D8's notes along the 
 	eq(K.dsm(child), 'dsm{b-swap>d b>a d-swap>b}')
 end
 
-T["T180 [target] after a round trip, the buffer's older secondary comes back"] = function()
+T["T180 [char] after a round trip, the buffer's older secondary comes back"] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d', ':e b', ':e e', '<M-f>', '<M-f>', '<M-f>' })
 	eq(child.slots(), '⦉b⦊ [d] ⟦e⟧')
 	local msgs = clean('<M-;><M-t>')
@@ -79,7 +79,7 @@ T["T180 [target] after a round trip, the buffer's older secondary comes back"] =
 	eq(child.slots(), '⦉b⦊ [d] ⟦e⟧')
 end
 
-T['T181 [target] with nothing older on record, a stale secondary note is dropped'] = function()
+T['T181 [char] with nothing older on record, a stale secondary note is dropped'] = function()
 	-- <M-f> (d graduates, dsm{d→a}), :e a, <M-f> (to d, whose secondary is now a).
 	child.steps({ ':e a', ':e d', ':e c', '<M-f>' })
 	eq(child.slots(), '⦉-⦊ [c] ⟦d⟧')
@@ -91,7 +91,7 @@ T['T181 [target] with nothing older on record, a stale secondary note is dropped
 	eq(K.has(msgs, 'No secondary relationship found'), true)
 end
 
-T['T182 [target] the check on other arrivals, secondary map: at the last :e c the stale note is dropped'] = function()
+T['T182 [char] the check on other arrivals, secondary map: at the last :e c the stale note is dropped'] = function()
 	-- The primary queue is empty, so <M-;><M-f> acts as <M-f>.
 	child.steps({
 		':e a', ':e c', '<M-S-f>', '<M-S-f>', ':e d', '<M-f>', '<M-;><M-f>', '<M-;><M-r>',
@@ -103,7 +103,7 @@ T['T182 [target] the check on other arrivals, secondary map: at the last :e c th
 	eq(K.has(msgs, 'No secondary relationship found'), true)
 end
 
-T["T183 [target] a stale secondary note is rewritten to the buffer's swap note when that names another buffer"] = function()
+T["T183 [char] a stale secondary note is rewritten to the buffer's swap note when that names another buffer"] = function()
 	child.steps({ ':e a', ':e e', '<M-f>', ':e d', '<M-;><M-f>', '<M-S-f>', '<M-;><M-f>', '<M-f>' })
 	eq(child.slots(), '⦉a⦊ [e] ⟦d⟧')
 	-- Pick a (the ternary), then d (the secondary).
@@ -123,7 +123,7 @@ T["T183 [target] a stale secondary note is rewritten to the buffer's swap note w
 	eq(child.slots(), '⦉e⦊ [d] ⟦a⟧')
 end
 
-T["T184 [target] graduation clears the graduated buffer's old swap note, so <M-;><M-t> brings back dtm[b]'s buffer (Q3)"] = function()
+T["T184 [char] graduation clears the graduated buffer's old swap note, so <M-;><M-t> brings back dtm[b]'s buffer (Q3)"] = function()
 	-- Secondary empty, ternary b with dtm[b] = a; b's old swap note dsm[b-swap] = d is set directly.
 	child.steps({ ':e d', ':e a', ':e b', ':e c' })
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
@@ -139,7 +139,7 @@ T["T184 [target] graduation clears the graduated buffer's old swap note, so <M-;
 	eq(child.slots(), '⦉-⦊ [b] ⟦a⟧')
 end
 
-T["T185 [target] where the ternary stays put, a stale ternary note becomes the ternary's own note"] = function()
+T["T185 [char] where the ternary stays put, a stale ternary note becomes the ternary's own note"] = function()
 	child.steps({ ':e a', ':e c', ':e e', ':e b', '<M-f>', ':e c', '<M-S-f>', '<M-f>' })
 	eq(child.slots(), '⦉c⦊ [e] ⟦b⟧')
 	-- e's note e>c named the ternary c; it becomes c's own note, a.
@@ -150,7 +150,7 @@ T["T185 [target] where the ternary stays put, a stale ternary note becomes the t
 	eq(child.slots(), '⦉c⦊ [e] ⟦b⟧')
 end
 
-T['T186 [target] where the ternary changes, a stale note with nothing older is dropped (by <M-S-f>)'] = function()
+T['T186 [char] where the ternary changes, a stale note with nothing older is dropped (by <M-S-f>)'] = function()
 	-- <M-;><M-f> on an empty queue: d graduates.
 	child.steps({ ':e a', ':e d', ':e c', '<M-;><M-f>', '<M-f>', ':e a', '<M-S-f>' })
 	eq(child.slots(), '⦉a⦊ [d] ⟦c⟧')
@@ -159,7 +159,7 @@ T['T186 [target] where the ternary changes, a stale note with nothing older is d
 	eq(K.has(msgs, 'No ternary relationship found'), true)
 end
 
--- Holds today already: this route goes through the stale-note check in navigation.
+-- This route goes through navigation's own stale-note check.
 T["T186 [char] where the ternary changes, a stale note with nothing older is dropped (by :e d, navigation's own check)"] = function()
 	child.steps({ ':e a', ':e d', ':e c', '<M-;><M-f>', '<M-f>', ':e a', ':e d' })
 	eq(child.slots(), '⦉a⦊ [d] ⟦c⟧')
@@ -168,7 +168,7 @@ T["T186 [char] where the ternary changes, a stale note with nothing older is dro
 	eq(K.has(msgs, 'No ternary relationship found'), true)
 end
 
-T["T187 [target] a primary jump uses navigation's second case: b's stale note becomes e, the pre-jump ternary"] = function()
+T["T187 [char] a primary jump uses navigation's second case: b's stale note becomes e, the pre-jump ternary"] = function()
 	child.steps({ ':e a', ':e b', '<M-;><M-c>', ':e e', ':e a', '<M-;><M-f>' })
 	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
 	eq(child.primary(), '[b]on')
@@ -179,7 +179,7 @@ T["T187 [target] a primary jump uses navigation's second case: b's stale note be
 	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
 end
 
-T["T188 [target] where the ternary's own note is the window's secondary, the restore exchanges the ternary and the secondary"] = function()
+T["T188 [char] where the ternary's own note is the window's secondary, the restore exchanges the ternary and the secondary"] = function()
 	child.steps({ ':e a', ':e b', ':e e', '<M-f>', '<M-f>', ':e a', ':e d', ':e e', ':e b', '<M-;><M-t>', ':e e' })
 	eq(child.slots(), '⦉b⦊ [e] ⟦a⟧')
 	eq(K.notes_for(child, { 'a', 'b' }):match('^dtm%b{}'), 'dtm{a>b b>a}')
@@ -195,7 +195,7 @@ T["T188 [target] where the ternary's own note is the window's secondary, the res
 	eq(child.slots(), '⦉b⦊ [a] ⟦e⟧')
 end
 
-T["T189 [target] (Q13) the slot exchange: b's stale note is dropped and <M-;><M-r> says \"No ternary relationship found\""] = function()
+T["T189 [char] (Q13) the slot exchange: b's stale note is dropped and <M-;><M-r> says \"No ternary relationship found\""] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', '<M-f>', '<M-f>', ':e a', '<M-f>' })
 	eq(child.slots(), '⦉c⦊ [b] ⟦a⟧')
 	eq(K.note(child, 'dtm', 'b'), 'a')
@@ -227,12 +227,32 @@ local function walks(view, multi, seed0)
 	MiniTest.add_note(string.format('%d steps, %d key errors, %d hook failures', steps, errors, hook_failures))
 end
 
-T['T190 [target] I23 over random walks: one window, global view'] = function() walks('global', false, 7000) end
-T['T190 [target] I23 over random walks: one window, window view'] = function() walks('window', false, 7000) end
-T['T190 [target] I23 over random walks: several windows, global view'] = function() walks('global', true, 11000) end
-T['T190 [target] I23 over random walks: several windows, window view'] = function() walks('window', true, 11000) end
+T['T190 [char] I23 over random walks: one window, global view'] = function() walks('global', false, 7000) end
+T['T190 [char] I23 over random walks: one window, window view'] = function() walks('window', false, 7000) end
+T['T190 [char] I23 over random walks: several windows, global view'] = function() walks('global', true, 11000) end
+T['T190 [char] I23 over random walks: several windows, window view'] = function() walks('window', true, 11000) end
 
-T["T192 [target] rename_hash_in_triquetras(old, new) moves dsm[old-swap] to dsm[new-swap] and renames values in both maps"] = function()
+-- T335: the same walks, and no key raises anything: any route that reaches a throw is a bug (Q13).
+local function no_key_errors(view, multi, seed0)
+	for i = 1, WALKS do
+		child.setup({ history_view = view })
+		local r = K.walk(child, seed0 + i, KEYS, multi)
+		if r.errors > 0 then
+			error(string.format('%d key error(s) in walk %d\n  keys: %s', r.errors, i, table.concat(r.actions, ', ')), 0)
+		end
+	end
+end
+
+T['T335 [char] no key raises over random walks: one window, both views'] = function()
+	no_key_errors('global', false, 7000)
+	no_key_errors('window', false, 7000)
+end
+T['T335 [char] no key raises over random walks: several windows, both views'] = function()
+	no_key_errors('global', true, 11000)
+	no_key_errors('window', true, 11000)
+end
+
+T["T192 [char] rename_hash_in_triquetras(old, new) moves dsm[old-swap] to dsm[new-swap] and renames values in both maps"] = function()
 	-- Set up directly: a is renamed to x.
 	child.steps({ ':e x', ':e b', ':e c', ':e d', ':e a' })
 	child.lua([[
@@ -251,7 +271,7 @@ T["T192 [target] rename_hash_in_triquetras(old, new) moves dsm[old-swap] to dsm[
 	eq(child.notes(), 'dtm{c>x x-swap>b} dsm{d>x x-swap>b x>c}')
 end
 
-T['T193 [target] (D9) the missing-file rule on the secondary map: <M-;><M-t> says the file is missing, changes no slot, keeps both notes'] = function()
+T['T193 [char] (D9) the missing-file rule on the secondary map: <M-;><M-t> says the file is missing, changes no slot, keeps both notes'] = function()
 	-- <M-f> (f graduates), <M-f> (to f), :e e, <M-f> (to b).
 	child.steps({ ':e f', ':e b', '<M-f>', '<M-f>', ':e e', '<M-f>' })
 	eq(child.slots(), '⦉f⦊ [b] ⟦e⟧')

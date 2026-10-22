@@ -46,15 +46,13 @@ end
 
 -- I1. Route: <M-f>'s history fill while a cycle in another window holds the
 -- history (T198), so several windows and cycles left open across a jump.
--- About 3% of these walks break I1 today (4 of 120, 2 of 60 measured), so
--- this one takes 100 walks.
-T['T128 [target] I1: no duplicate among a triquetra\'s current, secondary and ternary'] = function()
+-- The route is rare, so this one takes 100 walks.
+T['T128 [char] I1: no duplicate among a triquetra\'s current, secondary and ternary'] = function()
 	walk('I1', MWY, 1, 100)
 end
 
 -- I2. Routes: an empty No Name buffer closed while notes or slots name it, a
--- reopened No Name buffer. :enew and <M-.> are doubled: with them single,
--- about 5% of walks break I2 today (3 of 60 measured), doubled about 12%.
+-- reopened No Name buffer. :enew and <M-.> are doubled, so more walks reach it.
 T['T129 [char] I2: every hash referenced anywhere has a path'] = function()
 	walk('I2', join(ACTS, rep(2, { 'enew', '<M-.>' }), { 'enew+text', '<M-S-w>' }), 2)
 end
@@ -92,13 +90,13 @@ T['T334 [char] I14: a save never throws on cavediver\'s own data, over random wa
 end
 
 -- The spec's single-window walks.
-T['T154 [target] no restore throws "Remembered … is the same as current …" (Q13)'] = function()
+T['T154 [char] no restore throws "Remembered … is the same as current …" (Q13)'] = function()
 	walk('restores', ACTS, 7)
 end
 
--- The empty, switched-on queue is set directly (the spec's route to it, a
--- primary file deleted on disk, stops working once missing files stay tracked).
-T['T157 [target] I19: <M-;><M-x> on an empty queue that is switched on gives p=[A]on (Q14)'] = function()
+-- The empty, switched-on queue is set directly (a primary file deleted on disk
+-- doesn't empty the queue, since missing files stay tracked).
+T['T157 [char] I19: <M-;><M-x> on an empty queue that is switched on gives p=[A]on (Q14)'] = function()
 	child.setup()
 	child.steps({ ':e a' })
 	child.lua([[

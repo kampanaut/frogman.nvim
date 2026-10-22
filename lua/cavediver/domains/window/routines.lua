@@ -12,6 +12,100 @@ local loop_states = require('cavediver.domains.ui.states').LOOP
 
 local M = {}
 
+---Keep the older one, for the ternary memory. When a buffer becomes current by anything but plain
+---navigation onto it (which has its own check in displacement_mangement), and its plain ternary note
+---names the buffer now in the ternary, the note is stale: restoring it would throw. It's rewritten to
+---the buffer from before, the way navigation's check does it:
+--- - the buffer left went into the ternary: the pre-jump stored ternary when the arriving buffer was
+---   the ternary, otherwise the pre-jump ternary;
+--- - the ternary stayed put: the ternary's own plain note.
+---It's dropped when that would name the arriving buffer or the ternary itself.
+---
+---@param triquetra WindowTriquetra
+---@param arrived Filehash The buffer that became current
+---@param left Filehash The buffer it replaced
+---@param ternary_before Filehash|nil The ternary before the arrival
+---@param ternary_after Filehash|nil The ternary after the arrival
+function M.keep_older_ternary_note(triquetra, arrived, left, ternary_before, ternary_after)
+	local dtm = triquetra.displacement_ternary_map
+	if arrived == nil or ternary_after == nil or dtm[arrived] ~= ternary_after then
+		return
+	end
+	local older
+	if ternary_after == left then
+		if arrived == ternary_before then older = dtm[left] else older = ternary_before end
+	else
+		older = dtm[ternary_before]
+	end
+	if older == arrived or older == ternary_after then
+		older = nil
+	end
+	dtm[arrived] = older
+end
+
+---Keep the older one, for the secondary memory. When the current buffer's plain secondary note names
+---the window's secondary, it's stale: it's rewritten to the buffer's swap note when that's an older
+---partner, otherwise dropped.
+---
+---@param triquetra WindowTriquetra
+---@param current Filehash|nil The current buffer
+---@param secondary Filehash|nil The window's secondary
+function M.keep_older_secondary_note(triquetra, current, secondary)
+	local dsm = triquetra.displacement_secondary_map
+	if current == nil or secondary == nil or dsm[current] ~= secondary then
+		return
+	end
+	local older = dsm[current .. "-swap"]
+	if older ~= nil and older ~= secondary and older ~= current then
+		dsm[current] = older
+	else
+		dsm[current] = nil
+	end
+end
+
+---The notes a swap onto the secondary writes, whatever route it takes there (<M-f>, its <M-;><M-f>
+---fallback, plain navigation onto the secondary): the buffer left gets swap notes for its secondary
+---and its ternary. The secondary's own swap note, when it names an older partner, becomes its plain
+---note; a plain note naming the buffer left is cleared, so the round trip can't leave it stale.
+---
+---@param triquetra WindowTriquetra
+function M.write_secondary_swap_notes(triquetra)
+	local current, secondary, ternary = triquetra.current_slot, triquetra.secondary_slot, triquetra.ternary_slot
+	local dsm = triquetra.displacement_secondary_map
+	local older = dsm[secondary .. "-swap"]
+	dsm[current .. "-swap"] = secondary
+	if older ~= nil and older ~= current then
+		dsm[secondary] = older
+	elseif dsm[secondary] == current then
+		dsm[secondary] = nil
+	end
+	if ternary then
+		triquetra.displacement_ternary_map[current .. "-swap"] = ternary
+	end
+end
+
+---The stale-note check where a slot changes under the current buffer without a buffer becoming
+---current: the restores' exchanges, graduation, the history fill, a cleanup pass that moved slots.
+---A ternary note naming the ternary becomes the ternary's own plain note (dropped when that names the
+---current buffer or the ternary); a secondary note naming the secondary keeps the older one.
+---
+---@param triquetra WindowTriquetra
+function M.check_notes_under_current(triquetra)
+	local current, ternary = triquetra.current_slot, triquetra.ternary_slot
+	if current == nil then
+		return
+	end
+	local dtm = triquetra.displacement_ternary_map
+	if ternary ~= nil and dtm[current] == ternary then
+		local older = dtm[ternary]
+		if older == current or older == ternary then
+			older = nil
+		end
+		dtm[current] = older
+	end
+	M.keep_older_secondary_note(triquetra, current, triquetra.secondary_slot)
+end
+
 ---This will take in FILEPATHS and validates the input FILEPATHS, to be put as the
 ---new primary buffers history for the triquetra.
 ---
@@ -90,7 +184,8 @@ end
 ---A function used to handle conflicts of slot allocations in the triquetra.
 ---@param winid WinId
 ---@param new_bufnr Bufnr
-function M.reconcile_triquetra(winid, new_bufnr)
+---@param is_pick boolean|nil True when a cycling pick lands here (<M-v>), not a load or a cancel
+function M.reconcile_triquetra(winid, new_bufnr, is_pick)
 	local new_filehash = history.get_hash_from_buffer(new_bufnr)
 
 	if not new_bufnr then error("Bufnr must be provided.") end
@@ -102,6 +197,12 @@ function M.reconcile_triquetra(winid, new_bufnr)
 	local triquetra = data.crux[winid]
 	local temp, proc
 	if triquetra and triquetra.current_slot ~= new_filehash then
+		local left, ternary_before = triquetra.current_slot, triquetra.ternary_slot
+		M.keep_older_secondary_note(
+			triquetra,
+			new_filehash,
+			(triquetra.secondary_slot == new_filehash) and triquetra.current_slot or triquetra.secondary_slot
+		)
 		-- Reconcile the triquetra slots if we selected a buffer part of the relationship
 		if triquetra.ternary_slot == new_filehash then
 			triquetra.displacement_ternary_map[triquetra.current_slot .. "-swap"] = triquetra.ternary_slot
@@ -114,9 +215,20 @@ function M.reconcile_triquetra(winid, new_bufnr)
 			if proc then
 				error("Duplicates detected in triquetra slots")
 			end
+			-- the guard runs before the swap, so the ternary's memory gets the buffer being left.
+			if triquetra.displacement_ternary_map[triquetra.ternary_slot] == new_filehash then
+				triquetra.displacement_ternary_map[triquetra.ternary_slot] = triquetra.current_slot
+				vim.notify(
+					"Avoided conflict of ternary's remembered relationship becoming current. Remembered relationship has been changed to remember pre-jump current buffer instead: ["
+					.. (history.get_buffer_from_hash(triquetra.ternary_slot) or "")
+					.. "] -> ["
+					.. (history.get_buffer_from_hash(triquetra.current_slot) or "")
+					.. "]", vim.log.levels.WARN)
+			end
 			temp = triquetra.current_slot
 			triquetra.current_slot = triquetra.secondary_slot
 			triquetra.secondary_slot = temp
+			proc = true
 		end
 
 		if not proc then
@@ -130,7 +242,20 @@ function M.reconcile_triquetra(winid, new_bufnr)
 					.. "]", vim.log.levels.WARN)
 			end
 			triquetra.current_slot = new_filehash
+			-- a pick outside the slots notes where the cycle started, so a ternary restore brings it
+			-- back; the picked buffer's older swap note would win the restore, so it goes.
+			if is_pick and left ~= nil then
+				triquetra.displacement_ternary_map[new_filehash] = left
+				triquetra.displacement_ternary_map[new_filehash .. "-swap"] = nil
+			end
 		end
+		M.keep_older_ternary_note(
+			triquetra,
+			new_filehash,
+			left,
+			ternary_before,
+			(new_filehash == ternary_before) and left or ternary_before
+		)
 	end
 end
 
@@ -198,6 +323,10 @@ function M.land_after_delete(winid, deleted_bufnr)
 			end
 		end
 
+		if landing_bufnr then
+			M.check_notes_under_current(triquetra) -- a buffer became current under the slots, its notes may be stale.
+		end
+
 		vim.api.nvim_win_call(winid, function()
 			if landing_bufnr then
 				vim.api.nvim_set_current_buf(landing_bufnr)
@@ -246,6 +375,10 @@ end
 ---@return nil
 function M.cleanup_triquetras(bufnr_ondelete)
 	local set_cache_from_window_triquetra = require("cavediver").ui.routines.set_cache_from_window_triquetra
+	local slots_before = {}
+	for winid, triquetra in pairs(data.crux) do
+		slots_before[winid] = { triquetra.current_slot, triquetra.secondary_slot, triquetra.ternary_slot }
+	end
 	for winid, triquetra in pairs(data.crux) do
 		local current_bufnr = history.get_buffer_from_hash(triquetra.current_slot)
 		local filepath, bufnr
@@ -255,12 +388,19 @@ function M.cleanup_triquetras(bufnr_ondelete)
 			if current_slot_candidate then
 				vim.notify("Healed the triquetra of window " ..
 					winid .. " with current slot: " .. vim.api.nvim_win_get_buf(winid))
-				triquetra.current_slot = current_slot_candidate
-				if triquetra.current_slot == triquetra.secondary_slot then
-					triquetra.secondary_slot = nil
-				elseif triquetra.current_slot == triquetra.ternary_slot then
-					triquetra.ternary_slot = nil
+				-- like navigation: the old current goes into the ternary, or trades places with the
+				-- secondary when that's what the window shows now, with the notes navigation writes.
+				if current_slot_candidate == triquetra.secondary_slot then
+					M.write_secondary_swap_notes(triquetra)
+					triquetra.secondary_slot = triquetra.current_slot
+				else
+					if triquetra.ternary_slot and current_slot_candidate ~= triquetra.ternary_slot then
+						triquetra.displacement_ternary_map[triquetra.current_slot .. "-swap"] = nil
+						triquetra.displacement_ternary_map[triquetra.current_slot] = triquetra.ternary_slot
+					end
+					triquetra.ternary_slot = triquetra.current_slot
 				end
+				triquetra.current_slot = current_slot_candidate
 			else
 				-- print("Running cleanup_triquetras [" .. winid .. "] with unregistered current slot: " .. (history.get_filepath_from_hash(triquetra.current_slot) or "nil"))
 				-- yes if the noname buffer turns evolved into a terminal, we don't want to track it.
@@ -530,6 +670,19 @@ function M.cleanup_triquetras(bufnr_ondelete)
 		set_cache_from_window_triquetra(winid)
 		::continue::
 	end
+	-- a slot that changed under the current buffer can leave its notes naming it.
+	for winid, triquetra in pairs(data.crux) do
+		local before = slots_before[winid]
+		if
+			before and (
+				before[1] ~= triquetra.current_slot or
+				before[2] ~= triquetra.secondary_slot or
+				before[3] ~= triquetra.ternary_slot
+			)
+		then
+			M.check_notes_under_current(triquetra)
+		end
+	end
 end
 
 ---Swap with secondary buffer in the target window. It actually just jumps to the secondary buffer.
@@ -562,20 +715,24 @@ function M.swap_with_secondary(winid)
 			triquetra.secondary_slot = triquetra.ternary_slot
 			triquetra.displacement_secondary_map[triquetra.secondary_slot] =
 				triquetra.displacement_ternary_map[triquetra.secondary_slot]
+			triquetra.displacement_secondary_map[triquetra.secondary_slot .. "-swap"] = nil
 			triquetra.ternary_slot = nil
+			M.check_notes_under_current(triquetra)
 			vim.notify("Secondary buffer set to ternary slot. Ternary slot graduated.", vim.log.levels.INFO)
 		elseif #history.data.ordered.crux >= 2 then
+			-- the ordered list's first entry is the window's current buffer, or the second one could be it too.
+			if history.get_hash_from_buffer(history.data.ordered.crux[1].buf) ~= triquetra.current_slot then
+				error("This is impossible. The most recent buffer in the history must be the window's current buffer.")
+			end
 			triquetra.secondary_slot = history.get_hash_from_buffer(history.data.ordered.crux[2].buf)
+			M.check_notes_under_current(triquetra)
 			vim.notify("Secondary buffer populated from history.", vim.log.levels.INFO)
 		else
 			vim.notify("Cannot populate secondary slot - insufficent history.", vim.log.levels.WARN)
 		end
 	else
 		if triquetra.current_slot then
-			triquetra.displacement_secondary_map[triquetra.current_slot] = triquetra.secondary_slot
-			if triquetra.ternary_slot then
-				triquetra.displacement_ternary_map[triquetra.current_slot .. "-swap"] = triquetra.ternary_slot
-			end
+			M.write_secondary_swap_notes(triquetra)
 		else
 			error("It's not okay to have a secondary slot without a current slot.")
 		end
@@ -728,9 +885,12 @@ function M.jump_to_primary(winid)
 		end
 	end
 	if triquetra.current_slot ~= triquetra.primary_buffer[1] then -- We only do displacment if we are not already in the primary buffer.
+		local left, ternary_before = triquetra.current_slot, triquetra.ternary_slot
 		triquetra.displacement_ternary_map[triquetra.current_slot .. "-swap"] = triquetra.ternary_slot
 		triquetra.ternary_slot = triquetra.current_slot
 		triquetra.current_slot = triquetra.primary_buffer[1]
+		M.keep_older_secondary_note(triquetra, triquetra.current_slot, triquetra.secondary_slot)
+		M.keep_older_ternary_note(triquetra, triquetra.current_slot, left, ternary_before, left)
 	else
 		vim.notify("Already in primary buffer, no displacement performed.", vim.log.levels.INFO)
 	end
@@ -751,9 +911,12 @@ function M.toggle_primary_buffer(winid)
 	end
 
 	if #triquetra.primary_buffer == 0 then
+		-- an empty queue takes the current buffer and switches on, in one press.
 		triquetra.primary_buffer[1] = triquetra.current_slot
+		triquetra.primary_enabled = true
+	else
+		triquetra.primary_enabled = not triquetra.primary_enabled
 	end
-	triquetra.primary_enabled = not triquetra.primary_enabled
 	loop_sm:to(loop_states.SELF)
 	vim.cmd("redraw!")
 end
@@ -794,9 +957,29 @@ local function restore_from_displacement_map(type, triquetra)
 	local current_relationship = triquetra[type .. "_slot"]
 	local remembered_mapping = triquetra["displacement_" .. type .. "_map"]
 
+	-- a note at a hash nothing knows any more is cleared when it's used.
+	for _, key in ipairs({ triquetra.current_slot .. "-swap", triquetra.current_slot }) do
+		if remembered_mapping[key] ~= nil and history.get_filepath_from_hash(remembered_mapping[key]) == nil then
+			remembered_mapping[key] = nil
+		end
+	end
+
+	-- a closed buffer whose file is gone from disk can't come back now. its note stays, it may come back.
+	local function missing_and_closed(filehash)
+		local filepath = history.get_filepath_from_hash(filehash)
+		return filepath ~= nil and
+			not filepath:match("^NONAME_") and
+			vim.fn.filereadable(filepath) == 0 and
+			history.get_buffer_from_hash(filehash) == nil
+	end
+
 	local remembered_relationship = remembered_mapping[triquetra.current_slot .. "-swap"]
 
-	if remembered_relationship == nil or remembered_relationship == triquetra.ternary_slot then
+	if
+		remembered_relationship == nil or
+		remembered_relationship == current_relationship or
+		missing_and_closed(remembered_relationship)
+	then
 		remembered_relationship = remembered_mapping[triquetra.current_slot]
 	end
 
@@ -808,11 +991,9 @@ local function restore_from_displacement_map(type, triquetra)
 			type ..
 			" relationship found for restoration. It means you hadn't displaced a current buffer yet to the " ..
 			type .. " slot.", vim.log.levels.WARN)
-	elseif not filepath then
-		error("This impossible error should never happen. Remembered " .. type .. " is not registered in history.")
-	elseif (not filepath:match("^NONAME_")) and vim.fn.filereadable(filepath) == 0 then
-		vim.notify("Remembered " .. type .. " is not found in filesystem anymore.", vim.log.levels.WARN)
-		triquetra["displacement_" .. type .. "_map"][triquetra.current_slot] = nil
+	elseif missing_and_closed(remembered_relationship) then
+		local ui_get_basename = require('cavediver.domains.ui').routines.get_smart_basename
+		vim.notify("Remembered " .. type .. " isn't on disk right now: " .. ui_get_basename(remembered_relationship) .. ". Nothing changed.", vim.log.levels.WARN)
 	elseif remembered_relationship == current_relationship then
 		error("This is impossible. Remembered " ..
 			type .. " is the same as current " .. type .. ". It should be different for flip flop.")
@@ -825,7 +1006,6 @@ local function restore_from_displacement_map(type, triquetra)
 			else
 				triquetra.ternary_slot = remembered_relationship
 			end
-			vim.notify("Restored " .. type .. " slot to: " .. remembered_relationship .. " (" .. ui_get_basename(remembered_relationship) .. ")", vim.log.levels.INFO)
 		elseif type == "secondary" then
 			if remembered_relationship == triquetra.ternary_slot then
 				triquetra.ternary_slot = triquetra.secondary_slot
@@ -833,9 +1013,17 @@ local function restore_from_displacement_map(type, triquetra)
 			else
 				triquetra.secondary_slot = remembered_relationship
 			end
-			vim.notify("Restored " .. type .. " slot to: " .. remembered_relationship .. " (" .. ui_get_basename(remembered_relationship) .. ")", vim.log.levels.INFO)
+		end
+		local restored = "Restored " .. type .. " slot to: " .. remembered_relationship .. " (" .. ui_get_basename(remembered_relationship) .. ")"
+		if not filepath:match("^NONAME_") and vim.fn.filereadable(filepath) == 0 then
+			-- its buffer is still open, so it comes back; the file just isn't on disk right now.
+			vim.notify(restored .. ", not on disk right now", vim.log.levels.WARN)
+		else
+			vim.notify(restored, vim.log.levels.INFO)
 		end
 		triquetra["displacement_" .. type .. "_map"][triquetra.current_slot] = current_relationship
+		-- a slot changed under the current buffer (both, at an exchange), so its notes may name them now.
+		M.check_notes_under_current(triquetra)
 	end
 	loop_sm:to(loop_states.SELF)
 end
