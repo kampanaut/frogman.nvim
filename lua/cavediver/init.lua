@@ -118,7 +118,11 @@ local function setup_keymaps(keymaps)
 	end
 end
 
----Initialize cavediver plugin with configuration
+local setup_debug_commands
+
+---Initialize cavediver plugin with configuration. Nothing runs at require: this creates the
+---autocmds (in the cavediver augroup), the commands and the timers, and calling it again
+---replaces them cleanly.
 ---@param user_config? CavediverConfig User configuration (merged with defaults)
 function M.setup(user_config)
 	-- Merge user configuration with defaults
@@ -137,21 +141,29 @@ function M.setup(user_config)
 		end
 	end
 
-	deep_merge_into(settings, user_config)
+	deep_merge_into(settings, user_config or {})
 
 	-- Store config for domain access
 	M.config = settings
 	
+	local group = vim.api.nvim_create_augroup("cavediver", { clear = true })
+	history.init_autocmds(group)
+	navigation.init_autocmds(group)
+	window.init_autocmds(group)
+	ui.init_autocmds(group)
+
 	ui.init_winbar_highlights()
 	ui.init_refresh_timer()
 	history.init_cleanup_timer()
+	window.data.init_last_valid_window()
+	setup_debug_commands()
 
 	-- Setup keymaps
 	setup_keymaps(settings.keymaps)
 end
 
 ---Setup debug commands for inspecting internal state
-local function setup_debug_commands()
+function setup_debug_commands()
 	-- Command 0: Print Current Window Triquetra
 	vim.api.nvim_create_user_command("CavediverHistoryData", function()
 		print(vim.inspect(history.data))
@@ -365,8 +377,13 @@ local function setup_debug_commands()
 	end, { desc = "Print all window triquetra objects and UI caches" })
 end
 
--- Setup debug commands
-setup_debug_commands()
+---Turn cavediver off: its autocmds and timers go, so nothing is tracked until setup() runs again.
+---@return nil
+function M.disable()
+	vim.api.nvim_create_augroup("cavediver", { clear = true })
+	ui.stop_refresh_timer()
+	history.stop_cleanup_timer()
+end
 
 ---API Exports - Direct access to domain functionality
 

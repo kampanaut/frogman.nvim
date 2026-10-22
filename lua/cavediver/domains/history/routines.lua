@@ -20,12 +20,39 @@ end
 ---@param filename string Full path to the file
 ---@return string filehash 16-character hash prefix
 function M.get_filehash(filename)
+	-- with the "\n" a name hashes as `echo "<name>" | sha256sum` does, so saved hashes still match.
 	local filehash = string.sub(
-		vim.fn.system('echo "' .. filename .. '" | sha256sum'),
+		vim.fn.sha256(filename .. "\n"),
 		1,
 		16
 	)
 	return filehash
+end
+
+---Whether a buffer is `nowrite` on an existing regular file, as image.nvim leaves an image's
+---buffer. cavediver tracks those like files.
+---
+---@param bufnr Bufnr
+---@return boolean
+function M.is_nowrite_file(bufnr)
+	local name = vim.api.nvim_buf_get_name(bufnr)
+	return vim.bo[bufnr].buftype == "nowrite" and
+		name ~= "" and
+		vim.fn.filereadable(name) == 1 and
+		vim.fn.isdirectory(name) == 0
+end
+
+---Whether cavediver tracks a buffer: a listed buffer with buftype "" (or `nowrite` on an
+---existing regular file), whose name is empty (a No Name buffer) or a plain path. A plugin's
+---scratch or helper buffers are unlisted, so they're left alone.
+---
+---@param bufnr Bufnr
+---@return boolean
+function M.is_trackable(bufnr)
+	if not vim.bo[bufnr].buflisted or vim.api.nvim_buf_get_name(bufnr):match("://") then
+		return false
+	end
+	return vim.bo[bufnr].buftype == "" or M.is_nowrite_file(bufnr)
 end
 
 ---Register a buffer in the hash-to-buffer mapping system.
@@ -37,7 +64,7 @@ end
 ---@return Filehash filehash
 function M.register_buffer(bufnr)
 	local filepath = vim.api.nvim_buf_get_name(bufnr)
-	if vim.bo[bufnr].buftype ~= "" and vim.bo[bufnr].filetype ~= "image_nvim" then
+	if vim.bo[bufnr].buftype ~= "" and not M.is_nowrite_file(bufnr) then
 		error("I don't want to track non-file buffers.")
 	end
 	if filepath == "" then
@@ -99,17 +126,64 @@ function M.unregister_buffer(bufnr)
 	-- print("Unregistered buffer: " .. bufnr .. "\n with filehash: " .. filehash .. "\n" .. debug.traceback())
 end
 
----unregister a filepath from the registry
+---Whether anything still references this filehash: a slot, a primary queue, a displacement map
+---(keys and values), the history or the closed stack.
+---
+---@param filehash Filehash
+---@return boolean
+function M.is_filehash_referenced(filehash)
+	if data.crux[filehash] or data.crux_internals.global[filehash] then
+		return true
+	end
+	for _, window_crux in pairs(data.crux_internals.window) do
+		if window_crux[filehash] then
+			return true
+		end
+	end
+	if vim.tbl_contains(data.closed_buffers, filehash) then
+		return true
+	end
+	for _, triquetra in pairs(require('cavediver.domains.window.data').crux) do
+		if
+			triquetra.current_slot == filehash or
+			triquetra.secondary_slot == filehash or
+			triquetra.ternary_slot == filehash or
+			vim.tbl_contains(triquetra.primary_buffer or {}, filehash)
+		then
+			return true
+		end
+		for _, map in ipairs({ triquetra.displacement_ternary_map, triquetra.displacement_secondary_map }) do
+			for key, value in pairs(map or {}) do
+				if value == filehash or key == filehash or key == filehash .. "-swap" then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
+---unregister a filepath from the registry. A path is never forgotten while anything references its
+---hash, so a referenced one stays.
 ---@param filepath Filepath
 function M.unregister_filepath(filepath)
 	local filehash = data.hash_filepath_registry.hashes[filepath]
 
 	if filehash == nil then return end
+	if M.is_filehash_referenced(filehash) then return end
 
 	data.hash_filepath_registry.hashes[filepath] = nil
 	data.hash_filepath_registry.filepaths[filehash] = nil
 
 	-- print("Unregistered filepath: " .. filepath .. "\n with filehash: " .. filehash .. "\n" .. debug.traceback())
+end
+
+---Make sure a window has its history entry. Every triquetra comes with one, wherever it's made.
+---@param winid WinId
+function M.ensure_window_entry(winid)
+	if data.crux_internals.window[winid] == nil then
+		data.crux_internals.window[winid] = {}
+	end
 end
 
 ---unregister a window from the itnernal crux
@@ -144,6 +218,10 @@ function M.initialise_crux_internals(crux_internals)
 		data.crux_internals.window[actual_winid] = window_crux_serialised
 	end
 	data.crux_internals.global = crux_internals.global
+	-- windows the file had no history for still get their entry, every triquetra comes with one.
+	for winid, _ in pairs(require('cavediver.domains.window').data.crux) do
+		M.ensure_window_entry(winid)
+	end
 	local cwin = require('cavediver.domains.window').data.last_valid_window
 	M.construct_crux(cwin)
 	previous_window_constructed = cwin
@@ -261,7 +339,7 @@ end
 ---Update buffer history with the current access time for regular file buffers.
 ---
 ---Records buffer access in the history system if it's a valid file buffer.
----Only tracks normal file buffers and image_nvim buffers that are readable files.
+---Only tracks buffers that pass `M.is_trackable()`.
 ---
 ---@param cbufnr number|nil Buffer number (defaults to current buffer)
 ---@return boolean history_modified True if the buffer was successfully registered and tracked
@@ -273,7 +351,7 @@ function M.update_buffer_history(cbufnr)
 	---@type Filehash
 	local filehash = data.hash_buffer_registry.hashes[cbufnr]
 	if filehash == nil then
-		if vim.bo[cbufnr].buftype == "" and (not (filename:match("://") or filename:match("otter%.%w+$"))) then
+		if M.is_trackable(cbufnr) then
 			filehash = M.register_buffer(cbufnr)
 		else
 			return false
@@ -437,8 +515,8 @@ function M.reopen_filehash(filehash)
 		end
 	elseif filepath and vim.fn.filereadable(filepath) == 1 then
 		bufnr = vim.fn.bufadd(filepath)
+		vim.bo[bufnr].buflisted = true -- listed before bufload, whose BufEnter only tracks listed buffers.
 		vim.fn.bufload(bufnr)
-		vim.bo[bufnr].buflisted = true
 		M.register_buffer(bufnr)
 		M.track_buffer(filehash)
 	end
@@ -474,6 +552,7 @@ function M.track_closing_filehash(filehash)
 
 		-- Check if buffer is empty (no lines or single empty line)
 		if #lines == 0 or (#lines == 1 and lines[1] == "") then
+			M.untrack_buffer(bufnr) -- its own history goes first, so only a slot or a note can keep the path.
 			M.unregister_filepath(filepath) -- Yes, remove it from the system entirely. We are not interested in empty no name buffers.
 			return false           -- Don't track empty [No Name] buffers
 		end

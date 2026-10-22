@@ -38,7 +38,7 @@ local T = MiniTest.new_set({
 	},
 })
 
-T['T125 [target] setup() with no argument works and uses the defaults'] = function()
+T['T125 [char] setup() with no argument works and uses the defaults'] = function()
 	local got = child.lua([[
 		local ok, err = pcall(require('cavediver').setup)
 		local cfg = require('cavediver.configs')
@@ -54,7 +54,7 @@ T['T125 [target] setup() with no argument works and uses the defaults'] = functi
 	eq(got, { ok = true, key = true, history_view = 'global', cleanup_interval = 4000, session_dir = true })
 end
 
-T['T126 [target] require("cavediver") without setup() creates no autocmds'] = function()
+T['T126 [char] require("cavediver") without setup() creates no autocmds'] = function()
 	local got = child.lua([[
 		local before = #vim.api.nvim_get_autocmds({})
 		require('cavediver')
@@ -63,7 +63,7 @@ T['T126 [target] require("cavediver") without setup() creates no autocmds'] = fu
 	eq(got, 0)
 end
 
-T['T127 [target] calling setup() twice leaves one set of autocmds and timers'] = function()
+T['T127 [char] calling setup() twice leaves one set of autocmds and timers'] = function()
 	local opts = 'local s = { session_dir = _G.CDV_ROOT .. "/sessions/" }; '
 	child.lua(opts .. 'require("cavediver").setup(s)')
 	child.lua('vim.wait(300)')

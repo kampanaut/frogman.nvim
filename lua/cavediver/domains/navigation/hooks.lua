@@ -41,8 +41,19 @@ navigationSM:on("*", "*", "winenter_record_window", function(context)
 	end
 end, 1, true, states.mode.WINENTER)
 
-vim.api.nvim_create_autocmd("WinEnter", {
-	callback = function(_)
-		navigationSM:to(navigationSM:state(), {}, states.mode.WINENTER)
-	end
-})
+local M = {}
+
+---Create the navigation domain's autocmds in cavediver's augroup. setup() calls this, so nothing
+---runs at require, and calling it again after the group is cleared replaces them cleanly.
+---
+---@param group integer The cavediver augroup
+function M.init_autocmds(group)
+	vim.api.nvim_create_autocmd("WinEnter", {
+		group = group,
+		callback = function(_)
+			navigationSM:to(navigationSM:state(), {}, states.mode.WINENTER)
+		end
+	})
+end
+
+return M

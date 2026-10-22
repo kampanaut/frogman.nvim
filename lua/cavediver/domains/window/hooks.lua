@@ -127,9 +127,20 @@ navigation.sm:on("*", "*", "winenter_track_current_window", function(context)
 	data.current_window = current_window
 end, 2, true, navigation.states.mode.WINENTER)
 
-vim.api.nvim_create_autocmd("WinClosed", {
-	callback = function(args)
-		local winid = tonumber(args.file)
-		data.unregister_triquetra(winid)
-	end,
-})
+local M = {}
+
+---Create the window domain's autocmds in cavediver's augroup. setup() calls this, so nothing
+---runs at require, and calling it again after the group is cleared replaces them cleanly.
+---
+---@param group integer The cavediver augroup
+function M.init_autocmds(group)
+	vim.api.nvim_create_autocmd("WinClosed", {
+		group = group,
+		callback = function(args)
+			local winid = tonumber(args.file)
+			data.unregister_triquetra(winid)
+		end,
+	})
+end
+
+return M

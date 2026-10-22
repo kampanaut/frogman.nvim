@@ -33,13 +33,15 @@ function M.execute_transition(from_state, to_state, mode, context, statemachine)
 		if hook.enabled then
 			-- Call the hook function with the transition context
 			-- The context is mutable and passed through the entire pipeline
-			local success, error_msg = pcall(hook.func, context, from_state, to_state)
+			local success, error_msg = xpcall(hook.func, debug.traceback, context, from_state, to_state)
 			
 			if not success then
-				vim.notify(
-					"Hook '" .. hook.name .. "' failed during transition " .. transition_name .. ": " .. error_msg,
-					vim.log.levels.ERROR
-				)
+				local message = "Hook '" .. hook.name .. "' failed during transition " .. transition_name .. ": " .. tostring(error_msg)
+				if hook.critical then
+					-- the transition is abandoned, so the machine stays where it was and the caller sees it.
+					error(message, 0)
+				end
+				vim.notify(message, vim.log.levels.ERROR)
 			end
 		end
 	end

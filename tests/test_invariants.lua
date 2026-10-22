@@ -55,12 +55,12 @@ end
 -- I2. Routes: an empty No Name buffer closed while notes or slots name it, a
 -- reopened No Name buffer. :enew and <M-.> are doubled: with them single,
 -- about 5% of walks break I2 today (3 of 60 measured), doubled about 12%.
-T['T129 [target] I2: every hash referenced anywhere has a path'] = function()
+T['T129 [char] I2: every hash referenced anywhere has a path'] = function()
 	walk('I2', join(ACTS, rep(2, { 'enew', '<M-.>' }), { 'enew+text', '<M-S-w>' }), 2)
 end
 
 -- I3. Route: :vsplit.
-T['T130 [target] I3: every triquetra has a history entry'] = function()
+T['T130 [char] I3: every triquetra has a history entry'] = function()
 	walk('I3', MW, 3)
 end
 
@@ -80,6 +80,15 @@ end
 -- navigation is normal (the list is frozen on purpose while cycling).
 T['T133 [char] I11: ordered.crux is newest first and holds only registered open buffers'] = function()
 	walk('I11', join(MWY, { '<M-n>', '<M-m>', '<M-v>', 'enew', '<M-.>', '<M-S-w>', '<M-;><M-x>' }), 6)
+end
+
+-- I14. A save after every action, over the one-window, several-window and closing
+-- mixes: the save hook is critical, so any throw on cavediver's own data would
+-- reach the session manager's save.
+T['T334 [char] I14: a save never throws on cavediver\'s own data, over random walks'] = function()
+	walk('save', ACTS, 8, 10)
+	walk('save', MWY, 9, 10)
+	walk('save', join(ACTS, rep(2, { 'enew', '<M-.>' }), { 'enew+text', '<M-S-w>', 'new file' }), 10, 10)
 end
 
 -- The spec's single-window walks.

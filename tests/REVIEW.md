@@ -1,6 +1,6 @@
 # Test review sheet
 
-385 cases in 24 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+386 cases in 24 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -11,7 +11,7 @@
 
 **State set by hand** (49): T184 (keep_older), T192 (keep_older), T107 (cleanup), T108 (cleanup), T113 (cleanup), T163 (cleanup), T91 (closing), T203 (cycling), T204 (cycling), T205 (cycling), T251 (decisions), T257 (decisions), T263 (decisions), T263 (decisions), T264 (decisions), T265 (decisions), T267 (decisions), T271 (decisions), T271 (decisions), T273 (decisions), T275 (decisions), T276 (decisions), T280 (decisions), T285 (decisions), T287 (decisions), T20 (history), T12 (identity), T157 (invariants), T25 (lifecycle), T34 (navigation), T35 (navigation), T219 (negative), T241 (negative), T242 (negative), T243 (negative), T243 (negative), T243 (negative), T247 (negative), T66 (restores), T68 (restores), T296 (s2), T298 (s2), T299 (s2), T315 (s2), T316 (s2), T138 (sessions), T146 (sessions), T147 (sessions), T148 (sessions)
 
-**Random walk** (21): T190 (keep_older), T190 (keep_older), T190 (keep_older), T190 (keep_older), T171 (cycling), T279 (decisions), T281 (decisions), T282 (decisions), T283 (decisions), T149 (history), T149 (history), T128 (invariants), T129 (invariants), T130 (invariants), T131 (invariants), T132 (invariants), T133 (invariants), T154 (invariants), T249 (negative), T249 (negative), T299 (s2)
+**Random walk** (22): T190 (keep_older), T190 (keep_older), T190 (keep_older), T190 (keep_older), T171 (cycling), T279 (decisions), T281 (decisions), T282 (decisions), T283 (decisions), T149 (history), T149 (history), T128 (invariants), T129 (invariants), T130 (invariants), T131 (invariants), T132 (invariants), T133 (invariants), T334 (invariants), T154 (invariants), T249 (negative), T249 (negative), T299 (s2)
 
 **Routes changed by the porting agents** so a target fails for the right reason:
 - T111 (test_cleanup.lua): route changed so it fails for the right reason (the first route passed by luck)
@@ -184,7 +184,7 @@ spec: I23 as a property test, alongside T154: random walks over `:e` on five fil
 `:e x`, `:e b`, `:e c`, `:e d`, `:e a` → `notes = 'dtm{a-swap>b c>a} dsm{a-swap>b a>c d>a}'`  
 → `notes = 'dtm{c>x x-swap>b} dsm{d>x x-swap>b x>c}'`  
 note: Set up directly: a is renamed to x.  
-spec: ("Keep the older one") `rename_hash_in_triquetras(old, new)` moves `dsm[old-swap]` to `dsm[new-swap]` and renames values in both maps, as it already does for `dtm[old-swap]` (`window/data.lua:142-145`). Set it up directly, or with a No Name buffer that holds both kinds of seconda…  
+spec: ("Keep the older one") `rename_hash_in_triquetras(old, new)` moves `dsm[old-swap]` to `dsm[new-swap]` and renames values in both maps, as it already does for `dtm[old-swap]` (`window/data.lua:146-149`). Set it up directly, or with a No Name buffer that holds both kinds of seconda…  
 `tests/test_keep_older.lua:235`
 
 **T193 [target]** (D9) the missing-file rule on the secondary map: <M-;><M-t> says the file is missing, changes no slot, keeps both notes  
@@ -739,7 +739,7 @@ note: T200's route. The scratch buffer isn't opened inside the failing call, onl
 spec: (A26) A dump opens its scratch buffer only once the editor settles, and names files by alias and basename, never by full path: on T200's route, no buffer is added inside the failing call, the scratch buffer is there once it settles, and neither it nor the file holds the project's…  
 `tests/test_cycling.lua:629`
 
-## tests/test_decisions.lua (52 cases: 18 char, 34 target)
+## tests/test_decisions.lua (52 cases: 24 char, 28 target)
 
 **T250 [target]** (P2, A1) the slotting happens after the event, not inside it  
 `:e a`, `:e b` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
@@ -778,20 +778,20 @@ note: b is closed and stays known through the closed stack.
 spec: (P10, I17) History follows along and doesn't let go early: `:e a`, `:e b`, `:e c`, `:bdelete b.txt` leave b on the closed stack, still known, and its global history entry stays. Today the entry goes as soon as b is unregistered. "Known" means cavediver still remembers the file (r…  
 `tests/test_decisions.lua:108`
 
-**T253 [target]** (P11) a failing hook is reported with a stack trace  
+**T253 [char]** (P11) a failing hook is reported with a stack trace  
 → `eq(Extra.has(msgs, "Hook 'breaks' failed"), true)`  
 → `eq(traced, true)`  
-spec: (P11) A bug inside a hook is caught with a stack trace: a hook that throws is reported as "Hook '<name>' failed…" together with a stack traceback. Today the message has only the error. The traceback is in the notification itself (confirmed by the author, 2026-10-21: "In the notif…  
+spec: (P11) A bug inside a hook is caught with a stack trace: a hook that throws is reported as "Hook '<name>' failed…" together with a stack traceback. The traceback is in the notification itself (confirmed by the author, 2026-10-21: "In the notification").  
 `tests/test_decisions.lua:118`
 
-**T254 [target]** (P12, A25) require creates no user commands and starts no timers  
+**T254 [char]** (P12, A25) require creates no user commands and starts no timers  
 → `eq(got, { commands = {}, timers = 0 })`  
-spec: (P12, A25) Nothing runs at `require`, and `setup()` makes everything inside the `cavediver` augroup: `require('cavediver')` alone creates no `Cavediver*` user command and starts no timer, and every autocmd `setup()` creates is in the `cavediver` augroup, with the commands made. T…  
+spec: (P12, A25) Nothing runs at `require`, and `setup()` makes everything inside the `cavediver` augroup: `require('cavediver')` alone creates no `Cavediver*` user command and starts no timer, and every autocmd `setup()` creates is in the `cavediver` augroup, with the commands made.  
 `tests/test_decisions.lua:137`
 
-**T254 [target]** (P12, A25) setup() puts every autocmd it makes in the cavediver augroup, and makes the commands  
+**T254 [char]** (P12, A25) setup() puts every autocmd it makes in the cavediver augroup, and makes the commands  
 → `eq(got, { made = true, outside = 0, command = true })`  
-spec: (P12, A25) Nothing runs at `require`, and `setup()` makes everything inside the `cavediver` augroup: `require('cavediver')` alone creates no `Cavediver*` user command and starts no timer, and every autocmd `setup()` creates is in the `cavediver` augroup, with the commands made. T…  
+spec: (P12, A25) Nothing runs at `require`, and `setup()` makes everything inside the `cavediver` augroup: `require('cavediver')` alone creates no `Cavediver*` user command and starts no timer, and every autocmd `setup()` creates is in the `cavediver` augroup, with the commands made.  
 `tests/test_decisions.lua:151`
 
 **T255 [target]** (M1) the session file is named sha256(directory .. "\\n" .. name)  
@@ -805,12 +805,12 @@ spec: (M1) The session file is named `sha256(directory .. "\n" .. name)`: `save_
 spec: (M1) The session file is named `sha256(directory .. "\n" .. name)`: `save_session('work')` writes a file in `session_dir` whose name starts with `vim.fn.sha256(getcwd(-1, -1) .. "\n" .. 'work')`; and a session `a` saved in `/proj` and a nameless save in `/proja` are two files. Wi…  
 `tests/test_decisions.lua:189`
 
-**T256 [target]** (M3) a listed nowrite buffer on an existing regular file is tracked  
+**T256 [char]** (M3) a listed nowrite buffer on an existing regular file is tracked  
 `:e a` → `eq({ child.lua('return vim.bo.buftype'), child.lua('return vim.bo.buflisted') }, { 'nowrite', true })`  
 → `eq(Dec.registered(child), true)`  
 → `slots = '⦉a⦊ [c] ⟦-⟧'`  
 note: A listed buffer on c.txt, an existing regular file, with buftype nowrite.  
-spec: (M3) A listed `nowrite` buffer on an existing regular file is tracked: after `:e a`, entering such a buffer on c.txt registers it and gives `⦉a⦊ [c] ⟦-⟧`. Today it isn't registered and the window loses its triquetra.  
+spec: (M3) A listed `nowrite` buffer on an existing regular file is tracked: after `:e a`, entering such a buffer on c.txt registers it and gives `⦉a⦊ [c] ⟦-⟧`.  
 `tests/test_decisions.lua:207`
 
 **T257 [char]** (M7) the secondary map's swap notes are saved and loaded with the rest of the map ⚑ state set by hand  
@@ -1076,19 +1076,19 @@ spec: (I9) Every triquetra belongs to a valid, non-floating window: random walks
 spec: (I9) `:file` onto a name not on disk, in a split, leaves no triquetra for a dead window: `:e a`, `:vsplit`, `:e b`, `:file new.txt`.  
 `tests/test_decisions.lua:764`
 
-**T285 [target]** (I14) a save with a slot holding a hash with no path succeeds ⚑ state set by hand  
+**T285 [char]** (I14) a save with a slot holding a hash with no path succeeds ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 → `eq(got, { true })`  
 → `eq(errors(), {})`  
 note: A secondary set to a hash nothing knows, saved in the same call so no other pass runs first.  
-spec: (I14) A save with a slot holding a hash with no path succeeds and reports nothing: at `⦉c⦊ [d] ⟦b⟧`, the secondary set by hand to an unknown hash, then `save_session` in the same call. Today the save hook fails with "This must not be possible…".  
+spec: (I14) A save with a slot holding a hash with no path succeeds and reports nothing: at `⦉c⦊ [d] ⟦b⟧`, the secondary set by hand to an unknown hash, then `save_session` in the same call.  
 `tests/test_decisions.lua:782`
 
-**T286 [target]** (I21) the critical save hook throws to the caller and leaves storage idle  
-`:e a` → `eq({ got[1], state }, { false, 'idle' })`  
-note: T143's read-only session directory.  
-spec: (I21) The critical save hook throws to the caller and storage is `idle` afterwards: T143's read-only session directory. Today the save returns normally.  
-`tests/test_decisions.lua:796`
+**T286 [char]** (I21) the critical save hook throws to the caller and leaves storage where it was  
+`:e a` → `eq({ got[1], state }, { false, before })`  
+note: T143's read-only session directory. The transition is abandoned, so storage stays where it was: idle after a load or a save, bare before either (as here, a fresh process's first save).  
+spec: (I21) The critical save hook throws to the caller, and the abandoned transition leaves storage where it was: `idle` after a load or a save, `bare` before either. T143's read-only session directory, saved from a fresh process (so `bare`).  
+`tests/test_decisions.lua:798`
 
 **T287 [target]** (I23, A21) a cleanup re-point runs the check on the buffer it makes current ⚑ state set by hand  
 `:e d`, `:e b`, `:e c`, `<M-f>`, `:e a` → `slots = '⦉c⦊ [a] ⟦b⟧'`  
@@ -1097,27 +1097,27 @@ spec: (I21) The critical save hook throws to the caller and storage is `idle` af
 `<M-;><M-t>` → `eq({ ok, err }, { true, nil })`  
 note: T163's re-point: the window put on d without a BufEnter, then a's buffer wiped. d's secondary note names b, the window's secondary, set by hand; the secondary stays b either way, so the note is stale once d is current.  
 spec: (I23, A21, final section) The check runs at a cleanup pass that moved a window's slots: T163's re-point, with d's secondary note set by hand to b, the window's secondary under today's re-point and the decided one alike; once d is current I23 holds and `<M-;><M-t>` doesn't throw. …  
-`tests/test_decisions.lua:812`
+`tests/test_decisions.lua:815`
 
 **T288 [target]** (D11) under the window view, :close leaves no tie: :e a after it ranks a first  
 `:e a`, `:e b`, `:vsplit`, `:close`, `:e a` → `eq(Dec.leftmost(child), nil)`  
 spec: (D11, bug found while porting) Under the window view, `:close` leaves no tie: `:e a`, `:e b`, `:vsplit`, `:close`, `:e a` put a strictly first in the bufferline order. Today a and b tie.  
-`tests/test_decisions.lua:825`
+`tests/test_decisions.lua:828`
 
 **T289 [target]** (D25) the window machine is gone: its file, its SHOWING_ constants and its require  
 → `eq({`  
 spec: (D25) The window machine goes: no `window/sm.lua`, no `SHOWING_` constants in `window/states.lua`, and nothing requires `cavediver.domains.window.sm`. A doc check, matched by text.  
-`tests/test_decisions.lua:843`
+`tests/test_decisions.lua:846`
 
 **T290 [char]** (D18, D22, D24) STATUS and the old project CLAUDE.md live in archive/  
 → `eq({`  
 spec: (D18, D22, D24) STATUS and the old project `CLAUDE.md` live in `archive/`, and neither is at the repo root. A doc check. It holds today already, so it's [char]: a guard that stays true when the decided code lands.  
-`tests/test_decisions.lua:857`
+`tests/test_decisions.lua:860`
 
 **T291 [char]** (D8, D13) README:15 and README:355 stay as written  
 → `eq({`  
 spec: (D8, D13) README:15 ("Closed buffers reopen when accessed through relationships") and README:355 ("Every time you jump to secondary…") stay as written. A doc check, matched by text. It holds today already, so it's [char]: a guard that stays true when the decided code lands.  
-`tests/test_decisions.lua:866`
+`tests/test_decisions.lua:869`
 
 ## tests/test_docs.lua (24 cases: 2 char, 22 target)
 
@@ -1266,7 +1266,7 @@ spec: Transition modes are one table shared by every machine: a mode registered 
 spec: `sm.history` keeps every transition: after 1,000 transitions on one machine, its history holds all 1,000 (Q21).  
 `tests/test_engine.lua:139`
 
-## tests/test_history.lua (9 cases: 5 char, 4 target)
+## tests/test_history.lua (9 cases: 6 char, 3 target)
 
 **T15 [char]** after visiting a, b, c, ordered.crux is c,b,a  
 `:e a`, `:e b`, `:e c` → `ordered = 'c,b,a'`  
@@ -1287,7 +1287,7 @@ spec: With `history_view = "window"`, the order in window 2 puts window 2's own 
 spec: Closing a window removes its `crux_internals.window` entry.  
 `tests/test_history.lua:60`
 
-**T18 [target]** :vsplit creates the new window's history entry along with its triquetra (I3)  
+**T18 [char]** :vsplit creates the new window's history entry along with its triquetra (I3)  
 `:e a`, `:e b`, `:vsplit` → `slots = '⦉-⦊ [b] ⟦-⟧'`  
 → `Helpers.expect.no_equality(window_history(w2), nil)`  
 note: Under the default (global) view, as in run s16. The window view would give the new window an empty entry on WinEnter for another reason (construct_crux).  
@@ -1324,41 +1324,42 @@ spec: A property test over random visits, with `history_view` set to `"global"` 
 spec: A property test over random visits, with `history_view` set to `"global"` and to `"window"`, across windows: after any visit, the visited buffer is leftmost in the bufferline order (`compare_buffers`). The author's check: two windows, back into window A, `:e e` gave `e=7 b=6 a=5 …  
 `tests/test_history.lua:163`
 
-## tests/test_identity.lua (7 cases: 4 char, 2 target, 1 today)
+## tests/test_identity.lua (7 cases: 6 char, 1 today)
 
 **T8 [char]** the hash of a plain path is the first 16 hex characters of sha256(path .. "\\n")  
 `:e a` → `eq(got[1], got[2])`  
 spec: The hash of a plain path is the first 16 hex characters of `vim.fn.sha256(path .. "\n")`.  
 `tests/test_identity.lua:21`
 
-**T9 [target]** a path with ", $HOME or a backslash hashes to sha256(path .. "\\n")  
+**T9 [char]** a path with ", $HOME or a backslash hashes to sha256(path .. "\\n")  
 `:e a` → `eq(got.got, got.want)`  
 note: Only hashes come back, keyed by a label, never the paths. The backslash name has two in a row, which the shell's double quotes fold into one.  
 spec: A path containing `"`, `$HOME` or a backslash hashes to the first 16 hex characters of `vim.fn.sha256(path .. "\n")`.  
 `tests/test_identity.lua:31`
 
-**T10 [char]** :e registers a file; help, terminal, scheme:// and */otter.lua buffers are not registered  
-`:e a`, `:help`, `:close`, `:terminal`, `:e a`, `:edit scheme://some/thing`, `:edit sub/otter.lua` → `eq(got, { file = true, help = false, terminal = false, scheme = false, otter = false })`  
-spec: `:e` on an existing file registers it. Help, terminal, `scheme://` and `*/otter.lua` buffers aren't registered.  
+**T10 [char]** :e registers a file; help, terminal, scheme:// and otter's unlisted buffers are not registered  
+`:e a`, `:help`, `:close`, `:terminal`, `:e a`, `:edit scheme://some/thing` → `eq(got, { file = true, help = false, terminal = false, scheme = false, otter = false })`  
+note: otter makes its buffers with vim.uri_to_bufnr, which leaves them unlisted; listed-only tracking is what keeps them out, not their name.  
+spec: `:e` on an existing file registers it. Help, terminal and `scheme://` buffers aren't registered, and neither is otter's: it makes its buffers with `vim.uri_to_bufnr`, which leaves them unlisted, and listed-only tracking keeps them out (M3), not their `otter.*` name. A file you op…  
 `tests/test_identity.lua:51`
 
 **T11 [today]** an entered No Name buffer is registered as NONAME_<bufnr>  
 `:e a`, `:enew` → `eq(got.path, got.want)`  
 spec: An entered No Name buffer is registered as `NONAME_<bufnr>`. Decided: an id unique across sessions (I16).  
-`tests/test_identity.lua:78`
+`tests/test_identity.lua:83`
 
 **T12 [char]** registering a second buffer under the same hash binds it to the newer one ⚑ state set by hand  
 `:e a` → `eq(got, { distinct = true, same_hash = true, bound_to_newer = true, newer_reverse = true, older_reverse = 'dropped' })`  
 note: Names change with autocmds off, so only register_buffer touches the registry.  
 spec: Registering a second buffer under the same hash binds the hash to the newer buffer and drops the older one's reverse entry.  
-`tests/test_identity.lua:89`
+`tests/test_identity.lua:94`
 
-**T13 [target]** an unlisted buftype "" buffer that a plugin creates and enters is not registered  
+**T13 [char]** an unlisted buftype "" buffer that a plugin creates and enters is not registered  
 `:e a` → `eq(child.lua('return vim.bo.buflisted'), false)`  
 → `eq(child.lua('return vim.bo.buftype'), '')`  
 → `eq(registered(), false)`  
 spec: An unlisted `buftype ""` buffer that a plugin creates and enters isn't registered.  
-`tests/test_identity.lua:116`
+`tests/test_identity.lua:121`
 
 **T14 [char]** a buffer whose file is not written yet stays registered after it is left and re-entered  
 `:e a`, `:e brandnew.txt` → `Helpers.expect.no_equality(first.hash, nil)`  
@@ -1366,21 +1367,21 @@ spec: An unlisted `buftype ""` buffer that a plugin creates and enters isn't reg
 `:e brandnew.txt` → `eq(child.lua('return vim.api.nvim_get_current_buf()'), first.buf)`  
 → `eq(bound(), first.buf)`  
 spec: A buffer whose file isn't written yet stays registered after it's left and re-entered.  
-`tests/test_identity.lua:128`
+`tests/test_identity.lua:133`
 
-## tests/test_invariants.lua (8 cases: 3 char, 5 target)
+## tests/test_invariants.lua (9 cases: 6 char, 3 target)
 
 **T128 [target]** I1: no duplicate among a triquetra's current, secondary and ternary ⚑ random walk; walks raised to 100 so the break shows up (about 3% of walks break today)  
 note: I1. Route: <M-f>'s history fill while a cycle in another window holds the history (T198), so several windows and cycles left open across a jump. About 3% of these walks break I1 today (4 of 120, 2 of 60 measured), so this one takes 100 walks.  
 spec: I1: no duplicate among a triquetra's current, secondary and ternary.  
 `tests/test_invariants.lua:51`
 
-**T129 [target]** I2: every hash referenced anywhere has a path ⚑ random walk; :enew and <M-.> doubled in the walk mix to reach the break more often  
+**T129 [char]** I2: every hash referenced anywhere has a path ⚑ random walk; :enew and <M-.> doubled in the walk mix to reach the break more often  
 note: I2. Routes: an empty No Name buffer closed while notes or slots name it, a reopened No Name buffer. :enew and <M-.> are doubled: with them single, about 5% of walks break I2 today (3 of 60 measured), doubled about 12%.  
 spec: I2: every hash referenced anywhere has a path.  
 `tests/test_invariants.lua:58`
 
-**T130 [target]** I3: every triquetra has a history entry ⚑ random walk  
+**T130 [char]** I3: every triquetra has a history entry ⚑ random walk  
 note: I3. Route: :vsplit.  
 spec: I3: every triquetra has a history entry.  
 `tests/test_invariants.lua:63`
@@ -1400,17 +1401,22 @@ note: Checked after every action that isn't a cycling key or pick, while navigat
 spec: I11: `ordered.crux` is sorted, newest first, and holds only registered open buffers after any non-cycling action.  
 `tests/test_invariants.lua:81`
 
+**T334 [char]** I14: a save never throws on cavediver's own data, over random walks ⚑ random walk  
+note: I14. A save after every action, over the one-window, several-window and closing mixes: the save hook is critical, so any throw on cavediver's own data would reach the session manager's save.  
+spec: (I14) A save never throws on cavediver's own data: random walks over the one-window, several-window and closing mixes (`:enew`, `<M-.>`, `<M-S-w>`, a new file with text) call `save_session(cwd)` after every action, and no call throws. The save hook is critical (I21), so a throw w…  
+`tests/test_invariants.lua:88`
+
 **T154 [target]** no restore throws "Remembered … is the same as current …" (Q13) ⚑ random walk  
 note: The spec's single-window walks.  
 spec: No restore throws: `<M-;><M-r>` and `<M-;><M-t>` never throw "Remembered … is the same as current …" (Q13). Random walks with Q6's fix still found the ternary restore throwing 13 times in 1,500; those routes were traced to arrivals that skip the stale-note check in navigation, an…  
-`tests/test_invariants.lua:86`
+`tests/test_invariants.lua:95`
 
 **T157 [target]** I19: <M-;><M-x> on an empty queue that is switched on gives p=[A]on (Q14) ⚑ state set by hand  
 `:e a` → `primary = '[]on'`  
 `<M-;><M-x>` → `primary = '[a]on'`  
 note: The empty, switched-on queue is set directly (the spec's route to it, a primary file deleted on disk, stops working once missing files stay tracked).  
 spec: (Q14) I19, A9: on an empty queue that's switched on, one `<M-;><M-x>` gives `p=[A]on`. Today it gives `p=[A]off` **[run s19]**. The test sets the empty, switched-on state directly: s19's route, deleting the open primary's file on disk, keeps the primary in the queue (A21) **[infe…  
-`tests/test_invariants.lua:92`
+`tests/test_invariants.lua:101`
 
 ## tests/test_lifecycle.lua (7 cases: 5 char, 1 target, 1 today)
 
@@ -1566,7 +1572,7 @@ spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary
 spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary write the same notes: from `⦉c⦊ [d] ⟦b⟧`, either one gives `⦉c⦊ [b] ⟦d⟧` with the swap notes `dsm{d-swap>b}` and `dtm{d-swap>c}`, and no plain secondary note for d. Paired with T30 and T39. Plain navigatio…  
 `tests/test_navigation.lua:145`
 
-## tests/test_negative.lua (48 cases: 22 char, 26 target)
+## tests/test_negative.lua (48 cases: 24 char, 24 target)
 
 **T207 [char]** (P5) a nofile scratch entered in a tracked window is not registered  
 `:e a`, `:e b` → `eq(registered(), true)`  
@@ -1581,8 +1587,8 @@ spec: (P5) A `nofile` scratch entered in a tracked window isn't registered (M3).
 → `eq(#child.refs(h) > 0, true)`  
 → `closed = ''`  
 → `eq(child.refs(h), {})`  
-note: N is an empty No Name buffer that ends up only in the notes: a key (N>c) and a value (b>N). Wiping it forgets its path and pushes nothing (M5), so nothing but the notes would still name it.  
-spec: (P10, I17) Notes follow along: `:e a`, `:e b`, `:e c`, `:enew` (an empty No Name N), `:e b`, `:e d` leave N only in the notes (`N>c`, `b>N`). After `:bwipeout` of N, which forgets its path and pushes nothing (M5), no note names N. Today both notes stay (M7: the maps are never pru…  
+note: N is an empty No Name buffer that ends up only in the notes: a key (N>c) and a value (b>N). Wiping it pushes nothing (M5); its path stays only because the notes still name it (I2), so once the notes follow along, nothing names it.  
+spec: (P10, I17) Notes follow along: `:e a`, `:e b`, `:e c`, `:enew` (an empty No Name N), `:e b`, `:e d` leave N only in the notes (`N>c`, `b>N`). After `:bwipeout` of N, which pushes nothing (M5), no note names N. Today both notes stay (M7: the maps are never pruned), and they keep N…  
 `tests/test_negative.lua:84`
 
 **T209 [char]** (P14) the secondary changes only when you act: navigation elsewhere, cycle steps, a split and a window jump leave it  
@@ -1649,7 +1655,7 @@ spec: (P24, A22) A save leaves the closed stack as it was: with b closed and out
 → `eq(Extra.at_least(child.messages()), {})`  
 → `slots = '⦉d⦊ [c] ⟦b⟧'`  
 note: Ex commands raise; keys return ok, err.  
-spec: (P26) With harpoon not installed, `:e`, `<M-f>`, `<M-S-f>`, `<M-;><M-c>`, `<M-;><M-r>` and the UI ticks raise nothing and report no hook failure. Today every history update fails at `history/routines.lua:336` with "module 'harpoon' not found".  
+spec: (P26) With harpoon not installed, `:e`, `<M-f>`, `<M-S-f>`, `<M-;><M-c>`, `<M-;><M-r>` and the UI ticks raise nothing and report no hook failure. Today every history update fails at `history/routines.lua:402` with "module 'harpoon' not found".  
 `tests/test_negative.lua:202`
 
 **T216 [target]** (I16) a No Name id is not reused across sessions  
@@ -1707,10 +1713,10 @@ spec: (M11, D23) The winbar and indicator toggles work at runtime: `hide_winbar(
 spec: (M11) `unregister_hook(name)` removes that hook from its own machine and nothing else, without throwing, and the name can be bound again. Today it calls the class instead of the instance (`state-machine.lua:382`), throws, and the hook still runs.  
 `tests/test_negative.lua:326`
 
-**T222 [target]** (M1, D4) hashing a file name runs no shell  
+**T222 [char]** (M1, D4) hashing a file name runs no shell  
 → `eq(registered(), true)`  
 → `eq(calls, 0)`  
-spec: (M1, D4) Hashing a file name runs no shell: `:e a` and `:e b` make no `vim.fn.system`, `io.popen` or `vim.system` call. Today each hash shells out to `sha256sum`.  
+spec: (M1, D4) Hashing a file name runs no shell: `:e a` and `:e b` make no `vim.fn.system`, `io.popen` or `vim.system` call.  
 `tests/test_negative.lua:349`
 
 **T223 [char]** (A1, A3) going back into a window onto its current slot changes no slot and writes no note  
@@ -1873,12 +1879,12 @@ note: b (the secondary) and c (the ternary) are open but hidden; their files go.
 spec: (A21) A slot pointing at an open buffer is kept whatever the disk says: at `⦉c⦊ [d] ⟦b⟧`, deleting b.txt and c.txt (both still open), UI ticks and a `cleanup_system` pass leave the slots and both registrations as they were.  
 `tests/test_negative.lua:657`
 
-**T240 [target]** (A25) disable() clears the cavediver augroup and stops the timers, and nothing is tracked after  
+**T240 [char]** (A25) disable() clears the cavediver augroup and stops the timers, and nothing is tracked after  
 `:e a`, `:e b` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
 → `eq(got, { disable = 'function', ok = true, autocmds = 0, timers = 0 })`  
 `:e c` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
 → `ordered = 'b,a'`  
-spec: (A25) `disable()` clears the `cavediver` augroup and stops the timers, and afterwards `:e c` changes no slot and records nothing. Today there's no `disable`.  
+spec: (A25) `disable()` clears the `cavediver` augroup and stops the timers, and afterwards `:e c` changes no slot and records nothing.  
 `tests/test_negative.lua:668`
 
 **T241 [target]** (A26) the flight recorder records keymap actions and events, never raw keystrokes ⚑ state set by hand  
@@ -1934,7 +1940,7 @@ spec: (I23) The check runs wherever a slot changes under the current buffer (dec
 → `eq(Misc.errors(child), {})`  
 → `slots = '⦉a⦊ [b] ⟦-⟧'`  
 note: Saved: the split (listed first) ⦉c⦊ [d], the first window ⦉a⦊ [b]. The manager brings back one window, on b.  
-spec: (S2) A load into fewer windows than were saved matches by what they show and drops the unmatched entry, with no error: two windows saved (`⦉c⦊ [d] ⟦-⟧` in the split, `⦉a⦊ [b] ⟦-⟧`) and one restored on b give `⦉a⦊ [b] ⟦-⟧`. Today "table index is nil" (`history/routines.lua:144`).  
+spec: (S2) A load into fewer windows than were saved matches by what they show and drops the unmatched entry, with no error: two windows saved (`⦉c⦊ [d] ⟦-⟧` in the split, `⦉a⦊ [b] ⟦-⟧`) and one restored on b give `⦉a⦊ [b] ⟦-⟧`. Today "table index is nil" (`history/routines.lua:210`).  
 `tests/test_negative.lua:787`
 
 **T245 [target]** (S2) a session file with a newer header says it was made by a newer cavediver and is left alone  
@@ -2262,7 +2268,7 @@ note: A hash that no buffer or path has.
 spec: An unknown hash in a map doesn't make a restore throw.  
 `tests/test_restores.lua:122`
 
-## tests/test_s2.lua (43 cases: 2 char, 41 target)
+## tests/test_s2.lua (43 cases: 3 char, 40 target)
 
 **T292 [target]** (S2) save_session() and load_session() take no directory: the file is named after getcwd(-1, -1) and a fresh process loads it  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
@@ -2322,7 +2328,7 @@ spec: (S2 Loading; DESK:794) Cavediver loads again by itself after Neovim's `:re
 `:e a`, `:e b`, `:vsplit`, `:e c` → `eq(Misc.save(child), { true })`  
 `:noautocmd vsplit`, `:noautocmd edit c.txt` → `eq({ new_timers = made, last_valid_window = current, order = order },`  
 note: The current window is a split on c, made with no events, so nothing has told cavediver about it before the load. Timer handles are counted: the decided load uses vim.schedule, and a fixed delay needs a timer.  
-spec: (S2 Loading; DESK:1161) One post-restore callback replaces the 210 ms delay: the load makes no timer, and 30 ms after it `last_valid_window` is the current window and the bufferline order is what it still is 300 ms later. The require-time probe is T254. Today the load makes a tim…  
+spec: (S2 Loading; DESK:1161) One post-restore callback replaces the 210 ms delay: the load makes no timer, and 30 ms after it `last_valid_window` is the current window and the bufferline order is what it still is 300 ms later. That `require` starts no probe is T254. Today the load mak…  
 `tests/test_s2.lua:176`
 
 **T300 [target]** (S2) a later reload brings no No Name text back twice  
@@ -2349,11 +2355,11 @@ note: b is closed; a No Name text is open in the ternary.
 spec: (S2 The file; DESK:1541) Nothing in the session files is in clear: with b closed and a No Name text open, no file under `session_dir` parses as JSON or holds the project's directory, a file name or the No Name text. Today the file is JSON.  
 `tests/test_s2.lua:238`
 
-**T303 [target]** (S2) a save and a load run no shell command  
+**T303 [char]** (S2) a save and a load run no shell command  
 `:e a`, `:e b` → `eq(Misc.save(child), { true })`  
 → `eq(Misc.load(child), { true })`  
 → `eq({ save = at_save, load = child.lua('return _G.CDV_SHELL') }, { save = 0, load = 0 })`  
-spec: (S2 The file; DESK:1541) The file goes through `libcrypto`, not a command: a save, and a load in a fresh process, make no `vim.fn.system`, `io.popen` or `vim.system` call. Today the file's name comes from the shell's `sha256sum`. Hashing on `:e` is T222.  
+spec: (S2 The file; DESK:1541) The file goes through `libcrypto`, not a command: a save, and a load in a fresh process, make no `vim.fn.system`, `io.popen` or `vim.system` call. Hashing on `:e` is T222.  
 `tests/test_s2.lua:273`
 
 **T304 [target]** (S2) every write is atomic: a new file is renamed over the old one, and nothing else is left  
@@ -2699,7 +2705,7 @@ spec: With the secondary's file deleted on disk, the pointer is kept and `<M-f>`
 spec: Q6's ten keys, as the author ran them: `:e a`, `:e b`, `:e c`, `:e b`, `<M-f>`, `:e a`, `<M-f>`, `<M-f>`, `<M-S-f>`, `<M-;><M-r>`. The third `<M-f>` rewrites the ternary's note to the buffer it leaves (`dtm[b] := c`), and the restore doesn't throw: it gives `{c=b s=a t=c}` **[sim…  
 `tests/test_secondary_key.lua:144`
 
-## tests/test_sessions.lua (16 cases: 3 char, 11 target, 2 today)
+## tests/test_sessions.lua (16 cases: 5 char, 9 target, 2 today)
 
 **T134 [today]** save_session writes buffers, windows, closed, noname_content; windows[i] = [c, s, p[], t, dtm, dsm]  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
@@ -2757,7 +2763,7 @@ spec: A slot whose buffer comes back unloaded (`badd`) keeps its value after loa
 spec: A save with a No Name current slot succeeds and reopens the buffer at load, hidden and modified.  
 `tests/test_sessions.lua:133`
 
-**T141 [target]** a save with a :vsplit window that has no visits succeeds  
+**T141 [char]** a save with a :vsplit window that has no visits succeeds  
 `:e a`, `:vsplit` → `eq(Misc.save(child), { true })`  
 → `eq(Misc.errors(child), {})`  
 spec: A save with a `:vsplit` window that has no visits succeeds.  
@@ -2773,7 +2779,7 @@ note: The first window has ⦉a⦊ [b]; the split (listed first) visits c, then 
 spec: Two windows, one showing a No Name buffer: after save and load each window gets its own entry.  
 `tests/test_sessions.lua:168`
 
-**T143 [target]** a save into a read-only directory throws to the caller  
+**T143 [char]** a save into a read-only directory throws to the caller  
 `:e a` → `eq(got[1], false)`  
 note: The session directory is made read-only before the child starts.  
 spec: A save into a read-only directory throws to the caller.  
@@ -2827,19 +2833,19 @@ note: Project one has a No Name buffer with text, closed with <M-.> (its text is
 spec: After switching sessions, the outgoing No Name text isn't in the incoming file.  
 `tests/test_sessions.lua:317`
 
-## tests/test_setup.lua (3 cases: 3 target)
+## tests/test_setup.lua (3 cases: 3 char)
 
-**T125 [target]** setup() with no argument works and uses the defaults  
+**T125 [char]** setup() with no argument works and uses the defaults  
 → `eq(got, { ok = true, key = true, history_view = 'global', cleanup_interval = 4000, session_dir = true })`  
 spec: `setup()` with no argument works and uses the defaults.  
 `tests/test_setup.lua:41`
 
-**T126 [target]** require("cavediver") without setup() creates no autocmds  
+**T126 [char]** require("cavediver") without setup() creates no autocmds  
 → `eq(got, 0)`  
 spec: `require('cavediver')` without `setup()` creates no autocmds.  
 `tests/test_setup.lua:57`
 
-**T127 [target]** calling setup() twice leaves one set of autocmds and timers  
+**T127 [char]** calling setup() twice leaves one set of autocmds and timers  
 → `eq(counts(), once)`  
 spec: Calling `setup()` twice leaves one set of autocmds and timers.  
 `tests/test_setup.lua:66`

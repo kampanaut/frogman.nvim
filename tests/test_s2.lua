@@ -270,7 +270,7 @@ local SHELL_SPY = [[
 	io.popen = function(...) _G.CDV_SHELL = _G.CDV_SHELL + 1; return popen(...) end
 	vim.system = function(...) _G.CDV_SHELL = _G.CDV_SHELL + 1; return vsys(...) end
 ]]
-T['T303 [target] (S2) a save and a load run no shell command'] = function()
+T['T303 [char] (S2) a save and a load run no shell command'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b' })

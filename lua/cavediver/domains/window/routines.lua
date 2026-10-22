@@ -875,6 +875,7 @@ function M.repopulate_window_relationships()
 			goto continue
 		end
 
+		history.routines.ensure_window_entry(winid) -- every triquetra comes with its window's history entry.
 		data.crux[winid] = {
 			current_slot = current_slot,
 			secondary_slot = nil,

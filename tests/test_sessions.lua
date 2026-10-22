@@ -155,7 +155,7 @@ T['T140 [target] a save with a No Name current slot succeeds and the load reopen
 	eq(got, { found = true, modified = true, hidden = true })
 end
 
-T['T141 [target] a save with a :vsplit window that has no visits succeeds'] = function()
+T['T141 [char] a save with a :vsplit window that has no visits succeeds'] = function()
 	child.setup()
 	child.steps({ ':e a', ':vsplit' })
 	child.messages()
@@ -183,7 +183,7 @@ T['T142 [target] two windows, one on a No Name buffer: after save and load each 
 end
 
 -- The session directory is made read-only before the child starts.
-T['T143 [target] a save into a read-only directory throws to the caller'] = function()
+T['T143 [char] a save into a read-only directory throws to the caller'] = function()
 	local s = shared()
 	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
 	start(s)

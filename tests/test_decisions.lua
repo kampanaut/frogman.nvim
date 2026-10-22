@@ -115,7 +115,7 @@ T['T252 [target] (P10, I17) a closed file still on the closed stack keeps its hi
 	eq(child.lua('return require("cavediver.domains.history").data.crux_internals.global[...] ~= nil', { h }), true)
 end
 
-T['T253 [target] (P11) a failing hook is reported with a stack trace'] = function()
+T['T253 [char] (P11) a failing hook is reported with a stack trace'] = function()
 	child.messages()
 	child.lua([[
 		local sm = require('cavediver.engine'):create('t253')
@@ -134,7 +134,7 @@ T['T253 [target] (P11) a failing hook is reported with a stack trace'] = functio
 	eq(traced, true)
 end
 
-T['T254 [target] (P12, A25) require creates no user commands and starts no timers'] = function()
+T['T254 [char] (P12, A25) require creates no user commands and starts no timers'] = function()
 	Dec.bare(bare)
 	local got = bare.lua(Dec.TIMERS .. [[
 		local before = timers()
@@ -148,7 +148,7 @@ T['T254 [target] (P12, A25) require creates no user commands and starts no timer
 	eq(got, { commands = {}, timers = 0 })
 end
 
-T['T254 [target] (P12, A25) setup() puts every autocmd it makes in the cavediver augroup, and makes the commands'] = function()
+T['T254 [char] (P12, A25) setup() puts every autocmd it makes in the cavediver augroup, and makes the commands'] = function()
 	Dec.bare(bare)
 	local got = bare.lua([[
 		local function key(a) return table.concat({ tostring(a.id), a.event, tostring(a.group), tostring(a.pattern), tostring(a.buffer) }, '|') end
@@ -204,7 +204,7 @@ T['T255 [target] (M1) a session "a" in /proj and a nameless save in /proja are t
 end
 
 -- A listed buffer on c.txt, an existing regular file, with buftype nowrite.
-T['T256 [target] (M3) a listed nowrite buffer on an existing regular file is tracked'] = function()
+T['T256 [char] (M3) a listed nowrite buffer on an existing regular file is tracked'] = function()
 	child.steps({ ':e a' })
 	child.lua([[
 		local b = vim.fn.bufadd(_G.CDV_TEST.root .. '/c.txt')
@@ -779,7 +779,7 @@ end
 
 -- A secondary set to a hash nothing knows, saved in the same call so no other
 -- pass runs first.
-T['T285 [target] (I14) a save with a slot holding a hash with no path succeeds'] = function()
+T['T285 [char] (I14) a save with a slot holding a hash with no path succeeds'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 	child.messages()
@@ -793,15 +793,18 @@ T['T285 [target] (I14) a save with a slot holding a hash with no path succeeds']
 end
 
 -- T143's read-only session directory.
-T['T286 [target] (I21) the critical save hook throws to the caller and leaves storage idle'] = function()
+-- The transition is abandoned, so storage stays where it was: idle after a load or a save,
+-- bare before either (as here, a fresh process's first save).
+T['T286 [char] (I21) the critical save hook throws to the caller and leaves storage where it was'] = function()
 	local s = shared()
 	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
 	start(s)
 	child.steps({ ':e a' })
+	local before = child.lua('return require("cavediver").get_storage_state()')
 	local got = Misc.save(child)
 	local state = child.lua('return require("cavediver").get_storage_state()')
 	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
-	eq({ got[1], state }, { false, 'idle' })
+	eq({ got[1], state }, { false, before })
 end
 
 -- Final section ------------------------------------------------------------------

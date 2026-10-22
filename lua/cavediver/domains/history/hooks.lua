@@ -60,80 +60,96 @@ navigationSM:on("*", "*", "winenter_update_history_view", function(context)
 	routines.construct_crux(require("cavediver.domains.navigation").routines.find_most_recent_tracked_window())
 end, 3, true, navigationSMStates.mode.WINENTER)
 
--- What happens when a buffer is deleted?
-vim.api.nvim_create_autocmd("BufDelete", {
-	callback = function(args)
-		-- print("HOOOY")
-		-- print_table(args)
-		-- print("BufUnload"..args.buf .. " - "..vim.api.nvim_buf_get_name(args.buf))
-		if vim.b[args.buf].skip_bufdelete ~= true then
-			-- print("I was ran!" .. args.buf)
+local M = {}
+
+---Create the history domain's autocmds in cavediver's augroup. setup() calls this, so nothing
+---runs at require, and calling it again after the group is cleared replaces them cleanly.
+---
+---@param group integer The cavediver augroup
+function M.init_autocmds(group)
+	-- What happens when a buffer is deleted?
+	vim.api.nvim_create_autocmd("BufDelete", {
+		group = group,
+		callback = function(args)
+			-- print("HOOOY")
+			-- print_table(args)
+			-- print("BufUnload"..args.buf .. " - "..vim.api.nvim_buf_get_name(args.buf))
+			if vim.b[args.buf].skip_bufdelete ~= true then
+				-- print("I was ran!" .. args.buf)
+				historySM:to(historySM:state(), { buf = args.buf }, states.mode.DELETE)
+			end
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("BufWritePost", {
+		group = group,
+		callback = function(args)
+			local bufname = vim.api.nvim_buf_get_name(args.buf)
+
+			-- Skip if already registered
+			if routines.get_hash_from_buffer(args.buf) then
+				return
+			end
+
+			-- Only process normal file buffers with valid filenames
+			historySM:to(historySM:state(), { buf = args.buf }, states.mode.UPDATE)
+		end
+	})
+
+	-- What happens when we enter a buffer?
+	vim.api.nvim_create_autocmd("BufEnter", {
+		group = group,
+		callback = function(args)
+			-- print("BufEnter "..args.buf .. " - "..vim.api.nvim_buf_get_name(args.buf) .. " - buftype: [" .. vim.bo[args.buf].buftype .. "]")
+			-- neovim's pick for a window whose buffer got deleted isn't a visit, the window lands
+			-- by itself once the delete is over.
+			if require("cavediver.domains.window.routines").is_landing_pick(vim.api.nvim_get_current_win(), args.buf) then
+				return
+			end
+			historySM:to(historySM:state(), { buf = args.buf }, states.mode.UPDATE)
+		end,
+	})
+
+	-- BufFilePre: Clean up old identity
+	vim.api.nvim_create_autocmd("BufFilePre", {
+		group = group,
+		callback = function(args)
+			-- print("rename pre")
+			-- print(vim.bo[args.buf].buftype)
+			-- print(args.file)
+			-- only a buffer we track gets its new identity at BufFilePost. the buffer :saveas makes for
+			-- the old name isn't one, it's like a :badd buffer until it's entered.
+			vim.b[args.buf].cavediver_renaming = routines.get_hash_from_buffer(args.buf) ~= nil
 			historySM:to(historySM:state(), { buf = args.buf }, states.mode.DELETE)
 		end
-	end,
-})
+	})
 
-vim.api.nvim_create_autocmd("BufWritePost", {
-	callback = function(args)
-		local bufname = vim.api.nvim_buf_get_name(args.buf)
-
-		-- Skip if already registered
-		if routines.get_hash_from_buffer(args.buf) then
-			return
+	-- BufFilePost: Re-register new identity
+	vim.api.nvim_create_autocmd("BufFilePost", {
+		group = group,
+		callback = function(args)
+			-- print("rename post")
+			-- print(vim.bo[args.buf].buftype)
+			-- print(args.file)
+			if not vim.b[args.buf].cavediver_renaming then
+				return
+			end
+			vim.b[args.buf].cavediver_renaming = nil
+			historySM:to(historySM:state(), { buf = args.buf }, states.mode.UPDATE)
 		end
+	})
 
-		-- Only process normal file buffers with valid filenames
-		historySM:to(historySM:state(), { buf = args.buf }, states.mode.UPDATE)
-	end
-})
-
--- What happens when we enter a buffer?
-vim.api.nvim_create_autocmd("BufEnter", {
-	callback = function(args)
-		-- print("BufEnter "..args.buf .. " - "..vim.api.nvim_buf_get_name(args.buf) .. " - buftype: [" .. vim.bo[args.buf].buftype .. "]")
-		-- neovim's pick for a window whose buffer got deleted isn't a visit, the window lands
-		-- by itself once the delete is over.
-		if require("cavediver.domains.window.routines").is_landing_pick(vim.api.nvim_get_current_win(), args.buf) then
-			return
+	-- BufFilePost: Re-register new identity
+	vim.api.nvim_create_autocmd("WinClosed", {
+		group = group,
+		callback = function(args)
+			local winid = tonumber(args.file)
+			if not winid then
+				return
+			end
+			data.crux_internals.window[winid] = nil
 		end
-		historySM:to(historySM:state(), { buf = args.buf }, states.mode.UPDATE)
-	end,
-})
+	})
+end
 
--- BufFilePre: Clean up old identity
-vim.api.nvim_create_autocmd("BufFilePre", {
-	callback = function(args)
-		-- print("rename pre")
-		-- print(vim.bo[args.buf].buftype)
-		-- print(args.file)
-		-- only a buffer we track gets its new identity at BufFilePost. the buffer :saveas makes for
-		-- the old name isn't one, it's like a :badd buffer until it's entered.
-		vim.b[args.buf].cavediver_renaming = routines.get_hash_from_buffer(args.buf) ~= nil
-		historySM:to(historySM:state(), { buf = args.buf }, states.mode.DELETE)
-	end
-})
-
--- BufFilePost: Re-register new identity
-vim.api.nvim_create_autocmd("BufFilePost", {
-	callback = function(args)
-		-- print("rename post")
-		-- print(vim.bo[args.buf].buftype)
-		-- print(args.file)
-		if not vim.b[args.buf].cavediver_renaming then
-			return
-		end
-		vim.b[args.buf].cavediver_renaming = nil
-		historySM:to(historySM:state(), { buf = args.buf }, states.mode.UPDATE)
-	end
-})
-
--- BufFilePost: Re-register new identity
-vim.api.nvim_create_autocmd("WinClosed", {
-	callback = function(args)
-		local winid = tonumber(args.file)
-		if not winid then
-			return
-		end
-		data.crux_internals.window[winid] = nil
-	end
-})
+return M

@@ -9,7 +9,7 @@ local data = require('cavediver.domains.navigation.data')
 local routines = require('cavediver.domains.navigation.routines')
 
 -- Load hooks to coordinate with other domains' state machines
-require('cavediver.domains.navigation.hooks')
+local hooks = require('cavediver.domains.navigation.hooks')
 
 -- Get navigation state machine for domain coordination
 local NavigationSM = require('cavediver.domains.navigation.sm')
@@ -76,5 +76,8 @@ function M.select_buffer()
 end
 
 M.toggle_window = routines.toggle_window
+
+
+M.init_autocmds = hooks.init_autocmds
 
 return M
