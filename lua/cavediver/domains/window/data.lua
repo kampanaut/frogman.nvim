@@ -34,6 +34,7 @@ function M.register_triquetra(winid)
 	if not current_slot then
 		error("Cannot create empty window buffer relationship: The window has an unregistered buffer.")
 	end
+	history.routines.ensure_window_entry(winid) -- every triquetra comes with its window's history entry.
     M.crux[winid] = {
 		current_slot = current_slot,
 		secondary_slot = nil,
@@ -95,7 +96,7 @@ function M.get_window_triquetra(winid)
 			(
 				vim.bo[wbufnr].buftype ~= "" and
 				vim.bo[wbufnr].buftype ~= "acwrite" and
-				vim.bo[wbufnr].filetype ~= "image_nvim"
+				not history.routines.is_nowrite_file(wbufnr)
 			)
 		then
 			M.unregister_triquetra(winid)
@@ -169,12 +170,17 @@ M.last_valid_window = vim.api.nvim_get_current_win()
 ---@type WinId
 M.current_window = vim.api.nvim_get_current_win()
 
-vim.defer_fn(function()
-	local current_window = vim.api.nvim_get_current_win()
-	if M.crux[current_window] then
-		M.last_valid_window = current_window
-		M.current_window = current_window
-	end
-end, 200)
+---Set the last valid window once the editor has had a moment to settle. setup() calls this, so
+---nothing runs at require.
+---@return nil
+function M.init_last_valid_window()
+	vim.defer_fn(function()
+		local current_window = vim.api.nvim_get_current_win()
+		if M.crux[current_window] then
+			M.last_valid_window = current_window
+			M.current_window = current_window
+		end
+	end, 200)
+end
 
 return M

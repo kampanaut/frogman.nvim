@@ -320,6 +320,20 @@ checks.I13 = {
 	end,
 }
 
+-- I14: a save never throws on cavediver's own data, whatever state the walk left it in
+-- (the save hook is critical, so a throw would reach the session manager).
+checks.save = {
+	install = function()
+		vim.fn.mkdir(require('cavediver.configs').session_dir, 'p')
+	end,
+	post = function()
+		local ok, err = pcall(require('cavediver').save_session, vim.fn.getcwd())
+		if not ok then
+			return 'save threw: ' .. tostring(err):gsub('\n.*', '')
+		end
+	end,
+}
+
 -- T154: no restore throws "Remembered … is the same as current …".
 checks.restores = { post = function(_, action, ok, err)
 	if (action == '<M-;><M-r>' or action == '<M-;><M-t>') and not ok

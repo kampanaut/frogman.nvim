@@ -400,6 +400,20 @@ function StateMachine:enable_hook(name)
 	self.hooks[name].enabled = true
 end
 
+---Make a hook critical: when it fails, the error isn't caught and notified as other hooks'
+---errors are. The transition is abandoned, and the error reaches whoever called `to()`.
+---
+---@param name string Name of the hook to make critical
+---@return nil
+function StateMachine:make_hook_critical(name)
+	helper.validate_param(name, "name", "string", false)
+	if self.hooks[name] == nil then
+		error("Cannot make hook critical: '" .. name .. "': not found", vim.log.levels.WARN)
+	end
+
+	self.hooks[name].critical = true
+end
+
 ---Disable a hook from executing during transitions.
 ---
 ---Disables a previously registered hook without removing it from the state machine.

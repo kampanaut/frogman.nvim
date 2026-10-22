@@ -70,7 +70,7 @@ end
 
 -- Under the default (global) view, as in run s16. The window view would give
 -- the new window an empty entry on WinEnter for another reason (construct_crux).
-T['T18 [target] :vsplit creates the new window\'s history entry along with its triquetra (I3)'] = function()
+T['T18 [char] :vsplit creates the new window\'s history entry along with its triquetra (I3)'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.cmd('vsplit')
 	child.settle()

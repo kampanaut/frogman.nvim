@@ -119,7 +119,9 @@ local function obfuscate_filehash_if_needed(filehash, cwd)
 	if is_registered == nil then -- this must be a closed buffer
 		local filepath = history.get_filepath_from_hash(filehash)
 		if filepath == nil then
-			error("This must not be possible. You put a filehash not found on filepath and buffer registry?")
+			-- nothing knows this hash (a path is kept while anything references it, so this shouldn't
+			-- happen). it's dropped rather than failing the save on cavediver's own data.
+			return nil
 		end
 		return xor_cipher(filepath, cwd)
 	else
@@ -337,7 +339,7 @@ local function serialise_buffer_history()
 			local triquetra = window.get_triquetra(winid)
 			if
 				not (
-					next(history.data.crux_internals.window[winid]) and (
+					next(history.data.crux_internals.window[winid] or {}) and (
 						vim.bo[wbufnr].buftype == "" or
 						(vim.api.nvim_buf_get_name(wbufnr):match("://") and triquetra and vim.bo[wbufnr].filetype ~= "cavediver-primary-buffer-history") or -- track a window with current buffer that is not tracked but with the current shown bufferr as a not regular file
 						vim.bo[wbufnr].filetype == "image_nvim"
@@ -448,7 +450,7 @@ local function serialise_window_relationships(cwd)
 					cfilehash = sfilehash
 					sfilehash = nil
 				else
-					cfilehash = "FUCKING BAD"
+					cfilehash = nil -- nothing to stand in for it; the load falls back to what the window shows.
 				end
 			end
 
@@ -469,7 +471,11 @@ local function serialise_window_relationships(cwd)
 			if pfilehashes == nil then
 				pfilehashes = {}
 			else
-				pfilehashes = vim.tbl_map(function(hash) return obfuscate_filehash_if_needed(hash, cwd) end, pfilehashes)
+				local serialised = {}
+				for _, hash in ipairs(pfilehashes) do -- no holes: a hash nothing knows is dropped
+					table.insert(serialised, obfuscate_filehash_if_needed(hash, cwd))
+				end
+				pfilehashes = serialised
 			end
 
 			-- Ternary slot
@@ -527,8 +533,11 @@ local function serialise_closed_buffers(cwd)
 	if cwd == nil then
 		error("Current working directory is not set.")
 	end
-	for k, v in pairs(history.get_closed_buffers()) do
-		copy[k] = obfuscate_filehash_if_needed(v, cwd)
+	for _, v in ipairs(history.get_closed_buffers()) do
+		local serialised = obfuscate_filehash_if_needed(v, cwd)
+		if serialised then
+			table.insert(copy, serialised)
+		end
 	end
 	return copy
 end
@@ -547,11 +556,14 @@ local function serialise_noname_content(cwd)
 	end
 	for identifier, content in pairs(history.data.noname_content) do
 		-- print("identifier: " .. identifier)
-		copy[obfuscate_filehash_if_needed(identifier, cwd)] = {
-			lines = vim.tbl_map(function(line) return xor_cipher(line, cwd) end, content.lines),
-			filetype = content.filetype,
-			cursor = content.cursor
-		}
+		local serialised = obfuscate_filehash_if_needed(identifier, cwd)
+		if serialised then
+			copy[serialised] = {
+				lines = vim.tbl_map(function(line) return xor_cipher(line, cwd) end, content.lines),
+				filetype = content.filetype,
+				cursor = content.cursor
+			}
+		end
 	end
 	return copy
 end
@@ -616,7 +628,7 @@ local function get_session_filepath(pwd)
 	end
 
 	local dir_hash = string.sub(
-		vim.fn.system('echo "' .. pwd .. '" | sha256sum'),
+		vim.fn.sha256(pwd .. "\n"), -- as `echo "<pwd>" | sha256sum`, so saved files keep their names
 		1, 32 -- Use 32 chars for better collision resistance
 	)
 

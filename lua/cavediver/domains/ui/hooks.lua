@@ -39,93 +39,108 @@ navigation.sm:on("*", "*", "winenter_update_ui", function(context)
 end, 4, true, navigation.states.mode.WINENTER)
 
 
--- Clear display name cache on buffer changes for accurate basename display
-vim.api.nvim_create_autocmd({ "BufAdd", "BufDelete", "BufFilePost", "BufWritePost" }, {
-	callback = function()
-		data.clear_display_name_cache()
-	end,
-})
+local M = {}
 
-vim.api.nvim_create_autocmd({ "VimResized" }, {
-	callback = function()
-		routines.debounced_update()
-	end,
-})
+---Create the ui domain's autocmds in cavediver's augroup. setup() calls this, so nothing
+---runs at require, and calling it again after the group is cleared replaces them cleanly.
+---
+---@param group integer The cavediver augroup
+function M.init_autocmds(group)
+	-- Clear display name cache on buffer changes for accurate basename display
+	vim.api.nvim_create_autocmd({ "BufAdd", "BufDelete", "BufFilePost", "BufWritePost" }, {
+		group = group,
+		callback = function()
+			data.clear_display_name_cache()
+		end,
+	})
 
-vim.api.nvim_create_autocmd({ "BufModifiedSet" }, {
-	callback = function()
-		uiMachines.loop:to(states.LOOP.SELF)
-	end
-})
+	vim.api.nvim_create_autocmd({ "VimResized" }, {
+		group = group,
+		callback = function()
+			routines.debounced_update()
+		end,
+	})
 
-vim.api.nvim_create_autocmd("Filetype", {
-	pattern = "cavediver-primary-buffer-history",
-	callback = function(args)
-		local function close_window()
-			vim.cmd("write!")
-			local dwin = vim.b[args.buf].display_window
-
-			vim.api.nvim_win_close(dwin, true)
-			vim.defer_fn(function()
-				if vim.api.nvim_buf_is_loaded(args.buf) then
-					vim.api.nvim_buf_delete(args.buf, { force = true })
-				end
-			end, 100)
+	vim.api.nvim_create_autocmd({ "BufModifiedSet" }, {
+		group = group,
+		callback = function()
+			uiMachines.loop:to(states.LOOP.SELF)
 		end
+	})
 
-		local function promote_to_primary_and_quit()
-			local dwin = vim.b[args.buf].display_window
-			local dbuf = args.buf
-			local cursor_line = vim.api.nvim_win_get_cursor(dwin)[1]
-			local lines = vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)
+	vim.api.nvim_create_autocmd("Filetype", {
+		group = group,
+		pattern = "cavediver-primary-buffer-history",
+		callback = function(args)
+			local function close_window()
+				vim.cmd("write!")
+				local dwin = vim.b[args.buf].display_window
 
-			if cursor_line > #lines then return end
+				vim.api.nvim_win_close(dwin, true)
+				vim.defer_fn(function()
+					if vim.api.nvim_buf_is_loaded(args.buf) then
+						vim.api.nvim_buf_delete(args.buf, { force = true })
+					end
+				end, 100)
+			end
 
-			local selected_filepath = vim.trim(lines[cursor_line])
+			local function promote_to_primary_and_quit()
+				local dwin = vim.b[args.buf].display_window
+				local dbuf = args.buf
+				local cursor_line = vim.api.nvim_win_get_cursor(dwin)[1]
+				local lines = vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)
 
-			if selected_filepath == "" then
-				vim.notify("No filepath selected", vim.log.levels.WARN)
+				if cursor_line > #lines then return end
+
+				local selected_filepath = vim.trim(lines[cursor_line])
+
+				if selected_filepath == "" then
+					vim.notify("No filepath selected", vim.log.levels.WARN)
+					return
+				end
+
+				table.remove(lines, cursor_line)
+				table.insert(lines, 1, selected_filepath)
+
+				vim.api.nvim_buf_set_lines(dbuf, 0, -1, false, lines)
+
+				close_window()
+			end
+
+
+			-- Quick save
+			vim.keymap.set("n", "<C-s>", "<cmd>write<cr>", { buffer = args.buf, desc = "Save queue" })
+
+			-- Close without saving
+			vim.keymap.set("n", "<C-c>", close_window, { buffer = args.buf, desc = "Close without saving" })
+
+			vim.keymap.set("n", "q", close_window, { buffer = args.buf, desc = "Close without saving" })
+
+			vim.keymap.set("n", "<cr>", promote_to_primary_and_quit, { buffer = args.buf, desc = "Promote file under cursor and quit floating window"})
+		end
+	})
+
+	-- WinClosed - only happens once, should be removed
+	vim.api.nvim_create_autocmd("WinClosed", {
+		group = group,
+		once = true, -- Automatically removes after first execution
+		callback = function(args)
+			if not args.file then
+				return
+			end
+			local winid = tonumber(args.file)
+			if not winid then
+				return
+			end
+			local bufnr = vim.api.nvim_win_get_buf(winid)
+
+			if vim.bo[bufnr].filetype ~= "cavediver-primary-buffer-history" then
 				return
 			end
 
-			table.remove(lines, cursor_line)
-			table.insert(lines, 1, selected_filepath)
-
-			vim.api.nvim_buf_set_lines(dbuf, 0, -1, false, lines)
-
-			close_window()
+			vim.api.nvim_buf_delete(bufnr, { force = true })
 		end
+	})
+end
 
-
-		-- Quick save
-		vim.keymap.set("n", "<C-s>", "<cmd>write<cr>", { buffer = args.buf, desc = "Save queue" })
-
-		-- Close without saving
-		vim.keymap.set("n", "<C-c>", close_window, { buffer = args.buf, desc = "Close without saving" })
-
-		vim.keymap.set("n", "q", close_window, { buffer = args.buf, desc = "Close without saving" })
-
-		vim.keymap.set("n", "<cr>", promote_to_primary_and_quit, { buffer = args.buf, desc = "Promote file under cursor and quit floating window"})
-	end
-})
-
--- WinClosed - only happens once, should be removed
-vim.api.nvim_create_autocmd("WinClosed", {
-	once = true, -- Automatically removes after first execution
-	callback = function(args)
-		if not args.file then
-			return
-		end
-		local winid = tonumber(args.file)
-		if not winid then
-			return
-		end
-		local bufnr = vim.api.nvim_win_get_buf(winid)
-
-		if vim.bo[bufnr].filetype ~= "cavediver-primary-buffer-history" then
-			return
-		end
-
-		vim.api.nvim_buf_delete(bufnr, { force = true })
-	end
-})
+return M

@@ -11,7 +11,7 @@ local routines = require('cavediver.domains.history.routines')
 local configs = require('cavediver.configs')
 
 -- Load hooks to extend other domains' state machines
-require('cavediver.domains.history.hooks')
+local hooks = require('cavediver.domains.history.hooks')
 
 -- Get history state machine for domain coordination
 local HistorySM = require('cavediver.domains.history.sm')
@@ -31,10 +31,25 @@ M.track_buffer = routines.track_buffer
 
 M.reopen_last_closed = routines.reopen_last_closed
 
----Initiate the history cleanup timer.
+M.init_autocmds = hooks.init_autocmds
+
+local cleanup_timer = nil
+
+---Stop the history cleanup timer, if it's running.
+---@return nil
+function M.stop_cleanup_timer()
+	if cleanup_timer then
+		cleanup_timer:stop()
+		cleanup_timer:close()
+		cleanup_timer = nil
+	end
+end
+
+---Initiate the history cleanup timer. Calling it again restarts it.
 ---@return nil
 function M.init_cleanup_timer()
-	local cleanup_timer = vim.loop:new_timer()
+	M.stop_cleanup_timer()
+	cleanup_timer = vim.loop:new_timer()
 	if cleanup_timer then
 		cleanup_timer:start(0, configs.cleanup_interval, vim.schedule_wrap(function()
 			local report = routines.cleanup_system()

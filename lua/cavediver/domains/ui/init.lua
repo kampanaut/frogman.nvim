@@ -14,7 +14,7 @@ local bufferline_state = data.bufferline_state
 local configs = require("cavediver.configs")
 
 -- Load hooks to extend other domains' state machines
-require('cavediver.domains.ui.hooks')
+local hooks = require('cavediver.domains.ui.hooks')
 
 -- Get UI state machines for domain coordination
 local ui_machines = require('cavediver.domains.ui.sm')
@@ -53,10 +53,23 @@ function M.init_winbar_highlights()
 	vim.api.nvim_set_hl(0, "BothWayNerdArrowNC", { fg = configs.colors.both_way_arrow.unfocused, bg = configs.colors.base.unfocused.bg})                      -- Amber buffer ID
 end
 
----Initiate UI Timers (cleanup and winbar refresh)
+local periodic_timer = nil
+
+---Stop the UI refresh timer, if it's running.
+---@return nil
+function M.stop_refresh_timer()
+	if periodic_timer then
+		periodic_timer:stop()
+		periodic_timer:close()
+		periodic_timer = nil
+	end
+end
+
+---Initiate UI Timers (cleanup and winbar refresh). Calling it again restarts them.
 ---@return nil
 function M.init_refresh_timer()
-	local periodic_timer = vim.loop:new_timer()
+	M.stop_refresh_timer()
+	periodic_timer = vim.loop:new_timer()
 
 	if not periodic_timer then
 		error("Timer creation failed")
@@ -573,5 +586,8 @@ function M.bufferline.cokeline.create_tab_components()
 		components.separator_for_last
 	}
 end
+
+
+M.init_autocmds = hooks.init_autocmds
 
 return M

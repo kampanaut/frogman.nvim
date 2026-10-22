@@ -7,9 +7,10 @@
 local states = require('cavediver.domains.window.states')
 local data = require('cavediver.domains.window.data')
 local routines = require('cavediver.domains.window.routines')
+local history = require('cavediver.domains.history')
 
 -- Load hooks to extend the history state machine
-require('cavediver.domains.window.hooks')
+local hooks = require('cavediver.domains.window.hooks')
 
 -- The window domain extends the history state machine rather than creating its own
 -- This is because window buffer relationships are tightly coupled to history attach/detach cycles
@@ -48,6 +49,7 @@ function M.set_buffer_relationship(winid, relationship_table)
     end
 
     -- Set the relationship data
+	history.routines.ensure_window_entry(winid) -- every triquetra comes with its window's history entry.
     data.crux[winid] = {
 		current_slot = relationship_table.current_slot,
 		secondary_slot = relationship_table.secondary_slot,
@@ -87,5 +89,8 @@ M.repopulate_window_relationships = routines.repopulate_window_relationships
 --         M.cleanup_window(tonumber(args.file))
 --     end,
 -- })
+
+
+M.init_autocmds = hooks.init_autocmds
 
 return M

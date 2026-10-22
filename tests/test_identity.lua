@@ -28,7 +28,7 @@ T['T8 [char] the hash of a plain path is the first 16 hex characters of sha256(p
 	eq(got[1], got[2])
 end
 
-T['T9 [target] a path with ", $HOME or a backslash hashes to sha256(path .. "\\n")'] = function()
+T['T9 [char] a path with ", $HOME or a backslash hashes to sha256(path .. "\\n")'] = function()
 	child.steps({ ':e a' })
 	-- Only hashes come back, keyed by a label, never the paths. The backslash
 	-- name has two in a row, which the shell's double quotes fold into one.
@@ -48,7 +48,7 @@ T['T9 [target] a path with ", $HOME or a backslash hashes to sha256(path .. "\\n
 	eq(got.got, got.want)
 end
 
-T['T10 [char] :e registers a file; help, terminal, scheme:// and */otter.lua buffers are not registered'] = function()
+T['T10 [char] :e registers a file; help, terminal, scheme:// and otter\'s unlisted buffers are not registered'] = function()
 	child.lua([[vim.o.shell = 'sh']])
 	local got = {}
 	child.steps({ ':e a' })
@@ -68,7 +68,12 @@ T['T10 [char] :e registers a file; help, terminal, scheme:// and */otter.lua buf
 	child.settle()
 	got.scheme = registered()
 
-	child.cmd('edit sub/otter.lua')
+	-- otter makes its buffers with vim.uri_to_bufnr, which leaves them unlisted; listed-only
+	-- tracking is what keeps them out, not their name.
+	child.lua([[
+		local b = vim.uri_to_bufnr(vim.uri_from_fname(vim.fn.getcwd() .. '/sub/otter.lua'))
+		vim.api.nvim_set_current_buf(b)
+	]])
 	child.settle()
 	got.otter = registered()
 
@@ -113,7 +118,7 @@ T['T12 [char] registering a second buffer under the same hash binds it to the ne
 	eq(got, { distinct = true, same_hash = true, bound_to_newer = true, newer_reverse = true, older_reverse = 'dropped' })
 end
 
-T['T13 [target] an unlisted buftype "" buffer that a plugin creates and enters is not registered'] = function()
+T['T13 [char] an unlisted buftype "" buffer that a plugin creates and enters is not registered'] = function()
 	child.steps({ ':e a' })
 	child.lua([[
 		local buf = vim.api.nvim_create_buf(false, false)

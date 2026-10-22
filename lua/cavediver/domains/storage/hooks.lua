@@ -12,6 +12,10 @@ storageSM:on("{idle,bare}", states.SAVING, "save_history_pre_quit", function(con
 	routines.save_history(context.cwd)
 end, 1, true)
 
+-- the save is critical: if it fails (a full disk, a directory that can't be written), the error
+-- reaches the session manager's hook, so the manager doesn't save either and both files stay in step.
+storageSM:make_hook_critical("save_history_pre_quit")
+
 storageSM:on(states.BARE, states.LOADING, "load_history_pre_start", function(context, _, _)
 	-- Load history when entering LOADING state
 	routines.load_history(context.cwd)
