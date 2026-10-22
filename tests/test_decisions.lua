@@ -254,7 +254,7 @@ end
 -- Keys ------------------------------------------------------------------------
 
 -- From ⦉c⦊ [d] ⟦b⟧ with an empty queue, <M-;><M-f> acts as <M-f> (T191's notes).
-T['T259 [target] (M7, A6, A8) the <M-;><M-f> fallback onto the secondary writes the swap notes, as <M-f> does'] = function()
+T['T259 [char] (M7, A6, A8) the <M-;><M-f> fallback onto the secondary writes the swap notes, as <M-f> does'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	eq({ child.slots(), child.primary() }, { '⦉c⦊ [d] ⟦b⟧', '[]off' })
 	child.steps({ '<M-;><M-f>' })
@@ -265,7 +265,7 @@ end
 
 -- T186's keys up to ⦉d⦊ [a] ⟦c⟧, where d's note d>a names a; then a pick of d,
 -- the ternary, in place of <M-S-f>.
-T['T260 [target] (A1, A13) a pick of the ternary: its stale note becomes the left buffer\'s own note, dropped when it has none'] = function()
+T['T260 [char] (A1, A13) a pick of the ternary: its stale note becomes the left buffer\'s own note, dropped when it has none'] = function()
 	child.steps({ ':e a', ':e d', ':e c', '<M-;><M-f>', '<M-f>', ':e a' })
 	eq(child.slots(), '⦉d⦊ [a] ⟦c⟧')
 	eq(child.note('dtm', 'd'), 'a')
@@ -279,7 +279,7 @@ T['T260 [target] (A1, A13) a pick of the ternary: its stale note becomes the lef
 end
 
 -- The same state with d as the primary, reached by a primary jump onto d, the ternary.
-T['T261 [target] (A1, A8) a primary jump onto the ternary: its stale note becomes the left buffer\'s own note, dropped when it has none'] = function()
+T['T261 [char] (A1, A8) a primary jump onto the ternary: its stale note becomes the left buffer\'s own note, dropped when it has none'] = function()
 	child.steps({ ':e a', ':e d', '<M-;><M-c>', ':e c', '<M-f>', '<M-f>', ':e a' })
 	eq({ child.slots(), child.primary() }, { '⦉d⦊ [a] ⟦c⟧', '[d]on' })
 	eq(child.note('dtm', 'd'), 'a')
@@ -293,7 +293,7 @@ end
 
 -- T185's keys up to ⦉c⦊ [b] ⟦e⟧, where e's note e>c names c; then a pick of e,
 -- the secondary, in place of <M-f>. c stays put, so e's note becomes c's own, a.
-T['T262 [target] (A1, A13) a pick of the secondary: a stale ternary note becomes the ternary\'s own note'] = function()
+T['T262 [char] (A1, A13) a pick of the secondary: a stale ternary note becomes the ternary\'s own note'] = function()
 	child.steps({ ':e a', ':e c', ':e e', ':e b', '<M-f>', ':e c', '<M-S-f>' })
 	eq(child.slots(), '⦉c⦊ [b] ⟦e⟧')
 	eq(child.note('dtm', 'e'), 'c')
@@ -310,7 +310,7 @@ end
 
 -- The arriving buffer's plain secondary note names the window's secondary,
 -- set by hand; it has no swap note, so the check drops it.
-T['T263 [target] (A7, M7) <M-S-f> runs the secondary map\'s check on the buffer it brings in'] = function()
+T['T263 [char] (A7, M7) <M-S-f> runs the secondary map\'s check on the buffer it brings in'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 	K.set_note(child, 'dsm', 'c', 'b')
@@ -322,7 +322,7 @@ T['T263 [target] (A7, M7) <M-S-f> runs the secondary map\'s check on the buffer 
 	eq(Extra.has(msgs, 'No secondary relationship found'), true)
 end
 
-T['T263 [target] (A8, M7) a primary jump runs the secondary map\'s check on the primary'] = function()
+T['T263 [char] (A8, M7) a primary jump runs the secondary map\'s check on the primary'] = function()
 	child.steps({ ':e x', '<M-;><M-c>', ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	eq({ child.slots(), child.primary() }, { '⦉c⦊ [d] ⟦b⟧', '[x]on' })
 	K.set_note(child, 'dsm', 'x', 'b')
@@ -338,7 +338,7 @@ end
 
 -- T62's exchange: b's note b>a names the secondary a, so <M-;><M-r> swaps the
 -- ternary c up into the secondary. b's secondary note is set to name c by hand.
-T['T264 [target] (A11, I23) the ternary restore\'s exchange is followed by the secondary map\'s check'] = function()
+T['T264 [char] (A11, I23) the ternary restore\'s exchange is followed by the secondary map\'s check'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e a', ':e b' })
 	eq(child.slots(), '⦉c⦊ [b] ⟦a⟧')
 	eq(child.note('dtm', 'b'), 'a')
@@ -353,7 +353,7 @@ end
 -- At ⦉c⦊ [d] ⟦b⟧, set by hand: d's secondary note names c (the ternary, so the
 -- restore exchanges), d's ternary note names b (which the exchange moves into
 -- the ternary), and b's own note names d, the current buffer.
-T['T265 [target] (A11) at the secondary restore\'s exchange, a stale ternary note is dropped when the ternary\'s own note names the current buffer'] = function()
+T['T265 [char] (A11) at the secondary restore\'s exchange, a stale ternary note is dropped when the ternary\'s own note names the current buffer'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 	K.set_note(child, 'dsm', 'd', 'c')
@@ -369,7 +369,7 @@ end
 
 -- a ends up with the plain note a>b and the swap note a-swap>f, ternary d
 -- (T173's state). f.txt is deleted on disk while f's buffer stays open.
-T['T266 [target] (A11, D9) a restore onto an open buffer whose file is gone flip-flops and says the file isn\'t on disk'] = function()
+T['T266 [char] (A11, D9) a restore onto an open buffer whose file is gone flip-flops and says the file isn\'t on disk'] = function()
 	child.steps({ ':e b', ':e a', ':e c', ':e f', ':e a', '<M-S-f>', ':e d', ':e a' })
 	eq(child.slots(), '⦉d⦊ [a] ⟦-⟧')
 	eq(K.notes_for(child, { 'a' }), 'dtm{a-swap>f a>b} dsm{}')
@@ -393,7 +393,7 @@ T['T266 [target] (A11, D9) a restore onto an open buffer whose file is gone flip
 	end
 end
 
-T['T267 [target] (A11, D9) a note at a hash with no path is cleared when it\'s used'] = function()
+T['T267 [char] (A11, D9) a note at a hash with no path is cleared when it\'s used'] = function()
 	child.steps({ ':e a', ':e b' })
 	K.set_note(child, 'dtm', 'b', '0123456789abcdef', true)
 	local ok, err = child.step('<M-;><M-r>')
@@ -555,7 +555,7 @@ T['T271 [char] (A19) with nothing to land on and Neovim showing something else, 
 end
 
 -- :saveas writes g.txt and leaves b.txt on disk. What happens to the window
--- afterwards is T106's (today the healing switch takes it to a).
+-- afterwards is T106's.
 T['T272 [char] (A20) a rename whose old file still exists is a copy: the old name goes on the closed stack'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.cmd('saveas g.txt')
@@ -753,7 +753,7 @@ T['T281 [char] (I7) after a cleanup pass, no closed hash has an open buffer, ove
 end
 
 -- Cycles left open across a window jump (Y1, Y2), as in T128.
-T['T282 [target] (I8) the current slot is the shown buffer outside cycling and visits, over random walks'] = function()
+T['T282 [char] (I8) the current slot is the shown buffer outside cycling and visits, over random walks'] = function()
 	walk('I8', MWY, 13)
 end
 
@@ -812,7 +812,7 @@ end
 -- T163's re-point: the window put on d without a BufEnter, then a's buffer
 -- wiped. d's secondary note names b, the window's secondary, set by hand; the
 -- secondary stays b either way, so the note is stale once d is current.
-T['T287 [target] (I23, A21) a cleanup re-point runs the check on the buffer it makes current'] = function()
+T['T287 [char] (I23, A21) a cleanup re-point runs the check on the buffer it makes current'] = function()
 	child.steps({ ':e d', ':e b', ':e c', '<M-f>', ':e a' })
 	eq(child.slots(), '⦉c⦊ [a] ⟦b⟧')
 	K.set_note(child, 'dsm', 'd', 'b')
@@ -825,7 +825,7 @@ T['T287 [target] (I23, A21) a cleanup re-point runs the check on the buffer it m
 	eq({ ok, err }, { true, nil })
 end
 
-T['T288 [target] (D11) under the window view, :close leaves no tie: :e a after it ranks a first'] = function()
+T['T288 [char] (D11) under the window view, :close leaves no tie: :e a after it ranks a first'] = function()
 	child.setup({ history_view = 'window' })
 	child.steps({ ':e a', ':e b' })
 	child.cmd('vsplit')

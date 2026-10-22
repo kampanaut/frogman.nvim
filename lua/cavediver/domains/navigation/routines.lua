@@ -15,7 +15,21 @@ function M.cycle_buffer(direction)
 
 	local ok, _ = pcall(require, 'cokeline.mappings')
 	if not ok then
-		print("cokeline is not installed. Please install 'willothy/nvim-cokeline' to use this cycle function.")
+		-- without cokeline, the cycle steps through cavediver's own order, in the same directions:
+		-- left (1) toward newer buffers, right (2) toward older ones.
+		if direction ~= 1 and direction ~= 2 then
+			error("Invalid direction for cycling mode, must be 1 (left) or 2 (right).")
+		end
+		local ordered = history.get_ordered_buffers()
+		local cbufnr = vim.api.nvim_get_current_buf()
+		local index = 1
+		for i, item in ipairs(ordered) do
+			if item.buf == cbufnr then
+				index = i
+			end
+		end
+		local step = direction == 1 and -1 or 1
+		vim.api.nvim_set_current_buf(ordered[((index - 1 + step) % #ordered) + 1].buf)
 		return
 	end
 
@@ -89,7 +103,7 @@ function M.find_most_recent_tracked_window()
 	local window = require('cavediver.domains.window')
 	local cwin = window.data.current_window
 
-	if cwin == window.data.last_valid_window then
+	if cwin == window.data.last_valid_window and vim.api.nvim_win_is_valid(cwin) then
 		return window.data.last_valid_window
 	elseif vim.api.nvim_win_is_valid(cwin) and window.get_triquetra(cwin) then
 		window.data.last_valid_window = cwin

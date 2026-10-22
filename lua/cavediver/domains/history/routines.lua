@@ -266,10 +266,12 @@ function M.construct_crux(winid)
 	end
 	table.sort(window_buffers, function(a, b) return a.time > b.time end)
 
-	data.history_index = data.history_index + #window_buffers - 1
+	-- the window's n buffers take the n fresh times, and the next free one is after them, so the next
+	-- buffer recorded ranks strictly first instead of tying with this window's newest.
+	data.history_index = data.history_index + #window_buffers
 	-- Assign increments based on rank
 	for rank, buffer in ipairs(window_buffers) do
-		global_copy[buffer.hash] = data.history_index - rank + 1
+		global_copy[buffer.hash] = data.history_index - rank
 	end
 
 	data.crux = global_copy
@@ -501,6 +503,9 @@ function M.reopen_filehash(filehash)
 	local bufnr
 	if filepath:match("^NONAME_") then
 		local cache = data.noname_content[filehash]
+		if cache == nil then
+			return nil -- a No Name buffer with nothing cached (it was empty) can't be brought back.
+		end
 		bufnr = vim.api.nvim_create_buf(true, false)
 
 		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, cache.lines)
@@ -552,7 +557,8 @@ function M.track_closing_filehash(filehash)
 
 		-- Check if buffer is empty (no lines or single empty line)
 		if #lines == 0 or (#lines == 1 and lines[1] == "") then
-			M.untrack_buffer(bufnr) -- its own history goes first, so only a slot or a note can keep the path.
+			M.untrack_buffer(bufnr) -- its own history goes first, and it leaves the slots, so only a note can keep the path.
+			require('cavediver.domains.window.data').forget_hash_in_slots(filehash)
 			M.unregister_filepath(filepath) -- Yes, remove it from the system entirely. We are not interested in empty no name buffers.
 			return false           -- Don't track empty [No Name] buffers
 		end
@@ -561,7 +567,8 @@ function M.track_closing_filehash(filehash)
 		data.noname_content[filehash] = {
 			lines = lines,
 			filetype = vim.bo[bufnr].filetype,
-			cursor = winid ~= -1 and vim.api.nvim_win_get_cursor(winid) or { 1, 0 }
+			-- the close key switches the window away first, so it keeps the cursor on the buffer.
+			cursor = winid ~= -1 and vim.api.nvim_win_get_cursor(winid) or vim.b[bufnr].cavediver_cursor or { 1, 0 }
 		}
 	end
 
@@ -615,6 +622,28 @@ end
 ---Unregister a buffer and delete it from the tracking system
 function M.delete_buffer(winid)
 	local bufnr = vim.api.nvim_win_get_buf(winid)
+
+	-- a buffer we don't track (help, quickfix, a terminal) is closed as it is.
+	if data.hash_buffer_registry.hashes[bufnr] == nil then
+		if vim.bo[bufnr].buftype == "terminal" and vim.fn.jobwait({ vim.bo[bufnr].channel }, 0)[1] == -1 then
+			vim.notify("Terminal job is still running", vim.log.levels.WARN)
+			return false
+		end
+		-- a buffer that writes somewhere (oil's acwrite) keeps its unsaved changes, as a file does.
+		if vim.bo[bufnr].modified and (vim.bo[bufnr].buftype == "acwrite" or vim.bo[bufnr].buftype == "") then
+			vim.notify("Buffer has unsaved changes", vim.log.levels.WARN)
+			return false
+		end
+		-- a window visiting it goes back to the file it was on; a window born on it is left to neovim,
+		-- which closes it, or picks what it shows when it's the only one.
+		local triquetra = require('cavediver.domains.window.data').crux[winid]
+		local current_bufnr = triquetra and M.get_buffer_from_hash(triquetra.current_slot)
+		if current_bufnr and vim.api.nvim_buf_is_valid(current_bufnr) then
+			vim.api.nvim_win_set_buf(winid, current_bufnr)
+		end
+		vim.api.nvim_buf_delete(bufnr, { force = true })
+		return true
+	end
 
 	-- Check if buffer has unsaved changes. Avoid deleting unsaved buffers.
 	if vim.api.nvim_buf_get_name(bufnr) ~= "" and vim.bo[bufnr].modified then
@@ -672,12 +701,18 @@ function M.delete_buffer(winid)
 	end
 
 	-- Switch to next buffer before deletion
+	vim.b[bufnr].cavediver_cursor = vim.api.nvim_win_get_cursor(winid) -- for a No Name buffer's cache
 	if next_bufnr and vim.api.nvim_buf_is_valid(next_bufnr) then
 		vim.api.nvim_set_current_buf(next_bufnr)
 	end
 
-	-- Delete the buffer
-	vim.cmd("bw! " .. bufnr)
+	-- Delete the buffer. a file is only deleted, so neovim keeps its marks for when it's reopened;
+	-- a No Name buffer is wiped, its text is cached.
+	if vim.api.nvim_buf_get_name(bufnr) ~= "" then
+		vim.cmd("bdelete " .. bufnr)
+	else
+		vim.cmd("bw! " .. bufnr)
+	end
 	-- Our own BufDelete hook handles the untracking and wrapup
 
 	return true
@@ -813,6 +848,10 @@ function M.cleanup_system()
 			data.hash_buffer_registry.buffers[filehash] = live_bufnr
 			data.hash_buffer_registry.hashes[live_bufnr] = filehash
 			goto continue
+		end
+		-- a file whose buffer went without events is closed like any other: slots keep it and reopen it.
+		if filepath and not filepath:match("^NONAME_") and not vim.tbl_contains(data.closed_buffers, filehash) then
+			table.insert(data.closed_buffers, filehash)
 		end
 		detach_filehash_from_crux(filepath, filehash)
 		table.insert(report.stale_hashes, filehash)

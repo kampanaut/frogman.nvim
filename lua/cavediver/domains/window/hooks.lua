@@ -50,8 +50,17 @@ history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_ma
 	-- happens when you are dealing with an empty ternary slot and it's just an ordinary 
 	-- swap with the secondary slot.
 	if triquetra.secondary_slot == new_filehash then
+		-- plain navigation onto the secondary leaves the same notes as <M-f>, and runs the guard
+		-- before the swap, so the ternary's memory gets the buffer being left.
+		local left, ternary = triquetra.current_slot, triquetra.ternary_slot
+		routines.write_secondary_swap_notes(triquetra)
+		if triquetra.displacement_ternary_map[triquetra.ternary_slot] == new_filehash then
+			triquetra.displacement_ternary_map[triquetra.ternary_slot] = triquetra.current_slot
+			vim.notify("Avoided conflict of ternary's remembered relationship becoming current.", vim.log.levels.WARN)
+		end
 		triquetra.secondary_slot = triquetra.current_slot
 		triquetra.current_slot = new_filehash
+		routines.keep_older_ternary_note(triquetra, new_filehash, left, ternary, ternary)
 	elseif triquetra.current_slot ~= new_filehash then
 		-- Only create displacement mapping if NOT in cycling mode
 		-- and the new bufnr is not the current alternative slot.
@@ -91,6 +100,7 @@ history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_ma
 		-- Always update slots
 		triquetra.ternary_slot = triquetra.current_slot
 		triquetra.current_slot = new_filehash
+		routines.keep_older_secondary_note(triquetra, new_filehash, triquetra.secondary_slot)
 	end
 end, 2, true, history.states.mode.UPDATE)
 
@@ -103,7 +113,7 @@ history.sm:on(history.states.DETACHED, history.states.ATTACHED, "reconcile_triqu
 	if context.buf == nil then
 		error("context.buf is nil in reconcile_triquetra hook")
 	end
-	routines.reconcile_triquetra(vim.api.nvim_get_current_win(), context.buf)
+	routines.reconcile_triquetra(vim.api.nvim_get_current_win(), context.buf, context.pick)
 end, 2, true, history.states.mode.UPDATE)
 
 -- no displacement

@@ -676,6 +676,10 @@ function M.load_history(cwd)
 		end
 		load_window_buffer_relationships(saved_data.windows, cwd)
 		history.routines.initialise_crux_internals(saved_data.buffers)
+		-- the notes come from the file, so a slot loaded under a buffer can leave its notes naming it.
+		for _, triquetra in pairs(window.data.crux) do
+			window.routines.check_notes_under_current(triquetra)
+		end
 	else
 		populate_history()
 	end

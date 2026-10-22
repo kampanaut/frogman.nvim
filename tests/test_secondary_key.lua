@@ -46,14 +46,14 @@ T['T38 [char] with one buffer in history, <M-f> warns "insufficent history"'] = 
 	eq(K.has(K.messages(child), 'insufficent history'), true)
 end
 
-T['T39 [today] {c=c s=b}, <M-f> shows b, {c=b s=c}, dsm{c→b}'] = function()
+T['T39 [char] {c=c s=b}, <M-f> shows b, {c=b s=c}, dsm{c-swap→b}'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
 	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')
 	child.steps({ '<M-f>' })
 	eq(child.shown(), 'b')
 	eq(child.slots(), '⦉-⦊ [b] ⟦c⟧')
-	-- Today the note is the plain c>b (T191 moves it to c-swap>b).
-	eq(child.notes(), 'dtm{b>a} dsm{b>a c>b}')
+	-- c is left by a swap, so its note is a swap note (T191).
+	eq(child.notes(), 'dtm{b>a} dsm{b>a c-swap>b}')
 end
 
 T['T40 [char] with a ternary T, <M-f> writes dtm[A-swap] = T'] = function()
@@ -92,7 +92,7 @@ T['T42 [char] after :bdelete of the secondary and one more :e, the secondary kee
 	eq(vim.tbl_contains(vim.split(child.closed(), ','), 'b'), false)
 end
 
-T['T43 [target] after a cycle, <M-f> with secondary and ternary empty never puts the current buffer in the secondary'] = function()
+T['T43 [char] after a cycle, <M-f> with secondary and ternary empty never puts the current buffer in the secondary'] = function()
 	-- The other window cycles (history frozen at c,b,a), then <C-w>p into the
 	-- fresh split showing b, whose slots are empty (t/pkB_d11_dup.lua).
 	child.steps({ ':e a', ':e b' })
@@ -141,7 +141,7 @@ T['T45 [target] with the secondary file deleted on disk, the pointer is kept and
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 end
 
-T["T150 [target] Q6's ten keys: the third <M-f> rewrites dtm[b] := c, and the restore gives {c=b s=a t=c}"] = function()
+T["T150 [char] Q6's ten keys: the third <M-f> rewrites dtm[b] := c, and the restore gives {c=b s=a t=c}"] = function()
 	child.steps({ ':e a', ':e b', ':e c', ':e b', '<M-f>', ':e a', '<M-f>' })
 	eq(child.slots(), '⦉b⦊ [c] ⟦a⟧')
 	eq(K.note(child, 'dtm', 'b'), 'a')

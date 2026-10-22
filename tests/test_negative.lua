@@ -498,7 +498,7 @@ local function cycle_then(enter)
 	eq(child.ordered(), 'c,b,a')
 end
 
-T['T229 [target] (A12) a jump into a float cancels the cycle, and nothing is recorded'] = function()
+T['T229 [char] (A12) a jump into a float cancels the cycle, and nothing is recorded'] = function()
 	cycle_then(function()
 		child.lua([[
 			local b = vim.api.nvim_create_buf(false, true)
@@ -507,7 +507,7 @@ T['T229 [target] (A12) a jump into a float cancels the cycle, and nothing is rec
 	end)
 end
 
-T['T229 [target] (A12) a jump into :help cancels the cycle, and nothing is recorded'] = function()
+T['T229 [char] (A12) a jump into :help cancels the cycle, and nothing is recorded'] = function()
 	cycle_then(function() child.cmd('help') end)
 end
 
@@ -624,7 +624,7 @@ end
 
 -- One tracked buffer only, so nothing is left to land on: Neovim puts an empty
 -- buffer in the window, read in the same call as the delete.
--- Holds today already on this route; the rest of A19's landing order is T111's target.
+-- The rest of A19's landing order is T111's.
 T['T237 [char] (A19) with nothing left to land on, the window keeps Neovim\'s empty buffer and no :enew runs'] = function()
 	child.steps({ ':e a' })
 	local got = child.lua([[
@@ -718,10 +718,9 @@ T['T241 [target] (A26) the flight recorder records keymap actions and events, ne
 	end
 end
 
--- A bug found while porting: a tracked buffer wiped with noautocmd.
--- The window's current buffer: wiping the ternary or a buffer outside the slots
--- this way gives no error today.
-T['T242 [target] a tracked buffer wiped with noautocmd is repaired within one refresh, with no UI errors'] = function()
+-- A bug found while porting: a tracked buffer wiped with noautocmd, here the
+-- window's current buffer.
+T['T242 [char] a tracked buffer wiped with noautocmd is repaired within one refresh, with no UI errors'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
 	child.messages()
@@ -738,7 +737,7 @@ end
 -- The I23 check wherever a slot changes under the current buffer (decided
 -- 2026-10-21). Each stale note is planted by hand: no route is known that
 -- reaches these states with the other fixes in.
-T['T243 [target] (I23) the check runs at graduation: a stale secondary note naming the graduated buffer is dropped'] = function()
+T['T243 [char] (I23) the check runs at graduation: a stale secondary note naming the graduated buffer is dropped'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
 	K.set_note(child, 'dsm', 'c', 'b')
@@ -749,7 +748,7 @@ T['T243 [target] (I23) the check runs at graduation: a stale secondary note nami
 	eq({ ok, err }, { true, nil })
 end
 
-T['T243 [target] (I23) the check runs at the history fill: a stale secondary note naming the filled buffer is dropped'] = function()
+T['T243 [char] (I23) the check runs at the history fill: a stale secondary note naming the filled buffer is dropped'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.cmd('vsplit')
 	child.settle()
@@ -763,7 +762,7 @@ T['T243 [target] (I23) the check runs at the history fill: a stale secondary not
 	eq({ ok, err }, { true, nil })
 end
 
-T['T243 [target] (I23) the check runs at a session load: a stale note from the file is dropped'] = function()
+T['T243 [char] (I23) the check runs at a session load: a stale note from the file is dropped'] = function()
 	local s = shared()
 	start(s)
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
@@ -888,10 +887,12 @@ T['T248 [char] (A12) with no cokeline, a cycle step raises nothing and <M-v> sti
 	local ok, err = child.step('<M-n>')
 	eq({ ok, err }, { true, nil })
 	eq(child.state(), CYCLING)
+	-- the step goes through cavediver's own order, onto a (T171)
+	eq(child.shown(), 'a')
 	ok, err = child.step('<M-v>')
 	eq({ ok, err }, { true, nil })
 	eq(child.state(), NORMAL)
-	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
+	eq(child.slots(), '⦉b⦊ [a] ⟦-⟧')
 end
 
 -- T249: no note names its own buffer, after every action of seeded random walks.
@@ -908,7 +909,7 @@ local function self_walks(multi, seed0)
 	end
 end
 
--- Holds today in the walks; it guards the decided code's ordering when it lands.
+-- It guards the decided check's order: after Q6's guard, never naming the current buffer.
 T['T249 [char] (A1, A11) no note names its own buffer, over random walks: one window'] = function() self_walks(false, 7000) end
 T['T249 [char] (A1, A11) no note names its own buffer, over random walks: several windows'] = function() self_walks(true, 11000) end
 

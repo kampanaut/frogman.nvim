@@ -134,7 +134,7 @@ T['T58 [target] with the primary file deleted on disk, it says so and keeps the 
 	eq(child.primary(), '[a]on')
 end
 
-T['T153 [target] Q6 on the fallback: primary disabled, {c=A s=S t=T}, dtm[T] = S; <M-;><M-f> rewrites dtm[T] to A before the swap'] = function()
+T['T153 [char] Q6 on the fallback: primary disabled, {c=A s=S t=T}, dtm[T] = S; <M-;><M-f> rewrites dtm[T] to A before the swap'] = function()
 	-- x is the primary, switched off; then T150's first seven keys give {c=c s=a t=b}, dtm[b] = a.
 	child.steps({ ':e x', '<M-;><M-x>', '<M-;><M-x>' })
 	eq(child.primary(), '[x]off')

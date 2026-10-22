@@ -79,7 +79,7 @@ T['T66 [char] with the maps set so the remembered value equals the slot, the res
 	no_eq(tostring(err):find('This is impossible. Remembered ternary is the same as current ternary.', 1, true), nil)
 end
 
-T['T67 [target] (D9) a -swap note at a closed file deleted on disk is skipped and kept: the plain note restores and flip-flops'] = function()
+T['T67 [char] (D9) a -swap note at a closed file deleted on disk is skipped and kept: the plain note restores and flip-flops'] = function()
 	two_notes()
 	child.cmd('bdelete f.txt')
 	child.lua(K.rm_code('f'))
@@ -93,7 +93,7 @@ T['T67 [target] (D9) a -swap note at a closed file deleted on disk is skipped an
 	eq(K.note(child, 'dtm', 'a-swap'), 'f')
 end
 
-T['T173 [target] (D9) a note at a file deleted on disk whose buffer is still open restores it and flip-flops with it'] = function()
+T['T173 [char] (D9) a note at a file deleted on disk whose buffer is still open restores it and flip-flops with it'] = function()
 	two_notes()
 	child.lua(K.rm_code('f'))
 	eq(child.lua([[return vim.fn.bufloaded('f.txt')]]), 1)
@@ -105,7 +105,7 @@ T['T173 [target] (D9) a note at a file deleted on disk whose buffer is still ope
 	eq(child.slots(), '⦉f⦊ [a] ⟦-⟧')
 end
 
-T["T174 [target] (D9) when both of a buffer's notes point at closed files deleted on disk, the restore says so, changes no slot, keeps both notes"] = function()
+T["T174 [char] (D9) when both of a buffer's notes point at closed files deleted on disk, the restore says so, changes no slot, keeps both notes"] = function()
 	two_notes()
 	child.cmd('bdelete f.txt')
 	child.cmd('bdelete b.txt')
@@ -119,7 +119,7 @@ T["T174 [target] (D9) when both of a buffer's notes point at closed files delete
 	eq(K.notes_for(child, { 'a' }), 'dtm{a-swap>f a>b} dsm{}')
 end
 
-T["T68 [target] an unknown hash in a map doesn't make a restore throw"] = function()
+T["T68 [char] an unknown hash in a map doesn't make a restore throw"] = function()
 	child.steps({ ':e a', ':e b' })
 	-- A hash that no buffer or path has.
 	K.set_note(child, 'dtm', 'b', '0123456789abcdef', true)

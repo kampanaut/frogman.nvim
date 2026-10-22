@@ -72,6 +72,9 @@ end
 ---@param winid number Window ID to get relationships for
 ---@return WindowTriquetra|nil relationship The window's buffer relationships
 function M.get_window_triquetra(winid)
+	if winid == nil or not vim.api.nvim_win_is_valid(winid) then
+		return nil -- a window that's gone (e.g. :only closed it) has no triquetra to give.
+	end
 	local wbufnr = vim.api.nvim_win_get_buf(winid)
     if not M.crux[winid] then
 		local config = vim.api.nvim_win_get_config(winid)
@@ -108,6 +111,26 @@ function M.get_window_triquetra(winid)
 		-- so this is why i put this here, to ensure that the function returns up-to-date data.
     end
     return M.crux[winid]
+end
+
+---Take a hash out of every triquetra's secondary and ternary slots and primary queue. The current
+---slot is left to whatever lands the window.
+---
+---@param hash Filehash
+function M.forget_hash_in_slots(hash)
+	for _, triquetra in pairs(M.crux) do
+		if triquetra.secondary_slot == hash then
+			triquetra.secondary_slot = nil
+		end
+		if triquetra.ternary_slot == hash then
+			triquetra.ternary_slot = nil
+		end
+		for i = #triquetra.primary_buffer, 1, -1 do
+			if triquetra.primary_buffer[i] == hash then
+				table.remove(triquetra.primary_buffer, i)
+			end
+		end
+	end
 end
 
 ---Rename a hash to a new hash across all window triquetras.
@@ -150,6 +173,11 @@ function M.rename_hash_in_triquetras(old_hash, new_hash)
             triquetra.displacement_secondary_map[old_hash] = nil
             triquetra.displacement_secondary_map[new_hash] = displaced_value
         end
+		if triquetra.displacement_secondary_map[old_hash.."-swap"] then
+            local displaced_value = triquetra.displacement_secondary_map[old_hash.."-swap"]
+            triquetra.displacement_secondary_map[old_hash.."-swap"] = nil
+            triquetra.displacement_secondary_map[new_hash.."-swap"] = displaced_value
+		end
 
         -- Update displacement maps (values)
         for hash, displaced_hash in pairs(triquetra.displacement_ternary_map) do
