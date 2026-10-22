@@ -460,7 +460,7 @@ end
 
 -- ⦉-⦊ [b] ⟦a⟧: no ternary. The window came to b from c by <M-f>, so Neovim's
 -- own pick is c; the secondary restore then made a the secondary.
-T['T271 [target] (A19) a deleted buffer\'s window lands on the secondary when there\'s no ternary'] = function()
+T['T271 [char] (A19) a deleted buffer\'s window lands on the secondary when there\'s no ternary'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', '<M-f>', '<M-;><M-t>' })
 	eq(child.slots(), '⦉-⦊ [b] ⟦a⟧')
 	child.cmd('bdelete b.txt')
@@ -489,7 +489,7 @@ local function lone_split()
 	return w2
 end
 
-T['T271 [target] (A19) with no ternary or secondary, it lands on the primary'] = function()
+T['T271 [char] (A19) with no ternary or secondary, it lands on the primary'] = function()
 	local w2 = lone_split()
 	-- The queue set by hand: [a], switched on.
 	child.lua([[
@@ -503,7 +503,7 @@ T['T271 [target] (A19) with no ternary or secondary, it lands on the primary'] =
 	eq({ child.win(), child.shown() }, { w2, 'a' })
 end
 
-T['T271 [target] (A19) with no ternary, secondary or primary, it lands on the most recent buffer'] = function()
+T['T271 [char] (A19) with no ternary, secondary or primary, it lands on the most recent buffer'] = function()
 	local w2 = lone_split()
 	child.cmd('bdelete c.txt')
 	child.settle()
@@ -512,7 +512,7 @@ end
 
 -- "Most recent" follows history_view (decided 2026-10-21), as <M-.> already does: under the
 -- window view it's the window's own history, so the window lands on what it showed, not on x.
-T['T271 [target] (A19) under the window view, "most recent" is the window\'s own history'] = function()
+T['T271 [char] (A19) under the window view, "most recent" is the window\'s own history'] = function()
 	child.setup({ history_view = 'window' })
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.cmd('vsplit')
@@ -540,8 +540,9 @@ T['T271 [target] (A19) under the window view, "most recent" is the window\'s own
 end
 
 -- Nothing to land on: a is the only tracked file. Neovim's pick is a listed
--- scratch buffer, something other than its empty buffer, so :enew runs.
-T['T271 [target] (A19) with nothing to land on and Neovim showing something else, the window gets a new empty buffer'] = function()
+-- scratch buffer, something other than its empty buffer, so the window gets a new
+-- empty buffer.
+T['T271 [char] (A19) with nothing to land on and Neovim showing something else, the window gets a new empty buffer'] = function()
 	child.steps({ ':e a' })
 	local scratch = child.lua('return vim.api.nvim_create_buf(true, true)')
 	child.cmd('bdelete a.txt')
@@ -565,7 +566,7 @@ end
 
 -- T113's stale registration: b's buffer wiped without events, a copy of b.txt
 -- loaded the same way, then the timer's pass.
-T['T273 [target] (A22) the stale pass keeps the history of the file it re-points'] = function()
+T['T273 [char] (A22) the stale pass keeps the history of the file it re-points'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	local got = child.lua([[
 		local H = require('cavediver.domains.history')
@@ -760,7 +761,7 @@ T['T283 [char] (I9) every triquetra belongs to a valid, non-floating window, ove
 	walk('I9', join(MWY, CLOSING), 14)
 end
 
-T['T284 [target] (I9) :file onto a name not on disk in a split leaves no triquetra for a dead window'] = function()
+T['T284 [char] (I9) :file onto a name not on disk in a split leaves no triquetra for a dead window'] = function()
 	child.steps({ ':e a' })
 	child.cmd('vsplit')
 	child.settle()

@@ -260,7 +260,7 @@ local function snapshot()
 end
 
 -- The window shows b, whose file is deleted on disk just before the save.
-T['T146 [target] a save never wipes a buffer or changes what a window shows'] = function()
+T['T146 [char] a save never wipes a buffer or changes what a window shows'] = function()
 	child.setup()
 	child.steps({ ':e a', ':vsplit', ':e b' })
 	local before = snapshot()

@@ -654,7 +654,7 @@ T['T238 [target] (A20) :w name on a No Name buffer is a move: no ghost on the cl
 end
 
 -- b (the secondary) and c (the ternary) are open but hidden; their files go.
-T['T239 [target] (A21) a secondary and a ternary whose files are deleted while their buffers are open stay in their slots'] = function()
+T['T239 [char] (A21) a secondary and a ternary whose files are deleted while their buffers are open stay in their slots'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 	child.lua(K.rm_code('b') .. '; ' .. K.rm_code('c'))
@@ -851,7 +851,7 @@ end
 -- The split shows an oil-like buffer (acwrite) and keeps its triquetra; its
 -- current slot's file is then closed from the first window, which has the
 -- focus (A21's healing branch, DESK:2447).
-T['T247 [target] (I13, A21) a cleanup heal in another window does not switch the focused window or wipe what that window shows'] = function()
+T['T247 [char] (I13, A21) a cleanup heal in another window does not switch the focused window or wipe what that window shows'] = function()
 	child.steps({ ':e a', ':e b' })
 	local w1 = child.win()
 	child.cmd('vsplit')
