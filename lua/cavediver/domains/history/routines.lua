@@ -19,7 +19,7 @@ end
 ---@return string
 function M.noname_name(bufnr)
 	if vim.b[bufnr].cavediver_noname == nil then
-		vim.b[bufnr].cavediver_noname = tostring(os.time()) .. tostring(vim.uv.hrtime())
+		vim.b[bufnr].cavediver_noname = tostring(os.time()) .. string.format("%.0f", vim.uv.hrtime()) -- digits, however large
 	end
 	return "NONAME_" .. vim.b[bufnr].cavediver_noname
 end
