@@ -298,7 +298,11 @@ function M.track_buffer(filehash, time)
 		end
 	end
 
-	local winid = require("cavediver.domains.navigation.routines").find_most_recent_tracked_window()
+	-- the visit goes to the window it happens in (an arrival runs in its own window), not the focused one.
+	local winid = vim.api.nvim_get_current_win()
+	if not require("cavediver.domains.window").get_triquetra(winid) then
+		winid = require("cavediver.domains.navigation.routines").find_most_recent_tracked_window()
+	end
 	if winid then
 		if data.crux_internals.window[winid] == nil then
 			data.crux_internals.window[winid] = {}
@@ -637,7 +641,8 @@ function M.delete_buffer(winid)
 		-- a window visiting it goes back to the file it was on; a window born on it is left to neovim,
 		-- which closes it, or picks what it shows when it's the only one.
 		local triquetra = require('cavediver.domains.window.data').crux[winid]
-		local current_bufnr = triquetra and M.get_buffer_from_hash(triquetra.current_slot)
+		local current_bufnr = triquetra and
+			(M.get_buffer_from_hash(triquetra.current_slot) or M.reopen_filehash(triquetra.current_slot))
 		if current_bufnr and vim.api.nvim_buf_is_valid(current_bufnr) then
 			vim.api.nvim_win_set_buf(winid, current_bufnr)
 		end
@@ -706,13 +711,19 @@ function M.delete_buffer(winid)
 		vim.api.nvim_set_current_buf(next_bufnr)
 	end
 
-	-- Delete the buffer. a file is only deleted, so neovim keeps its marks for when it's reopened;
-	-- a No Name buffer is wiped, its text is cached.
-	if vim.api.nvim_buf_get_name(bufnr) ~= "" then
-		vim.cmd("bdelete " .. bufnr)
-	else
-		vim.cmd("bw! " .. bufnr)
-	end
+	-- Delete the buffer once the switch has settled, so the window's arrival is slotted first. a file
+	-- is only deleted, so neovim keeps its marks for when it's reopened; a No Name buffer is wiped,
+	-- its text is cached.
+	vim.schedule(function()
+		if not vim.api.nvim_buf_is_valid(bufnr) then
+			return
+		end
+		if vim.api.nvim_buf_get_name(bufnr) ~= "" then
+			vim.cmd("bdelete " .. bufnr)
+		else
+			vim.cmd("bw! " .. bufnr)
+		end
+	end)
 	-- Our own BufDelete hook handles the untracking and wrapup
 
 	return true

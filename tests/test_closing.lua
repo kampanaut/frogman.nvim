@@ -51,6 +51,20 @@ T['T80 [char] <M-.> on the newest lands on the next, closes it, and keeps it in 
 	eq(buf_open(f), false)
 end
 
+-- The switch's arrival is slotted before the close, as navigation slots it, so cleanup
+-- has nothing to heal and says nothing.
+T['T336 [char] (A15, A1) <M-.> lands by navigation, before the close: no healing notice'] = function()
+	child.steps({ ':e a', ':e b', ':e c' })
+	child.messages()
+	child.steps({ '<M-.>' })
+	eq(child.slots(), '⦉c⦊ [b] ⟦-⟧')
+	local healed = false
+	for _, m in ipairs(child.messages()) do
+		if (m.msg or ''):find('Healed the triquetra', 1, true) then healed = true end
+	end
+	eq(healed, false)
+end
+
 -- The window's buffer is entry i > 1 of the ordered list while cycling, which
 -- freezes the order.
 T['T81 [char] <M-.> on entry i > 1 lands on entry i + 1'] = function()
@@ -105,7 +119,7 @@ T['T82 [char] <M-.> refuses the only entry'] = function()
 	eq(snapshot(), before)
 end
 
--- delete_buffer keeps the cursor before it switches the window away (history/routines.lua:704),
+-- delete_buffer keeps the cursor before it switches the window away (history/routines.lua:709),
 -- so the cache doesn't fall back to {1,0}.
 T['T83 [char] <M-.> on a modified No Name buffer closes it and caches its lines, filetype and cursor'] = function()
 	child.steps({ ':e a' })
@@ -246,7 +260,7 @@ T['T162 [target] pushing a hash already on the closed stack keeps one copy, as t
 	eq(child.closed(), 't,x')
 end
 
-T['T164 [target] <M-.> in a window visiting an untracked buffer closes it and lands on the current slot'] = function()
+T['T164 [char] <M-.> in a window visiting an untracked buffer closes it and lands on the current slot'] = function()
 	child.steps({ ':e b', ':e a', '<M-f>' })
 	eq(child.slots(), '⦉-⦊ [a] ⟦b⟧')
 	-- Visit a nofile scratch in the same window.

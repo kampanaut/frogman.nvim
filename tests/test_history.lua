@@ -79,7 +79,7 @@ T['T18 [char] :vsplit creates the new window\'s history entry along with its tri
 	Helpers.expect.no_equality(window_history(w2), nil)
 end
 
-T['T19 [target] a visit is recorded in the history of the window that shows the buffer, not the focused one'] = function()
+T['T19 [char] a visit is recorded in the history of the window that shows the buffer, not the focused one'] = function()
 	child.steps({ ':e a' })
 	local w1 = X.win(child)
 	child.cmd('vsplit')

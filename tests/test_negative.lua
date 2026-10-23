@@ -237,7 +237,7 @@ end
 
 -- A buffer a plugin makes: entered as buftype "", then turned nofile. It has
 -- text, so the next :e doesn't reuse it.
-T['T217 [target] (I10, A1) a buffer whose buftype turns nofile after it is entered is not left registered or in a slot'] = function()
+T['T217 [char] (I10, A1) a buffer whose buftype turns nofile after it is entered is not left registered or in a slot'] = function()
 	child.steps({ ':e a', ':enew' })
 	local n = child.lua('return vim.api.nvim_get_current_buf()')
 	local h = child.lua('return require("cavediver.domains.history").get_hash_from_buffer(...)', { n })
@@ -252,7 +252,7 @@ T['T217 [target] (I10, A1) a buffer whose buftype turns nofile after it is enter
 end
 
 -- :copen enters the new quickfix buffer before its buftype is set (DESK:2453).
-T['T217 [target] (I10, A2) a :copen quickfix buffer is not left registered, and its window gets no triquetra'] = function()
+T['T217 [char] (I10, A2) a :copen quickfix buffer is not left registered, and its window gets no triquetra'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.lua('vim.fn.setqflist({ { filename = "a.txt", lnum = 1, text = "x" } })')
 	child.cmd('copen')

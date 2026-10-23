@@ -106,6 +106,74 @@ function M.check_notes_under_current(triquetra)
 	M.keep_older_secondary_note(triquetra, current, triquetra.secondary_slot)
 end
 
+---Remember a window's triquetra from just before a buffer arrives in it (see `M.undo_arrival()`).
+---
+---@param winid WinId
+---@param triquetra WindowTriquetra
+---@param filehash Filehash The arriving buffer
+function M.remember_arrival(winid, triquetra, filehash)
+	data.arrivals[winid] = { hash = filehash, before = vim.deepcopy(triquetra) }
+end
+
+---Remember the triquetra just after the arrival too: an arrival is undone only while nothing else has
+---changed the triquetra since.
+---
+---@param winid WinId
+---@param triquetra WindowTriquetra
+function M.seal_arrival(winid, triquetra)
+	local arrival = data.arrivals[winid]
+	if arrival and arrival.hash == triquetra.current_slot then
+		arrival.after = vim.deepcopy(triquetra)
+	end
+end
+
+---Undo a buffer's arrival once it turned into something we don't track (its buftype changed after it was
+---slotted). A window it just arrived in gets back the slots and notes it had before, and is visiting it. A
+---window whose current slot it was otherwise takes the next slot in line, as a landing does. It leaves every
+---other slot, and is no longer tracked.
+---
+---@param bufnr Bufnr
+function M.undo_arrival(bufnr)
+	local filehash = history.get_hash_from_buffer(bufnr)
+	if not filehash then
+		return
+	end
+	for winid, triquetra in pairs(data.crux) do
+		local arrival = data.arrivals[winid]
+		if triquetra.current_slot == filehash then
+			if arrival and arrival.hash == filehash and arrival.after and vim.deep_equal(arrival.after, triquetra) then
+				for _, key in ipairs({ "current_slot", "secondary_slot", "ternary_slot", "primary_buffer",
+					"primary_enabled", "displacement_ternary_map", "displacement_secondary_map" }) do
+					triquetra[key] = arrival.before[key]
+				end
+			elseif triquetra.ternary_slot then
+				triquetra.current_slot, triquetra.ternary_slot = triquetra.ternary_slot, nil
+			elseif triquetra.secondary_slot then
+				triquetra.current_slot, triquetra.secondary_slot = triquetra.secondary_slot, nil
+			elseif triquetra.primary_buffer[1] and triquetra.primary_buffer[1] ~= filehash then
+				triquetra.current_slot = triquetra.primary_buffer[1]
+			else
+				data.unregister_triquetra(winid) -- nothing to come back to.
+			end
+			if data.crux[winid] then
+				M.check_notes_under_current(triquetra) -- a slot changed under the current buffer.
+			end
+		end
+		if arrival and arrival.hash == filehash then
+			data.arrivals[winid] = nil
+		end
+	end
+	data.forget_hash_in_slots(filehash)
+
+	local filepath = history.get_filepath_from_hash(filehash)
+	history.routines.untrack_buffer(bufnr)
+	history.routines.unregister_buffer(bufnr)
+	if filepath then
+		history.routines.unregister_filepath(filepath)
+	end
+	loop_sm:to(loop_states.SELF)
+end
+
 ---This will take in FILEPATHS and validates the input FILEPATHS, to be put as the
 ---new primary buffers history for the triquetra.
 ---
@@ -197,6 +265,7 @@ function M.reconcile_triquetra(winid, new_bufnr, is_pick)
 	local triquetra = data.crux[winid]
 	local temp, proc
 	if triquetra and triquetra.current_slot ~= new_filehash then
+		M.remember_arrival(winid, triquetra, new_filehash)
 		local left, ternary_before = triquetra.current_slot, triquetra.ternary_slot
 		M.keep_older_secondary_note(
 			triquetra,
@@ -256,6 +325,7 @@ function M.reconcile_triquetra(winid, new_bufnr, is_pick)
 			ternary_before,
 			(new_filehash == ternary_before) and left or ternary_before
 		)
+		M.seal_arrival(winid, triquetra)
 	end
 end
 
@@ -435,11 +505,14 @@ function M.cleanup_triquetras(bufnr_ondelete)
 					-- (a rename in progress, or a reload without events). there's nothing to heal.
 					goto continue
 				end
+				if history.routines.is_filehash_closed(triquetra.current_slot) then
+					-- the window is visiting something we don't track and keeps its triquetra: a closed
+					-- current slot stays, it's the file the window was last on.
+					goto continue
+				end
 				if cbufhash == triquetra.current_slot or vim.bo[cbufnr].buftype == "acwrite" then -- it means that the buffer didn't evolved to anything new. it was still deleted, so we fallback.
-					local candidate_bufnr
-
 					-- Part 1: Try Heal triquetra with self
-					---@type boolean If true then we skip to jumping to the resolved buffer.
+					---@type boolean If true then a slot took the current slot's place.
 					local resolved = false
 					local bufnr
 					if triquetra.ternary_slot and history.get_buffer_from_hash(triquetra.ternary_slot) then
@@ -467,7 +540,7 @@ function M.cleanup_triquetras(bufnr_ondelete)
 						history.routines.update_buffer_history_ordered()
 						history.routines.update_buffer_history_ordered_nonharpooned()
 						-- print("#4")
-						goto apply
+						goto continue -- the window keeps showing what it shows: cleanup never touches a window.
 					end
 
 					-- Part 2: This is when we can't heal it straightforward anymore.
@@ -509,55 +582,13 @@ function M.cleanup_triquetras(bufnr_ondelete)
 								"This is impossible. Ordered history buffers should always have a hash associated with it.")
 						end
 					else
-						local success, message = pcall(function() vim.cmd("enew") end)
-						if success or (message ~= nil and message:match("BufDelete Autocommand")) then
-							-- Yes we just ignore the error, and don't try to heal this anymore (while every alternative is exhausted
-							-- at this point). We just continue to the next window triquetra.
-							--
-							-- It is implied that there is no history, and no other slots, just the NO_NAME current_slot buffer and
-							-- NO_NAME current_buffer that is being replaced by... oil buffer for example. So BufDelete gets called,
-							-- and we arrive here, as cleanup_triquetras() is then called along the way in the BufDelete pipeline.
-							-- We capture any error that happens in BufDelete Autocmd. So yes we just ignore the error and not
-							-- attempt any self-healing, as this would be just modified. SPECIAL EXCEPTION!
-							--
-							-- And I wrote this "if block" this way so that I can write the comment above in an intuitive way.
-							-- Rather than doing inversion.
-							--
-							-- vim throws an error when we try to make a new buffer when our current buffer is still a no name
-							-- buffer being deleted.
-							goto continue
-						else
-							-- print(vim.inspect({
-							-- 	current_buf_bufnr = (cbufnr or "nil"),
-							-- 	current_buf_bufname = (cbufname or "nil"),
-							-- 	current_buf_filehash = (cbufhash or "nil"),
-							-- 	current_buf_filepath = (history.get_filepath_from_hash(cbufhash) or "nil"),
-							-- 	triquetra_current_slot_bufnr = (current_bufnr or "nil"),
-							-- 	triquetra_current_slot_filehash = (triquetra.current_slot or "nil"),
-							-- 	triquetra_current_slot_filepath = (history.get_filepath_from_hash(triquetra.current_slot) or "nil"),
-							-- }))
-							data.unregister_triquetra(winid)
-							goto continue
-						end
-					end
-					if vim.bo[cbufnr].buftype == "acwrite" then -- we skip oil buffers, since they are not file buffers.
+						-- nothing to put in the current slot, and cleanup doesn't touch the window to make
+						-- something: the window is left with no triquetra, as one born untracked.
+						data.unregister_triquetra(winid)
 						goto continue
 					end
-					::apply::
-					candidate_bufnr = history.get_buffer_from_hash(triquetra.current_slot)
-					if candidate_bufnr then
-						-- a window showing something we don't track (oil) keeps showing it.
-						if vim.bo[cbufnr].buftype ~= "acwrite" then
-							vim.schedule(function()
-								if vim.api.nvim_win_is_valid(winid) and vim.api.nvim_buf_is_valid(candidate_bufnr) then
-									vim.api.nvim_win_set_buf(winid, candidate_bufnr)
-								end
-							end)
-						end
-					else
-						error("This is impossible. Like how the fuck did the current slot become nil???")
-					end
-				else -- it evolved, just delete it.
+				else -- it's visiting, and its current slot names nothing open or closed any more: there's nothing
+					-- to come back to.
 					-- print all the variables
 					--
 					-- print(vim.inspect({
@@ -700,6 +731,10 @@ function M.swap_with_secondary(winid)
 	end
 
 	local cbufnr = history.get_buffer_from_hash(triquetra.current_slot)
+	if cbufnr == nil and history.get_hash_from_buffer(vim.api.nvim_win_get_buf(winid)) == nil then
+		-- visiting, with the current slot closed: going back to it reopens it.
+		cbufnr = history.reopen_filehash(triquetra.current_slot)
+	end
 
 	-- check if the current buffer of the window is the triquetra current. If not,
 	-- then we just jump to the triquetra current window.
@@ -788,6 +823,10 @@ function M.swap_with_ternary(winid)
 	end
 
 	local cbufnr = history.get_buffer_from_hash(triquetra.current_slot)
+	if cbufnr == nil and history.get_hash_from_buffer(vim.api.nvim_win_get_buf(winid)) == nil then
+		-- visiting, with the current slot closed: going back to it reopens it.
+		cbufnr = history.reopen_filehash(triquetra.current_slot)
+	end
 
 	-- check if the current buffer of the window is the triquetra current. If not,
 	-- then we just jump to the triquetra current window.

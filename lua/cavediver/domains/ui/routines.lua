@@ -316,8 +316,17 @@ local function derive_cache_from_window_triquetra(winid)
 	end
 
 	-- Update all slots using the hash-based WindowTriquetra structure
-	ui_triquetra.current_bufnr, ui_triquetra.current_display_name, _, _, _ =
+	ui_triquetra.current_bufnr, ui_triquetra.current_display_name, _, _, ui_triquetra.deleted_slots.current =
 		resolve_slot(window_triquetra.current_slot)
+	-- a window showing something we don't track is visiting it. it shows the buftype, or the filetype for a
+	-- buffer that looks like a file (oil's acwrite).
+	local shown = vim.api.nvim_win_get_buf(winid)
+	if history.get_hash_from_buffer(shown) == nil then
+		local buftype = vim.bo[shown].buftype
+		ui_triquetra.visiting = (buftype == "" or buftype == "acwrite") and vim.bo[shown].filetype or buftype
+	else
+		ui_triquetra.visiting = nil
+	end
 	ui_triquetra.primary_bufnr, ui_triquetra.primary_display_name, ui_triquetra.has_primary, _, _ =
 		resolve_slot(window_triquetra.primary_buffer[1])
 	ui_triquetra.secondary_bufnr, ui_triquetra.secondary_display_name, ui_triquetra.has_secondary, ui_triquetra.loaded_slots.secondary, ui_triquetra.deleted_slots.secondary =
@@ -328,7 +337,7 @@ local function derive_cache_from_window_triquetra(winid)
 	-- reflect the primary_enabled state.
 	ui_triquetra.has_primary = ui_triquetra.has_primary and window_triquetra.primary_enabled
 
-	if ui_triquetra.current_bufnr == nil then
+	if ui_triquetra.current_bufnr == nil and not (ui_triquetra.deleted_slots.current and ui_triquetra.visiting) then
 		if not derive_cache_lock[winid] then
 			derive_cache_lock[winid] = true
 			window.routines.cleanup_triquetras() -- I know it's really good to do this, but we need to clean up the triquetra.
@@ -489,6 +498,21 @@ local function construct_winbar_string(winid, theme)
 		end
 	end
 
+	local current_name = triquetra.current_display_name
+	if triquetra.visiting then
+		current_name = current_name .. " ← [" .. triquetra.visiting .. "]"
+	end
+
+	if triquetra.current_bufnr == nil and triquetra.deleted_slots.current then
+		-- a closed current slot, while visiting: the closed icon stands where its number goes.
+		display_string = display_string .. string.format(
+			"%%#%s#[\u{f4c5}] %%#%s#%s%%#%s# ",
+			theme.current_slot_bufnr, theme.current_slot_filename, current_name, theme.secondary_slot_filename
+		)
+		display_string_length = display_string_length + 5 + vim.api.nvim_strwidth(current_name)
+		goto secondary
+	end
+
 	if triquetra.current_bufnr == nil then
 		local window_triquetra = window.get_triquetra(winid)
 		local debug_info = {
@@ -509,22 +533,23 @@ local function construct_winbar_string(winid, theme)
 		display_string = display_string .. string.format(
 			"%%#%s#" .. fmt_cbufnr .. " %%#%s#%s%%#%s#  ",
 			theme.current_slot_bufnr, triquetra.current_bufnr, theme.current_slot_filename,
-			triquetra.current_display_name, theme.secondary_slot_filename
+			current_name, theme.secondary_slot_filename
 		)
 		display_string_length = display_string_length + 6
 	else
 		display_string = display_string .. string.format(
 			"%%#%s#" .. fmt_cbufnr .. " %%#%s#%s%%#%s# ",
 			theme.current_slot_bufnr, triquetra.current_bufnr, theme.current_slot_filename,
-			triquetra.current_display_name, theme.secondary_slot_filename
+			current_name, theme.secondary_slot_filename
 		)
 		display_string_length = display_string_length + 4
 	end
 
 	display_string_length = display_string_length +
-		vim.api.nvim_strwidth(triquetra.current_display_name) +
+		vim.api.nvim_strwidth(current_name) +
 		vim.api.nvim_strwidth(tostring(triquetra.current_bufnr))
 
+	::secondary::
 
 	if triquetra.has_secondary then
 		if not triquetra.deleted_slots.secondary then
@@ -658,6 +683,19 @@ function M.is_real_file(bufnr, win_id)
 	return value
 end
 
+---Whether a window shows something we don't track (help, a terminal), so its triquetra's winbar shows
+---the visit. Floats and the skipped filetypes get none, as for files.
+---
+---@param bufnr Bufnr
+---@param win_id WinId
+---@return boolean
+function M.is_visiting(bufnr, win_id)
+	return history.get_hash_from_buffer(bufnr) == nil
+		and vim.api.nvim_buf_is_loaded(bufnr)
+		and vim.api.nvim_win_get_config(win_id).relative == ""
+		and not vim.tbl_contains(data.excluded_filetypes, vim.bo[bufnr].filetype)
+end
+
 local function window_touches_top(win_id)
 	-- Retrieve precise window coordinates
 	-- local win_config = vim.api.nvim_win_get_config(win_id)
@@ -676,7 +714,7 @@ local function update_all_winbars()
 	-- First pass: identify windows touching the upper boundary
 	for win, _ in pairs(window.data.crux) do
 		local buf = vim.api.nvim_win_get_buf(win)
-		if M.is_real_file(buf, win) then
+		if M.is_real_file(buf, win) or M.is_visiting(buf, win) then
 			if window_touches_top(win) then
 				table.insert(top_windows, win)
 				update_topwin_winbar(win, win)

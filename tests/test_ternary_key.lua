@@ -41,7 +41,7 @@ T['T48 [char] a ternary closed with <M-.> is reopened by <M-S-f> and taken off t
 	eq(child.closed(), '')
 end
 
-T["T49 [target] the desk's sequence (:e, :e, <M-n>, :bdelete, <M-S-f>, <M-S-f>) throws nothing and leaves no duplicate slot"] = function()
+T["T49 [char] the desk's sequence (:e, :e, <M-n>, :bdelete, <M-S-f>, <M-S-f>) throws nothing and leaves no duplicate slot"] = function()
 	-- The desk's 1.txt and 2.txt are a and b here.
 	child.steps({ ':e a', ':e b', '<M-n>' })
 	child.cmd('bdelete')

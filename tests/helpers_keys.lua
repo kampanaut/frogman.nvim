@@ -234,7 +234,10 @@ local function run(a)
 	elseif a == 'pick' then
 		local key = rnd(2) == 1 and '<M-n>' or '<M-m>'
 		local n = rnd(3)
-		for _ = 1, n do press(key) end
+		for _ = 1, n do
+			press(key)
+			vim.wait(10)
+		end
 		press('<M-v>')
 		return string.format('%s x%d <M-v>', key, n)
 	else
@@ -273,6 +276,7 @@ end
 for _ = 1, nkeys do
 	_G.CDV_NOTES = {}
 	local label = run(actions[rnd(#actions)])
+	vim.wait(10) -- the editor settles between keys, as when they're typed
 	table.insert(res.actions, label)
 	res.steps = res.steps + 1
 	for _, n in ipairs(_G.CDV_NOTES) do

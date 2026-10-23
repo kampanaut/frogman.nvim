@@ -47,7 +47,10 @@ history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_ma
 	if not triquetra then
 		return
 	end
-	-- happens when you are dealing with an empty ternary slot and it's just an ordinary 
+	if triquetra.current_slot ~= new_filehash then
+		routines.remember_arrival(winid, triquetra, new_filehash)
+	end
+	-- happens when you are dealing with an empty ternary slot and it's just an ordinary
 	-- swap with the secondary slot.
 	if triquetra.secondary_slot == new_filehash then
 		-- plain navigation onto the secondary leaves the same notes as <M-f>, and runs the guard
@@ -102,6 +105,7 @@ history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_ma
 		triquetra.current_slot = new_filehash
 		routines.keep_older_secondary_note(triquetra, new_filehash, triquetra.secondary_slot)
 	end
+	routines.seal_arrival(winid, triquetra)
 end, 2, true, history.states.mode.UPDATE)
 
 history.sm:on(history.states.DETACHED, history.states.ATTACHED, "reconcile_triquetra", function(context, _, _)
@@ -149,6 +153,25 @@ function M.init_autocmds(group)
 		callback = function(args)
 			local winid = tonumber(args.file)
 			data.unregister_triquetra(winid)
+		end,
+	})
+
+	-- a buffer whose buftype changes after it was slotted (a plugin's scratch, entered as a plain buffer)
+	-- has its arrival undone, once the editor settles.
+	vim.api.nvim_create_autocmd("OptionSet", {
+		group = group,
+		pattern = "buftype",
+		callback = function()
+			local bufnr = vim.api.nvim_get_current_buf()
+			vim.schedule(function()
+				if
+					vim.api.nvim_buf_is_valid(bufnr) and
+					history.get_hash_from_buffer(bufnr) and
+					not history.routines.is_trackable(bufnr)
+				then
+					routines.undo_arrival(bufnr)
+				end
+			end)
 		end,
 	})
 end

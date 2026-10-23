@@ -40,6 +40,7 @@ T['T9 [char] a path with ", $HOME or a backslash hashes to sha256(path .. "\\n")
 			local path = _G.CDV_TEST.root .. '/' .. n
 			vim.fn.writefile({ label }, path)
 			vim.cmd('edit ' .. vim.fn.fnameescape(path))
+			vim.wait(10) -- the arrival is slotted once the editor settles
 			got[label] = H.get_hash_from_buffer(vim.api.nvim_get_current_buf()) or 'not registered'
 			want[label] = vim.fn.sha256(vim.api.nvim_buf_get_name(0) .. '\n'):sub(1, 16)
 		end

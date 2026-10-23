@@ -97,20 +97,18 @@ T['T25 [char] closing a window drops its triquetra and its UI cache'] = function
 	eq(state(), { triquetra = false, ui_cache = false })
 end
 
-T['T26 [today] :terminal in a window with {c=c s=b} drops its triquetra (README:332)'] = function()
+T['T26 [char] :terminal in a window with {c=c s=b} keeps its triquetra, and the terminal stays untracked (the visiting rule)'] = function()
 	child.lua([[vim.o.shell = 'sh']])
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
 	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')
 	child.cmd('terminal')
 	child.settle(300)
 	eq(child.lua('return vim.bo.buftype'), 'terminal')
-	eq(child.slots(), 'no triquetra')
-	-- coming back starts fresh
-	child.steps({ ':e c' })
-	eq(child.slots(), '⦉-⦊ [c] ⟦-⟧')
+	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')
+	eq(child.lua('return require("cavediver.domains.history").get_hash_from_buffer(vim.api.nvim_get_current_buf()) == nil'), true)
 end
 
-T['T27 [target] the window keeps {c=c s=b} while it shows a terminal, and :e c returns to it intact'] = function()
+T['T27 [char] the window keeps {c=c s=b} while it shows a terminal, and :e c returns to it intact'] = function()
 	child.lua([[vim.o.shell = 'sh']])
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
 	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')

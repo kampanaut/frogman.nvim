@@ -67,9 +67,9 @@ end, 2, true, states.mode.WINENTER)
 
 navigationSM:on("*", "*", "winenter_record_window", function(context)
 	local current_win = vim.api.nvim_get_current_win()
-	local previous_win = vim.fn.win_getid(vim.fn.winnr("#"))
+	local previous_win = context.previous_win or vim.fn.win_getid(vim.fn.winnr("#"))
 
-	if previous_win == 0 then 
+	if previous_win == 0 then
 		local window = require('cavediver.domains.window.data')
 		previous_win = window.last_valid_window
 	end
@@ -89,7 +89,20 @@ function M.init_autocmds(group)
 	vim.api.nvim_create_autocmd("WinEnter", {
 		group = group,
 		callback = function(_)
-			navigationSM:to(navigationSM:state(), {}, states.mode.WINENTER)
+			-- the settle rule: a new window doesn't show its own buffer yet (a :help or :copen split
+			-- still shows the old file), so the window is taken in once the event is over.
+			local winid = vim.api.nvim_get_current_win()
+			-- where the jump came from is only known now.
+			local previous_win = vim.fn.win_getid(vim.fn.winnr("#"))
+			if previous_win == 0 then
+				previous_win = require('cavediver.domains.window.data').last_valid_window
+			end
+			vim.schedule(function()
+				if vim.api.nvim_get_current_win() ~= winid then
+					return -- moved on already, the later WinEnter takes it from here.
+				end
+				navigationSM:to(navigationSM:state(), { previous_win = previous_win }, states.mode.WINENTER)
+			end)
 		end
 	})
 end

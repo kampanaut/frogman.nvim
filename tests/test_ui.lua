@@ -118,6 +118,7 @@ T['T122 [char] with 40 tracked buffers, bufnr_is_displayed is true for all 40 (Q
 			local p = string.format('%s/n%02d.txt', root, i)
 			vim.fn.writefile({ 'x' }, p)
 			vim.cmd('edit ' .. vim.fn.fnameescape(p))
+			vim.wait(10) -- each visit settles, as when they're opened one by one
 		end
 		vim.wait(300)
 		local bl = require('cavediver').bufferline
