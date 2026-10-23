@@ -306,4 +306,293 @@ T['T434 [char] (A27) a fold opened on one day stays that day\'s'] = function()
 		{ open_today = true, older = true, older_open = false })
 end
 
+-- L3b ------------------------------------------------------------------------------
+
+local function cursor_to(row, col)
+	child.lua('local r, c = ...; vim.api.nvim_win_set_cursor(0, { r, c })', { row, col or 0 })
+end
+
+-- Lines holding a piece.
+local function count_with(piece)
+	local n = 0
+	for _, l in ipairs(lines()) do
+		if l:find(piece, 1, true) then n = n + 1 end
+	end
+	return n
+end
+
+T['T435 [char] (A27) za on a step opens the ring\'s steps since the trail\'s line before'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b', ':e c', '<M-f>', '<M-.>' })
+	child.settle(100)
+	open_trail()
+	local step = line_with('<M-.>', '▸')
+	cursor_to(step or 1)
+	type_in('za')
+	local opened = line_with('<M-f>', '⦉b⦊ [c] ⟦-⟧', '⦉-⦊ [c] ⟦b⟧') ~= nil
+	cursor_to(line_with('<M-.>') or 1)
+	type_in('za')
+	eq({ step = step ~= nil, opened = opened, closed = line_with('<M-f>') == nil }, { step = true, opened = true, closed = true })
+end
+
+T['T436 [char] (A27) the ring\'s steps open 20 at a time'] = function()
+	child.setup()
+	local keys = { ':e a' }
+	for i = 1, 24 do table.insert(keys, i % 2 == 1 and ':e b' or ':e a') end
+	child.steps(keys)
+	child.steps({ '<M-.>' })
+	child.settle(100)
+	open_trail()
+	cursor_to(line_with('<M-.>', '▸') or 1)
+	type_in('za')
+	local first = { shown = count_with('BufEnter'), earlier = line_with('5 earlier steps') ~= nil }
+	cursor_to(line_with('5 earlier steps') or 1)
+	type_in('za')
+	eq({ first = first, all = count_with('BufEnter'), earlier = line_with('earlier steps') == nil },
+		{ first = { shown = 20, earlier = true }, all = 25, earlier = true })
+end
+
+T['T437 [char] (A27) a line from before this editor doesn\'t expand'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
+	child.settle(100)
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	child.steps({ ':e a', ':e b', ':e a', ':e b', ':e a' })
+	child.cmd('bdelete b.txt') -- this editor's own line, which does expand
+	child.settle(100)
+	open_trail()
+	local row = line_with('<M-.>')
+	local own = line_with('BufDelete b.txt', '▸') ~= nil
+	local before = #lines()
+	cursor_to(row or 1)
+	type_in('za')
+	eq({ row = row ~= nil, mark = row and lines()[row]:find('▸', 1, true) == nil, same = #lines() == before, own = own },
+		{ row = true, mark = true, same = true, own = true })
+end
+
+-- c.txt closed three days ago (a step kept then) and today.
+local function closed_twice()
+	child.setup()
+	child.lua([[
+		local t = os.time() - 3 * 86400
+		require('cavediver').ledger.data.days[os.date('%Y-%m-%d', t)] = { {
+			seq = 0, time = t, cause = 'keymap', trigger = '<M-.>', names = {}, events = {},
+			moves = { { kind = 'closed', name = 'c.txt', lists = { 'editor' } } },
+		} }
+		vim.ui.input = function(_, on_confirm) on_confirm('c.txt') end
+	]])
+	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
+	child.settle(100)
+end
+
+T['T438 [char] (A27) a search is a name\'s life line across every page, oldest first'] = function()
+	closed_twice()
+	open_trail()
+	type_in('s')
+	local header = lines()[1]
+	local results = {}
+	for i, l in ipairs(lines()) do
+		if l:find('┃', 1, true) then table.insert(results, i) end
+	end
+	local older = child.lua('return os.date("%a %d", os.time() - 3 * 86400)')
+	local first = results[1] and lines()[results[1]] or ''
+	local bar = results[1] and group_of(results[1], '┃ ')
+	type_in('q')
+	type_in('q')
+	child.cmd('CavediverTrail c.txt')
+	child.settle(100)
+	local again = lines()[1]
+	eq({
+		named = header:find('c.txt', 1, true) ~= nil, counted = header:find('2 moves over 2 days', 1, true) ~= nil,
+		results = #results, oldest = first:find(older, 1, true) ~= nil, bar = bar,
+		command = again:find('c.txt', 1, true) ~= nil and again:find('2 moves over 2 days', 1, true) ~= nil,
+	}, { named = true, counted = true, results = 2, oldest = true, bar = 'CavediverTrailLifeClosed', command = true })
+end
+
+T['T439 [char] (A27) <CR> on a result opens its day on its step, and q goes back'] = function()
+	closed_twice()
+	open_trail()
+	type_in('s')
+	local results = {}
+	for i, l in ipairs(lines()) do
+		if l:find('┃', 1, true) then table.insert(results, i) end
+	end
+	cursor_to(results[1] or 1)
+	type_in('<CR>')
+	local header = lines()[1]
+	local at = child.lua('return vim.api.nvim_get_current_line()')
+	type_in('L')
+	type_in('s')
+	type_in('q')
+	eq({ day = header:find('3 days down', 1, true) ~= nil, step = at:find('<M-.>', 1, true) ~= nil, back = lines()[1]:find('today', 1, true) ~= nil },
+		{ day = true, step = true, back = true })
+end
+
+T['T440 [char] (A27) * searches the name under the cursor'] = function()
+	closed_twice()
+	open_trail()
+	cursor_to(line_with('↓ c.txt') or 1, 12)
+	type_in('*')
+	local header = lines()[1]
+	eq({ search = header:find('⌕', 1, true) ~= nil, named = header:find('c.txt', 1, true) ~= nil }, { search = true, named = true })
+end
+
+T['T441 [char] (A27) gf acts on the name under the cursor and stays'] = function()
+	-- a file
+	child.setup()
+	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
+	child.settle(100)
+	local from = child.lua('return vim.api.nvim_get_current_win()')
+	open_trail()
+	cursor_to(line_with('↓ c.txt') or 1, 12)
+	type_in('gf')
+	local file = { opened = child.shown(from), stays = view() ~= vim.NIL }
+	type_in('q')
+
+	-- a window: T411's cancel, a move on the window that cycled, the trail opened from the split
+	child.setup()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('vsplit')
+	child.steps({ ':e x' })
+	child.cmd('wincmd p')
+	local first = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', '<M-n>' })
+	child.cmd('wincmd p')
+	child.settle(200)
+	open_trail()
+	cursor_to(line_with('⇤') or 1, 12)
+	type_in('gf')
+	local window = child.lua('return vim.api.nvim_get_current_win()') == first
+
+	-- a list
+	local s = S2.shared()
+	tab_session(s)
+	child.steps({ ':e a', ':e d' })
+	child.cmd('tabprevious')
+	child.settle()
+	child.steps({ ':e a', '<M-.>' })
+	child.settle(100)
+	open_trail()
+	local row = line_with('↓ a.txt', '≡t')
+	local col = row and lines()[row]:find('≡t', 1, true) - 1
+	cursor_to(row or 1, col or 0)
+	type_in('gf')
+	local list = child.lua([[
+		local ft = vim.bo.filetype
+		return { ft = ft, line = vim.api.nvim_get_current_line() }
+	]])
+	eq({ file = file, window = window, list = list.ft == 'cavediver-closed-lists' and list.line:find('t', 1, true) ~= nil },
+		{ file = { opened = 'c', stays = true }, window = true, list = true })
+end
+
+T['T442 [char] (A27) the formatters replace a line\'s look'] = function()
+	child.setup()
+	child.lua([[
+		require('cavediver').setup({ formatters = {
+			trail_move = function(move) if move.kind == 'closed' then return { { 'MOVE ' .. move.kind, 'Normal' } } end end,
+			trail_step = function(step) return { { 'STEP ' .. step.trigger, 'Normal' } } end,
+			trail_header = function() return { { 'HEADER', 'Normal' } } end,
+		} })
+	]])
+	child.steps({ ':e a', ':e b', ':e c', ':e d', ':e c', '<M-;><M-r>' })
+	child.cmd('bdelete c.txt')
+	child.settle(300)
+	open_trail()
+	eq({ header = lines()[1], step = line_with('STEP BufDelete c.txt') ~= nil, move = line_with('MOVE closed') ~= nil,
+		own = line_with('⤳') ~= nil }, { header = 'HEADER', step = true, move = true, own = true })
+end
+
+T['T443 [char] (A27) za opens a step in a search too'] = function()
+	child.setup()
+	child.lua([[
+		local t = os.time() - 3 * 86400
+		require('cavediver').ledger.data.days[os.date('%Y-%m-%d', t)] = { {
+			seq = 0, time = t, cause = 'keymap', trigger = '<M-.>', names = {}, events = {},
+			moves = { { kind = 'closed', name = 'c.txt', lists = { 'editor' } } },
+		} }
+	]])
+	child.steps({ ':e a', ':e b', ':e c', '<M-f>', '<M-.>' })
+	child.settle(100)
+	child.cmd('CavediverTrail c.txt')
+	child.settle(100)
+	local older = child.lua('return os.date("%a %d", os.time() - 3 * 86400)')
+	local old_row = line_with(older, '┃')
+	local today = line_with('┃', '<M-.>', '▸')
+	cursor_to(today or 1)
+	type_in('za')
+	local opened = line_with('<M-f>', '⦉b⦊ [c] ⟦-⟧', '⦉-⦊ [c] ⟦b⟧') ~= nil
+	type_in('<CR>')
+	eq({ today = today ~= nil, old = old_row and lines()[old_row]:find('▸', 1, true) == nil, opened = opened,
+		day = line_with('<M-.>', '▾') ~= nil and line_with('<M-f>', '⦉b⦊ [c] ⟦-⟧', '⦉-⦊ [c] ⟦b⟧') ~= nil },
+		{ today = true, old = true, opened = true, day = true })
+end
+
+-- The rows of a search's results, each a line with the bar.
+local function results()
+	local out = {}
+	for i, l in ipairs(lines()) do
+		if l:find('┃', 1, true) then table.insert(out, i) end
+	end
+	return out
+end
+
+T['T444 [char] (A27) * on a file follows that file, and a typed name every file of that name'] = function()
+	child.setup()
+	child.lua([[
+		vim.fn.mkdir(_G.CDV_TEST.root .. '/sub', 'p')
+		vim.fn.writefile({ 'sub c' }, _G.CDV_TEST.root .. '/sub/c.txt')
+		vim.ui.input = function(_, on_confirm) on_confirm('c.txt') end
+	]])
+	child.steps({ ':e a', ':e sub/c.txt', '<M-.>', ':e c', '<M-.>' })
+	child.settle(100)
+	open_trail()
+	local closes = {}
+	for i, l in ipairs(lines()) do
+		if l:find('↓ c.txt', 1, true) then table.insert(closes, i) end
+	end
+	cursor_to(closes[#closes] or 1, 12)
+	type_in('*')
+	local star = lines()[1]
+	type_in('q')
+	type_in('s')
+	local typed = lines()[1]
+	eq({ closes = #closes, star = star:find('1 move over 1 day', 1, true) ~= nil, typed = typed:find('2 moves over 1 day', 1, true) ~= nil },
+		{ closes = 2, star = true, typed = true })
+end
+
+T['T445 [char] (A27) a close by a rename or a repair turns the life line closed'] = function()
+	-- the rename: b.txt copied to g.txt, b.txt closed
+	child.setup()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('saveas g.txt')
+	child.settle(300)
+	child.cmd('CavediverTrail b.txt')
+	child.settle(100)
+	local copy
+	for _, row in ipairs(results()) do
+		if lines()[row]:find('⧉', 1, true) then copy = group_of(row, '┃ ') end
+	end
+	type_in('q')
+	type_in('q')
+
+	-- the repair: b's buffer wiped without events, b kept on the editor's list
+	child.setup()
+	child.lua('require("cavediver").setup({ cleanup_interval = 100 })')
+	child.steps({ ':e a', ':e b', ':e c' })
+	child.lua('vim.cmd("noautocmd bwipeout " .. vim.fn.bufnr("b.txt"))')
+	child.settle(500)
+	child.cmd('CavediverTrail b.txt')
+	child.settle(100)
+	local repair
+	for _, row in ipairs(results()) do
+		if lines()[row]:find('⚒', 1, true) then repair = group_of(row, '┃ ') end
+	end
+	eq({ copy = copy, repair = repair }, { copy = 'CavediverTrailLifeClosed', repair = 'CavediverTrailLifeClosed' })
+end
+
 return T

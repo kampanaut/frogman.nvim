@@ -72,7 +72,8 @@ function M.init_trail_highlights()
 		Words = { trail.words }, Ring = { trail.ring }, Fold = { trail.fold }, Reopened = { trail.reopened, true },
 		Forgot = { trail.forgot, true }, Gone = { trail.gone, true }, Back = { trail.back, true }, Repair = { trail.repair, true },
 		Slot = { trail.slot, true }, Note = { trail.note, true }, Cycle = { trail.cycle, true }, Session = { trail.session, true },
-		Rename = { trail.rename, true }, RowT = { trail.row_t }, RowC = { trail.row_c }, RowS = { trail.row_s } }
+		Rename = { trail.rename, true }, RowT = { trail.row_t }, RowC = { trail.row_c }, RowS = { trail.row_s },
+		LifeOpen = { trail.life_open, true }, LifeClosed = { trail.life_closed, true }, LifeGone = { trail.life_gone, true } }
 	for name, spec in pairs(plain) do
 		vim.api.nvim_set_hl(0, "CavediverTrail" .. name, { fg = spec[1], bold = spec[2] })
 	end
