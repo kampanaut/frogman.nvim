@@ -60,6 +60,9 @@ navigationSM:on(states.CYCLING, states.CYCLING, "cancel_cycle_on_window_jump", f
 			end
 		end
 		data.cycling_window = nil
+		local ledger = require('cavediver.domains.ledger')
+		ledger.move("cancelled", { subject = tostring(cycling_window), name = ledger.window_name(cycling_window),
+			words = "cycle cancelled; back on " .. ((triquetra and ledger.name_of(triquetra.current_slot)) or "its start") })
 		navigationSM:to(states.NORMAL) -- no mode, so this isn't a pick
 		-- history attaches on the landed window's own current slot, so no slot moves; what the window
 		-- shows, if that's something else, is then an ordinary visit.

@@ -537,12 +537,18 @@ function M.mark_missing(label, limit)
 			return
 		end
 		if vim.fn.filereadable(filepath) == 1 then
+			if data.missing[filehash] ~= nil then
+				require('cavediver.domains.ledger').move("back", { subject = filehash,
+					name = require('cavediver.domains.ledger').name_of(filehash), words = "back on disk" })
+			end
 			data.missing[filehash] = nil
 			data.unwritten[filehash] = nil
 		elseif data.unwritten[filehash] then
 			return -- never written, so it didn't go missing
 		elseif data.missing[filehash] == nil then
 			data.missing[filehash] = label or os.date("%H:%M")
+			require('cavediver.domains.ledger').move("gone", { subject = filehash,
+				name = require('cavediver.domains.ledger').name_of(filehash), words = "gone from disk ⎇" .. data.missing[filehash] })
 		end
 	end
 	if limit then
@@ -652,7 +658,9 @@ function M.refresh_label()
 	if not data.label_seen then
 		data.label_seen = true
 	elseif label ~= data.last_label then
-		M.mark_missing(data.last_label)
+		-- a change of label is a step of its own, the files it finds gone tagged under it
+		require('cavediver.domains.ledger').within("label", (data.last_label or "—") .. " → " .. (label or "—"),
+			M.mark_missing, data.last_label)
 		checked = true
 	end
 	data.last_label = label
@@ -666,7 +674,7 @@ end
 ---@return integer forgotten How many hashes went
 function M.follow_along(known_set)
 	known_set = known_set or M.known_filehashes()
-	local unknown = {}
+	local unknown, notes = {}, {}
 	local function known(filehash)
 		if not known_set[filehash] then
 			unknown[filehash] = true
@@ -676,8 +684,12 @@ function M.follow_along(known_set)
 	for _, triquetra in pairs(require('cavediver.domains.window.data').crux) do
 		for _, map in ipairs({ triquetra.displacement_ternary_map or {}, triquetra.displacement_secondary_map or {} }) do
 			for key, value in pairs(map) do
-				if not known((key:gsub("%-swap$", ""))) or not known(value) then
+				local base = key:gsub("%-swap$", "")
+				local key_known, value_known = known(base), known(value)
+				if not key_known or not value_known then
 					map[key] = nil
+					local gone = not key_known and base or value
+					notes[gone] = (notes[gone] or 0) + 1
 				end
 			end
 		end
@@ -697,12 +709,20 @@ function M.follow_along(known_set)
 		end
 	end
 	local forgotten = 0
+	local ledger = require('cavediver.domains.ledger')
 	for filehash, is_unknown in pairs(unknown) do
 		local filepath = data.hash_filepath_registry.filepaths[filehash]
 		if is_unknown and filepath then
+			local name = ledger.name_of(filehash)
 			M.unregister_filepath(filepath)
 			if data.hash_filepath_registry.filepaths[filehash] == nil then
 				forgotten = forgotten + 1
+				-- the trail gets what's forgotten, with the notes about it that went
+				ledger.move("forgotten", { subject = filehash, name = name, notes = notes[filehash] or 0,
+					words = "nothing holds it any more" })
+			elseif notes[filehash] then
+				ledger.move("note_dropped", { subject = filehash, name = name, notes = notes[filehash],
+					words = "notes naming it dropped: nothing holds it any more" })
 			end
 		end
 	end
@@ -1593,10 +1613,6 @@ function M.cleanup_system(on_tick)
 			table.insert(report.orphaned_hashes, filehash)
 			report.orphaned_paths[filehash] = data.hash_filepath_registry.filepaths[filehash] -- before it goes
 			report.orphaned_history = report.orphaned_history + 1
-			require('cavediver.domains.ledger').move("forgotten", {
-				subject = filehash, name = require('cavediver.domains.ledger').name_of(filehash) or filehash,
-				words = "nothing holds it any more",
-			})
 		end
 	end
 	M.follow_along(known)

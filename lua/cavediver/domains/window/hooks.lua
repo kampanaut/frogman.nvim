@@ -75,6 +75,7 @@ history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_ma
 		routines.write_secondary_swap_notes(triquetra)
 		if triquetra.displacement_ternary_map[triquetra.ternary_slot] == new_filehash then
 			triquetra.displacement_ternary_map[triquetra.ternary_slot] = triquetra.current_slot
+			require('cavediver.domains.ledger').note("ternary", triquetra.ternary_slot, new_filehash, triquetra.current_slot, "guard")
 			vim.notify("Avoided conflict of ternary's remembered relationship becoming current.", vim.log.levels.WARN)
 		end
 		triquetra.secondary_slot = triquetra.current_slot
@@ -103,12 +104,15 @@ history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_ma
 						vim.log.levels.WARN
 					)
 					triquetra.displacement_ternary_map[new_filehash] = triquetra.displacement_ternary_map[triquetra.current_slot]
+					require('cavediver.domains.ledger').note("ternary", new_filehash, triquetra.current_slot,
+						triquetra.displacement_ternary_map[new_filehash], "navigation")
 				else
 					vim.notify(
 						"The stored ternary of the new buffer is already the ternary, switching with the pre-jump ternary.",
 						vim.log.levels.WARN
 					)
 					triquetra.displacement_ternary_map[new_filehash] = triquetra.ternary_slot
+					require('cavediver.domains.ledger').note("ternary", new_filehash, triquetra.current_slot, triquetra.ternary_slot, "navigation")
 				end
 			end
 		end

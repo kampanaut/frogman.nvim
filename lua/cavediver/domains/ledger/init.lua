@@ -16,6 +16,11 @@ M.drop_batch = routines.drop_batch
 M.name_of = routines.name_of
 M.steps = routines.steps
 M.trail = routines.trail
+M.slots = routines.slots
+M.window_name = routines.window_name
+M.note = routines.note
+M.slots_moved = routines.slots_moved
+M.open_step = routines.open_step
 
 ---Create the ledger's autocmds in cavediver's augroup. setup() calls this before the other
 ---domains', so a step has begun by the time their handlers act on the same event.

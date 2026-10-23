@@ -41,8 +41,9 @@ end
 ---
 ---@param name string|nil
 ---@param opts {tab: integer|nil}|nil `tab` says it's a tab session, for when its file can't say so
+---@param restart boolean|nil It's the load run again after Neovim's :restart session
 ---@return nil
-local function load(name, opts)
+local function load(name, opts, restart)
 	local hint = opts ~= nil and opts.tab ~= nil
 	local directory = vim.fn.getcwd(-1, -1)
 	-- a tab with a directory of its own: a tab session saved from it has its file there
@@ -69,7 +70,7 @@ local function load(name, opts)
 		routines.drop_pending_records()
 		ledger.drop_batch()
 	end
-	ledger.begin("load", vim.fn.fnamemodify(name or directory, ":t"))
+	ledger.begin(restart and "restart" or "load", vim.fn.fnamemodify(name or directory, ":t"))
 	if storageSM:state() == states.IDLE and not tab_session then
 		storageSM:to(states.BARE, session)
 	end
@@ -109,7 +110,7 @@ function M.init_autocmds(group)
 			end
 			local name, tab = data.last_loaded.name, data.last_loaded.tab
 			vim.schedule(function()
-				load(name, tab and { tab = vim.api.nvim_get_current_tabpage() } or nil)
+				load(name, tab and { tab = vim.api.nvim_get_current_tabpage() } or nil, true)
 			end)
 		end,
 	})

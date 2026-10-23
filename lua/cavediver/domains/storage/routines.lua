@@ -239,6 +239,10 @@ local function close_if_not_restored(filehash)
 		if load_pool then
 			load_pool.changed_at = vim.uv.hrtime()
 		end
+		local ledger = require('cavediver.domains.ledger')
+		ledger.move("closed", { subject = filehash, name = ledger.name_of(filehash),
+			lists = { history.routines.list_name(load_pool or history.routines.pools()[""]) },
+			words = "not restored by the session manager" })
 	end
 end
 
@@ -729,6 +733,8 @@ local function reopen_noname_buffers(noname_content, key, scratch_dir)
 			end
 			local new_filehash = history.register_buffer(bufnr)
 			if new_filehash ~= filehash then
+				require('cavediver.domains.ledger').move("reopened", { subject = new_filehash, name = "[No Name]",
+					words = "open at the save, reopened under a new id" })
 				window.data.rename_hash_in_triquetras(filehash, new_filehash)
 				history.routines.rename_hash_in_history(filehash, new_filehash)
 				history.routines.unregister_filepath(filepath)
@@ -1000,6 +1006,8 @@ local function push_out(pool, tabpage)
 			detached.closed, detached.times, detached.visits = vim.deepcopy(pool.closed), vim.deepcopy(pool.times), vim.deepcopy(pool.visits)
 			join_detached(other, detached)
 			history.routines.pool_changed(detached)
+			require('cavediver.domains.ledger').move("detached", { subject = detached.id, name = detached.name,
+				words = "tab " .. vim.api.nvim_tabpage_get_number(other) .. " keeps " .. history.routines.list_name(pool) .. "'s list" })
 		end
 	end
 end
@@ -1232,10 +1240,35 @@ function M.load_history(cwd, name)
 		saved_data = nil
 	end
 
+	-- why there's no data, for the trail
+	local why = ({ missing = "no session file", newer = "made by a newer cavediver", unencrypted = "from before encryption",
+		integrity = "failed its integrity check" })[problem] or "its file holds no session"
+	local ledger = require('cavediver.domains.ledger')
+	---@param matched integer[] The windows that took an entry
+	---@param windows integer[] The windows the load lays its entries over
+	---@param entries integer How many entries the file had
+	local function loaded(matched, windows, entries)
+		local fresh = 0
+		for _, winid in ipairs(windows) do
+			if vim.api.nvim_win_get_config(winid).relative == "" and not vim.tbl_contains(matched, winid) then
+				fresh = fresh + 1
+			end
+		end
+		local words = #matched .. (#matched == 1 and " window" or " windows") .. " matched"
+		if fresh > 0 then
+			words = words .. " · " .. fresh .. " started fresh"
+		end
+		if entries > #matched then
+			words = words .. " · " .. (entries - #matched) .. (entries - #matched == 1 and " entry" or " entries") .. " dropped"
+		end
+		ledger.move("loaded", { name = vim.fn.fnamemodify(name or cwd, ":t"), words = words })
+	end
 	if saved_data == nil and hint then
 		start_tab_fresh(cwd, name, hint)
+		ledger.move("fresh", { name = vim.fn.fnamemodify(name or cwd, ":t"), words = "the tab started fresh: " .. why })
 	elseif saved_data and saved_data.scope == "tab" then
 		local matched = load_tab_session(saved_data, key, file_path, cwd, name, hint or vim.api.nvim_get_current_tabpage())
+		loaded(matched, vim.api.nvim_tabpage_list_wins(hint or vim.api.nvim_get_current_tabpage()), #saved_data.windows)
 		local set_cache_from_window_triquetra = require('cavediver').set_cache_from_window_triquetra
 		for _, winid in ipairs(matched) do
 			set_cache_from_window_triquetra(winid)
@@ -1251,6 +1284,7 @@ function M.load_history(cwd, name)
 			load_closed_buffers(saved_data.closed, saved_data.noname_content or {}, key, scratch_dir, saved_data.closed_times)
 		end
 		local window_histories, matched, taken = load_window_buffer_relationships(saved_data.windows)
+		loaded(matched, vim.api.nvim_list_wins(), #saved_data.windows)
 		history.routines.initialise_crux_internals({ window = window_histories, global = saved_data.buffers.global })
 		-- each detached list whose tab came back, found through its windows, joins that tab; the
 		-- rest stay in the file alone
@@ -1265,6 +1299,8 @@ function M.load_history(cwd, name)
 			if tabpage and history.data.tab_pools[tabpage] == nil then
 				load_pool = new_detached_pool(list.label, list.of)
 				join_detached(tabpage, load_pool)
+				ledger.move("detached", { subject = load_pool.id, name = list.label,
+					words = "back with tab " .. vim.api.nvim_tabpage_get_number(tabpage) })
 				load_closed_buffers(list.closed or {}, saved_data.noname_content or {}, key, scratch_dir, list.closed_times, true)
 			end
 		end
@@ -1292,6 +1328,7 @@ function M.load_history(cwd, name)
 	else
 		populate_history()
 		data.editor_session, data.unnamed = { name = name, directory = cwd }, nil
+		ledger.move("fresh", { name = vim.fn.fnamemodify(name or cwd, ":t"), words = "the session started fresh: " .. why })
 	end
 	load_pool = nil
 	forget_closed_keys() -- the sessions this load closed let their keys go
@@ -1532,6 +1569,10 @@ local function refresh_unnamed()
 	local ok, problem = write_records({
 		name = unnamed.name, directory = unnamed.directory, pools = { editor }, owner = editor, scope = "editor",
 	}) -- its detached lists ride with it
+	if ok then
+		require('cavediver.domains.ledger').move("refreshed", { subject = "", name = "editor",
+			words = "the whole editor's closed files and No Name texts written" })
+	end
 	if not ok and problem ~= "missing" then
 		vim.notify("cavediver: the whole editor's session file wasn't refreshed with its closed files and No Name texts, since " .. problem, vim.log.levels.WARN)
 	end
@@ -1670,6 +1711,7 @@ function M.settle_merging()
 			pool.merging = nil
 			if #pool.closed == 0 then
 				history.data.pools[id] = nil
+				require('cavediver.domains.ledger').move("detached_left", { subject = id, name = pool.name, words = "merged, and gone" })
 				local session = whole_editor_session()
 				if session then
 					write_records(session, { [pool.name] = false })
@@ -1762,21 +1804,28 @@ local function close_now(pool)
 		if session then
 			ok, problem = write_records(session)
 		end
+		local ledger = require('cavediver.domains.ledger')
 		if ok then
 			history.data.pools[pool.id] = nil
+			ledger.move("detached_left", { subject = pool.id, name = pool.name, words = "into the whole editor's file" })
 			return
 		end
+		ledger.move("detached_left", { subject = pool.id, name = pool.name, words = "kept, with no tab" })
 		vim.notify("cavediver: " .. pool.name .. "'s tab is gone, and its closed files couldn't be written into the whole editor's session file (" ..
 			(problem == "missing" and "it has no session file yet" or problem) .. "); they stay, with no tab, in :CavediverClosed.", vim.log.levels.WARN)
 		return
 	end
 	local ok, problem = write_records({ name = pool.name, directory = pool.directory, pools = { pool }, owner = pool, scope = "tab" })
+	local ledger = require('cavediver.domains.ledger')
 	if ok then
 		dirty[pool.id] = nil
 		history.data.pools[pool.id] = nil
 		forget_closed_keys()
+		ledger.move("tab_closed", { subject = pool.id, name = history.routines.list_name(pool),
+			words = "its records written; its list let go" })
 		return
 	end
+	ledger.move("tab_closed", { subject = pool.id, name = history.routines.list_name(pool), words = "kept, with no tab" })
 	vim.notify("cavediver: " .. (pool.name or vim.fn.fnamemodify(pool.directory or "", ":t")) .. "'s tab closed, and its closed files couldn't be written (" ..
 		(problem == "missing" and "it has no session file yet" or problem) .. "); they stay, with no tab, in :CavediverClosed.", vim.log.levels.WARN)
 end
@@ -1973,6 +2022,8 @@ function M.save_history(cwd, name, tab)
 
 	-- Write updated data back to file
 	commit_session(file_path, key, salt, storage, kept)
+	require('cavediver.domains.ledger').move("saved", { name = vim.fn.fnamemodify(name or cwd, ":t"),
+		words = pool and "the tab session" or "the whole editor" })
 	if pool then
 		pool.saved_at = vim.uv.hrtime()
 		dirty[pool.id] = nil

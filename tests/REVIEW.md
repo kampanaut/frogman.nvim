@@ -1,6 +1,6 @@
 # Test review sheet
 
-461 cases in 26 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+478 cases in 26 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -9,7 +9,7 @@
 
 ## Look at these first
 
-**State set by hand** (61): T184 (keep_older), T192 (keep_older), T107 (cleanup), T108 (cleanup), T113 (cleanup), T163 (cleanup), T91 (closing), T203 (cycling), T204 (cycling), T205 (cycling), T251 (decisions), T257 (decisions), T263 (decisions), T263 (decisions), T264 (decisions), T265 (decisions), T267 (decisions), T271 (decisions), T271 (decisions), T273 (decisions), T275 (decisions), T276 (decisions), T280 (decisions), T285 (decisions), T287 (decisions), T20 (history), T12 (identity), T157 (invariants), T398 (ledger), T25 (lifecycle), T34 (navigation), T35 (navigation), T219 (negative), T241 (negative), T242 (negative), T243 (negative), T243 (negative), T243 (negative), T247 (negative), T66 (restores), T68 (restores), T296 (s2), T298 (s2), T299 (s2), T315 (s2), T316 (s2), T322 (s2), T351 (s2), T352 (s2), T354 (s2), T357 (s2), T358 (s2), T366 (s2), T369 (s2), T383 (s2), T387 (s2), T367 (s2), T138 (sessions), T146 (sessions), T147 (sessions), T148 (sessions)
+**State set by hand** (63): T184 (keep_older), T192 (keep_older), T107 (cleanup), T108 (cleanup), T113 (cleanup), T163 (cleanup), T91 (closing), T203 (cycling), T204 (cycling), T205 (cycling), T251 (decisions), T257 (decisions), T263 (decisions), T263 (decisions), T264 (decisions), T265 (decisions), T267 (decisions), T271 (decisions), T271 (decisions), T273 (decisions), T275 (decisions), T276 (decisions), T280 (decisions), T285 (decisions), T287 (decisions), T20 (history), T12 (identity), T157 (invariants), T398 (ledger), T403 (ledger), T406 (ledger), T25 (lifecycle), T34 (navigation), T35 (navigation), T219 (negative), T241 (negative), T242 (negative), T243 (negative), T243 (negative), T243 (negative), T247 (negative), T66 (restores), T68 (restores), T296 (s2), T298 (s2), T299 (s2), T315 (s2), T316 (s2), T322 (s2), T351 (s2), T352 (s2), T354 (s2), T357 (s2), T358 (s2), T366 (s2), T369 (s2), T383 (s2), T387 (s2), T367 (s2), T138 (sessions), T146 (sessions), T147 (sessions), T148 (sessions)
 
 **Random walk** (24): T190 (keep_older), T190 (keep_older), T190 (keep_older), T190 (keep_older), T335 (keep_older), T335 (keep_older), T171 (cycling), T279 (decisions), T281 (decisions), T282 (decisions), T283 (decisions), T149 (history), T149 (history), T128 (invariants), T129 (invariants), T130 (invariants), T131 (invariants), T132 (invariants), T133 (invariants), T334 (invariants), T154 (invariants), T249 (negative), T249 (negative), T299 (s2)
 
@@ -1440,74 +1440,172 @@ note: The empty, switched-on queue is set directly (a primary file deleted on di
 spec: (Q14) I19, A9: on an empty queue that's switched on, one `<M-;><M-x>` gives `p=[A]on`. **[run s19]** recorded it giving `p=[A]off`, before the fix. The test sets the empty, switched-on state directly: s19's route, deleting the open primary's file on disk, keeps the primary in the…  
 `tests/test_invariants.lua:99`
 
-## tests/test_ledger.lua (12 cases: 12 char)
+## tests/test_ledger.lua (29 cases: 29 char)
 
 **T392 [char]** (A27, A26) the ring keeps the last N steps, N from ledger.ring, 1,000 by default  
 → `eq(child.lua('return require("cavediver.configs").ledger.ring'), 1000)`  
 `:e a`, `:e b`, `<M-f>` → `eq({ triggers = triggers, ordered = ordered },`  
 spec: (A27, A26) The ring keeps the last N steps, N from `ledger.ring`, 1,000 by default: with `ledger = { ring = 5 }`, `:e a`, `:e b` and eight `<M-f>` leave five steps, the last five `<M-f>` steps, oldest first.  
-`tests/test_ledger.lua:86`
+`tests/test_ledger.lua:102`
 
 **T393 [char]** (A27) a keymap step holds its cause, trigger, window, and rows before and after with the queue and notes  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `eq({`  
 spec: (A27) A keymap step holds its cause, its trigger, its window, and the window's rows before and after with the primary queue and notes: `:e a`, `:e b`, `:e c`, `<M-f>` give a last step with cause `keymap`, trigger `<M-f>`, that window, `⦉b.txt⦊ [c.txt] ⟦-⟧` with b's ternary note n…  
-`tests/test_ledger.lua:104`
+`tests/test_ledger.lua:120`
 
 **T394 [char]** (A27) a key's follow-ups land on its step, the events it set off listed under it  
 `:e a`, `:e b`, `:e c`, `<M-.>` → `eq(#new, 1)`  
 → `eq({ cause = new[1].cause, trigger = new[1].trigger, events = new[1].events, moves = new[1].moves }, {`  
 spec: (A27) A key's follow-ups land on its step: `:e a`, `:e b`, `:e c`, then `<M-.>` give one step, `<M-.>`, holding the move "closed" on c.txt, onto `editor`, dim (bookkeeping), with the events it set off, `BufEnter b.txt` and `BufDelete c.txt`, listed under it; neither event begins …  
-`tests/test_ledger.lua:127`
+`tests/test_ledger.lua:143`
 
 **T395 [char]** (A27) an event with no step open begins its own  
 `:e a`, `:e b`, `:e c`, `<M-.>`, `:e d` → `eq({ cause = last.cause, trigger = last.trigger, before = last.before, after = last.after },`  
 spec: (A27) An event with no step open begins its own: after T394's keys and a settle, `:e d` gives a new step, cause `event`, trigger `BufEnter d.txt`, `⦉c.txt⦊ [b.txt] ⟦-⟧` before and `⦉b.txt⦊ [d.txt] ⟦-⟧` after.  
-`tests/test_ledger.lua:142`
+`tests/test_ledger.lua:158`
 
 **T396 [char]** (A27) a command typed on the command line is a step under its text  
-`:e a`, `:e b`, `:e c` → `eq(found, { cause = 'command', moves = { { kind = 'closed', name = 'c.txt', lists = { 'editor' }, dim = true } } })`  
-spec: (A27) A command typed on the command line is a keymap step under its text, never its keys: `:e a`, `:e b`, `:e c`, then `:bdelete c.txt` typed and entered give a step with cause `command` and trigger `:bdelete c.txt`, holding c's close.  
-`tests/test_ledger.lua:153`
+`:e a`, `:e b`, `:e c` → `eq(found, { cause = 'command', first = { kind = 'closed', name = 'c.txt', lists = { 'editor' }, dim = true } })`  
+spec: (A27) A command typed on the command line is a keymap step under its text, never its keys: `:e a`, `:e b`, `:e c`, then `:bdelete c.txt` typed and entered give a step with cause `command` and trigger `:bdelete c.txt`, holding c's close first, then the window's landing.  
+`tests/test_ledger.lua:169`
 
 **T397 [char]** (A27) a step that changes no row and makes no move is not kept  
 `:e a`, `:e b`, `:help`, `:close` → `eq(#steps(), n)`  
 spec: (A27) A step that changes no row and makes no move isn't kept: with the cleanup timer at 100 ms, `:e a`, `:e b`, then half a second of ticks with nothing to repair, and `:help` opened and closed, add no step to the ring.  
-`tests/test_ledger.lua:165`
+`tests/test_ledger.lua:181`
 
 **T398 [char]** (A27, A22) the cleanup says nothing, and its repair is a move ⚑ state set by hand  
 `:e a`, `:e b`, `:e c` → `eq({ report = report, found = found },`  
 note: b is in the ternary, so wiping it without events raises nothing (T242); the timer's tick or the UI's refresh repairs it, whichever comes first.  
 spec: (A27, A22) The cleanup says nothing, and its repair is a move: `:e a`, `:e b`, `:e c`, then b's buffer wiped with `noautocmd`, and the next tick or refresh: no "CAVEDIVER CLEANUP REPORT" notification, and a step with cause `timer`, trigger `cleanup`, holds a "repair" move on b.tx…  
-`tests/test_ledger.lua:180`
+`tests/test_ledger.lua:196`
 
 **T399 [char]** (A27, A16) <M-S-w> on an empty list while other lists hold closed files says so  
 `:bdelete c.txt`, `:tabprevious`, `<M-S-w>` → `eq({`  
 spec: (A27, A16) `<M-S-w>` on an empty list while other lists hold closed files says so: in T318's state, `:bdelete c.txt` in the session's tab, then `<M-S-w>` in the first tab, whose list is empty, give one WARN that says this tab's list is empty, that the other lists hold 1 closed fi…  
-`tests/test_ledger.lua:203`
+`tests/test_ledger.lua:219`
 
 **T400 [char]** (A27) a close that also lands on another list says so, once the batch settles  
 → `eq({ told = said(vim.log.levels.INFO), move = move_on('closed', 'a.txt') }, {`  
 spec: (A27) A close that also lands on another list says so, once the batch settles: in T318's state, `:e a`, `:e d` in the session's tab, then `:e a` and `:bdelete a.txt` in the first tab give one INFO, "a.txt closed here and in t" (the wording mine), and a "closed" move on a.txt nami…  
-`tests/test_ledger.lua:245`
+`tests/test_ledger.lua:262`
 
 **T401 [char]** (A27) a reopen that takes the file off another list says so  
 `<M-S-w>` → `eq({ shown = child.shown(), told = said(vim.log.levels.INFO), move = move_on('reopened', 'a.txt') }, {`  
 spec: (A27) A reopen that takes the file off another list says so: T400's state, then `<M-S-w>` in the first tab reopens a, and one INFO says "a.txt reopened and taken off t" (the wording mine); a "reopened" move on a.txt names `editor` and `t`.  
-`tests/test_ledger.lua:254`
+`tests/test_ledger.lua:271`
 
 **T402 [char]** (A27) a whole-editor load drops what its batch did  
 `:e a`, `:e d`, `:tabprevious`, `:e a`, `:vsplit`, `:e b` → `eq(S2.save(child), { true })`  
-→ `eq({ got = got, told = told, move = move_on('closed', 'a.txt') }, { got = { true }, told = {}, move = nil })`  
+→ `eq({ got = got, told = told, move = move_on('closed', 'a.txt', 'load') }, { got = { true }, told = {}, move = nil })`  
 note: The first tab keeps a window on b, so :bdelete of a doesn't close the tab.  
-spec: (A27) A whole-editor load drops what its batch did: in T400's state before the close, with the whole editor saved, `:bdelete a.txt` and `load_session()` in one call give no "closed here" message, and no step in the trail holds a's close. The load's step, cause `load`, says nothin…  
-`tests/test_ledger.lua:268`
+spec: (A27) A whole-editor load drops what its batch did: in T400's state before the close, with the whole editor saved, `:bdelete a.txt` and `load_session()` in one call give no "closed here" message, and no step in the trail but the load's holds a close of a.txt: the load closes it a…  
+`tests/test_ledger.lua:285`
 
 **T402 [char]** (A27) the outgoing save before a switch keeps the teardown out of its step  
 `:e a`, `:e d`, `:tabprevious`, `:e a`, `:vsplit`, `:e b` → `eq(S2.save(child), { true })`  
-→ `eq({ got = got, saves = saves, teardown = teardown, torn = torn, move = move_on('closed', 'a.txt') },`  
+→ `eq({ got = got, saves = saves, teardown = teardown, torn = torn, move = move_on('closed', 'a.txt', 'load') },`  
 note: The contract's outgoing save (resession's pre_load) runs in the same call as the teardown and the load: the teardown is a step of its own, not the save's.  
-spec: (A27) A whole-editor load drops what its batch did: in T400's state before the close, with the whole editor saved, `:bdelete a.txt` and `load_session()` in one call give no "closed here" message, and no step in the trail holds a's close. The load's step, cause `load`, says nothin…  
-`tests/test_ledger.lua:293`
+spec: (A27) A whole-editor load drops what its batch did: in T400's state before the close, with the whole editor saved, `:bdelete a.txt` and `load_session()` in one call give no "closed here" message, and no step in the trail but the load's holds a close of a.txt: the load closes it a…  
+`tests/test_ledger.lua:310`
+
+**T403 [char]** (A27, A21) cleanup's re-point is a move, and its pop-up stays ⚑ state set by hand  
+`:e d`, `:e b`, `:e c`, `<M-f>`, `:e a` → `slots = '⦉c⦊ [a] ⟦b⟧'`  
+`:noautocmd buffer d.txt`, `:bwipeout a.txt` → `eq({ healed = healed, trigger = m and m.trigger, row = m and m.row },`  
+spec: (A27, A21) Cleanup's re-point is a move, and its pop-up stays: T163's route (`:e d`, `:e b`, `:e c`, `<M-f>`, `:e a`, then d shown without events and `:bwipeout a.txt`) gives "Healed the triquetra…" and, on the step `BufDelete a.txt`, a "repointed" move on the window, `⦉c.txt⦊ [a…  
+`tests/test_ledger.lua:367`
+
+**T404 [char]** (A27, A19) the landing after a delete is a move on the delete's step  
+`:e a`, `:e b`, `:e c`, `:e d`, `:e c`, `<M-;><M-r>` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
+`:bdelete c.txt` → `eq(got, { kinds = { 'closed', 'landed' }, from = 'ternary', row = '⦉b.txt⦊ [c.txt] ⟦-⟧ → ⦉-⦊ [b.txt] ⟦-⟧' })`  
+spec: (A27, A19) The landing after a delete is a move on the delete's step: T111's route (`⦉b⦊ [c] ⟦-⟧`) and `:bdelete c.txt` give, on the step `BufDelete c.txt`, the "closed" move on c.txt and then a "landed" move on the window, from the ternary, `⦉b.txt⦊ [c.txt] ⟦-⟧ → ⦉-⦊ [b.txt] ⟦-⟧…  
+`tests/test_ledger.lua:381`
+
+**T405 [char]** (A27, I10) an arrival undone is a move  
+`:e a`, `:enew`, `:setlocal buftype=nofile` → `eq({ trigger = m and m.trigger, row = m and m.row },`  
+spec: (A27, I10) An arrival undone is a move: T217's first route (`:e a`, `:enew` with text, `setlocal buftype=nofile`) gives, on the step `OptionSet buftype`, an "undone" move on the window, `⦉a.txt⦊ [[No Name]] ⟦-⟧ → ⦉-⦊ [a.txt] ⟦-⟧`.  
+`tests/test_ledger.lua:399`
+
+**T406 [char]** (A27, A21) a triquetra dropped is a move ⚑ state set by hand  
+`:e a`, `:enew` → `eq({ dropped = m ~= nil, triquetra = child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()] ~= nil') },`  
+note: a scratch shown in the window: it's visiting, with the empty No Name buffer hidden as its current slot  
+spec: (A27, A21) A triquetra dropped is a move: `:e a`, `:enew`, a `nofile` scratch shown in the window, which is then visiting it with the empty No Name buffer as its current slot, and that buffer wiped give a "dropped" move on the window, which has no triquetra after.  
+`tests/test_ledger.lua:410`
+
+**T407 [char]** (A27, M7) keep the older one's rewrite is a move  
+`:e a`, `:e c`, `:e e`, `:e b`, `<M-f>`, `:e c`, `<M-S-f>`, `<M-f>` → `slots = '⦉c⦊ [e] ⟦b⟧'`  
+→ `eq({ trigger = m and m.trigger, note = m and m.note },`  
+spec: (A27, M7) "Keep the older one"'s rewrite is a move: T185's keys give, on the last `<M-f>`, a "rewritten" move on e.txt, its ternary note `e.txt>c.txt → e.txt>a.txt`.  
+`tests/test_ledger.lua:424`
+
+**T408 [char]** (A27, Q6) Q6's guard is a move, and its pop-up stays  
+`:e a`, `:e b`, `:e c`, `:e b`, `<M-f>`, `:e a`, `<M-f>`, `<M-f>` → `eq({ warned = warned, trigger = m and m.trigger, by = m and m.by, note = m and m.note },`  
+spec: (A27, Q6) Q6's guard is a move, and its pop-up stays: T150's keys give "Avoided conflict…" and, on the third `<M-f>`, a "rewritten" move on b.txt by the guard, `b.txt>a.txt → b.txt>c.txt`.  
+`tests/test_ledger.lua:433`
+
+**T409 [char]** (A27, A1) navigation's own check is a move, and its pop-up stays  
+`:e a`, `:e b`, `:e c`, `:e a`, `:e b` → `eq({ warned = warned, trigger = m and m.trigger, by = m and m.by, note = m and m.note },`  
+spec: (A27, A1) Navigation's own check is a move, and its pop-up stays: T33's keys give "…switching with the pre-jump ternary." and, on the step `BufEnter b.txt`, a "rewritten" move on b.txt by navigation, `b.txt>a.txt → b.txt>c.txt`.  
+`tests/test_ledger.lua:444`
+
+**T410 [char]** (A27, P10) a file forgotten by follow along is a move, with the notes that went  
+`:e a`, `:e b`, `:e c`, `:enew`, `:e b`, `:e d` → `eq({ notes = m and m.notes, trigger = m and m.trigger }, { notes = 2, trigger = 'BufDelete [No Name]' })`  
+spec: (A27, P10) A file forgotten by follow along is a move, with the notes that went: T208's route gives, on the wipe's step, a "forgotten" move on the No Name buffer, 2 notes dropped.  
+`tests/test_ledger.lua:455`
+
+**T411 [char]** (A27, A12) the cancel on a window jump is a move on the jump's step  
+`:e a`, `:e b`, `:vsplit`, `:e x`, `:wincmd p`, `:e c`, `<M-n>`, `:wincmd p` → `eq({ trigger = m and m.trigger, words = m and m.words }, { trigger = 'WinEnter win 1', words = 'cycle cancelled; back on c.txt' })`  
+spec: (A27, A12) The cancel on a window jump is a move on the jump's step: T175's route gives, on the step `WinEnter win 1` (the split, left of the window that cycled), a "cancelled" move on the window that cycled, back on c.txt.  
+`tests/test_ledger.lua:466`
+
+**T412 [char]** (A27, S1) a load's moves: windows matched, references closed  
+`:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `eq(S2.save(child), { true })`  
+→ `eq(S2.load(child), { true })`  
+→ `eq({ loaded = loaded and loaded.words, loaded_by = loaded and loaded.cause, closed = closed and closed.cause },`  
+spec: (A27, S1) A load's moves: T337's route gives a load step holding a "loaded" move, 1 window matched, and a "closed" move on b.txt, not restored.  
+`tests/test_ledger.lua:479`
+
+**T413 [char]** (A27, S1) a load with no file is a fresh start  
+`:e a` → `eq({ cause = m and m.cause, trigger = m and m.trigger }, { cause = 'load', trigger = 'nothing' })`  
+spec: (A27, S1) A load with no file is a fresh start, a move on its step: `load_session('nothing')` gives a load step holding a "fresh" move.  
+`tests/test_ledger.lua:493`
+
+**T414 [char]** (A27, S1) a tab-session save's moves: saved, and the whole editor's records refreshed  
+→ `eq(S2.save_tab_session(child, s, 't'), { true })`  
+`:e x`, `:e t` → `eq(S2.save(child), { true })`  
+→ `eq(S2.load_tab_session(child, 't'), { true })`  
+`:tabprevious`, `:bdelete x.txt`, `:e e`, `:tabnext` → `eq(kinds, { 'saved', 'refreshed' })`  
+spec: (A27, S1) A tab-session save's moves: T323's route gives, on the save step `t`, a "saved" move and a "refreshed" move for the whole editor's session.  
+`tests/test_ledger.lua:502`
+
+**T415 [char]** (A27, S1) :restart's reload is a step of its own  
+`:e a`, `:e b` → `eq(Misc.save(child), { true })`  
+→ `eq({ causes = causes, before = before }, { causes = { 'load', 'restart' }, before = { cause = 'event', torn = true, moves = 0 } })`  
+note: the restart session's own events, sourced with events on, are a step the rerun's load tears down  
+spec: (A27, S1) `:restart`'s reload is a step of its own: T298's route gives a step with cause `restart`, and no load step after it; the step before it, the restart session's own events, sourced with events on, is torn down by that reload, with no move left.  
+`tests/test_ledger.lua:526`
+
+**T416 [char]** (A27) a tab session's tab closed is a move  
+`:bdelete c.txt`, `:tabclose` → `eq(m ~= nil, true)`  
+spec: (A27, S1 Records) A tab session's tab closed is a move: T322's route gives, after `:tabclose`, a "tab closed" move on t, its records written and its list let go.  
+`tests/test_ledger.lua:560`
+
+**T417 [char]** (A27, A20) renames are moves: a copy, and a No Name buffer written under a name  
+`:e a`, `:e b`, `:saveas g.txt`, `:enew`, `:write new.txt` → `eq({ copy = copy and copy.words, move = move and move.words },`  
+spec: (A27, A20) Renames are moves: `:e a`, `:e b`, `:saveas g.txt` give a "copied" move on b.txt; T238's route gives a "moved" move on the No Name buffer, written as new.txt.  
+`tests/test_ledger.lua:571`
+
+**T418 [char]** (A27, M14) a change of label is a step, and tags are moves  
+`:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:bdelete b.txt`, `:doautocmd FocusGained` → `eq({ cause = gone and gone.cause, trigger = gone and gone.trigger, tag = gone and gone.words, back = back ~= nil },`  
+spec: (A27, M14) A change of label is a step, and tags are moves: T343's route gives a step with cause `label`, trigger `feature → main`, holding a "gone" move on b.txt tagged feature; and once b.txt is back, a "back" move on it.  
+`tests/test_ledger.lua:586`
+
+**T419 [char]** (A27, M5) detached lists are moves: made, and left into the whole editor's file  
+→ `eq(S2.save(child), { true })`  
+`:e e`, `:e d`, `:bdelete e.txt` → `eq(S2.load_tab_session(child, 't'), { true })`  
+`:tabclose` → `eq({ made = made and made.cause, left = left and left.words },`  
+spec: (A27, M5) Detached lists are moves: T381's route gives, on the load into the third tab, a "detached" move on t_DETACHED, and, on the second tab's close, a "detached left" move on it, into the whole editor's file.  
+`tests/test_ledger.lua:609`
 
 ## tests/test_lifecycle.lua (7 cases: 7 char)
 
@@ -1796,7 +1894,7 @@ spec: (P24, A22) A save leaves the closed stack as it was: with b closed and out
 → `eq(Extra.at_least(child.messages()), {})`  
 → `slots = '⦉d⦊ [c] ⟦b⟧'`  
 note: Ex commands raise; keys return ok, err.  
-spec: (P26) With harpoon not installed, `:e`, `<M-f>`, `<M-S-f>`, `<M-;><M-c>`, `<M-;><M-r>` and the UI ticks raise nothing and report no hook failure. Today every history update fails at `history/routines.lua:966` with "module 'harpoon' not found".  
+spec: (P26) With harpoon not installed, `:e`, `<M-f>`, `<M-S-f>`, `<M-;><M-c>`, `<M-;><M-r>` and the UI ticks raise nothing and report no hook failure. Today every history update fails at `history/routines.lua:986` with "module 'harpoon' not found".  
 `tests/test_negative.lua:202`
 
 **T216 [char]** (I16) a No Name id is not reused across sessions  

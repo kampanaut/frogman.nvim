@@ -89,6 +89,31 @@ local function row_of(winid, names)
 	return row
 end
 
+---A window's slots as they stand, for a move's row: the slots, the primary queue and its switch.
+---
+---@param winid integer|nil
+---@return CavediverLedgerRow|nil
+function M.slots(winid)
+	local triquetra = winid and require('cavediver.domains.window.data').crux[winid]
+	if not triquetra then
+		return nil
+	end
+	return {
+		c = triquetra.current_slot,
+		s = triquetra.secondary_slot,
+		t = triquetra.ternary_slot,
+		p = vim.deepcopy(triquetra.primary_buffer or {}),
+		on = triquetra.primary_enabled and true or false,
+	}
+end
+
+---A window as the trail names it: `win 2`, by its number in its tab.
+---@param winid integer
+---@return string
+function M.window_name(winid)
+	return "win " .. (vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_number(winid) or winid)
+end
+
 ---@param a CavediverLedgerRow|nil
 ---@param b CavediverLedgerRow|nil
 ---@return boolean
@@ -294,8 +319,64 @@ function M.move(kind, fields)
 	for key, value in pairs(fields or {}) do
 		move[key] = value
 	end
-	table.insert(current().moves, move)
+	local step = current()
+	-- the names of the files it names, as they are now
+	local function name(filehash)
+		if type(filehash) == "string" and #filehash == 16 and filehash:match("^%x+$") then
+			step.names[filehash] = step.names[filehash] or M.name_of(filehash)
+		end
+	end
+	name(move.subject)
+	for _, row in ipairs(move.row and { move.row.before, move.row.after } or {}) do
+		name(row.c)
+		name(row.s)
+		name(row.t)
+		for _, filehash in ipairs(row.p or {}) do
+			name(filehash)
+		end
+	end
+	if move.note then
+		name(move.note.before)
+		name(move.note.after)
+	end
+	table.insert(step.moves, move)
 	return move
+end
+
+---A note cavediver changed by itself: rewritten to an older one, or dropped.
+---
+---@param map "ternary"|"secondary" The map it's on
+---@param owner Filehash The buffer whose note it is
+---@param before Filehash|nil What it named
+---@param after Filehash|nil What it names now
+---@param by string What changed it: "stale" (keep the older one), "guard" (Q6), "navigation", "no path"
+function M.note(map, owner, before, after, by)
+	if before == after then
+		return
+	end
+	M.move(after and "rewritten" or "note_dropped", {
+		subject = owner, name = M.name_of(owner), note = { map = map, before = before, after = after }, by = by,
+	})
+end
+
+---A window's slots that cavediver moved by itself, from a row taken before the change.
+---
+---@param kind string repointed, landed, undone, cleared
+---@param winid integer
+---@param before CavediverLedgerRow|nil
+---@param fields table|nil The move's other fields
+function M.slots_moved(kind, winid, before, fields)
+	local move = { subject = tostring(winid), name = M.window_name(winid), row = { before = before or {}, after = M.slots(winid) or {} } }
+	for key, value in pairs(fields or {}) do
+		move[key] = value
+	end
+	M.move(kind, move)
+end
+
+---The step still open, if any.
+---@return CavediverLedgerStep|nil
+function M.open_step()
+	return data.open
 end
 
 ---Queue a message on the step it follows from, said once the step closes, with the others of
@@ -309,10 +390,11 @@ function M.tell(kind, name, lists)
 end
 
 ---A whole-editor load replaces what its batch did: the session manager's teardown closed every
----buffer with events on. The step still open loses its moves and its messages.
+---buffer with events on. The step still open loses its moves and its messages, unless it's a
+---session's own step (a save before the switch, `:restart`'s reload), which the teardown isn't.
 function M.drop_batch()
 	local open = data.open
-	if open then
+	if open and (open.cause == "event" or open.cause == "command" or open.cause == "keymap") then
 		open.moves = {}
 		open.told = {}
 		open.torn = true

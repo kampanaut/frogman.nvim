@@ -97,7 +97,17 @@ local function settle_rename(bufnr, rename)
 	if vim.fn.filereadable(new_name) == 0 then
 		data.unwritten[routines.get_filehash(new_name)] = true -- a name that isn't on disk yet
 	end
+	local ledger = require('cavediver.domains.ledger')
+	local old_name = ledger.name_of(rename.hash)
 	local moved_from = routines.settle_rename(bufnr, rename.hash, rename.history)
+	local new_label = vim.fs.basename(new_name)
+	if moved_from then
+		ledger.move("moved", { subject = rename.hash, name = old_name, words = moved_from:match("^NONAME_") and
+			"written as " .. new_label .. ": a move" or "renamed to " .. new_label .. ": a move" })
+	elseif routines.get_hash_from_buffer(bufnr) == rename.hash then
+		ledger.move("copied", { subject = rename.hash, name = old_name,
+			words = "renamed to " .. new_label .. ": a copy, " .. (old_name or "the old name") .. " is still on disk" })
+	end
 	if not moved_from and routines.get_hash_from_buffer(bufnr) == rename.hash then
 		-- a copy: the old name is still a file, and it's closed as a delete closes it.
 		historySM:to(historySM:state(), { buf = bufnr }, states.mode.DELETE)
