@@ -283,7 +283,7 @@ end
 
 -- The split visits c, then shows an oil-like buffer (acwrite, oil://) and keeps
 -- its triquetra.
-T['T146 [target] a save leaves an oil window on its oil buffer'] = function()
+T['T146 [char] a save leaves an oil window on its oil buffer'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b', ':vsplit', ':e c' })
 	child.lua([[

@@ -2286,7 +2286,7 @@ note: A hash that no buffer or path has.
 spec: An unknown hash in a map doesn't make a restore throw.  
 `tests/test_restores.lua:122`
 
-## tests/test_s2.lua (46 cases: 18 char, 28 target)
+## tests/test_s2.lua (46 cases: 19 char, 27 target)
 
 **T292 [char]** (S2) save_session() and load_session() take no directory: the file is named after getcwd(-1, -1) and a fresh process loads it  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
@@ -2599,7 +2599,7 @@ note: In T318's state, a No Name text made in the session's tab and left there (
 spec: (S2 Tab sessions; DESK:951, DESK:954, DESK:1640) A pool holds its own No Name texts: in T318's state, a No Name text left in the session's tab's history and another left in the first tab's, a save of the tab session alone, and a load of it into a second tab of a fresh process bri…  
 `tests/test_s2.lua:833`
 
-**T324 [target]** (S2) an oil window comes back as oil, with oil_original_buffer set from its current slot  
+**T324 [char]** (S2) an oil window comes back as oil, with oil_original_buffer set from its current slot  
 `:e a`, `:e b` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
 → `eq(Misc.save(child), { true })`  
 → `eq(Misc.load(child), { true })`  
@@ -2751,7 +2751,7 @@ spec: With the secondary's file deleted on disk, the pointer is kept and `<M-f>`
 spec: Q6's ten keys, as the author ran them: `:e a`, `:e b`, `:e c`, `:e b`, `<M-f>`, `:e a`, `<M-f>`, `<M-f>`, `<M-S-f>`, `<M-;><M-r>`. The third `<M-f>` rewrites the ternary's note to the buffer it leaves (`dtm[b] := c`), and the restore doesn't throw: it gives `{c=b s=a t=c}` **[sim…  
 `tests/test_secondary_key.lua:144`
 
-## tests/test_sessions.lua (16 cases: 14 char, 2 target)
+## tests/test_sessions.lua (16 cases: 15 char, 1 target)
 
 **T134 [char]** save_session writes paths, outsiders, buffers, windows, closed, noname_content; windows[i] = [c, s, p[], t, dtm, dsm, shows, on, history]  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
@@ -2851,15 +2851,15 @@ spec: Three `load_session` calls in one batch load once.
 `:e a`, `:vsplit`, `:e b` → `eq(got, { true })`  
 → `eq(snapshot(), before)`  
 note: The window shows b, whose file is deleted on disk just before the save.  
-spec: A save never wipes a buffer or changes what a window shows, an oil window included. Its no-wipe half holds today and has its own [char] case; the oil half, a save leaving an oil window on its oil buffer, waits for the saved format's work (oil coming back as oil, S2). (spec tag: [target])  
+spec: A save never wipes a buffer or changes what a window shows, an oil window included. It has two cases: the no-wipe one, and a save leaving an oil window on its oil buffer, built in step 4 (S1, S2 Oil).  
 `tests/test_sessions.lua:271`
 
-**T146 [target]** a save leaves an oil window on its oil buffer ⚑ state set by hand; the split visits a file first, so the save reaches the oil case  
+**T146 [char]** a save leaves an oil window on its oil buffer ⚑ state set by hand; the split visits a file first, so the save reaches the oil case  
 `:e a`, `:e b`, `:vsplit`, `:e c` → `eq(child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()] ~= nil'), true)`  
 → `eq(Misc.save(child), { true })`  
 → `eq(snapshot(), before)`  
 note: The split visits c, then shows an oil-like buffer (acwrite, oil://) and keeps its triquetra.  
-spec: A save never wipes a buffer or changes what a window shows, an oil window included. Its no-wipe half holds today and has its own [char] case; the oil half, a save leaving an oil window on its oil buffer, waits for the saved format's work (oil coming back as oil, S2).  
+spec: A save never wipes a buffer or changes what a window shows, an oil window included. It has two cases: the no-wipe one, and a save leaving an oil window on its oil buffer, built in step 4 (S1, S2 Oil).  
 `tests/test_sessions.lua:286`
 
 **T147 [char]** with no file, a load gives every window {c=<shown>} and an empty closed stack ⚑ state set by hand  

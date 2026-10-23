@@ -861,7 +861,7 @@ local OIL = [[
 	vim.bo[b].buftype = 'acwrite'
 	vim.bo[b].filetype = 'oil'
 ]]
-T['T324 [target] (S2) an oil window comes back as oil, with oil_original_buffer set from its current slot'] = function()
+T['T324 [char] (S2) an oil window comes back as oil, with oil_original_buffer set from its current slot'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b' })
