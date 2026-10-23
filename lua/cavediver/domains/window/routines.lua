@@ -40,6 +40,7 @@ function M.keep_older_ternary_note(triquetra, arrived, left, ternary_before, ter
 	if older == arrived or older == ternary_after then
 		older = nil
 	end
+	require('cavediver.domains.ledger').note("ternary", arrived, dtm[arrived], older, "stale")
 	dtm[arrived] = older
 end
 
@@ -61,6 +62,7 @@ function M.keep_older_secondary_note(triquetra, current, secondary)
 	else
 		dsm[current] = nil
 	end
+	require('cavediver.domains.ledger').note("secondary", current, secondary, dsm[current], "stale")
 end
 
 ---The notes a swap onto the secondary writes, whatever route it takes there (<M-f>, its <M-;><M-f>
@@ -101,6 +103,7 @@ function M.check_notes_under_current(triquetra)
 		if older == current or older == ternary then
 			older = nil
 		end
+		require('cavediver.domains.ledger').note("ternary", current, ternary, older, "stale")
 		dtm[current] = older
 	end
 	M.keep_older_secondary_note(triquetra, current, triquetra.secondary_slot)
@@ -138,9 +141,11 @@ function M.undo_arrival(bufnr)
 	if not filehash then
 		return
 	end
+	local ledger = require('cavediver.domains.ledger')
 	for winid, triquetra in pairs(data.crux) do
 		local arrival = data.arrivals[winid]
 		if triquetra.current_slot == filehash then
+			local before = ledger.slots(winid)
 			if arrival and arrival.hash == filehash and arrival.after and vim.deep_equal(arrival.after, triquetra) then
 				for _, key in ipairs({ "current_slot", "secondary_slot", "ternary_slot", "primary_buffer",
 					"primary_enabled", "displacement_ternary_map", "displacement_secondary_map" }) do
@@ -156,7 +161,11 @@ function M.undo_arrival(bufnr)
 				data.unregister_triquetra(winid) -- nothing to come back to.
 			end
 			if data.crux[winid] then
+				ledger.slots_moved("undone", winid, before, { words = "its buffer turned into something untracked" })
 				M.check_notes_under_current(triquetra) -- a slot changed under the current buffer.
+			else
+				ledger.move("dropped", { subject = tostring(winid), name = ledger.window_name(winid),
+					words = "its buffer turned into something untracked, with nothing to come back to" })
 			end
 		end
 		if arrival and arrival.hash == filehash then
@@ -302,6 +311,7 @@ function M.reconcile_triquetra(winid, new_bufnr, is_pick)
 			-- the guard runs before the swap, so the ternary's memory gets the buffer being left.
 			if triquetra.displacement_ternary_map[triquetra.ternary_slot] == new_filehash then
 				triquetra.displacement_ternary_map[triquetra.ternary_slot] = triquetra.current_slot
+				require('cavediver.domains.ledger').note("ternary", triquetra.ternary_slot, new_filehash, triquetra.current_slot, "guard")
 				vim.notify(
 					"Avoided conflict of ternary's remembered relationship becoming current. Remembered relationship has been changed to remember pre-jump current buffer instead: ["
 					.. (history.get_buffer_from_hash(triquetra.ternary_slot) or "")
@@ -318,6 +328,7 @@ function M.reconcile_triquetra(winid, new_bufnr, is_pick)
 		if not proc then
 			if triquetra.displacement_ternary_map[triquetra.ternary_slot] == new_filehash then
 				triquetra.displacement_ternary_map[triquetra.ternary_slot] = triquetra.current_slot
+				require('cavediver.domains.ledger').note("ternary", triquetra.ternary_slot, new_filehash, triquetra.current_slot, "guard")
 				vim.notify(
 					"Avoided conflict of ternary's remembered relationship becoming current. Remembered relationship has been changed to remember pre-jump current buffer instead: ["
 					.. (history.get_buffer_from_hash(triquetra.ternary_slot) or "")
@@ -384,18 +395,23 @@ function M.land_after_delete(winid, deleted_bufnr)
 			end
 		end
 
+		local ledger = require('cavediver.domains.ledger')
+		local before, from = ledger.slots(winid), "recent"
 		local landing_bufnr
 		if triquetra.ternary_slot and open(triquetra.ternary_slot) then
 			landing_bufnr = open(triquetra.ternary_slot)
 			triquetra.current_slot = triquetra.ternary_slot
 			triquetra.ternary_slot = nil
+			from = "ternary"
 		elseif triquetra.secondary_slot and open(triquetra.secondary_slot) then
 			landing_bufnr = open(triquetra.secondary_slot)
 			triquetra.current_slot = triquetra.secondary_slot
 			triquetra.secondary_slot = nil
+			from = "secondary"
 		elseif triquetra.primary_buffer[1] and open(triquetra.primary_buffer[1]) then
 			landing_bufnr = open(triquetra.primary_buffer[1])
 			triquetra.current_slot = triquetra.primary_buffer[1]
+			from = "primary"
 		else
 			-- the most recent buffer, in the bufferline's order (it follows history_view).
 			for _, item in ipairs(history.get_ordered_buffers()) do
@@ -409,7 +425,10 @@ function M.land_after_delete(winid, deleted_bufnr)
 		end
 
 		if landing_bufnr then
+			ledger.slots_moved("landed", winid, before, { from = from })
 			M.check_notes_under_current(triquetra) -- a buffer became current under the slots, its notes may be stale.
+		else
+			ledger.slots_moved("landed", winid, before, { from = "empty" })
 		end
 
 		vim.api.nvim_win_call(winid, function()
@@ -460,9 +479,11 @@ end
 ---@return nil
 function M.cleanup_triquetras(bufnr_ondelete)
 	local set_cache_from_window_triquetra = require("cavediver").ui.routines.set_cache_from_window_triquetra
-	local slots_before = {}
+	local ledger = require('cavediver.domains.ledger')
+	local slots_before, rows_before = {}, {}
 	for winid, triquetra in pairs(data.crux) do
 		slots_before[winid] = { triquetra.current_slot, triquetra.secondary_slot, triquetra.ternary_slot }
+		rows_before[winid] = ledger.slots(winid)
 	end
 	for winid, triquetra in pairs(data.crux) do
 		local current_bufnr = history.get_buffer_from_hash(triquetra.current_slot)
@@ -712,6 +733,21 @@ function M.cleanup_triquetras(bufnr_ondelete)
 
 		set_cache_from_window_triquetra(winid)
 		::continue::
+	end
+	-- what the pass did by itself goes into the trail: a triquetra dropped from a window still open, a
+	-- current slot moved, or a slot or a queue entry cleared.
+	for winid, before in pairs(rows_before) do
+		local after = ledger.slots(winid)
+		if after == nil then
+			if vim.api.nvim_win_is_valid(winid) then
+				ledger.move("dropped", { subject = tostring(winid), name = ledger.window_name(winid), row = { before = before, after = {} },
+					words = "nothing it can be on any more" })
+			end
+		elseif after.c ~= before.c then
+			ledger.slots_moved("repointed", winid, before)
+		elseif after.s ~= before.s or after.t ~= before.t or not vim.deep_equal(after.p, before.p) then
+			ledger.slots_moved("cleared", winid, before, { words = "what it named is gone" })
+		end
 	end
 	-- a slot that changed under the current buffer can leave its notes naming it.
 	for winid, triquetra in pairs(data.crux) do
@@ -1036,6 +1072,7 @@ local function restore_from_displacement_map(type, triquetra)
 	-- a note at a hash nothing knows any more is cleared when it's used.
 	for _, key in ipairs({ triquetra.current_slot .. "-swap", triquetra.current_slot }) do
 		if remembered_mapping[key] ~= nil and history.get_filepath_from_hash(remembered_mapping[key]) == nil then
+			require('cavediver.domains.ledger').note(type, triquetra.current_slot, remembered_mapping[key], nil, "no path")
 			remembered_mapping[key] = nil
 		end
 	end

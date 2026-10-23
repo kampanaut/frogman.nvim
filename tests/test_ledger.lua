@@ -7,6 +7,7 @@
 -- captured.
 local Helpers = dofile('tests/helpers.lua')
 local S2 = dofile('tests/helpers_s2.lua')
+local Misc = dofile('tests/helpers_misc.lua')
 local eq = Helpers.eq
 local child = Helpers.new_child()
 
@@ -31,6 +32,21 @@ for _, step in ipairs(which == 'trail' and ledger.trail() or ledger.steps()) do
 	local moves = {}
 	for _, m in ipairs(step.moves) do
 		table.insert(moves, { kind = m.kind, name = m.name, lists = m.lists, dim = m.dim or false })
+	end
+	if which == 'full' then
+		moves = {}
+		for _, m in ipairs(step.moves) do
+			local function n(h) return h and (step.names[h] or '?') or '-' end
+			local note
+			if m.note then
+				note = n(m.subject) .. '>' .. n(m.note.before) .. ' → ' .. n(m.subject) .. '>' .. n(m.note.after)
+			end
+			table.insert(moves, {
+				kind = m.kind, name = m.name, words = m.words, from = m.from, by = m.by, notes = m.notes,
+				row = m.row and (row(m.row.before, step.names) or '-') .. ' → ' .. (row(m.row.after, step.names) or '-') or nil,
+				note = note, lists = m.lists,
+			})
+		end
 	end
 	table.insert(out, {
 		seq = step.seq, cause = step.cause, trigger = step.trigger, win = step.win,
@@ -157,9 +173,9 @@ T['T396 [char] (A27) a command typed on the command line is a step under its tex
 	child.settle(100)
 	local found
 	for _, s in ipairs(steps()) do
-		if s.trigger == ':bdelete c.txt' then found = { cause = s.cause, moves = s.moves } end
+		if s.trigger == ':bdelete c.txt' then found = { cause = s.cause, first = s.moves[1] } end
 	end
-	eq(found, { cause = 'command', moves = { { kind = 'closed', name = 'c.txt', lists = { 'editor' }, dim = true } } })
+	eq(found, { cause = 'command', first = { kind = 'closed', name = 'c.txt', lists = { 'editor' }, dim = true } })
 end
 
 T['T397 [char] (A27) a step that changes no row and makes no move is not kept'] = function()
@@ -233,11 +249,12 @@ local function close_in_both(s)
 	child.settle(100)
 end
 
--- The move of a kind on a file in today's trail, or nil.
-local function move_on(kind, name)
+-- The move of a kind on a file in today's trail, or nil; `but` leaves out the
+-- steps of that cause.
+local function move_on(kind, name, but)
 	for _, s in ipairs(steps('trail')) do
 		for _, m in ipairs(s.moves) do
-			if m.kind == kind and m.name == name then return m end
+			if m.kind == kind and m.name == name and s.cause ~= but then return m end
 		end
 	end
 end
@@ -285,7 +302,7 @@ T['T402 [char] (A27) a whole-editor load drops what its batch did'] = function()
 	for _, m in ipairs(child.messages()) do
 		if m.msg:find('closed here', 1, true) or m.msg:find('taken off', 1, true) then table.insert(told, m.msg) end
 	end
-	eq({ got = got, told = told, move = move_on('closed', 'a.txt') }, { got = { true }, told = {}, move = nil })
+	eq({ got = got, told = told, move = move_on('closed', 'a.txt', 'load') }, { got = { true }, told = {}, move = nil })
 end
 
 -- The contract's outgoing save (resession's pre_load) runs in the same call as the
@@ -321,8 +338,289 @@ T['T402 [char] (A27) the outgoing save before a switch keeps the teardown out of
 		end
 		return false
 	]])
-	eq({ got = got, saves = saves, teardown = teardown, torn = torn, move = move_on('closed', 'a.txt') },
+	eq({ got = got, saves = saves, teardown = teardown, torn = torn, move = move_on('closed', 'a.txt', 'load') },
 		{ got = { true }, saves = { {} }, teardown = { 'BufDelete a.txt' }, torn = true, move = nil })
+end
+
+-- L1b: the other moves --------------------------------------------------------
+
+-- The first move of a kind on a name in the ring, with its step's cause and
+-- trigger; name nil matches any.
+local function found(kind, name)
+	for _, st in ipairs(steps('full')) do
+		for _, m in ipairs(st.moves) do
+			if m.kind == kind and (name == nil or m.name == name) then
+				m.cause, m.trigger = st.cause, st.trigger
+				return m
+			end
+		end
+	end
+end
+
+local function told(text)
+	for _, m in ipairs(child.messages()) do
+		if m.msg:find(text, 1, true) then return true end
+	end
+	return false
+end
+
+T['T403 [char] (A27, A21) cleanup\'s re-point is a move, and its pop-up stays'] = function()
+	child.setup()
+	child.steps({ ':e d', ':e b', ':e c', '<M-f>', ':e a' })
+	eq(child.slots(), '⦉c⦊ [a] ⟦b⟧')
+	child.messages()
+	child.cmd('noautocmd buffer d.txt')
+	child.cmd('bwipeout a.txt')
+	child.settle(100)
+	local healed = told('Healed the triquetra')
+	local m = found('repointed')
+	eq({ healed = healed, trigger = m and m.trigger, row = m and m.row },
+		{ healed = true, trigger = 'BufDelete a.txt', row = '⦉c.txt⦊ [a.txt] ⟦b.txt⟧ → ⦉a.txt⦊ [d.txt] ⟦b.txt⟧' })
+end
+
+T['T404 [char] (A27, A19) the landing after a delete is a move on the delete\'s step'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b', ':e c', ':e d', ':e c', '<M-;><M-r>' })
+	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
+	child.cmd('bdelete c.txt')
+	child.settle(300)
+	local got
+	for _, st in ipairs(steps('full')) do
+		if st.trigger == 'BufDelete c.txt' then
+			local kinds = {}
+			for _, m in ipairs(st.moves) do table.insert(kinds, m.kind) end
+			local landed = found('landed')
+			got = { kinds = kinds, from = landed and landed.from, row = landed and landed.row }
+		end
+	end
+	eq(got, { kinds = { 'closed', 'landed' }, from = 'ternary', row = '⦉b.txt⦊ [c.txt] ⟦-⟧ → ⦉-⦊ [b.txt] ⟦-⟧' })
+end
+
+T['T405 [char] (A27, I10) an arrival undone is a move'] = function()
+	child.setup()
+	child.steps({ ':e a', ':enew' })
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "plugin text" })')
+	child.cmd('setlocal buftype=nofile')
+	child.settle(100)
+	local m = found('undone')
+	eq({ trigger = m and m.trigger, row = m and m.row },
+		{ trigger = 'OptionSet buftype', row = '⦉a.txt⦊ [[No Name]] ⟦-⟧ → ⦉-⦊ [a.txt] ⟦-⟧' })
+end
+
+T['T406 [char] (A27, A21) a triquetra dropped is a move'] = function()
+	child.setup()
+	child.steps({ ':e a', ':enew' })
+	local n = child.lua('return vim.api.nvim_get_current_buf()')
+	-- a scratch shown in the window: it's visiting, with the empty No Name buffer hidden as its current slot
+	child.lua('vim.api.nvim_win_set_buf(0, vim.api.nvim_create_buf(false, true))')
+	child.settle(100)
+	child.cmd('bwipeout ' .. n)
+	child.settle(100)
+	local m = found('dropped')
+	eq({ dropped = m ~= nil, triquetra = child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()] ~= nil') },
+		{ dropped = true, triquetra = false })
+end
+
+T['T407 [char] (A27, M7) keep the older one\'s rewrite is a move'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e c', ':e e', ':e b', '<M-f>', ':e c', '<M-S-f>', '<M-f>' })
+	eq(child.slots(), '⦉c⦊ [e] ⟦b⟧')
+	local m = found('rewritten', 'e.txt')
+	eq({ trigger = m and m.trigger, note = m and m.note },
+		{ trigger = '<M-f>', note = 'e.txt>c.txt → e.txt>a.txt' })
+end
+
+T['T408 [char] (A27, Q6) Q6\'s guard is a move, and its pop-up stays'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b', ':e c', ':e b', '<M-f>', ':e a', '<M-f>' })
+	child.messages()
+	child.steps({ '<M-f>' })
+	local warned = told('Avoided conflict')
+	local m = found('rewritten', 'b.txt')
+	eq({ warned = warned, trigger = m and m.trigger, by = m and m.by, note = m and m.note },
+		{ warned = true, trigger = '<M-f>', by = 'guard', note = 'b.txt>a.txt → b.txt>c.txt' })
+end
+
+T['T409 [char] (A27, A1) navigation\'s own check is a move, and its pop-up stays'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b', ':e c', ':e a' })
+	child.messages()
+	child.steps({ ':e b' })
+	local warned = told('switching with the pre-jump ternary.')
+	local m = found('rewritten', 'b.txt')
+	eq({ warned = warned, trigger = m and m.trigger, by = m and m.by, note = m and m.note },
+		{ warned = true, trigger = 'BufEnter b.txt', by = 'navigation', note = 'b.txt>a.txt → b.txt>c.txt' })
+end
+
+T['T410 [char] (A27, P10) a file forgotten by follow along is a move, with the notes that went'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b', ':e c', ':enew' })
+	local n = child.lua('return vim.api.nvim_get_current_buf()')
+	child.steps({ ':e b', ':e d' })
+	child.cmd('bwipeout ' .. n)
+	child.settle(100)
+	local m = found('forgotten', '[No Name]')
+	eq({ notes = m and m.notes, trigger = m and m.trigger }, { notes = 2, trigger = 'BufDelete [No Name]' })
+end
+
+T['T411 [char] (A27, A12) the cancel on a window jump is a move on the jump\'s step'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('vsplit')
+	child.steps({ ':e x' })
+	child.cmd('wincmd p')
+	child.steps({ ':e c', '<M-n>' })
+	child.cmd('wincmd p')
+	child.settle(200)
+	local m = found('cancelled')
+	eq({ trigger = m and m.trigger, words = m and m.words }, { trigger = 'WinEnter win 1', words = 'cycle cancelled; back on c.txt' })
+end
+
+T['T412 [char] (A27, S1) a load\'s moves: windows matched, references closed'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'c', 'd' }, 'd')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local loaded, closed = found('loaded'), found('closed', 'b.txt')
+	eq({ loaded = loaded and loaded.words, loaded_by = loaded and loaded.cause, closed = closed and closed.cause },
+		{ loaded = '1 window matched', loaded_by = 'load', closed = 'load' })
+end
+
+T['T413 [char] (A27, S1) a load with no file is a fresh start'] = function()
+	child.setup()
+	child.steps({ ':e a' })
+	child.lua('require("cavediver").load_session("nothing")')
+	child.settle(100)
+	local m = found('fresh')
+	eq({ cause = m and m.cause, trigger = m and m.trigger }, { cause = 'load', trigger = 'nothing' })
+end
+
+T['T414 [char] (A27, S1) a tab-session save\'s moves: saved, and the whole editor\'s records refreshed'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(S2.save(child), { true })
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.cmd('tabprevious')
+	child.cmd('bdelete x.txt')
+	child.steps({ ':e e' })
+	child.cmd('tabnext')
+	child.settle()
+	child.lua('require("cavediver").save_session("t", { tab = vim.api.nvim_get_current_tabpage() })')
+	child.settle(100)
+	local kinds
+	for _, st in ipairs(steps('full')) do
+		if st.cause == 'save' and st.trigger == 't' then
+			kinds = {}
+			for _, m in ipairs(st.moves) do table.insert(kinds, m.kind) end
+		end
+	end
+	eq(kinds, { 'saved', 'refreshed' })
+end
+
+T['T415 [char] (A27, S1) :restart\'s reload is a step of its own'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(Misc.save(child), { true })
+	local dir = vim.fn.tempname()
+	vim.fn.mkdir(dir, 'p')
+	local session = dir .. '/restart_session_T415xy'
+	child.cmd('mksession! ' .. vim.fn.fnameescape(session))
+	S2.start_restarted(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	child.lua([[
+		pcall(require('cavediver').load_session, vim.fn.getcwd())
+		vim.cmd('source ' .. vim.fn.fnameescape(...))
+	]], { session })
+	child.settle(300)
+	local causes = {}
+	for _, st in ipairs(steps()) do
+		if st.cause == 'load' or st.cause == 'restart' then table.insert(causes, st.cause) end
+	end
+	-- the restart session's own events, sourced with events on, are a step the rerun's load tears down
+	local before = child.lua([[
+		local all = require('cavediver').ledger.steps()
+		for i, st in ipairs(all) do
+			if st.cause == 'restart' then
+				local prev = all[i - 1]
+				return prev and { cause = prev.cause, torn = prev.torn == true, moves = #prev.moves } or vim.NIL
+			end
+		end
+		return vim.NIL
+	]])
+	eq({ causes = causes, before = before }, { causes = { 'load', 'restart' }, before = { cause = 'event', torn = true, moves = 0 } })
+end
+
+T['T416 [char] (A27) a tab session\'s tab closed is a move'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	child.cmd('bdelete c.txt')
+	child.settle()
+	child.cmd('tabclose')
+	child.settle(300)
+	local m = found('tab_closed', 't')
+	eq(m ~= nil, true)
+end
+
+T['T417 [char] (A27, A20) renames are moves: a copy, and a No Name buffer written under a name'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('saveas g.txt')
+	child.settle(300)
+	local copy = found('copied', 'b.txt')
+	child.steps({ ':enew' })
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "draft" })')
+	child.cmd('write new.txt')
+	child.settle(300)
+	local move = found('moved', '[No Name]')
+	eq({ copy = copy and copy.words, move = move and move.words },
+		{ copy = 'renamed to g.txt: a copy, b.txt is still on disk', move = 'written as new.txt: a move' })
+end
+
+T['T418 [char] (A27, M14) a change of label is a step, and tags are moves'] = function()
+	child.setup()
+	child.lua([[
+		vim.fn.mkdir(_G.CDV_TEST.root .. '/.git', 'p')
+		vim.fn.writefile({ 'ref: refs/heads/feature' }, _G.CDV_TEST.root .. '/.git/HEAD')
+	]])
+	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
+	child.cmd('bdelete b.txt')
+	child.settle()
+	child.cmd('doautocmd FocusGained')
+	child.settle()
+	child.lua('os.remove(_G.CDV_TEST.root .. "/b.txt")')
+	child.lua('vim.fn.writefile({ "ref: refs/heads/main" }, _G.CDV_TEST.root .. "/.git/HEAD")')
+	child.settle(300)
+	local gone = found('gone', 'b.txt')
+	child.lua('vim.fn.writefile({ "b" }, _G.CDV_TEST.root .. "/b.txt")')
+	child.lua('require("cavediver.domains.history").cleanup_system()')
+	child.settle(100)
+	local back = found('back', 'b.txt')
+	eq({ cause = gone and gone.cause, trigger = gone and gone.trigger, tag = gone and gone.words, back = back ~= nil },
+		{ cause = 'label', trigger = 'feature → main', tag = 'gone from disk ⎇feature', back = true })
+end
+
+T['T419 [char] (A27, M5) detached lists are moves: made, and left into the whole editor\'s file'] = function()
+	local s = S2.shared()
+	local _, w2 = tab_session(s)
+	eq(S2.save(child), { true })
+	child.steps({ ':e e', ':e d' })
+	child.cmd('bdelete e.txt')
+	child.settle()
+	eq(S2.load_tab_session(child, 't'), { true })
+	local made = found('detached', 't_DETACHED')
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('tabclose')
+	child.settle(300)
+	local left = found('detached_left', 't_DETACHED')
+	eq({ made = made and made.cause, left = left and left.words },
+		{ made = 'load', left = 'into the whole editor\'s file' })
 end
 
 return T
