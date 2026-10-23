@@ -138,7 +138,7 @@ T['T139 [char] a slot whose buffer comes back unloaded keeps its value after loa
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 end
 
-T['T140 [target] a save with a No Name current slot succeeds and the load reopens it, hidden and modified'] = function()
+T['T140 [char] a save with a No Name current slot succeeds and the load reopens it, hidden and modified'] = function()
 	local s = shared()
 	start(s)
 	child.steps({ ':e a', ':enew' })

@@ -185,24 +185,23 @@ end
 ---
 ---Every path the file knows becomes known again, so a reference whose buffer doesn't come back
 ---still resolves to its file. Every restored buffer the file knows is registered, loaded or not;
----one it doesn't know waits for its BufEnter, like any new buffer. Then restores saved buffer
----access history with original timestamps.
+---one it doesn't know waits for its BufEnter, like any new buffer. A No Name buffer still open
+---from before the load (a reload in the same process) is known by its id. Then restores saved
+---buffer access history with original timestamps.
 ---
 ---@param buffers BufferCruxInternalsSerialised The global access history
 ---@param paths table<Filehash, Filepath> The paths the file knows, outsiders left out
 ---@return nil
 local function load_buffer_history(buffers, paths)
-	---TODO: Loading [No Name] buffers with content.
-	-- resession doesn't save no name buffers. So after load hook, I should scour all of the
-	-- windows, and try to all the windows that has NONAME_ buffer, and try to load from a noname_content,
-	-- that was also updated, in pre_save, where cavediver also tried to save for all NONAME buffers. Or is there
-	-- a setting in resession to save no name buffers? I don't know.
 	for _, filepath in pairs(paths) do
 		history.register_filepath(filepath)
 	end
 
 	for _, bufnr in pairs(vim.api.nvim_list_bufs()) do
 		local name = vim.api.nvim_buf_get_name(bufnr)
+		if name == "" and vim.b[bufnr].cavediver_noname then
+			name = "NONAME_" .. vim.b[bufnr].cavediver_noname
+		end
 		if
 			vim.api.nvim_buf_is_valid(bufnr)
 			and name ~= ""
@@ -243,9 +242,10 @@ end
 ---
 ---@param window_buffer WindowBufferData Window relationships, in window order
 ---@return table<WinId, table<Filehash, number>> window_histories Each matched window's own access history
+---@return WinId[] matched The windows that took an entry
 local function load_window_buffer_relationships(window_buffer)
-	local set_cache_from_window_triquetra = require('cavediver').set_cache_from_window_triquetra
 	local window_histories = {}
+	local matched = {}
 
 	-- the entries for each thing a window showed, in saved order
 	local unmatched = {}
@@ -263,6 +263,11 @@ local function load_window_buffer_relationships(window_buffer)
 		end
 		local shows = shown_by(actual_winid)
 		local triquetra_serialised = shows and unmatched[shows] and table.remove(unmatched[shows], 1)
+		local reopened = vim.b[vim.api.nvim_win_get_buf(actual_winid)].cavediver_reopened
+		if not triquetra_serialised and reopened and unmatched[reopened] then
+			-- a No Name text an earlier load reopened, still under the hash the file knows it by
+			triquetra_serialised = table.remove(unmatched[reopened], 1)
+		end
 		if not triquetra_serialised then
 			-- a window that matches nothing starts fresh, once what it shows is tracked
 			window.get_triquetra(actual_winid)
@@ -334,10 +339,10 @@ local function load_window_buffer_relationships(window_buffer)
 		for _, filehash in ipairs(pfilehashes) do
 			close_if_not_restored(filehash)
 		end
-		set_cache_from_window_triquetra(actual_winid)
+		table.insert(matched, actual_winid)
 		::continue::
 	end
-	return window_histories
+	return window_histories, matched
 end
 
 ---Populate fresh buffer history from currently open buffers.
@@ -425,26 +430,6 @@ local function serialise_window_relationships(outsiders)
 
 			tdisplacement_map = triquetra.displacement_ternary_map
 			sdisplacement_map = triquetra.displacement_secondary_map
-
-			local cfilepath = history.get_filepath_from_hash(cfilehash)
-
-			if
-				cfilepath and
-				cfilepath:match("^NONAME_") and
-				not vim.tbl_contains(history.data.closed_buffers, cfilehash)
-			then
-				if pfilehashes ~= nil and #pfilehashes > 0 then
-					cfilehash = pfilehashes[1]
-				elseif tfilehash ~= nil then
-					cfilehash = tfilehash
-					tfilehash = nil
-				elseif sfilehash ~= nil then
-					cfilehash = sfilehash
-					sfilehash = nil
-				else
-					cfilehash = nil -- nothing to stand in for it; the load falls back to what the window shows.
-				end
-			end
 
 			if cfilehash == nil then
 				cfilehash = vim.NIL
@@ -561,7 +546,9 @@ end
 ---Serialize [No Name] buffer content for session saving.
 ---
 ---Creates a copy of the [No Name] buffer content mapping that can be safely
----serialized to JSON. Preserves content, filetype, and cursor position.
+---serialized to JSON. Preserves content, filetype, and cursor position. An
+---open, non-empty [No Name] buffer is saved the way a closed one is, marked to
+---be reopened at load: no session manager saves its text.
 ---
 ---@return table<Filehash, NoNameBufferContent> copy Serializable copy of [No Name] content
 ---@param cwd string The session's directory
@@ -580,7 +567,79 @@ local function serialise_noname_content(cwd)
 			}
 		end
 	end
+	for filehash, bufnr in pairs(history.data.hash_buffer_registry.buffers) do
+		local filepath = history.get_filepath_from_hash(filehash)
+		if filepath and filepath:match("^NONAME_") and vim.api.nvim_buf_is_loaded(bufnr) then
+			local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+			if not (#lines == 0 or (#lines == 1 and lines[1] == "")) then -- empty ones are skipped, as when closed
+				local winid = vim.fn.bufwinid(bufnr)
+				copy[filehash] = {
+					lines = vim.tbl_map(function(line) return xor_cipher(line, cwd) end, lines),
+					filetype = vim.bo[bufnr].filetype,
+					cursor = winid ~= -1 and vim.api.nvim_win_get_cursor(winid) or { 1, 0 },
+					reopen = true
+				}
+			end
+		end
+	end
 	return copy
+end
+
+---The unnamed buffer that is already the No Name buffer saved as `filehash`, when there's one: a
+---reopened one carries the hash it came back from, and one never torn down still has its id.
+---@param filehash Filehash
+---@return Bufnr|nil
+local function noname_already_back(filehash)
+	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+		if vim.api.nvim_buf_get_name(bufnr) == "" then
+			local id = vim.b[bufnr].cavediver_noname
+			if
+				vim.b[bufnr].cavediver_reopened == filehash or
+				(id ~= nil and history.routines.get_filehash("NONAME_" .. id) == filehash)
+			then
+				return bufnr
+			end
+		end
+	end
+	return nil
+end
+
+---No Name buffers open at the save come back in the background: listed, hidden and modified,
+---under a fresh id, and every slot, note and history entry that named them follows. One that is
+---already back is taken as it is.
+---
+---@param noname_content table<Filehash, NoNameBufferContent> [No Name] content from session
+---@param cwd string The session's directory
+---@return nil
+local function reopen_noname_buffers(noname_content, cwd)
+	for filehash, content in pairs(noname_content) do
+		local filepath = history.get_filepath_from_hash(filehash)
+		if content.reopen and filepath then
+			local bufnr = noname_already_back(filehash)
+			if bufnr == nil then
+				bufnr = vim.api.nvim_create_buf(true, false)
+				vim.api.nvim_buf_set_lines(bufnr, 0, -1, false,
+					vim.tbl_map(function(line) return xor_decipher(line, cwd) end, content.lines))
+				vim.bo[bufnr].filetype = content.filetype
+				vim.b[bufnr].cavediver_reopened = filehash
+				-- the cursor goes back in the window that shows the buffer, once one does.
+				local cursor = content.cursor
+				vim.api.nvim_create_autocmd("BufWinEnter", {
+					buffer = bufnr,
+					once = true,
+					callback = function()
+						pcall(vim.api.nvim_win_set_cursor, 0, cursor)
+					end,
+				})
+			end
+			local new_filehash = history.register_buffer(bufnr)
+			if new_filehash ~= filehash then
+				window.data.rename_hash_in_triquetras(filehash, new_filehash)
+				history.routines.rename_hash_in_history(filehash, new_filehash)
+				history.routines.unregister_filepath(filepath)
+			end
+		end
+	end
 end
 
 ---Loads closed buffer history data.
@@ -691,8 +750,14 @@ function M.load_history(cwd, name)
 		if saved_data.closed then
 			load_closed_buffers(saved_data.closed, saved_data.noname_content or {}, cwd)
 		end
-		local window_histories = load_window_buffer_relationships(saved_data.windows)
+		local window_histories, matched = load_window_buffer_relationships(saved_data.windows)
 		history.routines.initialise_crux_internals({ window = window_histories, global = saved_data.buffers.global })
+		reopen_noname_buffers(saved_data.noname_content or {}, cwd)
+		-- the caches once every slot's buffer is back, the reopened No Name texts included
+		local set_cache_from_window_triquetra = require('cavediver').set_cache_from_window_triquetra
+		for _, winid in ipairs(matched) do
+			set_cache_from_window_triquetra(winid)
+		end
 		-- the notes come from the file, so a slot loaded under a buffer can leave its notes naming it.
 		for _, triquetra in pairs(window.data.crux) do
 			window.routines.check_notes_under_current(triquetra)
