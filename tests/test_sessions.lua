@@ -30,7 +30,9 @@ local function start(s, root)
 	Misc.start(child, { root = root or s.root, session_dir = s.session_dir })
 end
 
-T['T134 [today] save_session writes buffers, windows, closed, noname_content; windows[i] = [c, s, p[], t, dtm, dsm]'] = function()
+-- The window entry's slots are hashes, and the paths behind them are in the
+-- paths table, not in clear.
+T['T134 [char] save_session writes paths, outsiders, buffers, windows, closed, noname_content; windows[i] = [c, s, p[], t, dtm, dsm, shows, on, history]'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
@@ -42,7 +44,8 @@ T['T134 [today] save_session writes buffers, windows, closed, noname_content; wi
 		local keys = vim.tbl_keys(data)
 		table.sort(keys)
 		local w = data.windows[1]
-		local function hash(file) return H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/' .. file)) end
+		local function path(file) return _G.CDV_TEST.root .. '/' .. file end
+		local function hash(file) return H.get_hash_from_buffer(vim.fn.bufnr(path(file))) end
 		return {
 			keys = keys,
 			windows = #data.windows,
@@ -53,12 +56,17 @@ T['T134 [today] save_session writes buffers, windows, closed, noname_content; wi
 			t = w[4] == hash('c.txt'),
 			dtm = type(w[5]),
 			dsm = type(w[6]),
+			shows = w[7] == hash('d.txt'),
+			on = w[8],
+			history = type(w[9]),
+			path = type(data.paths[hash('d.txt')]) == 'string' and data.paths[hash('d.txt')] ~= path('d.txt'),
 		}
 	]])
 	eq(got, {
-		keys = { 'buffers', 'closed', 'noname_content', 'windows' },
-		windows = 1, fields = 6,
+		keys = { 'buffers', 'closed', 'noname_content', 'outsiders', 'paths', 'windows' },
+		windows = 1, fields = 9,
 		c = true, s = true, p = 'table', t = true, dtm = 'table', dsm = 'table',
+		shows = true, on = false, history = 'table', path = true,
 	})
 end
 
@@ -79,7 +87,7 @@ T['T135 [char] a round trip with every slot buffer restored and loaded gives bac
 	eq(child.notes(), notes)
 end
 
-T['T136 [target] primary_enabled = false survives a round trip'] = function()
+T['T136 [char] primary_enabled = false survives a round trip'] = function()
 	local s = shared()
 	start(s)
 	child.steps({ ':e a', ':e b', '<M-;><M-c>', '<M-;><M-x>' })
@@ -116,7 +124,7 @@ T['T138 [char] load_session from idle tears down and loads'] = function()
 		{ true, 'idle', '⦉b⦊ [c] ⟦-⟧' })
 end
 
-T['T139 [target] a slot whose buffer comes back unloaded keeps its value after load'] = function()
+T['T139 [char] a slot whose buffer comes back unloaded keeps its value after load'] = function()
 	local s = shared()
 	start(s)
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
@@ -165,7 +173,7 @@ end
 
 -- The first window has ⦉a⦊ [b]; the split (listed first) visits c, then a No
 -- Name buffer. A session manager brings back only the window showing b.
-T['T142 [target] two windows, one on a No Name buffer: after save and load each window gets its own entry'] = function()
+T['T142 [char] two windows, one on a No Name buffer: after save and load each window gets its own entry'] = function()
 	local s = shared()
 	start(s)
 	child.steps({ ':e a', ':e b', ':vsplit', ':e c', ':enew' })

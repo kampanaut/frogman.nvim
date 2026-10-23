@@ -208,26 +208,14 @@ local previous_window_constructed = nil
 
 ---Initialize the history crux and internal crux structures.
 ---
----@param crux_internals BufferCruxInternals
+---@param crux_internals BufferCruxInternals The global history, and each window's own history by window id
 ---@return nil
 function M.initialise_crux_internals(crux_internals)
-	local starting_windows = {}
-
 	data.crux_internals.window = {}
 
-	-- get valid windows
-	for _, winid in pairs(vim.api.nvim_list_wins()) do
-		local cbufnr = vim.api.nvim_win_get_buf(winid)
-		if
-			vim.bo[cbufnr].buftype == "" and (not vim.api.nvim_buf_get_name(cbufnr):match("://"))
-		then
-			table.insert(starting_windows, winid)
-		end
-	end
-
-	for index, window_crux_serialised in ipairs(crux_internals.window) do
-		local actual_winid = starting_windows[index]
-		data.crux_internals.window[actual_winid] = window_crux_serialised
+	-- each window's history was matched to it along with its triquetra
+	for winid, window_crux_serialised in pairs(crux_internals.window) do
+		data.crux_internals.window[winid] = window_crux_serialised
 	end
 	data.crux_internals.global = crux_internals.global
 	-- windows the file had no history for still get their entry, every triquetra comes with one.

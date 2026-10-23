@@ -783,7 +783,7 @@ end
 
 -- Saved: the split (listed first) ⦉c⦊ [d], the first window ⦉a⦊ [b]. The
 -- manager brings back one window, on b.
-T['T244 [target] (S2) a load into fewer windows matches by what they show and drops the unmatched entry, without an error'] = function()
+T['T244 [char] (S2) a load into fewer windows matches by what they show and drops the unmatched entry, without an error'] = function()
 	local s = shared()
 	start(s)
 	child.steps({ ':e a', ':e b' })

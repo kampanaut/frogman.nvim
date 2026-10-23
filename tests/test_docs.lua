@@ -178,7 +178,7 @@ T['D17 [target] navigation/data.lua says one jump table across all tabs'] = func
 	}, { true, false })
 end
 
-T['D18 [target] the saved window entry annotation has the six fields'] = function()
+T['D18 [char] the saved window entry annotation has the six fields'] = function()
 	local c = read('lua/cavediver/domains/storage/routines.lua')
 	local class = section(c, '---@class WindowTriquetraSerialised', '---\n')
 	eq({
