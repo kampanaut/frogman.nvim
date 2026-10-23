@@ -447,6 +447,20 @@ local function last_row(lines)
 	return last
 end
 
+-- N, the ring's length, is ledger.ring (A26, A27); set to 5 here, so ten actions overflow it.
+T['T199 [char] with no assertion, the recorder writes no file and opens no buffer, and the ring never holds more than N steps'] = function()
+	child.lua('require("cavediver").setup({ ledger = { ring = 5 } })')
+	child.steps({ ':e a', ':e b', ':e c', ':e d' })
+	local files_before, bufs_before = child.dumps(), bufs()
+	child.steps({ '<M-f>', '<M-f>', '<M-S-f>', ':e a', '<M-;><M-r>', '<M-f>', ':e b', '<M-S-f>', '<M-f>', ':e c' })
+	child.settle(200)
+	eq({
+		files = Extra.new_files(files_before, child.dumps()),
+		bufs = new_items(bufs_before, bufs()),
+		ring = child.lua('return #require("cavediver").ledger.steps()'),
+	}, { files = {}, bufs = {}, ring = 5 })
+end
+
 T['T200 [target] the restore assertion dumps the last steps to a file and a scratch buffer'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
 	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')

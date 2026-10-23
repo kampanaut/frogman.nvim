@@ -237,6 +237,32 @@ local function changed(pool)
 end
 M.pool_changed = changed
 
+---A list's name, as the closed lists and the trail show it: "editor", or its session's.
+---
+---@param pool Pool
+---@return string
+function M.list_name(pool)
+	return pool.id == "" and "editor" or (pool.name or vim.fn.fnamemodify(pool.directory or "", ":t"))
+end
+
+---The names of some lists, the tab's own first, and the others' apart.
+---
+---@param pools table<Pool, boolean>
+---@return string[] names
+---@return string[] others the lists other than the tab's
+local function named_lists(pools)
+	local here = M.current_pool()
+	local others = {}
+	for pool, _ in pairs(pools) do
+		if pool ~= here then
+			table.insert(others, M.list_name(pool))
+		end
+	end
+	table.sort(others)
+	local names = vim.list_extend(pools[here] and { M.list_name(here) } or {}, others)
+	return names, others
+end
+
 ---The id of a tab session's pool.
 ---@param name string|nil
 ---@param directory string
@@ -345,9 +371,12 @@ end
 
 ---Close a file into its pools: the pool of the tab it's closed in, every pool it came out of when it
 ---was opened again, and the pool of every tab whose windows show it or have it in their history.
+---The trail gets the close, and a close onto lists other than the tab's is said too.
 ---
 ---@param filehash Filehash
-function M.close_into_pools(filehash)
+---@param quiet boolean|nil The caller records the close itself
+---@return table<Pool, boolean> pools the pools it went on
+function M.close_into_pools(filehash, quiet)
 	local time = close_time()
 	local targets = { [M.current_pool()] = true }
 	for id, _ in pairs(data.came_from[filehash] or {}) do
@@ -362,6 +391,16 @@ function M.close_into_pools(filehash)
 	for pool, _ in pairs(targets) do
 		push_closed(pool, filehash, time)
 	end
+	if not quiet then
+		local ledger = require('cavediver.domains.ledger')
+		local name = ledger.name_of(filehash) or filehash
+		local lists, others = named_lists(targets)
+		ledger.move("closed", { subject = filehash, name = name, lists = lists, dim = #others == 0 })
+		if #others > 0 then
+			ledger.tell("closed", name, others)
+		end
+	end
+	return targets
 end
 
 ---A file open again is closed nowhere: it leaves every pool, and the pools it left are remembered for
@@ -369,6 +408,7 @@ end
 ---
 ---@param filehash Filehash
 function M.open_out_of_pools(filehash)
+	local left = {}
 	for id, pool in pairs(M.pools()) do
 		for i = #pool.closed, 1, -1 do
 			if pool.closed[i] == filehash then
@@ -377,7 +417,18 @@ function M.open_out_of_pools(filehash)
 				changed(pool)
 				data.came_from[filehash] = data.came_from[filehash] or {}
 				data.came_from[filehash][id] = true
+				left[pool] = true
 			end
+		end
+	end
+	-- the trail gets the reopen, and one off lists other than the tab's is said too
+	if next(left) then
+		local ledger = require('cavediver.domains.ledger')
+		local name = ledger.name_of(filehash) or filehash
+		local lists, others = named_lists(left)
+		ledger.move("reopened", { subject = filehash, name = name, lists = lists, dim = #others == 0 })
+		if #others > 0 then
+			ledger.tell("reopened", name, others)
 		end
 	end
 end
@@ -1204,7 +1255,20 @@ end
 function M.reopen_last_closed()
 	local closed = M.current_pool().closed -- the pool of the tab you're in
 	if #closed == 0 then
-		vim.notify("No closed buffers to reopen.", vim.log.levels.WARN)
+		-- the other lists may hold some, in memory or in the whole editor's file alone: say where they are
+		local files = require('cavediver.domains.storage').routines.file_only_closed()
+		for _, pool in pairs(M.pools()) do
+			for _, filehash in ipairs(pool.closed) do
+				files[filehash] = true
+			end
+		end
+		local elsewhere = vim.tbl_count(files)
+		if elsewhere > 0 then
+			vim.notify("This tab's closed list is empty; the other lists hold " .. elsewhere .. " closed file" ..
+				(elsewhere == 1 and "" or "s") .. ". :CavediverClosed shows them.", vim.log.levels.WARN)
+		else
+			vim.notify("No closed buffers to reopen.", vim.log.levels.WARN)
+		end
 		return nil
 	end
 
@@ -1456,21 +1520,35 @@ function M.cleanup_system(on_tick)
 		-- the same file can be open as another buffer (e.g. reloaded without events), then we
 		-- track that one instead of forgetting the file.
 		local live_bufnr = find_buffer_by_filepath(filepath)
+		local ledger = require('cavediver.domains.ledger')
 		if live_bufnr then
 			data.hash_buffer_registry.hashes[bufnr] = nil
 			data.hash_buffer_registry.buffers[filehash] = live_bufnr
 			data.hash_buffer_registry.hashes[live_bufnr] = filehash
+			ledger.move("repair", { subject = filehash, name = ledger.name_of(filehash),
+				words = "its buffer was replaced without an event; the new one is tracked" })
 			goto continue
 		end
 		-- a file whose buffer went without events is closed like any other: slots keep it and reopen it.
 		if filepath and not filepath:match("^NONAME_") then
+			local holding = {}
 			if not M.is_filehash_closed(filehash) then
-				M.close_into_pools(filehash)
+				holding = M.close_into_pools(filehash, true)
+			else
+				for _, pool in pairs(M.pools()) do
+					if vim.tbl_contains(pool.closed, filehash) then
+						holding[pool] = true
+					end
+				end
 			end
+			ledger.move("repair", { subject = filehash, name = ledger.name_of(filehash), lists = named_lists(holding),
+				words = "its buffer vanished without an event; kept on the closed lists" })
 			-- closed, it's still known, so its history stays: only its buffer is forgotten
 			data.hash_buffer_registry.hashes[bufnr] = nil
 			data.hash_buffer_registry.buffers[filehash] = nil
 		else
+			ledger.move("repair", { subject = filehash, name = ledger.name_of(filehash),
+				words = "its buffer vanished without an event, and its text with it" })
 			detach_filehash_from_crux(filepath, filehash)
 		end
 		table.insert(report.stale_hashes, filehash)
@@ -1489,6 +1567,12 @@ function M.cleanup_system(on_tick)
 			end
 
 			table.insert(report.invalid_closed_hashes, filehash)
+			require('cavediver.domains.ledger').move("repair", {
+				subject = filehash, name = require('cavediver.domains.ledger').name_of(filehash) or filehash,
+				lists = { M.list_name(pool) },
+				words = filepath and "open again without a visit cavediver saw; taken off its list"
+					or "nothing names it; taken off its list",
+			})
 			table.remove(pool.closed, i)
 			pool.times[filehash] = nil
 			changed(pool)
@@ -1509,6 +1593,10 @@ function M.cleanup_system(on_tick)
 			table.insert(report.orphaned_hashes, filehash)
 			report.orphaned_paths[filehash] = data.hash_filepath_registry.filepaths[filehash] -- before it goes
 			report.orphaned_history = report.orphaned_history + 1
+			require('cavediver.domains.ledger').move("forgotten", {
+				subject = filehash, name = require('cavediver.domains.ledger').name_of(filehash) or filehash,
+				words = "nothing holds it any more",
+			})
 		end
 	end
 	M.follow_along(known)

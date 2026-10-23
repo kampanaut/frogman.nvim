@@ -1601,6 +1601,35 @@ function M.file_only_lists()
 	return lists
 end
 
+---The closed files on the lists the whole editor's file holds alone, by hash. Nothing else is read.
+---
+---@return table<Filehash, boolean>
+function M.file_only_closed()
+	local closed = {}
+	local session = whole_editor_session()
+	if session == nil then
+		return closed
+	end
+	local saved = read_session_file(get_session_filepath(session.directory, session.name), session.directory)
+	if not saved or not saved.detached then
+		return closed
+	end
+	local in_memory = {}
+	for _, pool in pairs(history.data.pools) do
+		if pool.detached then
+			in_memory[pool.name] = true
+		end
+	end
+	for _, list in ipairs(saved.detached) do
+		if not in_memory[list.label] then
+			for _, filehash in ipairs(list.closed or {}) do
+				closed[filehash] = true
+			end
+		end
+	end
+	return closed
+end
+
 ---An entry moved out of a list in the file alone onto a list in memory: its path is registered, and a
 ---No Name text's file is held unread, as a load holds a closed one's.
 ---@param filehash Filehash

@@ -42,6 +42,42 @@
 ---@class CavediverFormatters
 ---@field closed_entry fun(entry: CavediverClosedEntry, glyphs: table): table[]|nil The virtual text after an entry, as {text, highlight} chunks
 
+---The ledger's records, which the ring and the trail read. Kept stable: formatters read them.
+
+---A window's slots at one moment. Files are hashes; the step that holds the row names them.
+---@class CavediverLedgerRow
+---@field c Filehash|nil The current slot
+---@field s Filehash|nil The secondary slot
+---@field t Filehash|nil The ternary slot
+---@field p Filehash[] The primary queue
+---@field on boolean Whether the primary is switched on
+---@field dtm table<string, Filehash> The ternary notes, `-swap` keys included
+---@field dsm table<string, Filehash> The secondary notes, `-swap` keys included
+
+---What set things off, and what cavediver did then.
+---@class CavediverLedgerStep
+---@field seq integer Its number, one more than the step before
+---@field time number When it began, in seconds
+---@field cause "keymap"|"command"|"event"|"timer"|"load"|"save"|"restart"|"label"
+---@field trigger string What set it off, as written: `<M-f>`, `:bdelete c.txt`, `BufDelete c.txt`, `cleanup`
+---@field win integer|nil The window it's about
+---@field tab integer|nil That window's tab
+---@field row_before CavediverLedgerRow|nil The window's row as the step began
+---@field row_after CavediverLedgerRow|nil The window's row as the step closed
+---@field names table<Filehash, string> The name of every file in its rows and moves, as they were then
+---@field events string[] The events it set off, `BufEnter b.txt`, listed under it
+---@field moves CavediverLedgerMove[] What cavediver did in it
+---@field torn boolean|nil A whole-editor load replaced what it did: the session manager's teardown
+
+---Something cavediver did in a step.
+---@class CavediverLedgerMove
+---@field kind string What it was: closed, reopened, forgotten, repair, …
+---@field subject Filehash|string|nil What it's about: a file's hash, a list, a window
+---@field name string|nil The subject as shown
+---@field words string|nil What happened, in words
+---@field lists string[]|nil The lists it names, the tab's own first
+---@field dim boolean|nil Bookkeeping: what the key's own result left, shown dim
+
 
 ---Default configuration
 ---@class CavediverConfig
@@ -182,6 +218,10 @@ local defaults = {
 			previous_section = "H",
 			next_section = "L",
 		},
+	},
+	-- the ledger: `ring`, how many of the last steps are kept in memory
+	ledger = {
+		ring = 1000,
 	},
 	-- label_provider: where you are, for tagging files that go missing: nil reads .git/HEAD, a
 	-- function returning a string gives the label, false turns labels off (the tag is then the time).

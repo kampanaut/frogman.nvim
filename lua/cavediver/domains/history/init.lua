@@ -52,40 +52,8 @@ function M.init_cleanup_timer()
 	cleanup_timer = vim.loop:new_timer()
 	if cleanup_timer then
 		cleanup_timer:start(0, configs.cleanup_interval, vim.schedule_wrap(function()
-			local report = routines.cleanup_system(true)
-
-			-- Only notify about significant cleanup
-			local total_cleaned = report.orphaned_history + report.invalid_closed_buffers + report.stale_hash_entries
-			if total_cleaned > 0 then
-				local output = { "CAVEDIVER CLEANUP REPORT:" }
-				table.insert(output, string.format("  Total cleaned: %d", total_cleaned))
-				
-				if #report.orphaned_hashes > 0 then
-					table.insert(output, "  Orphaned files:")
-					for _, hash in ipairs(report.orphaned_hashes) do
-						local path = report.orphaned_paths[hash] or data.hash_filepath_registry.filepaths[hash] or hash
-						table.insert(output, "    - " .. path)
-					end
-				end
-				
-				if #report.invalid_closed_hashes > 0 then
-					table.insert(output, "  Invalid closed files:")
-					for _, hash in ipairs(report.invalid_closed_hashes) do
-						local path = data.hash_filepath_registry.filepaths[hash] or hash
-						table.insert(output, "    - " .. path)
-					end
-				end
-				
-				if #report.stale_hashes > 0 then
-					table.insert(output, "  Stale files:")
-					for _, hash in ipairs(report.stale_hashes) do
-						local path = data.hash_filepath_registry.filepaths[hash] or hash
-						table.insert(output, "    - " .. path)
-					end
-				end
-				
-				vim.notify(table.concat(output, "\n"), vim.log.levels.INFO)
-			end
+			-- each repair goes into the trail, as a move of the tick's own step, and nothing is said
+			require('cavediver.domains.ledger').within("timer", "cleanup", routines.cleanup_system, true)
 		end))
 	end
 end
