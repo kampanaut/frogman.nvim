@@ -40,8 +40,19 @@
 ---@field tag string|nil Where the file went missing, when it's gone from disk
 ---@field list string The list's name
 
+---What the trail's header is drawn from, as its formatter gets it.
+---@class CavediverTrailHeader
+---@field day string|nil The day shown, `YYYY-MM-DD`
+---@field date string The day as the header writes it
+---@field depth integer How many calendar days before today
+---@field moves integer The day's moves
+---@field kinds table<string, integer> The day's moves by kind
+
 ---@class CavediverFormatters
 ---@field closed_entry fun(entry: CavediverClosedEntry, glyphs: table): table[]|nil The virtual text after an entry, as {text, highlight} chunks
+---@field trail_step fun(step: CavediverLedgerStep, glyphs: table): table[]|nil A step's line in the trail, as {text, highlight} chunks
+---@field trail_move fun(move: CavediverLedgerMove, glyphs: table, step: CavediverLedgerStep): table[]|nil A move's line in the trail
+---@field trail_header fun(header: CavediverTrailHeader, glyphs: table): table[]|nil The trail's header line
 
 ---The ledger's records, which the ring and the trail read. Kept stable: formatters read them.
 
@@ -81,6 +92,7 @@
 ---@field words string|nil What happened, in words
 ---@field lists string[]|nil The lists it names, the tab's own first
 ---@field dim boolean|nil Bookkeeping: what the key's own result left, shown dim
+---@field state "open"|"closed"|nil Where it left its file, when that isn't its kind's: a repair's
 
 
 ---Default configuration
@@ -109,7 +121,7 @@ local defaults = {
 	glyphs = {
 		set = "unicode", -- "unicode" | "ascii"; a glyph named here (list, closed, tag) replaces the set's
 	},
-	formatters = {}, -- closed_entry: a function of the entry and the glyphs, giving the text after it
+	formatters = {}, -- closed_entry, trail_step, trail_move, trail_header: each gives {text, highlight} chunks, or nil for cavediver's own
 	colors = {
 		base = {
 			focused = {
@@ -200,6 +212,10 @@ local defaults = {
 			row_t = "#9F9D96", -- base-400
 			row_c = "#879A39", -- green-400
 			row_s = "#DA702C", -- orange-400
+			-- a search's life line: the name open, closed, gone from disk
+			life_open = "#879A39", -- green-400
+			life_closed = "#DA702C", -- orange-400
+			life_gone = "#D14D41", -- red-400
 		},
 		cokeline = {
 			is_picking_close = "#D14D41", -- red-400
@@ -259,6 +275,8 @@ local defaults = {
 			fold = "za",
 			previous_section = "H",
 			next_section = "L",
+			search = "s", -- the trail's: search every page for a name
+			search_word = "*", -- the trail's: search for the name under the cursor
 		},
 	},
 	-- the ledger: `ring`, how many of the last steps are kept in memory

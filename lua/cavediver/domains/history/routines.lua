@@ -1562,7 +1562,7 @@ function M.cleanup_system(on_tick)
 				end
 			end
 			ledger.move("repair", { subject = filehash, name = ledger.name_of(filehash), lists = named_lists(holding),
-				words = "its buffer vanished without an event; kept on the closed lists" })
+				state = "closed", words = "its buffer vanished without an event; kept on the closed lists" })
 			-- closed, it's still known, so its history stays: only its buffer is forgotten
 			data.hash_buffer_registry.hashes[bufnr] = nil
 			data.hash_buffer_registry.buffers[filehash] = nil
@@ -1590,6 +1590,7 @@ function M.cleanup_system(on_tick)
 			require('cavediver.domains.ledger').move("repair", {
 				subject = filehash, name = require('cavediver.domains.ledger').name_of(filehash) or filehash,
 				lists = { M.list_name(pool) },
+				state = filepath and "open" or nil,
 				words = filepath and "open again without a visit cavediver saw; taken off its list"
 					or "nothing names it; taken off its list",
 			})

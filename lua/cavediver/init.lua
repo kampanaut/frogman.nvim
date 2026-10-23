@@ -186,9 +186,9 @@ function M.setup(user_config)
 	vim.api.nvim_create_user_command("CavediverClosed", function()
 		M.open_closed_lists()
 	end, { desc = "Open the closed lists" })
-	vim.api.nvim_create_user_command("CavediverTrail", function()
-		M.open_trail()
-	end, { desc = "Open the trail" })
+	vim.api.nvim_create_user_command("CavediverTrail", function(opts)
+		M.open_trail(opts.args)
+	end, { nargs = "?", desc = "Open the trail, or with a name, that name's life line across every page" })
 
 	-- Setup keymaps
 	setup_keymaps(settings.keymaps)
@@ -467,8 +467,8 @@ M.cycle_select = navigation.select_buffer
 
 M.open_primary_buffer_history = ui.routines.show_primary_buffer_history
 M.open_closed_lists = ui.routines.show_closed_lists
-M.open_trail = function()
-	require('cavediver.domains.ui.trail').open()
+M.open_trail = function(name)
+	require('cavediver.domains.ui.trail').open(name)
 end
 
 -- Primary buffer management (to be implemented in window domain)
