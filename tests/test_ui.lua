@@ -164,7 +164,9 @@ T['T169 [target] the mapped keys have their own descriptions (D3)'] = function()
 		local keymaps = require('cavediver.configs').keymaps
 		local desc = {}
 		for action, lhs in pairs(keymaps) do
-			desc[action] = vim.fn.maparg(lhs, 'n', false, true).desc
+			if type(lhs) == 'string' then -- keymaps.views holds the keys inside cavediver's views, mapped per buffer
+				desc[action] = vim.fn.maparg(lhs, 'n', false, true).desc
+			end
 		end
 		local seen, shared = {}, {}
 		for action, d in pairs(desc) do

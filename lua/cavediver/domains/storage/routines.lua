@@ -253,14 +253,17 @@ end
 ---@param tabpage integer|nil The tab whose windows are matched, for a tab session; every window otherwise
 ---@return table<WinId, table<Filehash, number>> window_histories Each matched window's own access history
 ---@return WinId[] matched The windows that took an entry
+---@return table<integer, WinId> taken The window each saved entry went to, by the entry's index
 local function load_window_buffer_relationships(window_buffer, tabpage)
 	local window_histories = {}
 	local matched = {}
+	local taken, index_of = {}, {}
 
 	-- the entries for each thing a window showed, in saved order
 	local unmatched = {}
-	for _, triquetra_serialised in ipairs(window_buffer) do
+	for i, triquetra_serialised in ipairs(window_buffer) do
 		local shows = triquetra_serialised[7]
+		index_of[triquetra_serialised] = i
 		if shows ~= nil and shows ~= vim.NIL then
 			unmatched[shows] = unmatched[shows] or {}
 			table.insert(unmatched[shows], triquetra_serialised)
@@ -357,9 +360,10 @@ local function load_window_buffer_relationships(window_buffer, tabpage)
 			close_if_not_restored(filehash)
 		end
 		table.insert(matched, actual_winid)
+		taken[index_of[triquetra_serialised]] = actual_winid
 		::continue::
 	end
-	return window_histories, matched
+	return window_histories, matched, taken
 end
 
 ---Populate fresh buffer history from currently open buffers.
@@ -393,10 +397,12 @@ end
 ---holding hashes, and what the window shows so the load can find it.
 ---
 ---@return WindowBufferData compressed Serializable window relationship data
+---@return WinId[] entry_wins The window each entry came from
 ---@param outsiders table<Filehash, string> Filled with the untracked buffers the windows show
 ---@param tabpage integer|nil Only this tab's windows, for a tab session
 local function serialise_window_relationships(outsiders, tabpage)
 	local compressed = {}
+	local entry_wins = {} -- the window each entry was written from
 
 	local function get_keys(tbl)
 		local keys = {}
@@ -503,10 +509,11 @@ local function serialise_window_relationships(outsiders, tabpage)
 				[8] = triquetra.primary_enabled == true,
 				[9] = history.data.crux_internals.window[winid] or {}
 			}
+			entry_wins[compressed_index] = winid
 			compressed_index = compressed_index + 1
 		end
 	end
-	return compressed
+	return compressed, entry_wins
 end
 
 ---Serialize the paths every saved hash points at.
@@ -599,7 +606,8 @@ local function serialise_noname_content(owner)
 			return false
 		end
 		for tabpage, _ in pairs(visited) do
-			if history.routines.pool_of_tab(tabpage).id ~= "" then
+			local pool = history.routines.pool_of_tab(tabpage)
+			if pool.id ~= "" and not pool.detached then
 				return false -- a tab session's text
 			end
 		end
@@ -915,6 +923,162 @@ function M.session_exists(directory, name)
 	return vim.uv.fs_stat(get_session_filepath(directory, name)) ~= nil
 end
 
+-- Detached lists ----------------------------------------------------------------------------------
+--
+-- A tab session is in one tab at a time: the tab the last load or save named. A tab it was in keeps a
+-- detached list of its own, a copy of the session's list, named after the session (`t_DETACHED`,
+-- `t_DETACHED_2`, …). It belongs to the whole editor's session: it's written into the whole editor's
+-- file, apart from its closed list, and found again at a whole-editor load through its tab's windows;
+-- once its tab is gone, it's in that file alone.
+
+---The detached lists the whole editor's file holds, when there's a whole-editor session with a file.
+---@return table[] lists
+local function file_detached_lists()
+	local session = data.unnamed or data.editor_session
+	if session == nil then
+		return {}
+	end
+	local saved = read_session_file(get_session_filepath(session.directory, session.name), session.directory)
+	return saved and saved.detached or {}
+end
+
+---A new detached pool, in no tab yet.
+---@param label string
+---@param of string|nil The id of the session's pool it came from
+---@return Pool
+local function new_detached_pool(label, of)
+	local pool = { id = "\0detached\n" .. label, name = label, detached = true, of = of, closed = {}, times = {}, visits = {}, tabs = {} }
+	history.data.pools[pool.id] = pool
+	return pool
+end
+
+---A tab joins a detached pool, leaving the pool it was in.
+---@param tabpage integer
+---@param pool Pool
+---@return nil
+local function join_detached(tabpage, pool)
+	local previous = history.data.tab_pools[tabpage]
+	if previous and history.data.pools[previous] then
+		history.data.pools[previous].tabs[tabpage] = nil
+	end
+	history.data.tab_pools[tabpage] = pool.id
+	pool.tabs[tabpage] = true
+end
+
+---The next free name for a detached list of a session: `t_DETACHED`, then `t_DETACHED_2`, and so on,
+---counting the names in memory and in the whole editor's file.
+---@param pool Pool The session's pool
+---@return string
+local function detached_label(pool)
+	local base = (pool.name or vim.fn.fnamemodify(pool.directory or "", ":t")) .. "_DETACHED"
+	local taken = {}
+	for _, other in pairs(history.data.pools) do
+		if other.detached then
+			taken[other.name] = true
+		end
+	end
+	for _, list in ipairs(file_detached_lists()) do
+		taken[list.label] = true
+	end
+	local label, n = base, 1
+	while taken[label] do
+		n = n + 1
+		label = base .. "_" .. n
+	end
+	return label
+end
+
+---A session is in one tab at a time: every other tab in its pool leaves it for a detached list of its
+---own, a copy of the session's list and visits.
+---@param pool Pool The session's pool
+---@param tabpage integer The tab the session is in now
+---@return nil
+local function push_out(pool, tabpage)
+	for other, _ in pairs(vim.deepcopy(pool.tabs)) do
+		if other ~= tabpage and vim.api.nvim_tabpage_is_valid(other) then
+			local detached = new_detached_pool(detached_label(pool), pool.id)
+			detached.closed, detached.times, detached.visits = vim.deepcopy(pool.closed), vim.deepcopy(pool.times), vim.deepcopy(pool.visits)
+			join_detached(other, detached)
+			history.routines.pool_changed(detached)
+		end
+	end
+end
+
+---The detached lists as the whole editor's file holds them: each detached pool in memory, with the
+---window entries of its tab when a save gives them (`windows_of`), or else the file's own, which a
+---records write leaves as the manager last saved them; then each list the file holds and memory
+---doesn't, as it is, but with no windows at a save, since a save writes the windows anew.
+---@param old table|nil The file's data
+---@param windows_of (fun(pool: Pool): integer[])|nil
+---@return table[] lists
+---@return table<string, boolean> live The names of the lists in memory
+local function detached_lists(old, windows_of)
+	local lists, live, old_windows, pools = {}, {}, {}, {}
+	for _, list in ipairs(old and old.detached or {}) do
+		old_windows[list.label] = list.windows
+	end
+	for _, pool in pairs(history.data.pools) do
+		if pool.detached then
+			table.insert(pools, pool)
+		end
+	end
+	table.sort(pools, function(a, b) return a.id < b.id end)
+	for _, pool in ipairs(pools) do
+		live[pool.name] = true
+		local closed, times = serialise_closed_buffers({ pool })
+		table.insert(lists, {
+			label = pool.name, of = pool.of, closed = closed, closed_times = times,
+			windows = windows_of and windows_of(pool) or old_windows[pool.name] or {},
+		})
+	end
+	for _, list in ipairs(old and old.detached or {}) do
+		if not live[list.label] then
+			if windows_of then
+				list.windows = {}
+			end
+			table.insert(lists, list)
+		end
+	end
+	return lists, live
+end
+
+---The texts of the detached lists in memory, added to the texts a whole-editor write takes; and, for
+---the lists in the file alone, their texts' files by reference and their entries' paths, carried from
+---the file, so the sweep keeps them and nothing forgets where they point.
+---@param lists table[]
+---@param live table<string, boolean>
+---@param old table|nil The file's data
+---@param texts table<Filehash, table>
+---@param paths table<Filehash, string>
+---@param key string
+---@param scratch_dir string
+---@return nil
+local function carry_detached(lists, live, old, texts, paths, key, scratch_dir)
+	for _, pool in pairs(history.data.pools) do
+		if pool.detached then
+			for _, filehash in ipairs(pool.closed) do
+				if texts[filehash] == nil and history.data.noname_content[filehash] and is_known(filehash) then
+					texts[filehash] = history.data.noname_content[filehash]
+				end
+			end
+		end
+	end
+	for _, list in ipairs(lists) do
+		if not live[list.label] then
+			for _, filehash in ipairs(list.closed or {}) do
+				local entry = old and old.noname_content and old.noname_content[filehash]
+				if entry and texts[filehash] == nil then
+					local source = scratch_dir .. entry.scratch
+					texts[filehash] = { scratch = entry.scratch, source = source, key = key, read = scratch_reader(source, key, filehash) }
+				end
+				if paths[filehash] == nil and old and old.paths and old.paths[filehash] then
+					paths[filehash] = old.paths[filehash]
+				end
+			end
+		end
+	end
+end
+
 ---A tab joins a session's pool for a load. The session it was in until then is closed in that tab, its
 ---windows' triquetras dropped already: once no tab is left in it, its records are written and its pool
 ---goes, as when its last tab closes.
@@ -927,7 +1091,7 @@ local function join_for_load(tabpage, name, directory)
 	local before = history.routines.pool_of_tab(tabpage)
 	local pool = history.routines.join_pool(tabpage, name, directory)
 	if before ~= pool and before.id ~= "" and next(before.tabs) == nil then
-		M.close_tab_pool(before)
+		M.close_tab_pool(before) -- a detached list goes into the whole editor's file instead
 	end
 	return pool
 end
@@ -949,6 +1113,7 @@ local function start_tab_fresh(directory, name, tabpage)
 		data.unnamed = vim.deepcopy(data.editor_session) -- the whole editor's session, as tab sessions start
 	end
 	load_pool = join_for_load(tabpage, name, directory)
+	push_out(load_pool, tabpage)
 	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
 		local bufnr = vim.api.nvim_win_get_buf(winid)
 		if vim.api.nvim_win_get_config(winid).relative == "" and history.routines.is_trackable(bufnr) then
@@ -983,6 +1148,7 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 	-- a session already open in a tab, or whose list was kept: what's in memory is newer than the file
 	local open = history.data.pools[history.routines.pool_id(name, directory)] ~= nil
 	load_pool = join_for_load(tabpage, name, directory)
+	push_out(load_pool, tabpage)
 	local scratch_dir = file_path .. ".d/"
 	load_buffer_history({ global = {} }, load_paths(saved_data.paths, saved_data.outsiders))
 	if not open then
@@ -1075,8 +1241,25 @@ function M.load_history(cwd, name)
 		if saved_data.closed then
 			load_closed_buffers(saved_data.closed, saved_data.noname_content or {}, key, scratch_dir, saved_data.closed_times)
 		end
-		local window_histories, matched = load_window_buffer_relationships(saved_data.windows)
+		local window_histories, matched, taken = load_window_buffer_relationships(saved_data.windows)
 		history.routines.initialise_crux_internals({ window = window_histories, global = saved_data.buffers.global })
+		-- each detached list whose tab came back, found through its windows, joins that tab; the
+		-- rest stay in the file alone
+		for _, list in ipairs(saved_data.detached or {}) do
+			local tabpage
+			for _, i in ipairs(list.windows or {}) do
+				if taken[i] and vim.api.nvim_win_is_valid(taken[i]) then
+					tabpage = vim.api.nvim_win_get_tabpage(taken[i])
+					break
+				end
+			end
+			if tabpage and history.data.tab_pools[tabpage] == nil then
+				load_pool = new_detached_pool(list.label, list.of)
+				join_detached(tabpage, load_pool)
+				load_closed_buffers(list.closed or {}, saved_data.noname_content or {}, key, scratch_dir, list.closed_times, true)
+			end
+		end
+		load_pool = history.routines.pools()[""]
 		reopen_noname_buffers(saved_data.noname_content or {}, key, scratch_dir)
 		for filehash, tag in pairs(saved_data.missing or {}) do
 			history.data.missing[filehash] = tag
@@ -1159,10 +1342,14 @@ end
 ---@param kept table<string, boolean> The text files the main file references
 ---@return nil
 local function commit_session(file_path, key, salt, storage, kept)
-	storage.closed = vim.tbl_filter(function(filehash)
+	local function with_text(filehash)
 		local filepath = storage.paths[filehash]
 		return storage.noname_content[filehash] ~= nil or not (filepath and filepath:match("^NONAME_"))
-	end, storage.closed or {})
+	end
+	storage.closed = vim.tbl_filter(with_text, storage.closed or {})
+	for _, list in ipairs(storage.detached or {}) do
+		list.closed = vim.tbl_filter(with_text, list.closed or {})
+	end
 	write_atomic(file_path, HEADER .. salt .. crypto.seal(key, vim.json.encode(storage), HEADER .. salt))
 
 	local scratch_dir = file_path .. ".d/"
@@ -1186,7 +1373,7 @@ end
 local function every_pool()
 	local pools = {}
 	for id, pool in pairs(history.routines.pools()) do
-		if id ~= "" then
+		if id ~= "" and not pool.detached then -- detached lists are written apart
 			table.insert(pools, pool)
 		end
 	end
@@ -1271,9 +1458,21 @@ local function write_records(session)
 	local ok, err = pcall(function()
 		local salt = bytes:sub(#HEADER + 1, #HEADER + crypto.salt_length)
 		saved.closed, saved.closed_times = serialise_closed_buffers(session.pools)
-		local noname_content, kept = write_noname_texts(serialise_noname_content(session.owner), key, file_path .. ".d/")
-		saved.noname_content = noname_content
 		saved.paths = saved.paths or {}
+		local texts = serialise_noname_content(session.owner)
+		if session.scope == "editor" then
+			-- the detached lists ride with the whole editor's records
+			local lists, live = detached_lists(saved, nil)
+			carry_detached(lists, live, saved, texts, saved.paths, key, file_path .. ".d/")
+			saved.detached = #lists > 0 and lists or nil
+			for _, list in ipairs(lists) do
+				for _, filehash in ipairs(list.closed or {}) do
+					saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
+				end
+			end
+		end
+		local noname_content, kept = write_noname_texts(texts, key, file_path .. ".d/")
+		saved.noname_content = noname_content
 		for _, filehash in ipairs(saved.closed) do
 			saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
 		end
@@ -1308,7 +1507,7 @@ local function refresh_unnamed()
 	local editor = history.routines.pools()[""]
 	local ok, problem = write_records({
 		name = unnamed.name, directory = unnamed.directory, pools = { editor }, owner = editor, scope = "editor",
-	})
+	}) -- its detached lists ride with it
 	if not ok and problem ~= "missing" then
 		vim.notify("cavediver: the whole editor's session file wasn't refreshed with its closed files and No Name texts, since " .. problem, vim.log.levels.WARN)
 	end
@@ -1322,18 +1521,25 @@ end
 -- tab closed, waiting for the next tick (pool id → pool)
 local dirty, writing, generation, quiet, told, closing = {}, false, 0, nil, {}, {}
 
----Every session cavediver knows: the whole editor's and each tab session's. The whole editor's covers
----every tab, so every pool, until tab sessions start after its last save or load; from then on it's the
----unnamed session, covering the tabs in no tab session, so the editor's pool.
+---The whole editor's session, when there's one. It covers every tab, so every pool, until tab sessions
+---start after its last save or load; from then on it's the unnamed session, covering the tabs in no tab
+---session, so the editor's pool. Either way the detached lists ride with it.
+---@return table|nil
+local function whole_editor_session()
+	local editor_pool = history.routines.pools()[""]
+	if data.unnamed then
+		return { id = "", name = data.unnamed.name, directory = data.unnamed.directory, pools = { editor_pool }, owner = editor_pool, scope = "editor" }
+	elseif data.editor_session then
+		return { id = "", name = data.editor_session.name, directory = data.editor_session.directory, pools = every_pool(), scope = "editor" }
+	end
+	return nil
+end
+
+---Every session cavediver knows: the whole editor's and each tab session's.
 ---@return {id: string, name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, tabs: table|nil, scope: string}[]
 local function known_sessions()
 	local sessions = {}
-	local editor_pool = history.routines.pools()[""]
-	if data.unnamed then
-		table.insert(sessions, { id = "", name = data.unnamed.name, directory = data.unnamed.directory, pools = { editor_pool }, owner = editor_pool, scope = "editor" })
-	elseif data.editor_session then
-		table.insert(sessions, { id = "", name = data.editor_session.name, directory = data.editor_session.directory, pools = every_pool(), scope = "editor" })
-	end
+	table.insert(sessions, whole_editor_session())
 	for id, pool in pairs(history.routines.pools()) do
 		if id ~= "" and pool.directory then
 			table.insert(sessions, { id = id, name = pool.name, directory = pool.directory, pools = { pool }, owner = pool, tabs = pool.tabs, scope = "tab" })
@@ -1403,6 +1609,21 @@ local function close_now(pool)
 	if history.data.pools[pool.id] ~= pool or next(pool.tabs) ~= nil then
 		return
 	end
+	if pool.detached then
+		-- a detached list goes into the whole editor's file, and leaves memory
+		local session = whole_editor_session()
+		local ok, problem = false, "missing"
+		if session then
+			ok, problem = write_records(session)
+		end
+		if ok then
+			history.data.pools[pool.id] = nil
+			return
+		end
+		vim.notify("cavediver: " .. pool.name .. "'s tab is gone, and its closed files couldn't be written into the whole editor's session file (" ..
+			(problem == "missing" and "it has no session file yet" or problem) .. "); they stay, with no tab, in :CavediverClosed.", vim.log.levels.WARN)
+		return
+	end
 	local ok, problem = write_records({ name = pool.name, directory = pool.directory, pools = { pool }, owner = pool, scope = "tab" })
 	if ok then
 		dirty[pool.id] = nil
@@ -1442,6 +1663,10 @@ end
 function M.records_changed(id)
 	if not writing then
 		return
+	end
+	local pool = history.data.pools[id]
+	if pool and pool.detached then
+		id = "" -- a detached list's records are the whole editor's
 	end
 	dirty[id] = true
 	if quiet and quiet:is_active() then
@@ -1538,6 +1763,7 @@ function M.save_history(cwd, name, tab)
 		if data.unnamed == nil and data.editor_session then
 			data.unnamed = vim.deepcopy(data.editor_session) -- the whole editor's session, as tab sessions start
 		end
+		push_out(pool, tab)
 		if pool ~= before then
 			-- saved under a session it wasn't in: what the tab holds goes under that name, the closed
 			-- files its slots hold included; the list it leaves keeps its copy
@@ -1559,12 +1785,31 @@ function M.save_history(cwd, name, tab)
 	end
 
 	local outsiders = {}
-	local windows = serialise_window_relationships(outsiders, tab)
-	local noname_content, kept = write_noname_texts(serialise_noname_content(pool), key, file_path .. ".d/")
+	local windows, entry_wins = serialise_window_relationships(outsiders, tab)
+	local texts, paths = serialise_noname_content(pool), serialise_paths(outsiders)
+	local detached
+	if not pool then
+		-- the detached lists, apart: each in memory with its tab's window entries, and each the file
+		-- holds alone carried over, with its texts and paths
+		local old = read_session_file(file_path, cwd)
+		local live
+		detached, live = detached_lists(old, function(detached_pool)
+			local indices = {}
+			for i, winid in ipairs(entry_wins) do
+				if vim.api.nvim_win_is_valid(winid) and detached_pool.tabs[vim.api.nvim_win_get_tabpage(winid)] then
+					table.insert(indices, i)
+				end
+			end
+			return indices
+		end)
+		carry_detached(detached, live, old, texts, paths, key, file_path .. ".d/")
+	end
+	local noname_content, kept = write_noname_texts(texts, key, file_path .. ".d/")
 	local closed, closed_times = serialise_closed_buffers(pool and { pool } or every_pool())
 	local storage = {
 		scope = tab and "tab" or "editor", -- a tab session's file loads into a tab
-		paths = serialise_paths(outsiders),
+		detached = detached and #detached > 0 and detached or nil, -- the whole editor's detached lists, when there are some
+		paths = paths,
 		outsiders = vim.tbl_keys(outsiders),
 		buffers = pool and { global = pool.visits } or serialise_buffer_history(),
 		windows = windows,

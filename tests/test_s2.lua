@@ -1199,7 +1199,7 @@ end
 
 -- t is open in a second tab, where e is visited and closed; e isn't in t's
 -- saved slots, so only t's list brings it back. A third tab loads t too.
-T['T357 [today] (S2) a second tab loading a session already open shares its list'] = function()
+T['T357 [char] (S2) a session loaded into another tab while open takes its list along'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	child.steps({ ':e e', ':e d' })
@@ -1484,9 +1484,11 @@ T['T368 [char] (S2) a tab saved as a session for the first time carries the clos
 	eq({ lists = lists, reopened = child.shown() }, { lists = 'editor,notes', reopened = 'b' })
 end
 
--- Case B: t is open in the second tab and, loaded again, in a third; c is
--- closed in the second, which is then saved as u.
-T['T368 [char] (S2) a tab saved as a new session while its old one is open elsewhere carries the closed files its slots hold'] = function()
+-- Case B: t is open in the second tab and, loaded again, into a third, which
+-- takes it (T369), so the second holds t_DETACHED; c is closed in the second,
+-- which is then saved as u. No whole-editor save ran, so the detached list,
+-- left with no tab, stays in memory (T382).
+T['T368 [char] (S2) a tab whose session another tab took, saved as a new session, carries the closed files its slots hold'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	eq(S2.load_tab_session(child, 't'), { true })
@@ -1498,12 +1500,12 @@ T['T368 [char] (S2) a tab saved as a new session while its old one is open elsew
 	child.settle(300)
 	local lists = child.lua(LISTS, { 'c' })
 	child.steps({ '<M-S-w>' })
-	eq({ lists = lists, reopened = child.shown() }, { lists = 't,u', reopened = 'c' })
+	eq({ lists = lists, reopened = child.shown() }, { lists = 't,t_DETACHED (no tab),u', reopened = 'c' })
 end
 
 -- In t's tab, x is closed after it has left the slots, and c from the
 -- ternary; then t is loaded into a third tab, with d restored and not c.
-T['T369 [target] (S2) a tab session is in one tab at a time, and the tab it leaves keeps a detached list'] = function()
+T['T369 [char] (S2) a tab session is in one tab at a time, and the tab it leaves keeps a detached list'] = function()
 	local s = S2.shared()
 	local _, w2 = tab_session(s)
 	child.steps({ ':e x', ':e c', ':e d' })
@@ -1530,6 +1532,172 @@ T['T369 [target] (S2) a tab session is in one tab at a time, and the tab it leav
 		return { second = list(vim.api.nvim_win_get_tabpage(...)), third = list(vim.api.nvim_get_current_tabpage()) }
 	]], { w2 })
 	eq({ got = got, lists = lists }, { got = { true }, lists = { second = 't_DETACHED:x,c', third = 't:x,c' } })
+end
+
+-- T369's state: in t's tab (the second), x closed after it has left the slots
+-- and c from the ternary; then t loaded into a third tab, with d restored and
+-- not c. Returns the second tab's window and the third's.
+local function detached_state(s)
+	local _, w2 = tab_session(s)
+	child.steps({ ':e x', ':e c', ':e d' })
+	child.cmd('bdelete x.txt')
+	child.cmd('bdelete c.txt')
+	child.settle()
+	child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		require('cavediver').load_session('t')
+	]])
+	child.settle(300)
+	return w2, child.lua('return vim.api.nvim_get_current_win()')
+end
+
+-- A tab's list, as its name and its entries.
+local LIST_OF = [[
+	local H = require('cavediver.domains.history')
+	local pool = H.routines.pool_of_tab(vim.api.nvim_win_get_tabpage(...))
+	local out = {}
+	for _, h in ipairs(pool.closed) do
+		table.insert(out, vim.fn.fnamemodify(H.get_filepath_from_hash(h) or h, ':t:r'))
+	end
+	return (pool.name or '') .. ':' .. table.concat(out, ',')
+]]
+
+-- The whole editor's file, as names: its closed list, and each detached list.
+local EDITOR_FILE = [[
+	local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+	local function names(hashes)
+		local out = {}
+		for _, h in ipairs(hashes or {}) do
+			table.insert(out, vim.fn.fnamemodify(saved.paths[h] or h, ':t:r'))
+		end
+		table.sort(out)
+		return table.concat(out, ',')
+	end
+	local detached = {}
+	for _, list in ipairs(saved.detached or {}) do
+		detached[list.label] = { closed = names(list.closed), windows = #(list.windows or {}) }
+	end
+	return { closed = names(saved.closed), detached = detached }
+]]
+
+-- t is open in the second tab, c closed there; a third tab, opened on d, is
+-- saved as t.
+T['T378 [char] (S2) a save of a tab as a session open in another tab takes it from that tab'] = function()
+	local s = S2.shared()
+	local _, w2 = tab_session(s)
+	child.cmd('bdelete c.txt')
+	child.settle()
+	local got = child.lua([[
+		vim.cmd('tabnew')
+		vim.cmd('edit d.txt')
+		return { pcall(require('cavediver').save_session, 't', { tab = vim.api.nvim_get_current_tabpage() }) }
+	]])
+	child.settle(300)
+	local w3 = child.lua('return vim.api.nvim_get_current_win()')
+	eq({ got = got, second = child.lua(LIST_OF, { w2 }), third = child.lua(LIST_OF, { w3 }):match('^[^:]*') },
+		{ got = { true }, second = 't_DETACHED:c', third = 't' })
+end
+
+T['T379 [char] (S2) a detached tab\'s closes and <M-S-w> use its own list'] = function()
+	local s = S2.shared()
+	local w2, w3 = detached_state(s)
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.steps({ ':e e', ':e d' })
+	child.cmd('bdelete e.txt')
+	child.settle()
+	local lists = { second = child.lua(LIST_OF, { w2 }), third = child.lua(LIST_OF, { w3 }) }
+	child.steps({ '<M-S-w>' })
+	eq({ lists = lists, reopened = child.shown(w2) },
+		{ lists = { second = 't_DETACHED:x,c,e', third = 't:x,c' }, reopened = 'e' })
+end
+
+-- A fresh process restores the three tabs as they were (e not restored) and
+-- loads the whole editor.
+T['T380 [char] (S2) a whole-editor save writes a detached list apart, and a whole-editor load brings it back to its tab'] = function()
+	local s = S2.shared()
+	local w2 = detached_state(s)
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.steps({ ':e e', ':e d' })
+	child.cmd('bdelete e.txt')
+	child.settle()
+	eq(S2.save(child), { true })
+	local file = child.lua(EDITOR_FILE)
+
+	S2.start(child, s)
+	S2.restore_tabs(child, { { files = { 'x', 't' }, shown = 't' }, { files = { 'c', 'd' }, shown = 'd' }, { files = { 'c', 'd' }, shown = 'd' } })
+	eq(S2.load(child), { true })
+	child.settle(300)
+	child.cmd('tabnext 2')
+	child.settle()
+	local second = child.lua(LIST_OF, { child.lua('return vim.api.nvim_get_current_win()') })
+	child.steps({ '<M-S-w>' })
+	eq({ e_in_closed = file.closed:find('e') ~= nil, detached = file.detached.t_DETACHED and file.detached.t_DETACHED.closed,
+		second = second:match('^[^:]*'), reopened = child.shown() },
+		{ e_in_closed = false, detached = 'c,e,x', second = 't_DETACHED', reopened = 'e' })
+end
+
+-- The whole editor is saved right after T318's load, so it has a file.
+T['T381 [char] (S2) a detached list left with no tab goes into the whole editor\'s file and stays there'] = function()
+	local s = S2.shared()
+	local _, w2 = tab_session(s)
+	eq(S2.save(child), { true })
+	child.steps({ ':e e', ':e d' })
+	child.cmd('bdelete e.txt')
+	child.settle()
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('tabclose')
+	child.settle(300)
+	local in_memory = child.lua([[
+		for _, pool in pairs(require('cavediver.domains.history').routines.pools()) do
+			if pool.name == 't_DETACHED' then return true end
+		end
+		return false
+	]])
+	local file = child.lua(EDITOR_FILE)
+	local path = child.lua([[
+		local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+		for _, list in ipairs(saved.detached or {}) do
+			for _, h in ipairs(list.closed) do
+				if (saved.paths[h] or ''):match('e%.txt$') then return true end
+			end
+		end
+		return false
+	]])
+	eq(S2.save(child), { true })
+	local again = child.lua(EDITOR_FILE)
+	eq({ in_memory = in_memory, file = file.detached.t_DETACHED, path = path, again = again.detached.t_DETACHED },
+		{ in_memory = false, file = { closed = 'e', windows = 0 }, path = true, again = { closed = 'e', windows = 0 } })
+end
+
+T['T382 [char] (S2) with no whole-editor file, a detached list left with no tab stays in memory, with a warning'] = function()
+	local s = S2.shared()
+	local w2 = detached_state(s)
+	child.messages()
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('tabclose')
+	child.settle(300)
+	local kept = child.lua([[
+		for _, pool in pairs(require('cavediver.domains.history').routines.pools()) do
+			if pool.name == 't_DETACHED' then return next(pool.tabs) == nil end
+		end
+		return false
+	]])
+	eq({ kept = kept, warned = #S2.notices(child.messages()) > 0 }, { kept = true, warned = true })
+end
+
+T['T383 [char] (S2) a second detach of a session is numbered'] = function()
+	local s = S2.shared()
+	local w2, w3 = detached_state(s)
+	child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		require('cavediver').load_session('t')
+	]])
+	child.settle(300)
+	eq({ second = child.lua(LIST_OF, { w2 }):match('^[^:]*'), third = child.lua(LIST_OF, { w3 }):match('^[^:]*') },
+		{ second = 't_DETACHED', third = 't_DETACHED_2' })
 end
 
 -- From the first tab, the hint names another tab: u has no file, so the tab
