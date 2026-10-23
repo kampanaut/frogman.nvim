@@ -52,7 +52,7 @@ function M.init_cleanup_timer()
 	cleanup_timer = vim.loop:new_timer()
 	if cleanup_timer then
 		cleanup_timer:start(0, configs.cleanup_interval, vim.schedule_wrap(function()
-			local report = routines.cleanup_system()
+			local report = routines.cleanup_system(true)
 
 			-- Only notify about significant cleanup
 			local total_cleaned = report.orphaned_history + report.invalid_closed_buffers + report.stale_hash_entries

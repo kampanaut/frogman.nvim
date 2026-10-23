@@ -206,6 +206,202 @@ function M.known_filehashes()
 	return known
 end
 
+---The git directory for the session's directory, found upward from it. A `.git` file, as a
+---worktree has, points to it.
+---
+---@return string|nil git_dir
+function M.git_dir()
+	local found = vim.fs.find(".git", { upward = true, path = vim.fn.getcwd(-1, -1) })[1]
+	if not found then
+		return nil
+	end
+	if vim.fn.isdirectory(found) == 1 then
+		return found
+	end
+	local ok, lines = pcall(vim.fn.readfile, found, "", 1)
+	local gitdir = ok and lines[1] and lines[1]:match("^gitdir:%s*(.-)%s*$")
+	if not gitdir then
+		return nil
+	end
+	if not gitdir:match("^/") then
+		gitdir = vim.fn.fnamemodify(found, ":h") .. "/" .. gitdir
+	end
+	return gitdir
+end
+
+---The label from git's HEAD, read as a file: the branch, or the first 7 hex characters of a
+---detached HEAD.
+---
+---@return string|nil label
+function M.git_label()
+	local git_dir = M.git_dir()
+	if not git_dir then
+		return nil
+	end
+	local ok, lines = pcall(vim.fn.readfile, git_dir .. "/HEAD", "", 1)
+	local head = ok and lines[1] or nil
+	if not head then
+		return nil
+	end
+	return head:match("^ref:%s*refs/heads/(.+)$") or head:match("^ref:%s*(.+)$") or head:match("^(%x%x%x%x%x%x%x)")
+end
+
+---Where you are right now, as the label provider in config says: a git branch, by default.
+---
+---@return string|nil label nil when there's no label
+function M.current_label()
+	local provider = require('cavediver.configs').label_provider
+	if provider == false then
+		return nil
+	elseif type(provider) == "function" then
+		local ok, label = pcall(provider)
+		return ok and type(label) == "string" and label or nil
+	end
+	return M.git_label()
+end
+
+-- files checked for being gone from disk per cleanup tick, besides the ones on screen
+local mark_slice = 500
+local mark_queue, mark_next = {}, 1
+
+---Mark the known files that are gone from disk, each tagged with where you were when it went
+---missing (or the time, with no label), and clear the marks of files that are back.
+---
+---@param label string|nil The label the files went missing under
+---@param limit integer|nil At most this many files are checked, carrying on from where the last such
+---pass stopped, besides the open buffers and the slots, which are always checked; nil checks every one
+---@return nil
+function M.mark_missing(label, limit)
+	local known = M.known_filehashes()
+	local filepaths = data.hash_filepath_registry.filepaths
+	local function mark(filehash)
+		local filepath = filepaths[filehash]
+		if not filepath or not known[filehash] or filepath:match("^NONAME_") then
+			return
+		end
+		if vim.fn.filereadable(filepath) == 1 then
+			data.missing[filehash] = nil
+			data.unwritten[filehash] = nil
+		elseif data.unwritten[filehash] then
+			return -- never written, so it didn't go missing
+		elseif data.missing[filehash] == nil then
+			data.missing[filehash] = label or os.date("%H:%M")
+		end
+	end
+	if limit then
+		-- what the winbar and the bufferline show, every time
+		for filehash, _ in pairs(data.hash_buffer_registry.buffers) do
+			mark(filehash)
+		end
+		for _, triquetra in pairs(require('cavediver.domains.window.data').crux) do
+			mark(triquetra.current_slot)
+			mark(triquetra.secondary_slot)
+			mark(triquetra.ternary_slot)
+			for _, filehash in ipairs(triquetra.primary_buffer or {}) do
+				mark(filehash)
+			end
+		end
+		-- the rest a slice at a time, going round
+		local wrapped = false
+		for _ = 1, limit do
+			if mark_next > #mark_queue then
+				if wrapped then
+					break
+				end
+				mark_queue, mark_next, wrapped = vim.tbl_keys(filepaths), 1, true
+				if #mark_queue == 0 then
+					break
+				end
+			end
+			mark(mark_queue[mark_next])
+			mark_next = mark_next + 1
+		end
+	else
+		for filehash, _ in pairs(filepaths) do
+			mark(filehash)
+		end
+	end
+	for filehash, _ in pairs(data.missing) do
+		if not known[filehash] then
+			data.missing[filehash] = nil
+		end
+	end
+	for filehash, _ in pairs(data.unwritten) do
+		if not known[filehash] then
+			data.unwritten[filehash] = nil
+		end
+	end
+end
+
+local head_watch, head_watch_dir
+-- the watch runs only between setup() and disable()
+local head_watch_on = false
+
+---Stop watching git's HEAD.
+function M.stop_head_watch()
+	if head_watch then
+		head_watch:stop()
+		head_watch:close()
+	end
+	head_watch, head_watch_dir = nil, nil
+end
+
+---Let git's HEAD be watched, or stop watching it for good: setup() lets it, disable() stops it.
+---
+---@param on boolean
+function M.enable_head_watch(on)
+	head_watch_on = on
+	if not on then
+		M.stop_head_watch()
+	end
+end
+
+---Watch git's HEAD, so a branch switch is seen when it happens. The git directory is watched, not
+---the file, since git replaces HEAD by renaming a new one over it.
+---
+---@param git_dir string|nil
+local function watch_head(git_dir)
+	if git_dir == head_watch_dir then
+		return
+	end
+	M.stop_head_watch()
+	if not git_dir then
+		return
+	end
+	head_watch = vim.uv.new_fs_event()
+	if not head_watch then
+		return
+	end
+	head_watch:start(git_dir, {}, vim.schedule_wrap(function(err, filename)
+		if not err and filename == "HEAD" then
+			M.refresh_label()
+		end
+	end))
+	head_watch_dir = git_dir
+end
+
+---Read the label again. When it changed, the files that went missing with the change are tagged
+---with the label being left. The first label seen only starts the record.
+---
+---@return boolean checked Whether every known file was just checked, for a change of label
+function M.refresh_label()
+	if require('cavediver.configs').label_provider == nil and head_watch_on then
+		watch_head(M.git_dir())
+	else
+		M.stop_head_watch()
+	end
+	local label = M.current_label()
+	local checked = false
+	if not data.label_seen then
+		data.label_seen = true
+	elseif label ~= data.last_label then
+		M.mark_missing(data.last_label)
+		checked = true
+	end
+	data.last_label = label
+	return checked
+end
+
 ---Follow along: a note or a history entry goes once what it points at is no longer known, and then
 ---the path of a hash nothing references any more is forgotten.
 ---
@@ -1021,8 +1217,10 @@ end
 ---Removes orphaned entries, validates registries, and ensures data consistency.
 ---Should be called periodically and before critical operations like saving.
 ---
+---@param on_tick boolean|nil True when the cleanup timer runs it: files are then checked for being
+---gone from disk a slice at a time
 ---@return table cleanup_report Summary of what was cleaned up
-function M.cleanup_system()
+function M.cleanup_system(on_tick)
 	local report = {
 		orphaned_history = 0,
 		orphaned_hashes = {},
@@ -1094,6 +1292,11 @@ function M.cleanup_system()
 	end
 	M.follow_along(known)
 
+	-- files gone from disk are marked with where you are, and back ones cleared
+	if not M.refresh_label() then
+		M.mark_missing(data.last_label, on_tick and mark_slice or nil)
+	end
+
 
 	-- 4. Validate triquetra references across windows
 	local window = require('cavediver.domains.window')
@@ -1133,6 +1336,10 @@ function M.teardown()
 	data.cycling_origins = {}
 	data.closed_buffers = {}
 	data.noname_content = {}
+	data.missing = {}
+	data.unwritten = {}
+	data.last_label = nil
+	data.label_seen = false
 	previous_window_constructed = nil
 end
 

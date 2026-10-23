@@ -93,6 +93,10 @@ local function settle_rename(bufnr, rename)
 	if not vim.api.nvim_buf_is_valid(bufnr) or vim.api.nvim_buf_get_name(bufnr) == "" then
 		return -- deleted for good (a No Name buffer closed), not renamed.
 	end
+	local new_name = vim.api.nvim_buf_get_name(bufnr)
+	if vim.fn.filereadable(new_name) == 0 then
+		data.unwritten[routines.get_filehash(new_name)] = true -- a name that isn't on disk yet
+	end
 	local moved_from = routines.settle_rename(bufnr, rename.hash, rename.history)
 	if not moved_from and routines.get_hash_from_buffer(bufnr) == rename.hash then
 		-- a copy: the old name is still a file, and it's closed as a delete closes it.
@@ -119,6 +123,28 @@ local M = {}
 ---
 ---@param group integer The cavediver augroup
 function M.init_autocmds(group)
+	-- where you are can change without cavediver seeing it: the label is read again at these
+	-- settle points, and the files gone from disk are marked with it.
+	vim.api.nvim_create_autocmd({ "FocusGained", "ShellCmdPost", "TermLeave", "DirChanged" }, {
+		group = group,
+		callback = function()
+			if not routines.refresh_label() then
+				routines.mark_missing(data.last_label)
+			end
+		end,
+	})
+
+	-- a file that doesn't exist yet isn't missing: it hasn't been written.
+	vim.api.nvim_create_autocmd("BufNewFile", {
+		group = group,
+		callback = function(args)
+			local name = vim.api.nvim_buf_get_name(args.buf)
+			if name ~= "" then
+				data.unwritten[routines.get_filehash(name)] = true
+			end
+		end,
+	})
+
 	-- What happens when a buffer is deleted?
 	vim.api.nvim_create_autocmd("BufDelete", {
 		group = group,

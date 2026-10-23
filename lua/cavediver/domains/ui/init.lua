@@ -360,6 +360,16 @@ function M.bufferline.cokeline.create_buffer_components()
 			fg = colors.base.focused.fg,
 			truncation = { priority = 1 }
 		},
+		-- a file gone from disk shows, dimmed, where it went missing
+		missing = {
+			text = function(buffer)
+				local filehash = history.get_hash_from_buffer(buffer.number)
+				local tag = filehash and history.data.missing[filehash]
+				return tag and ('⎇' .. tag .. ' ') or ''
+			end,
+			fg = comment,
+			truncation = { priority = 1 }
+		},
 		separator_for_last = {
 			text = function(buffer)
 				return buffer.is_last and '│' or ''
@@ -533,6 +543,7 @@ function M.bufferline.cokeline.create_buffer_components()
 		components.devicon,
 		components.unique_prefix,
 		components.filename,
+		components.missing,
 		components.diagnostics,
 		components.space,
 		components.two_spaces,

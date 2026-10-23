@@ -1,6 +1,6 @@
 # Test review sheet
 
-396 cases in 24 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+403 cases in 25 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -1494,6 +1494,56 @@ spec: `:terminal` in a window with `{c=c s=b}` keeps its triquetra, and the term
 spec: The window keeps `{c=c s=b}` while it shows the terminal, and `:e c` returns with its slots intact (the visiting rule).  
 `tests/test_lifecycle.lua:111`
 
+## tests/test_missing.lua (7 cases: 7 char)
+
+**T343 [char]** files that go missing at a branch switch are tagged with the branch being left, shown in the winbar, and cleared when they come back  
+`:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:bdelete b.txt`, `:doautocmd FocusGained` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
+→ `eq(tag_of('b'), 'feature')`  
+→ `eq(child.lua('return vim.wo.winbar'):find('⎇feature', 1, true) ~= nil, true)`  
+→ `eq(tag_of('b'), vim.NIL)`  
+→ `eq(child.lua('return vim.wo.winbar'):find('⎇', 1, true), nil)`  
+note: b sits closed in the secondary when it goes missing with the switch.  
+spec: (M14) Files that go missing at a branch switch are tagged with the branch being left, the winbar shows it, and it clears when they come back: with `.git/HEAD` at `ref: refs/heads/feature` and b closed in the secondary (`⦉c⦊ [d] ⟦b⟧`), b.txt deleted and HEAD set to `ref: refs/head…  
+`tests/test_missing.lua:37`
+
+**T344 [char]** with no label, a file that goes missing is tagged with the time  
+`:e a`, `:e b`, `:e c`, `:bdelete b.txt` → `eq(type(tag) == 'string' and tag:match('^%d%d:%d%d$') ~= nil, true)`  
+spec: (M14) With no label (no `.git` found), a file that goes missing is tagged with the time it went missing, `HH:MM`.  
+`tests/test_missing.lua:58`
+
+**T345 [char]** a label provider in config names the label  
+`:e a`, `:e b`, `:e c`, `:bdelete b.txt` → `eq(tag_of('b'), 'jj:main')`  
+spec: (M14) A label provider in config names the label: with `label_provider` returning `jj:main`, a closed file that goes missing is tagged `jj:main`.  
+`tests/test_missing.lua:68`
+
+**T346 [char]** disable() stops the HEAD watch  
+`:e a`, `:e b`, `:e c`, `:bdelete b.txt`, `:doautocmd FocusGained` → `eq(tag_of('b'), vim.NIL)`  
+spec: (M14, A25) `disable()` stops the watch on `.git/HEAD`: after it, b.txt deleted and HEAD switched tag nothing.  
+`tests/test_missing.lua:78`
+
+**T346 [char]** a save after disable() doesn't watch .git/HEAD again  
+`:e a`, `:e b`, `:e c`, `:bdelete b.txt`, `:doautocmd FocusGained` → `eq(Misc.save(child), { true })`  
+→ `eq(tag_of('b'), vim.NIL)`  
+note: A save runs a cleanup pass, which reads the label again; after disable() it doesn't start the watch.  
+spec: (M14, A25) `disable()` stops the watch on `.git/HEAD`: after it, b.txt deleted and HEAD switched tag nothing.  
+`tests/test_missing.lua:95`
+
+**T347 [char]** the label at a save is the one being left at the next load: a file gone while no editor was open is tagged with the branch the session was saved on  
+`:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:bdelete b.txt` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
+→ `eq(Misc.save(child), { true })`  
+→ `eq(Misc.load(child), { true })`  
+→ `slots = '⦉c⦊ [d] ⟦b⟧'`  
+→ `eq(tag_of('b'), 'feature')`  
+note: The session is saved on feature; HEAD moves to main and b.txt goes while no editor is open, so the next load is the first to see either. after the start: a child's setup writes the project's files again  
+spec: (M14, S1) The label at a save is the one being left at the next load: saved with `.git/HEAD` at `ref: refs/heads/feature` and b closed in the secondary (`⦉c⦊ [d] ⟦b⟧`), then, in a fresh process, HEAD set to `ref: refs/heads/main` and b.txt deleted before the load: the load tags b…  
+`tests/test_missing.lua:112`
+
+**T348 [char]** a file that was never written isn't tagged; once written and deleted, it is  
+`:e a`, `:e brandnew.txt` → `eq({ tag = tag_of('brandnew'), winbar = child.lua('return vim.wo.winbar'):find('⎇', 1, true) ~= nil },`  
+`:write` → `eq(type(tag_of('brandnew')), 'string')`  
+spec: (M14) A file that was never written isn't tagged, since it never went missing: `:e brandnew.txt` with a line typed, and a cleanup pass, leave it untagged, with no `⎇` in the winbar; once it's written and then deleted on disk, the next pass tags it.  
+`tests/test_missing.lua:133`
+
 ## tests/test_navigation.lua (11 cases: 11 char)
 
 **T28 [char]** {c=a}, :e b gives {c=b t=a} with no map entries  
@@ -1671,7 +1721,7 @@ spec: (P24, A22) A save leaves the closed stack as it was: with b closed and out
 → `eq(Extra.at_least(child.messages()), {})`  
 → `slots = '⦉d⦊ [c] ⟦b⟧'`  
 note: Ex commands raise; keys return ok, err.  
-spec: (P26) With harpoon not installed, `:e`, `<M-f>`, `<M-S-f>`, `<M-;><M-c>`, `<M-;><M-r>` and the UI ticks raise nothing and report no hook failure. Today every history update fails at `history/routines.lua:494` with "module 'harpoon' not found".  
+spec: (P26) With harpoon not installed, `:e`, `<M-f>`, `<M-S-f>`, `<M-;><M-c>`, `<M-;><M-r>` and the UI ticks raise nothing and report no hook failure. Today every history update fails at `history/routines.lua:690` with "module 'harpoon' not found".  
 `tests/test_negative.lua:202`
 
 **T216 [char]** (I16) a No Name id is not reused across sessions  
@@ -1918,7 +1968,7 @@ spec: (A26) The recorder never records raw keystrokes: text typed in insert mode
 → `slots = '⦉c⦊ [b] ⟦-⟧'`  
 → `eq(Extra.at_least(child.messages()), {})`  
 note: A bug found while porting: a tracked buffer wiped with noautocmd, here the window's current buffer. Decided 2026-10-21: the UI repairs it on the spot, within one refresh, as cleanup's re-point would (like navigation, Q18): the window shows b, so b is current and c the ternary.  
-spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't make the UI loop error: `:e a`, `:e b`, `:e c`, then `noautocmd bwipeout` of c give no hook failure over the next ticks. Without the repair, "Invalid buffer id" comes on every tick (`ui/routines.lua:534`); wi…  
+spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't make the UI loop error: `:e a`, `:e b`, `:e c`, then `noautocmd bwipeout` of c give no hook failure over the next ticks. Without the repair, "Invalid buffer id" comes on every tick (`ui/routines.lua:553`); wi…  
 `tests/test_negative.lua:723`
 
 **T243 [char]** (I23) the check runs at graduation: a stale secondary note naming the graduated buffer is dropped ⚑ state set by hand  
@@ -2795,12 +2845,12 @@ spec: Q6's ten keys, as the author ran them: `:e a`, `:e b`, `:e c`, `:e b`, `<M
 
 ## tests/test_sessions.lua (16 cases: 16 char)
 
-**T134 [char]** save_session writes paths, outsiders, buffers, windows, closed, noname_content; windows[i] = [c, s, p[], t, dtm, dsm, shows, on, history]  
+**T134 [char]** save_session writes paths, outsiders, buffers, windows, closed, noname_content, missing; windows[i] = [c, s, p[], t, dtm, dsm, shows, on, history]  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 → `eq(Misc.save(child), { true })`  
 → `eq(got, {`  
 note: Read the way the load reads it, decrypted: the window entry's slots are hashes, and the paths behind them are in the paths table.  
-spec: `save_session(cwd)` writes the keys `paths`, `outsiders`, `buffers`, `windows`, `closed` and `noname_content`, read as the load reads them, decrypted (`read_session`), with `windows[i] = [c, s, p[], t, dtm, dsm, shows, on, history]`: nine fields, `[7]` the hash of the buffer the …  
+spec: `save_session(cwd)` writes the keys `paths`, `outsiders`, `buffers`, `windows`, `closed`, `noname_content` and `missing`, read as the load reads them, decrypted (`read_session`), with `windows[i] = [c, s, p[], t, dtm, dsm, shows, on, history]`: nine fields, `[7]` the hash of the …  
 `tests/test_sessions.lua:35`
 
 **T135 [char]** a round trip with every slot buffer restored and loaded gives back the slots and maps  

@@ -32,7 +32,7 @@ end
 
 -- Read the way the load reads it, decrypted: the window entry's slots are
 -- hashes, and the paths behind them are in the paths table.
-T['T134 [char] save_session writes paths, outsiders, buffers, windows, closed, noname_content; windows[i] = [c, s, p[], t, dtm, dsm, shows, on, history]'] = function()
+T['T134 [char] save_session writes paths, outsiders, buffers, windows, closed, noname_content, missing; windows[i] = [c, s, p[], t, dtm, dsm, shows, on, history]'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
@@ -62,7 +62,7 @@ T['T134 [char] save_session writes paths, outsiders, buffers, windows, closed, n
 		}
 	]])
 	eq(got, {
-		keys = { 'buffers', 'closed', 'noname_content', 'outsiders', 'paths', 'windows' },
+		keys = { 'buffers', 'closed', 'missing', 'noname_content', 'outsiders', 'paths', 'windows' },
 		windows = 1, fields = 9,
 		c = true, s = true, p = 'table', t = true, dtm = 'table', dsm = 'table',
 		shows = true, on = false, history = 'table', path = true,
