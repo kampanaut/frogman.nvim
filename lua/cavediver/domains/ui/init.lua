@@ -62,6 +62,21 @@ function M.init_trail_highlights()
 	vim.api.nvim_set_hl(0, "CavediverTrailTime", { fg = trail.time })
 	vim.api.nvim_set_hl(0, "CavediverTrailTag", { fg = trail.tag })
 	vim.api.nvim_set_hl(0, "CavediverTrailDim", { fg = trail.dim })
+	-- the trail's view
+	for i, colour in ipairs(trail.wave or {}) do
+		vim.api.nvim_set_hl(0, "CavediverTrailWave" .. (i - 1), { fg = colour })
+	end
+	local plain = { Title = { trail.title, true }, Date = { trail.date }, Depth = { trail.depth }, Count = { trail.count },
+		Gauge = { trail.gauge }, GaugeNow = { trail.gauge_now, true }, KeyOn = { trail.key_on, true }, KeyOff = { trail.key_off },
+		Gutter = { trail.gutter }, Cause = { trail.time }, Trigger = { trail.trigger }, Name = { trail.name, true },
+		Words = { trail.words }, Ring = { trail.ring }, Fold = { trail.fold }, Reopened = { trail.reopened, true },
+		Forgot = { trail.forgot, true }, Gone = { trail.gone, true }, Back = { trail.back, true }, Repair = { trail.repair, true },
+		Slot = { trail.slot, true }, Note = { trail.note, true }, Cycle = { trail.cycle, true }, Session = { trail.session, true },
+		Rename = { trail.rename, true }, RowT = { trail.row_t }, RowC = { trail.row_c }, RowS = { trail.row_s } }
+	for name, spec in pairs(plain) do
+		vim.api.nvim_set_hl(0, "CavediverTrail" .. name, { fg = spec[1], bold = spec[2] })
+	end
+	vim.api.nvim_set_hl(0, "CavediverTrailTrigger", { fg = trail.trigger, italic = true })
 end
 
 local periodic_timer = nil

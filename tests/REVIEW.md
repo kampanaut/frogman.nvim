@@ -1,6 +1,6 @@
 # Test review sheet
 
-484 cases in 26 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+494 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -9,7 +9,7 @@
 
 ## Look at these first
 
-**State set by hand** (63): T184 (keep_older), T192 (keep_older), T107 (cleanup), T108 (cleanup), T113 (cleanup), T163 (cleanup), T91 (closing), T203 (cycling), T204 (cycling), T205 (cycling), T251 (decisions), T257 (decisions), T263 (decisions), T263 (decisions), T264 (decisions), T265 (decisions), T267 (decisions), T271 (decisions), T271 (decisions), T273 (decisions), T275 (decisions), T276 (decisions), T280 (decisions), T285 (decisions), T287 (decisions), T20 (history), T12 (identity), T157 (invariants), T398 (ledger), T403 (ledger), T406 (ledger), T25 (lifecycle), T34 (navigation), T35 (navigation), T219 (negative), T241 (negative), T242 (negative), T243 (negative), T243 (negative), T243 (negative), T247 (negative), T66 (restores), T68 (restores), T296 (s2), T298 (s2), T299 (s2), T315 (s2), T316 (s2), T322 (s2), T351 (s2), T352 (s2), T354 (s2), T357 (s2), T358 (s2), T366 (s2), T369 (s2), T383 (s2), T387 (s2), T367 (s2), T138 (sessions), T146 (sessions), T147 (sessions), T148 (sessions)
+**State set by hand** (64): T184 (keep_older), T192 (keep_older), T107 (cleanup), T108 (cleanup), T113 (cleanup), T163 (cleanup), T91 (closing), T203 (cycling), T204 (cycling), T205 (cycling), T251 (decisions), T257 (decisions), T263 (decisions), T263 (decisions), T264 (decisions), T265 (decisions), T267 (decisions), T271 (decisions), T271 (decisions), T273 (decisions), T275 (decisions), T276 (decisions), T280 (decisions), T285 (decisions), T287 (decisions), T20 (history), T12 (identity), T157 (invariants), T398 (ledger), T403 (ledger), T406 (ledger), T25 (lifecycle), T34 (navigation), T35 (navigation), T219 (negative), T241 (negative), T242 (negative), T243 (negative), T243 (negative), T243 (negative), T247 (negative), T66 (restores), T68 (restores), T296 (s2), T298 (s2), T299 (s2), T315 (s2), T316 (s2), T322 (s2), T351 (s2), T352 (s2), T354 (s2), T357 (s2), T358 (s2), T366 (s2), T369 (s2), T383 (s2), T387 (s2), T367 (s2), T138 (sessions), T146 (sessions), T147 (sessions), T148 (sessions), T425 (trail)
 
 **Random walk** (24): T190 (keep_older), T190 (keep_older), T190 (keep_older), T190 (keep_older), T335 (keep_older), T335 (keep_older), T171 (cycling), T279 (decisions), T281 (decisions), T282 (decisions), T283 (decisions), T149 (history), T149 (history), T128 (invariants), T129 (invariants), T130 (invariants), T131 (invariants), T132 (invariants), T133 (invariants), T334 (invariants), T154 (invariants), T249 (negative), T249 (negative), T299 (s2)
 
@@ -2187,7 +2187,7 @@ spec: (A26) The recorder never records raw keystrokes: text typed in insert mode
 → `slots = '⦉c⦊ [b] ⟦-⟧'`  
 → `eq(Extra.at_least(child.messages()), {})`  
 note: A bug found while porting: a tracked buffer wiped with noautocmd, here the window's current buffer. Decided 2026-10-21: the UI repairs it on the spot, within one refresh, as cleanup's re-point would (like navigation, Q18): the window shows b, so b is current and c the ternary.  
-spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't make the UI loop error: `:e a`, `:e b`, `:e c`, then `noautocmd bwipeout` of c give no hook failure over the next ticks. Without the repair, "Invalid buffer id" comes on every tick (`ui/routines.lua:1113`); w…  
+spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't make the UI loop error: `:e a`, `:e b`, `:e c`, then `noautocmd bwipeout` of c give no hook failure over the next ticks. Without the repair, "Invalid buffer id" comes on every tick (`ui/routines.lua:1138`); w…  
 `tests/test_negative.lua:723`
 
 **T243 [char]** (I23) the check runs at graduation: a stale secondary note naming the graduated buffer is dropped ⚑ state set by hand  
@@ -3547,6 +3547,60 @@ spec: A ternary closed with `<M-.>` is reopened by `<M-S-f>` and taken off the c
 note: The desk's 1.txt and 2.txt are a and b here.  
 spec: The desk's sequence (`:e 1.txt`, `:e 2.txt`, `<M-n>`, `:bdelete`, `<M-S-f>`, `<M-S-f>`) throws nothing and leaves no duplicate slot. The reopen's `BufEnter` is slotted once the editor settles, so cleanup doesn't clear the ternary before the rename; the rename's missing guard for …  
 `tests/test_ternary_key.lua:44`
+
+## tests/test_trail.lua (10 cases: 10 char)
+
+**T425 [char]** (A27) :CavediverTrail opens the trail, untracked, on today's page ⚑ state set by hand  
+`:e a`, `:e b`, `:e c`, `<M-.>`, `<M-.> (via line_with)` → `eq({`  
+spec: (A27) `:CavediverTrail` opens the trail, untracked, on today's page: after `:e a`, `:e b`, `:e c`, `<M-.>`, it opens a float on a `nofile`, unlisted buffer that goes with its window, filetype `cavediver-trail`, with no hash and no triquetra, and the window it came from keeps its …  
+`tests/test_trail.lua:96`
+
+**T426 [char]** (A27) H and L go to the older and the newer page  
+`:e a`, `:e b`, `:e c`, `<M-.>` → `eq({ older = older:find('3 days down', 1, true) ~= nil, h_dim = h_dim, newer = newer:find('today', 1, true) ~= nil },`  
+spec: (A27) `H` and `L` go to the older and the newer page: with a step kept three days ago, `H` shows that day, "3 days down", with `<<< H` dim, since there's no older page, and `L` shows today again.  
+`tests/test_trail.lua:126`
+
+**T427 [char]** (A27) brightness by surprise: a close onto other lists bright, the tab's own dim  
+`:e a`, `:e b`, `:e c`, `<M-.>`, `:e a`, `:e d`, `:tabprevious`, `:e a`, `<M-.>` → `eq({ own = own, other = other }, { own = 'CavediverTrailDim', other = 'CavediverTrailClosed' })`  
+spec: (A27) Brightness by surprise: in T400's state, the close onto t's list too is drawn in the closed family's colour, and T394's close onto the tab's own list dim.  
+`tests/test_trail.lua:147`
+
+**T428 [char]** (A27) more than three of a kind under one step fold to a count  
+`:e a`, `:e b`, `:e c`, `:e d`, `:e e`, `:e f`, `:bdelete a.txt b.txt c.txt d.txt`, `:e a`, `:e b`, `:e c`, `:e d`, `:e e`, `:bdelete a.txt b.txt c.txt` → `eq({ fold = fold ~= nil, folded = folded, opened = opened, three = three },`  
+spec: (A27) More than three of a kind under one step fold to a count: `:bdelete a.txt b.txt c.txt d.txt` gives one line, "4 closed", with `▸`, and `za` there opens the four names under it; three closes under one step don't fold.  
+`tests/test_trail.lua:167`
+
+**T429 [char]** (A27) a narrow window drops the tally first, then the gauge  
+→ `eq({ wide = at_width(120), middle = at_width(73), narrow = at_width(50) }, {`  
+spec: (A27) A narrow window drops the tally first, then the gauge: the header holds both at 120 columns, the gauge alone at 73, neither at 50.  
+`tests/test_trail.lua:205`
+
+**T430 [char]** (A27) the header's pieces can be turned off  
+`:e a`, `:e b`, `:e c`, `<M-.>` → `eq({ tally = header:find('↓1', 1, true) ~= nil, gauge = header:find('❬', 1, true) ~= nil,`  
+spec: (A27) The header's pieces can be turned off: with `trail = { header = { tally = false, gauge = false, shade = false } }`, the header holds no tally, no gauge and no shaded fill.  
+`tests/test_trail.lua:211`
+
+**T431 [char]** (A27) with the ascii set, the trail draws no character outside ASCII  
+`:e a`, `:e b`, `:e c`, `<M-.>` → `eq({ lines = #lines() > 2, wide = wide }, { lines = true, wide = {} })`  
+spec: (A27) With `glyphs = { set = "ascii" }`, the trail draws no character outside ASCII.  
+`tests/test_trail.lua:223`
+
+**T432 [char]** (A27) q and <C-c> leave, back in the window the trail came from  
+`:e a`, `:e b`, `:e c`, `<M-.>` → `eq(left, { { view = true, buf = false, back = true }, { view = true, buf = false, back = true } })`  
+spec: (A27) `q` and `<C-c>` leave: either closes the float, its buffer goes, and the focus is back in the window the trail was opened from.  
+`tests/test_trail.lua:236`
+
+**T433 [char]** (A27) opening the trail reads only what it shows  
+`:e a`, `:e b`, `:e c`, `<M-.>` → `eq(S2.save(child), { true })`  
+→ `eq(S2.load(child), { true })`  
+→ `eq({ listed = listed >= 21, opened = view() ~= vim.NIL, few = reads <= 15 }, { listed = true, opened = true, few = true })`  
+spec: (A27) Opening the trail reads only what it shows: with steps kept on 20 earlier days and the session saved, a fresh process opening the trail reads at most 15 pages, the gauge's days around the one shown.  
+`tests/test_trail.lua:273`
+
+**T434 [char]** (A27) a fold opened on one day stays that day's  
+`:e a`, `:e b`, `:e c`, `:e d`, `:e e`, `:e f`, `:bdelete a.txt b.txt c.txt d.txt` → `eq({ open_today = open_today, older = line_with('4 closed', '▸') ~= nil, older_open = line_with('4 closed', '▾') ~= nil },`  
+spec: (A27) A fold opened on one day stays that day's: a fold opened today, then `H` to an older day with a fold at the same place, shows that one closed, `▸`.  
+`tests/test_trail.lua:293`
 
 ## tests/test_ui.lua (13 cases: 7 char, 6 target)
 
