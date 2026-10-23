@@ -207,7 +207,8 @@ end
 S2.scratch_files = function(dir)
 	local d = S2.scratch_dir(dir)
 	if not d then return {}, nil end
-	local f = Misc.files_in(d)
+	-- the trail's pages (A27) sit beside the texts' files, marked `.trail`
+	local f = vim.tbl_filter(function(name) return not name:match('%.trail$') end, Misc.files_in(d))
 	table.sort(f)
 	return f, d
 end

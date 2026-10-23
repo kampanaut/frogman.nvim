@@ -29,8 +29,12 @@ function M.save_session(name, opts)
 		directory = vim.fn.getcwd(-1, vim.api.nvim_tabpage_get_number(opts.tab))
 	end
 	local tab = opts and opts.tab
-	-- the session's last part, never a whole path (native wiring passes v:this_session)
-	require('cavediver.domains.ledger').begin("save", vim.fn.fnamemodify(name or directory, ":t"))
+	-- the session's last part, never a whole path (native wiring passes v:this_session); a tab
+	-- session's save is its own step, kept in its own file
+	local step = require('cavediver.domains.ledger').begin("save", vim.fn.fnamemodify(name or directory, ":t"))
+	if tab then
+		step.pool = require('cavediver.domains.history').routines.pool_id(name, directory)
+	end
 	storageSM:to(states.SAVING, { name = name, directory = directory, tab = tab })
 	storageSM:to(states.IDLE, { name = name, directory = directory, tab = tab })
 end
@@ -70,7 +74,10 @@ local function load(name, opts, restart)
 		routines.drop_pending_records()
 		ledger.drop_batch()
 	end
-	ledger.begin(restart and "restart" or "load", vim.fn.fnamemodify(name or directory, ":t"))
+	local step = ledger.begin(restart and "restart" or "load", vim.fn.fnamemodify(name or directory, ":t"))
+	if tab_session then
+		step.pool = require('cavediver.domains.history').routines.pool_id(name, directory) -- kept in its own file
+	end
 	if storageSM:state() == states.IDLE and not tab_session then
 		storageSM:to(states.BARE, session)
 	end

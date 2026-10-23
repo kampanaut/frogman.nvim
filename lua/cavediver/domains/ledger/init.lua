@@ -16,6 +16,7 @@ M.drop_batch = routines.drop_batch
 M.name_of = routines.name_of
 M.steps = routines.steps
 M.trail = routines.trail
+M.trail_days = routines.trail_days
 M.slots = routines.slots
 M.window_name = routines.window_name
 M.note = routines.note
@@ -37,6 +38,12 @@ function M.init_autocmds(group)
 			end
 			local line = vim.fn.getcmdline()
 			if line ~= "" then
+				-- a path typed in it is kept as its last part, as every other trigger names files
+				line = line:gsub("%S+", function(word)
+					if word:match("^[/~.]") or vim.fn.filereadable(word) == 1 or vim.fn.isdirectory(word) == 1 then
+						return vim.fs.basename(word)
+					end
+				end)
 				routines.begin("command", ":" .. line, vim.api.nvim_get_current_win())
 			end
 		end,
