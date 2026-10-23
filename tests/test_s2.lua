@@ -204,8 +204,45 @@ T['T299 [char] (S2) one post-restore callback replaces the load\'s 210 ms delay'
 		{ new_timers = 0, last_valid_window = true, order = child.ordered() })
 end
 
+-- The window shows the No Name text when it's saved, and a load follows in the
+-- same process, as a native session's reload does: the buffer is still there.
+T['T339 [char] (S2) a reload in the same process keeps the slots of a window showing an open No Name text'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b' })
+	S2.noname(child, { 'shown text' })
+	local before = child.slots()
+	eq(before:match('^⦉b⦊ %[NONAME_%d+%] ⟦%-⟧$') ~= nil, true)
+	eq(Misc.save(child), { true })
+	child.messages()
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq({ slots = child.slots(), holding = S2.holding(child, 'shown text'), errors = Misc.errors(child) },
+		{ slots = before, holding = 1, errors = {} })
+end
+
+-- The same with the No Name buffer empty, in a split that isn't focused: an
+-- empty one has no text to reopen, so the load knows it by its id alone.
+T['T339 [char] (S2) a reload in the same process keeps the slots of a window that isn\'t focused, on an empty No Name buffer'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e c', ':enew' })
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	local before = child.slots(split)
+	eq(before:match('^⦉c⦊ %[NONAME_%d+%] ⟦%-⟧$') ~= nil, true)
+	child.cmd('wincmd p')
+	child.settle()
+	eq(Misc.save(child), { true })
+	child.messages()
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq({ split = child.slots(split), focused = child.slots(), errors = Misc.errors(child) },
+		{ split = before, focused = '⦉a⦊ [b] ⟦-⟧', errors = {} })
+end
+
 -- The No Name text is open in the ternary at save, so the first load reopens it.
-T['T300 [target] (S2) a later reload brings no No Name text back twice'] = function()
+T['T300 [char] (S2) a later reload brings no No Name text back twice'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -588,7 +625,7 @@ T['T315 [char] (S2) windows on the same file keep their saved order, and a windo
 end
 
 -- The No Name text sits in the ternary at save.
-T['T316 [target] (S2) a No Name buffer reopened at load gets a fresh id, and every reference to the old one is renamed'] = function()
+T['T316 [char] (S2) a No Name buffer reopened at load gets a fresh id, and every reference to the old one is renamed'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
