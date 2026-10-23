@@ -95,7 +95,7 @@ T['T4 [char] hooks run in class order; no mode runs only "*" hooks, a mode adds 
 	eq(got.m2, { 'm2_0', 'star1', 'star3' })
 end
 
-T['T5 [target] off(from, to, name) removes that hook from that transition and nothing else'] = function()
+T['T5 [char] off(from, to, name) removes that hook from that transition and nothing else'] = function()
 	local got = child.lua([[
 		local sm = require('cavediver.engine'):create('t5')
 		sm:register_state('a')

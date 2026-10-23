@@ -33,7 +33,7 @@ T['T60 [char] set_primary: empty queue gives [a]on; on b [b,a]on; on b again [b,
 	eq(child.primary(), '[a,b]on')
 end
 
-T['T156 [target] the toggle_primary keymap description no longer reads "Toggle current buffer as primary"'] = function()
+T['T156 [char] the toggle_primary keymap description no longer reads "Toggle current buffer as primary"'] = function()
 	local desc = child.lua([[return vim.fn.maparg('<M-;><M-x>', 'n', false, true).desc]])
 	no_eq(desc, nil)
 	no_eq(desc, 'Toggle current buffer as primary')

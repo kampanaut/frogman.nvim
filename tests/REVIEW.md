@@ -759,7 +759,7 @@ note: T200's route. The scratch buffer isn't opened inside the failing call, onl
 spec: (A26) A dump opens its scratch buffer only once the editor settles, and names files by alias and basename, never by full path: on T200's route, no buffer is added inside the failing call, the scratch buffer is there once it settles, and neither it nor the file holds the project's…  
 `tests/test_cycling.lua:641`
 
-## tests/test_decisions.lua (52 cases: 45 char, 7 target)
+## tests/test_decisions.lua (52 cases: 46 char, 6 target)
 
 **T250 [char]** (P2, A1) the slotting happens after the event, not inside it  
 `:e a`, `:e b` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
@@ -1125,7 +1125,7 @@ spec: (I23, A21, final section) The check runs at a cleanup pass that moved a wi
 spec: (D11, bug found while porting) Under the window view, `:close` leaves no tie: `:e a`, `:e b`, `:vsplit`, `:close`, `:e a` put a strictly first in the bufferline order.  
 `tests/test_decisions.lua:833`
 
-**T289 [target]** (D25) the window machine is gone: its file, its SHOWING_ constants and its require  
+**T289 [char]** (D25) the window machine is gone: its file, its SHOWING_ constants and its require  
 → `eq({`  
 spec: (D25) The window machine goes: no `window/sm.lua`, no `SHOWING_` constants in `window/states.lua`, and nothing requires `cavediver.domains.window.sm`. A doc check, matched by text.  
 `tests/test_decisions.lua:851`
@@ -1140,7 +1140,7 @@ spec: (D18, D22, D24) STATUS and the old project `CLAUDE.md` live in `archive/`,
 spec: (D8, D13) README:15 ("Closed buffers reopen when accessed through relationships") and README:355 ("Every time you jump to secondary…") stay as written. A doc check, matched by text. It holds today already, so it's [char]: a guard that stays true when the decided code lands.  
 `tests/test_decisions.lua:874`
 
-## tests/test_docs.lua (24 cases: 5 char, 19 target)
+## tests/test_docs.lua (24 cases: 14 char, 10 target)
 
 **D1 [target]** README has toggle_primary and set_primary the right way round  
 → `eq({ has(r, 'toggle_primary = "<M-;><M-x>"'), has(r, 'set_primary = "<M-;><M-c>"') }, { true, true })`  
@@ -1182,19 +1182,19 @@ spec: (D8, D13) README:15 ("Closed buffers reopen when accessed through relation
 → `eq({`  
 `tests/test_docs.lua:135`
 
-**D3 [target]** cycle_select's annotation copies "Select cycling buffer and attach history"  
+**D3 [char]** cycle_select's annotation copies "Select cycling buffer and attach history"  
 → `eq(has(c, '---@field cycle_select string Select cycling buffer and attach history'), true)`  
 `tests/test_docs.lua:151`
 
-**D15 [target]** the checkpoint docstring says it is the live triquetra, not a copy  
+**D15 [char]** the checkpoint docstring says it is the live triquetra, not a copy  
 → `eq({ has(c, new), has(c, 'Stores a deep copy') }, { true, false })`  
 `tests/test_docs.lua:158`
 
-**D16 [target]** the <M-.> branch comment says most recent relative to the one deleted  
+**D16 [char]** the <M-.> branch comment says most recent relative to the one deleted  
 → `eq({`  
 `tests/test_docs.lua:165`
 
-**D17 [target]** navigation/data.lua says one jump table across all tabs  
+**D17 [char]** navigation/data.lua says one jump table across all tabs  
 → `eq({`  
 `tests/test_docs.lua:173`
 
@@ -1202,7 +1202,7 @@ spec: (D8, D13) README:15 ("Closed buffers reopen when accessed through relation
 → `eq({`  
 `tests/test_docs.lua:181`
 
-**D21 [target]** navigation/states.lua says nothing enters file_picker yet  
+**D21 [char]** navigation/states.lua says nothing enters file_picker yet  
 → `eq({ says, has(line, 'where explorer controls navigation') }, { true, false })`  
 `tests/test_docs.lua:191`
 
@@ -1210,11 +1210,11 @@ spec: (D8, D13) README:15 ("Closed buffers reopen when accessed through relation
 → `eq(has(s:lower(), 'not built'), true)`  
 `tests/test_docs.lua:200`
 
-**D25 [target]** the closed-stack comments say filehashes  
+**D25 [char]** the closed-stack comments say filehashes  
 → `eq({`  
 `tests/test_docs.lua:205`
 
-**D25 [target]** the loop state annotation is SELF "self"  
+**D25 [char]** the loop state annotation is SELF "self"  
 → `eq({`  
 `tests/test_docs.lua:215`
 
@@ -1222,11 +1222,11 @@ spec: (D8, D13) README:15 ("Closed buffers reopen when accessed through relation
 → `eq({`  
 `tests/test_docs.lua:223`
 
-**Q20 [target]** the engine says modes are shared by every machine  
+**Q20 [char]** the engine says modes are shared by every machine  
 → `eq({`  
 `tests/test_docs.lua:235`
 
-**Q5 [target]** the meaningless 30 in math.max(#ordered, 30) is gone  
+**Q5 [char]** the meaningless 30 in math.max(#ordered, 30) is gone  
 → `eq(c:find('math%.max%(%s*#history%.data%.ordered%.crux%s*,%s*30%s*%)') ~= nil, false)`  
 `tests/test_docs.lua:254`
 
@@ -1238,7 +1238,7 @@ spec: (D8, D13) README:15 ("Closed buffers reopen when accessed through relation
 → `eq({ has(desk, 'Sooner still, the next 'BufEnter' anywhere wipes it'), has(desk, 'Or skip the wait') }, { true, true })`  
 `tests/test_docs.lua:269`
 
-## tests/test_engine.lua (7 cases: 6 char, 1 target)
+## tests/test_engine.lua (7 cases: 7 char)
 
 **T1 [char]** to() on a transition with no bound hook throws from to() itself  
 → `eq(got.ok, false)`  
@@ -1272,7 +1272,7 @@ note: registered out of class order, with distinct classes
 spec: Hooks run in class order. `to()` without a mode runs only `"*"` hooks; `to(…, m)` also runs hooks filtered to `m`.  
 `tests/test_engine.lua:68`
 
-**T5 [target]** off(from, to, name) removes that hook from that transition and nothing else  
+**T5 [char]** off(from, to, name) removes that hook from that transition and nothing else  
 → `eq(got, { 'g:a->b', 'h:b->a' })`  
 spec: `off(from, to, name)` removes that hook from that transition and nothing else.  
 `tests/test_engine.lua:98`
@@ -1857,7 +1857,7 @@ spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary
 spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary write the same notes: from `⦉c⦊ [d] ⟦b⟧`, either one gives `⦉c⦊ [b] ⟦d⟧` with the swap notes `dsm{d-swap>b}` and `dtm{d-swap>c}`, and no plain secondary note for d. T30 and T39 pin the same notes. Plain na…  
 `tests/test_navigation.lua:147`
 
-## tests/test_negative.lua (48 cases: 40 char, 8 target)
+## tests/test_negative.lua (48 cases: 41 char, 7 target)
 
 **T207 [char]** (P5) a nofile scratch entered in a tracked window is not registered  
 `:e a`, `:e b` → `eq(registered(), true)`  
@@ -1993,7 +1993,7 @@ note: Decided 2026-10-21: the toggles are built (how they're exposed, key or com
 spec: (M11, D23) The winbar and indicator toggles work at runtime: `hide_winbar()` empties the winbar and it stays empty through the refresh, `show_winbar()` brings it back, and `hide_indicators()`/`show_indicators()` switch the indicators off and on. Today the winbar machine doesn't e…  
 `tests/test_negative.lua:300`
 
-**T221 [target]** (M11) unregister_hook(name) removes that hook from its machine, and nothing else, without throwing  
+**T221 [char]** (M11) unregister_hook(name) removes that hook from its machine, and nothing else, without throwing  
 → `eq(got, { ok = true, ran = { 'one.g', 'two.h' }, reusable = true })`  
 spec: (M11) `unregister_hook(name)` removes that hook from its own machine and nothing else, without throwing, and the name can be bound again. Today it calls the class instead of the instance (`state-machine.lua:382`), throws, and the hook still runs.  
 `tests/test_negative.lua:326`
@@ -2371,7 +2371,7 @@ note: x is the primary, switched off; then T150's first seven keys give {c=c s=a
 spec: Q6 on the fallback: with the primary disabled, `{c=A s=S t=T}` and `dtm[T] = S`, `<M-;><M-f>` acts as `<M-f>` and rewrites `dtm[T]` to A before the swap.  
 `tests/test_primary_jump.lua:141`
 
-## tests/test_primary_keys.lua (3 cases: 2 char, 1 target)
+## tests/test_primary_keys.lua (3 cases: 3 char)
 
 **T59 [char]** toggle_primary: empty queue gives [a]on, again [a]off, on another buffer [a]on with the queue unchanged  
 `:e a` → `primary = '[]off'`  
@@ -2389,11 +2389,11 @@ spec: On an empty queue `toggle_primary` gives `[a]on`; again gives `[a]off`; on
 spec: `set_primary` on an empty queue gives `[a]on`; on b it gives `[b,a]on`; on b again it gives `[b,a]off`; on a it gives `[a,b]on`.  
 `tests/test_primary_keys.lua:25`
 
-**T156 [target]** the toggle_primary keymap description no longer reads "Toggle current buffer as primary"  
+**T156 [char]** the toggle_primary keymap description no longer reads "Toggle current buffer as primary"  
 spec: The `toggle_primary` keymap's description no longer reads "Toggle current buffer as primary" (Q8).  
 `tests/test_primary_keys.lua:36`
 
-## tests/test_primary_window.lua (12 cases: 7 char, 4 target, 1 today)
+## tests/test_primary_window.lua (12 cases: 8 char, 3 target, 1 today)
 
 **T95 [char]** with an empty queue no window opens  
 `:e a`, `<M-;>F` → `eq(child.floats(), {})`  
@@ -2472,7 +2472,7 @@ note: Mapped in the window... ...and nowhere else.
 spec: With no picker available, `<M-e>` gives a message and changes no line. `<M-e>` isn't mapped outside the primary queue window (Q11).  
 `tests/test_primary_window.lua:156`
 
-**T161 [target]** q and <C-c> are described as "Save and close"  
+**T161 [char]** q and <C-c> are described as "Save and close"  
 → `eq(child.lua('return vim.fn.maparg("q", "n", false, true).desc'), 'Save and close')`  
 → `eq(child.lua('return vim.fn.maparg("<C-c>", "n", false, true).desc'), 'Save and close')`  
 spec: The window's `q` and `<C-c>` mappings are described as "Save and close" (Q12).  
@@ -3663,7 +3663,7 @@ note: the rename: b.txt copied to g.txt, b.txt closed the repair: b's buffer wip
 spec: (A27) A close by a rename or a repair turns the life line closed: T417's `:saveas g.txt` gives b.txt's result a bar in the closed state's colour, and so does T398's repair, b.txt kept on the editor's list.  
 `tests/test_trail.lua:568`
 
-## tests/test_ui.lua (13 cases: 7 char, 6 target)
+## tests/test_ui.lua (13 cases: 11 char, 2 target)
 
 **T115 [char]** the winbar holds the slots in order, with their highlights  
 `:e c`, `:e d`, `<M-f>`, `:e e` → `slots = '⦉d⦊ [e] ⟦c⟧'`  
@@ -3693,12 +3693,12 @@ spec: When the current buffer is the primary, it's shown as `⦉N⦊` in `Winbar
 spec: A slot closed with `:bdelete` shows its basename, not its full path.  
 `tests/test_ui.lua:69`
 
-**T119 [target]** get_buffer_relationships does not throw when current = primary, or it is gone (Q16)  
+**T119 [char]** get_buffer_relationships does not throw when current = primary, or it is gone (Q16)  
 `:e a`, `<M-;><M-c>` → `eq(got, { true })`  
 spec: `get_buffer_relationships` doesn't throw when current = primary, or it's gone (Q16).  
 `tests/test_ui.lua:78`
 
-**T120 [target]** get_smart_basename is a function  
+**T120 [char]** get_smart_basename is a function  
 → `eq(child.lua('return type(require("cavediver").get_smart_basename)'), 'function')`  
 spec: `require('cavediver').get_smart_basename` is a function.  
 `tests/test_ui.lua:90`
@@ -3724,12 +3724,12 @@ spec: `hide_bufferline()` and `show_bufferline()` don't throw.
 spec: While cycling, `get_theme_bg_color(true)` returns `colors.cokeline.bg.detached.focused`.  
 `tests/test_ui.lua:144`
 
-**T170 [target]** the engine has no machine named window (D25)  
+**T170 [char]** the engine has no machine named window (D25)  
 → `eq(got, { 'history', 'navigation', 'storage', 'ui_bufferline', 'ui_indicators', 'ui_loop' })`  
 spec: (D25) The engine has no machine named `window`; `require('cavediver.engine'):list()` gives the other six.  
 `tests/test_ui.lua:157`
 
-**T169 [target]** the mapped keys have their own descriptions (D3)  
+**T169 [char]** the mapped keys have their own descriptions (D3)  
 → `eq(got, {`  
 spec: (D3) The `desc` of the mapped keys: `toggle_primary` "Switch the primary on or off", `close_buffer` "Close the current buffer", `open_primary_buffer_history` "Open the primary queue"; no two keys share a description.  
 `tests/test_ui.lua:162`

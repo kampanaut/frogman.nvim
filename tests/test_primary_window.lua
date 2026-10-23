@@ -164,7 +164,7 @@ T['T160 [target] <M-e> is not mapped outside the primary queue window'] = functi
 	eq(child.lua('return vim.fn.maparg("<M-e>", "n")'), '')
 end
 
-T['T161 [target] q and <C-c> are described as "Save and close"'] = function()
+T['T161 [char] q and <C-c> are described as "Save and close"'] = function()
 	queue_ba()
 	open()
 	eq(child.lua('return vim.fn.maparg("q", "n", false, true).desc'), 'Save and close')

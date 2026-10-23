@@ -4,7 +4,6 @@
 ---Unlike other domains, it doesn't create its own state machine but extends
 ---the history state machine with window-specific hooks.
 
-local states = require('cavediver.domains.window.states')
 local data = require('cavediver.domains.window.data')
 local routines = require('cavediver.domains.window.routines')
 local history = require('cavediver.domains.history')

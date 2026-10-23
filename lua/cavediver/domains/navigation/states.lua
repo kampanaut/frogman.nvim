@@ -5,7 +5,7 @@
 ---@class NavigationStates
 ---@field NORMAL "normal" Standard navigation mode with history tracking enabled
 ---@field CYCLING "cycling" Cycling mode with history detached for buffer browsing
----@field FILE_PICKER "file_picker" File picker mode where explorer controls navigation
+---@field FILE_PICKER "file_picker" File picker mode: scaffolding, nothing enters it yet
 local navigation_state = {
 	NORMAL = "normal",
 	CYCLING = "cycling",

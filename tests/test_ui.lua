@@ -75,19 +75,19 @@ T['T118 [char] a slot closed with :bdelete shows its basename, not its full path
 	eq(part:find('# b.txt ⦊', 1, true) ~= nil, true)
 end
 
-T['T119 [target] get_buffer_relationships does not throw when current = primary, or it is gone (Q16)'] = function()
+T['T119 [char] get_buffer_relationships does not throw when current = primary, or it is gone (Q16)'] = function()
 	child.steps({ ':e a', '<M-;><M-c>' })
 	child.settle(300)
 	local got = child.lua([[
 		local f = require('cavediver').bufferline.get_buffer_relationships
 		if f == nil then return { true } end
 		local ok, err = pcall(f, vim.api.nvim_get_current_buf())
-		return { ok, err and tostring(err) or nil }
+		return { ok, (not ok) and tostring(err) or nil } -- on success, err is what it returns
 	]])
 	eq(got, { true })
 end
 
-T['T120 [target] get_smart_basename is a function'] = function()
+T['T120 [char] get_smart_basename is a function'] = function()
 	eq(child.lua('return type(require("cavediver").get_smart_basename)'), 'function')
 end
 
@@ -154,12 +154,12 @@ T['T124 [char] while cycling, get_theme_bg_color(true) is the detached focused c
 	eq(got, { 'cycling', true })
 end
 
-T['T170 [target] the engine has no machine named window (D25)'] = function()
+T['T170 [char] the engine has no machine named window (D25)'] = function()
 	local got = child.lua('local l = require("cavediver.engine"):list(); table.sort(l); return l')
 	eq(got, { 'history', 'navigation', 'storage', 'ui_bufferline', 'ui_indicators', 'ui_loop' })
 end
 
-T['T169 [target] the mapped keys have their own descriptions (D3)'] = function()
+T['T169 [char] the mapped keys have their own descriptions (D3)'] = function()
 	local got = child.lua([[
 		local keymaps = require('cavediver.configs').keymaps
 		local desc = {}

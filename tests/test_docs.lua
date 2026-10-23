@@ -148,21 +148,21 @@ end
 
 -- Keymap and annotation text ------------------------------------------------
 
-T['D3 [target] cycle_select\'s annotation copies "Select cycling buffer and attach history"'] = function()
+T['D3 [char] cycle_select\'s annotation copies "Select cycling buffer and attach history"'] = function()
 	local c = read('lua/cavediver/configs.lua')
 	eq(has(c, '---@field cycle_select string Select cycling buffer and attach history'), true)
 end
 
 -- Comments and docstrings ---------------------------------------------------
 
-T['D15 [target] the checkpoint docstring says it is the live triquetra, not a copy'] = function()
+T['D15 [char] the checkpoint docstring says it is the live triquetra, not a copy'] = function()
 	local c = comments(read('lua/cavediver/domains/history/routines.lua'))
 	local new = "Mark the window's triquetra as the cycle's checkpoint. The checkpoint is the window's own triquetra, "
 		.. "not a copy, so it always names the window's current slot."
 	eq({ has(c, new), has(c, 'Stores a deep copy') }, { true, false })
 end
 
-T['D16 [target] the <M-.> branch comment says most recent relative to the one deleted'] = function()
+T['D16 [char] the <M-.> branch comment says most recent relative to the one deleted'] = function()
 	local c = read('lua/cavediver/domains/history/routines.lua')
 	eq({
 		has(c, '-- Otherwise go to most recent relative to the one deleted (next in list, wraps around)'),
@@ -170,7 +170,7 @@ T['D16 [target] the <M-.> branch comment says most recent relative to the one de
 	}, { true, false })
 end
 
-T['D17 [target] navigation/data.lua says one jump table across all tabs'] = function()
+T['D17 [char] navigation/data.lua says one jump table across all tabs'] = function()
 	local c = read('lua/cavediver/domains/navigation/data.lua')
 	eq({
 		has(c, 'Current window -> previous window mapping, one table across all tabs'),
@@ -188,7 +188,7 @@ T['D18 [char] the saved window entry annotation has the six fields'] = function(
 	}, { true, true, false })
 end
 
-T['D21 [target] navigation/states.lua says nothing enters file_picker yet'] = function()
+T['D21 [char] navigation/states.lua says nothing enters file_picker yet'] = function()
 	local line = ''
 	for _, l in ipairs(vim.fn.readfile('lua/cavediver/domains/navigation/states.lua')) do
 		if l:find('@field FILE_PICKER', 1, true) then line = l:lower() end
@@ -202,7 +202,7 @@ T['D21 [target] the old spec marks file-picker mode as not built'] = function()
 	eq(has(s:lower(), 'not built'), true)
 end
 
-T['D25 [target] the closed-stack comments say filehashes'] = function()
+T['D25 [char] the closed-stack comments say filehashes'] = function()
 	local data = read('lua/cavediver/domains/history/data.lua')
 	local init = read('lua/cavediver/domains/history/init.lua')
 	eq({
@@ -212,7 +212,7 @@ T['D25 [target] the closed-stack comments say filehashes'] = function()
 	}, { false, false, true })
 end
 
-T['D25 [target] the loop state annotation is SELF "self"'] = function()
+T['D25 [char] the loop state annotation is SELF "self"'] = function()
 	local c = read('lua/cavediver/domains/ui/states.lua')
 	eq({
 		has(c, '---@field SELF "self" Continuous update loop state for UI refresh'),
@@ -232,7 +232,7 @@ end
 
 -- The engine (Q20) ----------------------------------------------------------
 
-T['Q20 [target] the engine says modes are shared by every machine'] = function()
+T['Q20 [char] the engine says modes are shared by every machine'] = function()
 	local factory = read('lua/cavediver/engine/init.lua')
 	local helpers = read('lua/cavediver/engine/helpers.lua')
 	local lines = vim.fn.readfile('lua/cavediver/engine/state-machine.lua')
@@ -251,7 +251,7 @@ T['Q20 [target] the engine says modes are shared by every machine'] = function()
 	}, { true, false, false, false })
 end
 
-T['Q5 [target] the meaningless 30 in math.max(#ordered, 30) is gone'] = function()
+T['Q5 [char] the meaningless 30 in math.max(#ordered, 30) is gone'] = function()
 	local c = read('lua/cavediver/domains/ui/routines.lua')
 	eq(c:find('math%.max%(%s*#history%.data%.ordered%.crux%s*,%s*30%s*%)') ~= nil, false)
 end

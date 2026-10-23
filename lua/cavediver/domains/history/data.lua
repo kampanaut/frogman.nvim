@@ -89,7 +89,7 @@ local corpus = {
 	},
 	-- Window states captured before cycling for restoration
 	cycling_origins = {}, -- cycling_origins
-	-- Stack of closed buffer filenames that can be reopened
+	-- Stack of closed buffer filehashes that can be reopened
 	closed_buffers = {},
 	-- Content storage for [No Name] buffers (identifier → content)
 	noname_content = {},

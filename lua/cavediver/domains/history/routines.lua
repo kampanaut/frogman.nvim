@@ -1018,10 +1018,8 @@ function M.update_buffer_history_ordered_nonharpooned()
 	return data.ordered.nonharpooned
 end
 
----Take a snapshot of window's buffer relationships before cycling.
----
----Captures the current window's triquetra state for restoration after cycling.
----Stores a deep copy of the window relationships for later restoration.
+---Mark the window's triquetra as the cycle's checkpoint. The checkpoint is the window's own triquetra,
+---not a copy, so it always names the window's current slot.
 ---
 ---@param winid number Window ID to snapshot
 function M.snapshot_origin(winid)
@@ -1380,7 +1378,7 @@ function M.delete_buffer(winid)
 			-- If deleting most recent, go to second most recent
 			next_bufnr = ordered_buffers[2].buf
 		elseif current_index > 1 then
-			-- Otherwise go to most recent (first in list)
+			-- Otherwise go to most recent relative to the one deleted (next in list, wraps around)
 			next_bufnr = ordered_buffers[((current_index) % #ordered_buffers) + 1].buf
 		end
 	else
