@@ -10,20 +10,30 @@
 ---@class BufferHistoryData: table<string, number>
 ---
 ---@class WindowTriquetraSerialised
----@field [1] string Current buffer filename (window's active buffer)
----@field [2] string|vim.NIL Secondary filename (optional)
----@field [3] string|vim.NIL Primary filename (optional, mobile buffer)
----@field [4] string|vim.NIL Ternary filename (optional)
+---@field [1] Filehash|vim.NIL Current slot
+---@field [2] Filehash|vim.NIL Secondary slot
+---@field [3] Filehash[] Primary queue, the primary first
+---@field [4] Filehash|vim.NIL Ternary slot
+---@field [5] table<Filehash, Filehash> Ternary notes (the ternary displacement map)
+---@field [6] table<Filehash, Filehash> Secondary notes (the secondary displacement map)
+---@field [7] Filehash|vim.NIL What the window shows: its buffer's hash, or an outsider's (oil, help)
+---@field [8] boolean Whether the primary is on
+---@field [9] table<Filehash, number> The window's own access history
 ---
----Window buffer relationships data structure (from buffers.lua M.sequence_window_buffers())
----Maps window index to triquetra buffer relationship arrays
----Example: { [1] = { "/path/to/secondary.lua", "/path/to/primary.lua", vim.NIL } }
+---Window buffer relationships data structure
+---One entry per window with a triquetra, in window order (tab by tab)
+---Example: { [1] = { "a1b2c3d4e5f6g7h8", vim.NIL, {}, "z9y8x7w6v5u4t3s2", {}, {}, "a1b2c3d4e5f6g7h8", false, { ["a1b2c3d4e5f6g7h8"] = 42 } } }
 ---@class WindowBufferData: table<number, WindowTriquetraSerialised>
 ---
----Closed buffer history data structure (from buffers.lua M.closed_buffers())
----Array of filenames that were closed and can be reopened
----Example: { "/path/to/closed1.lua", "/path/to/closed2.lua" }
----@class ClosedBufferData: string[]
+---Closed buffer history data structure
+---Array of the hashes of buffers that were closed and can be reopened, newest last
+---Example: { "a1b2c3d4e5f6g7h8", "z9y8x7w6v5u4t3s2" }
+---@class ClosedBufferData: Filehash[]
+---
+---Every saved hash's path is in the session file's paths table, XOR'd with the session's
+---directory, so a hash whose buffer doesn't come back still resolves to its file.
+---Example: { ["a1b2c3d4e5f6g7h8"] = "<the path, XOR'd and base64-encoded>" }
+---@class PathsData: table<Filehash, string>
 
 local data = require('cavediver.domains.storage.data')
 local history = require('cavediver.domains.history')
@@ -110,67 +120,94 @@ local function xor_decipher(encoded_text, key)
 	return result
 end
 
----This is the main seralisers of the hashes. It adds a layer of privacy kekeburichi laputa.
----@param filehash Filehash Full file path
----@param cwd string Current working directory
----@return string|nil compressed_path Compressed path or original if no benefit
-local function obfuscate_filehash_if_needed(filehash, cwd)
-	local is_registered = history.get_buffer_from_hash(filehash)
-	if is_registered == nil then -- this must be a closed buffer
-		local filepath = history.get_filepath_from_hash(filehash)
-		if filepath == nil then
-			-- nothing knows this hash (a path is kept while anything references it, so this shouldn't
-			-- happen). it's dropped rather than failing the save on cavediver's own data.
-			return nil
-		end
-		return xor_cipher(filepath, cwd)
-	else
-		return filehash
-	end
+---Whether the path registry knows a hash. Hashes are saved as they are, and the paths behind
+---them go into the paths table.
+---@param filehash Filehash|nil
+---@return boolean
+local function is_known(filehash)
+	return filehash ~= nil and history.get_filepath_from_hash(filehash) ~= nil
 end
 
----Decompress filepath by replacing hash prefix with actual CWD
----@param filehash string Potentially compressed file path
----@param cwd string Current working directory
----@return string decompressed_path Original file path
-local function unobfuscate_filehash_if_needed(filehash, cwd)
-	-- Check if this looks like a compressed path (32-char hash prefix)
-	local is_registered = history.get_buffer_from_hash(filehash)
-	if is_registered == nil then
-		return xor_decipher(filehash, cwd)
-	else
-		local output = history.get_filepath_from_hash(filehash)
-		if not output then
-			error("This must not be possible. You put a filehash not found on filepath and buffer registry?")
-		end
-		return output
+---The hash when the path registry knows it, otherwise nil.
+---@param filehash Filehash|nil
+---@return Filehash|nil
+local function known(filehash)
+	if is_known(filehash) then
+		return filehash
 	end
+	-- nothing knows this hash (a path is kept while anything references it, so this shouldn't
+	-- happen). it's dropped rather than failing the save on cavediver's own data.
+	return nil
+end
+
+---What a window shows, as a hash: its buffer's when the buffer is registered, otherwise its
+---name's, an outsider such as an oil listing or a help file. An untracked buffer with no name
+---gives nil.
+---@param winid WinId
+---@return Filehash|nil filehash
+---@return string|nil outsider The outsider's name, when the window shows one
+local function shown_by(winid)
+	local bufnr = vim.api.nvim_win_get_buf(winid)
+	local filehash = history.get_hash_from_buffer(bufnr)
+	if filehash then
+		return filehash, nil
+	end
+	local name = vim.api.nvim_buf_get_name(bufnr)
+	if name == "" then
+		return nil, nil
+	end
+	return history.routines.get_filehash(name), name
+end
+
+---Loads the paths table: hash to path, deciphered, with the outsiders left out (they only help
+---match windows, through what each window shows).
+---
+---@param paths PathsData
+---@param outsiders Filehash[] The hashes in paths that untracked buffers had
+---@param cwd string The session's directory
+---@return table<Filehash, Filepath> paths
+local function load_paths(paths, outsiders, cwd)
+	local outsider = {}
+	for _, filehash in ipairs(outsiders or {}) do
+		outsider[filehash] = true
+	end
+	local loaded = {}
+	for filehash, ciphered in pairs(paths) do
+		if not outsider[filehash] then
+			loaded[filehash] = xor_decipher(ciphered, cwd)
+		end
+	end
+	return loaded
 end
 
 
 ---Loads buffer access history data.
 ---
----Rebuilds buffer hash mappings for all valid buffers currently open,
----then restores saved buffer access history with original timestamps.
----Corresponds to buffers.lua M.load_buffer_history().
+---Every path the file knows becomes known again, so a reference whose buffer doesn't come back
+---still resolves to its file. Every restored buffer the file knows is registered, loaded or not;
+---one it doesn't know waits for its BufEnter, like any new buffer. Then restores saved buffer
+---access history with original timestamps.
 ---
----@param buffers BufferCruxInternals Buffer history from buffers.lua M.sequence_buffer_history()
+---@param buffers BufferCruxInternalsSerialised The global access history
+---@param paths table<Filehash, Filepath> The paths the file knows, outsiders left out
 ---@return nil
-local function load_buffer_history(buffers)
+local function load_buffer_history(buffers, paths)
 	---TODO: Loading [No Name] buffers with content.
 	-- resession doesn't save no name buffers. So after load hook, I should scour all of the
 	-- windows, and try to all the windows that has NONAME_ buffer, and try to load from a noname_content,
 	-- that was also updated, in pre_save, where cavediver also tried to save for all NONAME buffers. Or is there
 	-- a setting in resession to save no name buffers? I don't know.
+	for _, filepath in pairs(paths) do
+		history.register_filepath(filepath)
+	end
+
 	for _, bufnr in pairs(vim.api.nvim_list_bufs()) do
+		local name = vim.api.nvim_buf_get_name(bufnr)
 		if
 			vim.api.nvim_buf_is_valid(bufnr)
-			and vim.api.nvim_buf_is_loaded(bufnr)
-			and (
-				vim.bo[bufnr].buftype == ""
-				or vim.bo[bufnr].filetype == "image_nvim"
-			)
-			and (not vim.api.nvim_buf_get_name(bufnr):match("://"))
+			and name ~= ""
+			and paths[history.routines.get_filehash(name)]
+			and history.routines.is_trackable(bufnr)
 		then
 			history.register_buffer(bufnr)
 		end
@@ -182,44 +219,58 @@ local function load_buffer_history(buffers)
 end
 
 
+---A file the session manager didn't bring back is a closed buffer from then on: its slot keeps it
+---and reopens it when used. It goes under what was closed in the session, as the oldest.
+---@param filehash Filehash|nil
+local function close_if_not_restored(filehash)
+	local filepath = filehash and history.get_filepath_from_hash(filehash)
+	if
+		filepath and
+		not filepath:match("^NONAME_") and
+		history.get_buffer_from_hash(filehash) == nil and
+		not history.filehash_is_closed(filehash)
+	then
+		table.insert(history.data.closed_buffers, 1, filehash)
+	end
+end
+
 ---Loads window buffer relationship data.
 ---
----Restores per-window triquetra relationships (primary/secondary/ternary buffers)
----for all valid windows. Maps window indices to buffer filename arrays.
+---Restores per-window triquetra relationships (primary/secondary/ternary buffers). Each entry
+---records what its window showed, and a restored window takes the first entry, in saved order,
+---that showed what it shows, so windows on the same file keep their order. An entry that matches
+---no window is dropped, and a window that matches no entry starts fresh.
 ---
----@param window_buffer WindowBufferData Window relationships from buffers.lua M.sequence_window_buffers()
----@param cwd string
----@return nil
-local function load_window_buffer_relationships(window_buffer, cwd)
-	if cwd == nil then
-		error("Current working directory is not set.")
-	end
-	local starting_windows = {}
+---@param window_buffer WindowBufferData Window relationships, in window order
+---@return table<WinId, table<Filehash, number>> window_histories Each matched window's own access history
+local function load_window_buffer_relationships(window_buffer)
 	local set_cache_from_window_triquetra = require('cavediver').set_cache_from_window_triquetra
+	local window_histories = {}
 
-	-- get valid windows
-	for _, winid in pairs(vim.api.nvim_list_wins()) do
-		local cbufnr = vim.api.nvim_win_get_buf(winid)
-		if
-			vim.bo[cbufnr].buftype == "" and (not vim.api.nvim_buf_get_name(cbufnr):match("://"))
-		then
-			table.insert(starting_windows, winid)
+	-- the entries for each thing a window showed, in saved order
+	local unmatched = {}
+	for _, triquetra_serialised in ipairs(window_buffer) do
+		local shows = triquetra_serialised[7]
+		if shows ~= nil and shows ~= vim.NIL then
+			unmatched[shows] = unmatched[shows] or {}
+			table.insert(unmatched[shows], triquetra_serialised)
 		end
 	end
 
-	for index, triquetra_serialised in pairs(window_buffer) do
-		local actual_winid = starting_windows[index]
-		if not (
-				triquetra_serialised
-				and triquetra_serialised ~= vim.NIL
-				and starting_windows[index]
-			)
-		then
+	for _, actual_winid in pairs(vim.api.nvim_list_wins()) do
+		if vim.api.nvim_win_get_config(actual_winid).relative ~= "" then
+			goto continue -- floats never get a triquetra
+		end
+		local shows = shown_by(actual_winid)
+		local triquetra_serialised = shows and unmatched[shows] and table.remove(unmatched[shows], 1)
+		if not triquetra_serialised then
+			-- a window that matches nothing starts fresh, once what it shows is tracked
+			window.get_triquetra(actual_winid)
 			goto continue
 		end
 
 		---@type Filehash|nil
-		local cfilehash 
+		local cfilehash
 		---@type Filehash|nil
 		local sfilehash
 		---@type Filehash|nil
@@ -231,46 +282,25 @@ local function load_window_buffer_relationships(window_buffer, cwd)
 		---@type table<Filehash, Filehash>
 		local tdisplacement_map = {}
 
-		-- print_table(history.data)
-		-- Current buffer [1] - try to restore or use window's current buffer
+		-- Current buffer [1] - the saved one, or the window's current buffer
 		if triquetra_serialised[1] ~= vim.NIL then
-			local current_filepath = unobfuscate_filehash_if_needed(triquetra_serialised[1], cwd)
-			history.register_filepath(current_filepath)
-			cfilehash = history.get_hash_from_filepath(current_filepath)
-			if cfilehash == nil then
-				error("State Corruption: Cannot load window buffer relationship: The window has an unregistered buffer.")
-			end
-			if current_filepath:match("^NONAME_") then
-				-- [No Name] buffer - try to restore from content
-				local saved_hash = history.get_hash_from_filepath(current_filepath)
-				if saved_hash and history.data.noname_content[current_filepath] then
-					-- Restore [No Name] buffer
-					local restored_bufnr = history.reopen_filehash(saved_hash)
-					if restored_bufnr then
-						vim.api.nvim_win_set_buf(actual_winid, restored_bufnr)
-					end
-				end
-				cfilehash = history.get_hash_from_filepath(current_filepath)
-			end
-			-- print("current_filepath: " .. cfilehash)
+			cfilehash = triquetra_serialised[1]
 		end
-
-		-- Use actual current buffer if restoration failed
 		local current_slot = cfilehash or history.get_hash_from_buffer(vim.api.nvim_win_get_buf(actual_winid))
 
 		-- Secondary slot [2]
 		if triquetra_serialised[2] ~= vim.NIL then
-			sfilehash = history.get_hash_from_filepath(unobfuscate_filehash_if_needed(triquetra_serialised[2], cwd))
+			sfilehash = triquetra_serialised[2]
 		end
 
 		-- Primary buffer [3] - an array
 		if #triquetra_serialised[3] > 0 then
-			pfilehashes = vim.tbl_map(function (hash) return history.get_hash_from_filepath(unobfuscate_filehash_if_needed(hash, cwd)) end, triquetra_serialised[3]) or {}
+			pfilehashes = triquetra_serialised[3]
 		end
 
 		-- Ternary slot [4]
 		if triquetra_serialised[4] ~= vim.NIL then
-			tfilehash = history.get_hash_from_filepath(unobfuscate_filehash_if_needed(triquetra_serialised[4], cwd))
+			tfilehash = triquetra_serialised[4]
 		end
 
 		if triquetra_serialised[5] ~= nil and triquetra_serialised ~= vim.NIL then
@@ -282,16 +312,8 @@ local function load_window_buffer_relationships(window_buffer, cwd)
 		end
 
 		if current_slot == nil then
-			error("Cannot load window buffer relationship: The window has an unregistered buffer.")
+			goto continue -- nothing to put in the current slot: the window shows something untracked
 		end
-
-		-- print("=== DEBUG: Raw triquetra_serialised ===")
-		-- print_table(triquetra_serialised)
-		-- print("=== DEBUG: After unobfuscation ===")
-		-- print("cfilehash: " .. (cfilehash or "nil"))
-		-- print("pfilehash: " .. (pfilehash or "nil"))
-		-- print("sfilehash: " .. (sfilehash or "nil"))
-		-- print("tfilehash: " .. (tfilehash or "nil"))
 
 		window.set_buffer_relationship(
 			actual_winid,
@@ -302,12 +324,20 @@ local function load_window_buffer_relationships(window_buffer, cwd)
 				primary_buffer = pfilehashes,
 				displacement_ternary_map = tdisplacement_map,
 				displacement_secondary_map = sdisplacement_map,
-				primary_enabled = (pfilehashes and #pfilehashes and true) or false
+				primary_enabled = triquetra_serialised[8] == true
 			}
 		)
+		window_histories[actual_winid] = triquetra_serialised[9] or {}
+		close_if_not_restored(current_slot)
+		close_if_not_restored(sfilehash)
+		close_if_not_restored(tfilehash)
+		for _, filehash in ipairs(pfilehashes) do
+			close_if_not_restored(filehash)
+		end
 		set_cache_from_window_triquetra(actual_winid)
 		::continue::
 	end
+	return window_histories
 end
 
 ---Populate fresh buffer history from currently open buffers.
@@ -323,39 +353,13 @@ end
 
 ---Serialize buffer access history for session saving.
 ---
----Creates a copy of the current buffer access history that can be
----safely serialized to JSON. Maps filehash to access timestamps.
+---Creates a copy of the current global buffer access history that can be
+---safely serialized to JSON. Maps filehash to access timestamps. Each window's
+---own history goes with its window entry, so it follows the window matching.
 ---
 ---@return BufferCruxInternalsSerialised crux_serialised Serializable copy of buffer history
 local function serialise_buffer_history()
-	---@type table<string, table<Filehash, integer>>
-	local serialised_window_cruxes = {}
-
-	local compressed_index = 1
-	for _, winid in pairs(vim.api.nvim_list_wins()) do
-		if window.data.crux[winid] ~= nil then -- yes, a direct existence check sorry for breaking encapsulation
-			local wbufnr = vim.api.nvim_win_get_buf(winid)
-
-			local triquetra = window.get_triquetra(winid)
-			if
-				not (
-					next(history.data.crux_internals.window[winid] or {}) and (
-						vim.bo[wbufnr].buftype == "" or
-						(vim.api.nvim_buf_get_name(wbufnr):match("://") and triquetra and vim.bo[wbufnr].filetype ~= "cavediver-primary-buffer-history") or -- track a window with current buffer that is not tracked but with the current shown bufferr as a not regular file
-						vim.bo[wbufnr].filetype == "image_nvim"
-					)
-				)
-			then
-				goto continue
-			end
-
-			serialised_window_cruxes[compressed_index] = history.data.crux_internals.window[winid]
-			compressed_index = compressed_index + 1
-			::continue::
-		end
-	end
 	return {
-		window = serialised_window_cruxes,
 		global = history.data.crux_internals.global
 	}
 end
@@ -363,15 +367,12 @@ end
 ---Serialize window buffer relationships for session saving.
 ---
 ---Creates a compressed representation of all window triquetra relationships
----that can be safely serialized to JSON. Maps window indices to filename arrays.
+---that can be safely serialized to JSON: one entry per window with a triquetra,
+---holding hashes, and what the window shows so the load can find it.
 ---
 ---@return WindowBufferData compressed Serializable window relationship data
----@param cwd string
-local function serialise_window_relationships(cwd)
-	if cwd == nil then
-		error("Current working directory is not set.")
-	end
-
+---@param outsiders table<Filehash, string> Filled with the untracked buffers the windows show
+local function serialise_window_relationships(outsiders)
 	local compressed = {}
 
 	local function get_keys(tbl)
@@ -398,15 +399,6 @@ local function serialise_window_relationships(cwd)
 			local wbufnr = vim.api.nvim_win_get_buf(winid)
 
 			local triquetra = window.get_triquetra(winid)
-			if
-				not (
-					vim.bo[wbufnr].buftype == "" or
-					(vim.api.nvim_buf_get_name(wbufnr):match("://") and triquetra and vim.bo[wbufnr].filetype ~= "cavediver-primary-buffer-history") or -- track a window with current buffer that is not tracked but with the current shown bufferr as a not regular file
-					vim.bo[wbufnr].filetype == "image_nvim"
-				)
-			then
-				goto continue
-			end
 
 			---@type Filehash|vim.NIL|nil
 			local cfilehash 
@@ -457,14 +449,14 @@ local function serialise_window_relationships(cwd)
 			if cfilehash == nil then
 				cfilehash = vim.NIL
 			else
-				cfilehash = obfuscate_filehash_if_needed(cfilehash, cwd) or vim.NIL
+				cfilehash = known(cfilehash) or vim.NIL
 			end
 
 			-- Secondary slot
 			if sfilehash == nil then
 				sfilehash = vim.NIL
 			else
-				sfilehash = obfuscate_filehash_if_needed(sfilehash, cwd) or vim.NIL
+				sfilehash = known(sfilehash) or vim.NIL
 			end
 
 			-- Primary buffer (mobile)
@@ -473,7 +465,7 @@ local function serialise_window_relationships(cwd)
 			else
 				local serialised = {}
 				for _, hash in ipairs(pfilehashes) do -- no holes: a hash nothing knows is dropped
-					table.insert(serialised, obfuscate_filehash_if_needed(hash, cwd))
+					table.insert(serialised, known(hash))
 				end
 				pfilehashes = serialised
 			end
@@ -482,7 +474,7 @@ local function serialise_window_relationships(cwd)
 			if tfilehash == nil then
 				tfilehash = vim.NIL
 			else
-				tfilehash = obfuscate_filehash_if_needed(tfilehash, cwd) or vim.NIL
+				tfilehash = known(tfilehash) or vim.NIL
 			end
 
 			if tdisplacement_map == nil then
@@ -492,16 +484,6 @@ local function serialise_window_relationships(cwd)
 			if sdisplacement_map == nil then
 				sdisplacement_map = {}
 			end
-
-			compressed[compressed_index] = {
-				[1] = cfilehash, -- Current buffer
-				[2] = sfilehash, -- Secondary slot
-				[3] = pfilehashes, -- Primary buffer
-				[4] = tfilehash, -- Ternary slot
-				[5] = tdisplacement_map,
-				[6] = sdisplacement_map
-			}
-			compressed_index = compressed_index + 1
 
 			-- Switch oil buffers to current_slot before serialization
 			if vim.bo[wbufnr].filetype == "oil" then
@@ -515,28 +497,62 @@ local function serialise_window_relationships(cwd)
 				end
 			end
 
-			::continue::
+			-- what the window shows once the save is done, which is what the session manager saves
+			local shows, outsider = shown_by(winid)
+			if outsider then
+				outsiders[shows] = outsider
+			end
+
+			compressed[compressed_index] = {
+				[1] = cfilehash, -- Current buffer
+				[2] = sfilehash, -- Secondary slot
+				[3] = pfilehashes, -- Primary buffer
+				[4] = tfilehash, -- Ternary slot
+				[5] = tdisplacement_map,
+				[6] = sdisplacement_map,
+				[7] = shows or vim.NIL, -- What the window shows
+				[8] = triquetra.primary_enabled == true,
+				[9] = history.data.crux_internals.window[winid] or {}
+			}
+			compressed_index = compressed_index + 1
 		end
 	end
 	return compressed
 end
 
----Serialize closed buffer list for session saving.
+---Serialize the paths every saved hash points at.
 ---
----Creates a copy of the closed buffer filenames that can be safely
----serialized to JSON. Preserves the stack of reopenable files.
+---Everything the path registry knows, closed buffers and No Name names included,
+---plus the outsiders, each path XOR'd with the session's directory.
 ---
----@return ClosedBufferData copy Serializable copy of closed buffer list
----@param cwd string Current working directory
-local function serialise_closed_buffers(cwd)
-	local copy = {}
+---@return PathsData paths
+---@param outsiders table<Filehash, string> The untracked buffers the windows show
+---@param cwd string The session's directory
+local function serialise_paths(outsiders, cwd)
+	local paths = {}
 	if cwd == nil then
 		error("Current working directory is not set.")
 	end
+	for filehash, filepath in pairs(history.data.hash_filepath_registry.filepaths) do
+		paths[filehash] = xor_cipher(filepath, cwd)
+	end
+	for filehash, name in pairs(outsiders) do
+		paths[filehash] = xor_cipher(name, cwd)
+	end
+	return paths
+end
+
+---Serialize closed buffer list for session saving.
+---
+---Creates a copy of the closed buffer hashes that can be safely
+---serialized to JSON. Preserves the stack of reopenable files.
+---
+---@return ClosedBufferData copy Serializable copy of closed buffer list
+local function serialise_closed_buffers()
+	local copy = {}
 	for _, v in ipairs(history.get_closed_buffers()) do
-		local serialised = obfuscate_filehash_if_needed(v, cwd)
-		if serialised then
-			table.insert(copy, serialised)
+		if is_known(v) then
+			table.insert(copy, v)
 		end
 	end
 	return copy
@@ -547,8 +563,8 @@ end
 ---Creates a copy of the [No Name] buffer content mapping that can be safely
 ---serialized to JSON. Preserves content, filetype, and cursor position.
 ---
----@return table<Filepath, NoNameBufferContent> copy Serializable copy of [No Name] content
----@param cwd string Current working directory
+---@return table<Filehash, NoNameBufferContent> copy Serializable copy of [No Name] content
+---@param cwd string The session's directory
 local function serialise_noname_content(cwd)
 	local copy = {}
 	if cwd == nil then
@@ -556,9 +572,8 @@ local function serialise_noname_content(cwd)
 	end
 	for identifier, content in pairs(history.data.noname_content) do
 		-- print("identifier: " .. identifier)
-		local serialised = obfuscate_filehash_if_needed(identifier, cwd)
-		if serialised then
-			copy[serialised] = {
+		if is_known(identifier) then
+			copy[identifier] = {
 				lines = vim.tbl_map(function(line) return xor_cipher(line, cwd) end, content.lines),
 				filetype = content.filetype,
 				cursor = content.cursor
@@ -570,12 +585,13 @@ end
 
 ---Loads closed buffer history data.
 ---
----Restores the stack of closed buffer filenames that can be reopened.
----Validates that files still exist before adding to the reopenable stack.
+---Restores the stack of closed buffer hashes that can be reopened. A closed
+---buffer the session manager brought back isn't closed any more, so it stays
+---off the stack.
 ---
----@param closed_buffers ClosedBufferData Closed buffer list from buffers.lua M.closed_buffers()
----@param noname_content table<Filepath, NoNameBufferContent> [No Name] content from session
----@param cwd string
+---@param closed_buffers ClosedBufferData Closed buffer list
+---@param noname_content table<Filehash, NoNameBufferContent> [No Name] content from session
+---@param cwd string The session's directory
 ---@return nil
 local function load_closed_buffers(closed_buffers, noname_content, cwd)
 	if cwd == nil then
@@ -588,16 +604,17 @@ local function load_closed_buffers(closed_buffers, noname_content, cwd)
 		return
 	end
 
-	for _, obf_filehash in pairs(closed_buffers) do
-		local filepath = unobfuscate_filehash_if_needed(obf_filehash, cwd) -- return: either closed filepath or NONAME_<x>
-		history.register_filepath(filepath)
-		local filehash = history.get_hash_from_filepath(filepath)
-		if not filehash then
+	for _, filehash in ipairs(closed_buffers) do
+		local filepath = history.get_filepath_from_hash(filehash) -- return: either closed filepath or NONAME_<x>
+		if not filepath then
 			error("What the fuck. This is impossible.")
+		end
+		if history.get_buffer_from_hash(filehash) then
+			goto continue -- the session manager brought it back
 		end
 		if filepath:match("^NONAME_") then
 			if history.data.noname_content[filehash] == nil then
-				local content = noname_content[obf_filehash]
+				local content = noname_content[filehash]
 				if content == nil then
 					error("This is impossible. Noname content must be created for this closed No Name buffer.")
 				end
@@ -609,12 +626,9 @@ local function load_closed_buffers(closed_buffers, noname_content, cwd)
 			else
 				error("This is impossible. The closed buffer must not already exist in noname_content.")
 			end
-		else
-			if vim.fn.bufexists(filepath) ~= 0 then
-				error("This is impossible. The closed buffer must not already show in view. What the fuck.")
-			end
 		end
-		table.insert(history.data.closed_buffers, history.get_hash_from_filepath(filepath))
+		table.insert(history.data.closed_buffers, filehash)
+		::continue::
 	end
 	-- print_table(history.data.closed_buffers)
 end
@@ -664,7 +678,7 @@ function M.load_history(cwd, name)
 		if success then
 			local json_success, json_data = pcall(vim.fn.json_decode, file_content)
 			if json_success and json_data then
-				if json_data.buffers and json_data.windows then
+				if json_data.paths and json_data.buffers and json_data.windows then
 					saved_data = json_data
 				end
 			end
@@ -673,12 +687,12 @@ function M.load_history(cwd, name)
 
 	if saved_data then
 		-- Restore from saved session
-		load_buffer_history(saved_data.buffers)
+		load_buffer_history(saved_data.buffers, load_paths(saved_data.paths, saved_data.outsiders, cwd))
 		if saved_data.closed then
 			load_closed_buffers(saved_data.closed, saved_data.noname_content or {}, cwd)
 		end
-		load_window_buffer_relationships(saved_data.windows, cwd)
-		history.routines.initialise_crux_internals(saved_data.buffers)
+		local window_histories = load_window_buffer_relationships(saved_data.windows)
+		history.routines.initialise_crux_internals({ window = window_histories, global = saved_data.buffers.global })
 		-- the notes come from the file, so a slot loaded under a buffer can leave its notes naming it.
 		for _, triquetra in pairs(window.data.crux) do
 			window.routines.check_notes_under_current(triquetra)
@@ -734,10 +748,14 @@ function M.save_history(cwd, name)
 		vim.fn.writefile({ "{}" }, file_path)
 	end
 
+	local outsiders = {}
+	local windows = serialise_window_relationships(outsiders)
 	local storage = {
+		paths = serialise_paths(outsiders, cwd),
+		outsiders = vim.tbl_keys(outsiders),
 		buffers = serialise_buffer_history(),
-		windows = serialise_window_relationships(cwd),
-		closed = serialise_closed_buffers(cwd),
+		windows = windows,
+		closed = serialise_closed_buffers(),
 		noname_content = serialise_noname_content(cwd),
 	}
 

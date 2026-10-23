@@ -83,7 +83,7 @@ end
 
 -- Saved: the split (listed first) ⦉c⦊ [d], the first window ⦉a⦊ [b]. The
 -- manager brings both back the other way round: the first-listed window on b.
-T['T251 [target] (P3) the load matches windows by what they show, not by position'] = function()
+T['T251 [char] (P3) the load matches windows by what they show, not by position'] = function()
 	local s = shared()
 	start(s)
 	child.steps({ ':e a', ':e b' })

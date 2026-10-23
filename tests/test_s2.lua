@@ -94,7 +94,7 @@ end
 
 -- After the save the editor moves on: d and x visited, d closed, a cycle left
 -- open. The manager's restore puts the window back on c with no events.
-T['T296 [target] (S2) every domain tears its own state down at idle -> bare'] = function()
+T['T296 [char] (S2) every domain tears its own state down at idle -> bare'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b', ':e c' })
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
@@ -528,7 +528,7 @@ end
 -- Contents ------------------------------------------------------------------------
 
 -- x is loaded and hidden when the load runs, and the saved file never knew it.
-T['T314 [target] (S2) a restored buffer the file doesn\'t know waits for BufEnter'] = function()
+T['T314 [char] (S2) a restored buffer the file doesn\'t know waits for BufEnter'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b' })
@@ -543,9 +543,28 @@ T['T314 [target] (S2) a restored buffer the file doesn\'t know waits for BufEnte
 	eq({ at_load = at_load, entered = S2.registered(child, 'x') }, { at_load = false, entered = true })
 end
 
+-- b.txt stays on disk, but the manager doesn't bring b back. A cleanup pass
+-- after the load leaves the reference alone.
+T['T337 [char] (S2) a reference whose buffer the manager doesn\'t restore is kept, and reopens when used'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
+	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
+	eq(Misc.save(child), { true })
+
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'c', 'd' }, 'd')
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	child.lua('require("cavediver.domains.history").cleanup_system()')
+	eq({ slots = child.slots(), b = S2.registered(child, 'b') }, { slots = '⦉c⦊ [d] ⟦b⟧', b = false })
+	child.steps({ '<M-f>' })
+	eq({ slots = child.slots(), shown = child.shown() }, { slots = '⦉c⦊ [b] ⟦d⟧', shown = 'b' })
+end
+
 -- Saved: the split (listed first) ⦉c⦊ [b], the first window ⦉a⦊ [b]. The
 -- manager brings both back, behind a new first-listed window on e.
-T['T315 [target] (S2) windows on the same file keep their saved order, and a window that matches nothing starts fresh'] = function()
+T['T315 [char] (S2) windows on the same file keep their saved order, and a window that matches nothing starts fresh'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b' })
