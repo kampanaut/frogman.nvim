@@ -131,7 +131,9 @@ function M.open(key, sealed, aad)
 	local ctx = lib.EVP_CIPHER_CTX_new()
 	local out = ffi.new("unsigned char[?]", #ciphertext + 16)
 	local outl = ffi.new("int[1]")
-	local tagbuf = ffi.new("unsigned char[?]", M.tag_length, tag)
+	-- copied by its length: a string initializer would add a zero byte past the buffer's end
+	local tagbuf = ffi.new("unsigned char[?]", M.tag_length)
+	ffi.copy(tagbuf, tag, M.tag_length)
 	local plaintext
 	local ok = pcall(function()
 		assert(lib.EVP_DecryptInit_ex(ctx, lib.EVP_aes_256_gcm(), nil, key, nonce) == 1)
