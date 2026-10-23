@@ -29,6 +29,8 @@ function M.save_session(name, opts)
 		directory = vim.fn.getcwd(-1, vim.api.nvim_tabpage_get_number(opts.tab))
 	end
 	local tab = opts and opts.tab
+	-- the session's last part, never a whole path (native wiring passes v:this_session)
+	require('cavediver.domains.ledger').begin("save", vim.fn.fnamemodify(name or directory, ":t"))
 	storageSM:to(states.SAVING, { name = name, directory = directory, tab = tab })
 	storageSM:to(states.IDLE, { name = name, directory = directory, tab = tab })
 end
@@ -60,10 +62,14 @@ local function load(name, opts)
 	end)
 	-- the file is read first, since its scope decides whether anything is torn down
 	local tab_session = routines.prepare_load(directory, name, hint and opts.tab or nil)
+	local ledger = require('cavediver.domains.ledger')
 	if not tab_session then
-		-- the manager has torn the outgoing session down by now: a write still waiting would hold that
+		-- the manager has torn the outgoing session down by now: a write still waiting would hold that,
+		-- and so would the moves and the messages of the batch it happened in
 		routines.drop_pending_records()
+		ledger.drop_batch()
 	end
+	ledger.begin("load", vim.fn.fnamemodify(name or directory, ":t"))
 	if storageSM:state() == states.IDLE and not tab_session then
 		storageSM:to(states.BARE, session)
 	end

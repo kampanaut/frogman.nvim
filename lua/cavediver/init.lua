@@ -12,6 +12,7 @@ local history = require('cavediver.domains.history')
 local window = require('cavediver.domains.window')
 local ui = require('cavediver.domains.ui')
 local storage = require('cavediver.domains.storage')
+local ledger = require('cavediver.domains.ledger')
 local engine = require('cavediver.engine')
 
 local settings = require('cavediver.configs')
@@ -22,6 +23,7 @@ M.history = history
 M.window = window
 M.ui = ui
 M.storage = storage
+M.ledger = ledger
 M.engine = engine
 
 ---Setup keymaps for cavediver operations
@@ -32,6 +34,7 @@ local function setup_keymaps(keymaps)
 	-- Buffer lifecycle
 	if keymaps.reopen_last_closed then
 		vim.keymap.set('n', keymaps.reopen_last_closed, function()
+			ledger.begin("keymap", keymaps.reopen_last_closed, vim.api.nvim_get_current_win())
 			M.reopen_last_closed()
 		end, { desc = "Reopen last closed buffer" })
 	end
@@ -39,30 +42,35 @@ local function setup_keymaps(keymaps)
 	-- Core triquetra operations
 	if keymaps.toggle_secondary then
 		vim.keymap.set('n', keymaps.toggle_secondary, function()
+			ledger.begin("keymap", keymaps.toggle_secondary, vim.api.nvim_get_current_win())
 			M.toggle_secondary()
 		end, { desc = "Toggle current ↔ secondary buffer" })
 	end
 
 	if keymaps.toggle_ternary then
 		vim.keymap.set('n', keymaps.toggle_ternary, function()
+			ledger.begin("keymap", keymaps.toggle_ternary, vim.api.nvim_get_current_win())
 			M.toggle_ternary()
 		end, { desc = "Toggle current ↔ ternary buffer" })
 	end
 
 	if keymaps.jump_to_primary then
 		vim.keymap.set('n', keymaps.jump_to_primary, function()
+			ledger.begin("keymap", keymaps.jump_to_primary, vim.api.nvim_get_current_win())
 			M.jump_to_primary()
 		end, { desc = "Bring primary buffer to current" })
 	end
 
 	if keymaps.restore_ternary then
 		vim.keymap.set('n', keymaps.restore_ternary, function()
+			ledger.begin("keymap", keymaps.restore_ternary, vim.api.nvim_get_current_win())
 			M.restore_ternary()
 		end, { desc = "Restore ternary relationship" })
 	end
 
 	if keymaps.restore_secondary then
 		vim.keymap.set('n', keymaps.restore_secondary, function()
+			ledger.begin("keymap", keymaps.restore_secondary, vim.api.nvim_get_current_win())
 			M.restore_secondary()
 		end, { desc = "Restore secondary relationship" })
 	end
@@ -70,30 +78,35 @@ local function setup_keymaps(keymaps)
 	-- Cycling mode navigation
 	if keymaps.cycle_left then
 		vim.keymap.set('n', keymaps.cycle_left, function()
+			ledger.begin("keymap", keymaps.cycle_left, vim.api.nvim_get_current_win())
 			M.cycle_left()
 		end, { desc = "Cycle left during cycling mode" })
 	end
 
 	if keymaps.cycle_right then
 		vim.keymap.set('n', keymaps.cycle_right, function()
+			ledger.begin("keymap", keymaps.cycle_right, vim.api.nvim_get_current_win())
 			M.cycle_right()
 		end, { desc = "Cycle right during cycling mode" })
 	end
 
 	if keymaps.cycle_select then
 		vim.keymap.set('n', keymaps.cycle_select, function()
+			ledger.begin("keymap", keymaps.cycle_select, vim.api.nvim_get_current_win())
 			M.cycle_select()
 		end, { desc = "Select cycling buffer and attach history" })
 	end
 
 	if keymaps.toggle_window then
 		vim.keymap.set('n', keymaps.toggle_window, function()
+			ledger.begin("keymap", keymaps.toggle_window, vim.api.nvim_get_current_win())
 			M.toggle_window()
 		end, { desc = "Toggle between current and previous window" })
 	end
 
 	if keymaps.set_primary then
 		vim.keymap.set('n', keymaps.set_primary, function()
+			ledger.begin("keymap", keymaps.set_primary, vim.api.nvim_get_current_win())
 			M.set_primary()
 		end, { desc = "Set current buffer as primary" })
 	end
@@ -101,24 +114,28 @@ local function setup_keymaps(keymaps)
 	-- Primary buffer management
 	if keymaps.toggle_primary then
 		vim.keymap.set('n', keymaps.toggle_primary, function()
+			ledger.begin("keymap", keymaps.toggle_primary, vim.api.nvim_get_current_win())
 			M.toggle_primary()
 		end, { desc = "Toggle current buffer as primary" })
 	end
 
 	if keymaps.close_buffer then
 		vim.keymap.set('n', keymaps.close_buffer, function()
+			ledger.begin("keymap", keymaps.close_buffer, vim.api.nvim_get_current_win())
 			M.delete_buffer()
 		end, { desc = "Toggle current buffer as primary" })
 	end
 
 	if keymaps.open_primary_buffer_history then
 		vim.keymap.set('n', keymaps.open_primary_buffer_history, function()
+			ledger.begin("keymap", keymaps.open_primary_buffer_history, vim.api.nvim_get_current_win())
 			M.open_primary_buffer_history()
 		end, { desc = "Toggle current buffer as primary" })
 	end
 
 	if keymaps.open_closed_lists then
 		vim.keymap.set('n', keymaps.open_closed_lists, function()
+			ledger.begin("keymap", keymaps.open_closed_lists, vim.api.nvim_get_current_win())
 			M.open_closed_lists()
 		end, { desc = "Open the closed lists" })
 	end
@@ -153,6 +170,7 @@ function M.setup(user_config)
 	M.config = settings
 	
 	local group = vim.api.nvim_create_augroup("cavediver", { clear = true })
+	ledger.init_autocmds(group) -- first, so a step has begun before the others act on its event
 	history.init_autocmds(group)
 	navigation.init_autocmds(group)
 	window.init_autocmds(group)

@@ -822,7 +822,7 @@ local function derive_cache_from_window_triquetra(winid, again)
 	}) do
 		local bufnr = history.get_buffer_from_hash(filehash)
 		if bufnr and not vim.api.nvim_buf_is_valid(bufnr) then
-			history.routines.cleanup_system()
+			require('cavediver.domains.ledger').within("timer", "cleanup", history.routines.cleanup_system)
 			window_triquetra = window.get_triquetra(winid)
 			if not window_triquetra then
 				return nil

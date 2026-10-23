@@ -144,7 +144,14 @@ function M.init_autocmds(group)
 			local buf = args.buf
 			local function map(lhs, fn, desc)
 				if lhs then
-					vim.keymap.set("n", lhs, fn, { buffer = buf, desc = desc })
+					local act = fn
+					if type(fn) == "function" then
+						act = function()
+							require('cavediver.domains.ledger').begin("keymap", lhs, vim.api.nvim_get_current_win())
+							fn()
+						end
+					end
+					vim.keymap.set("n", lhs, act, { buffer = buf, desc = desc })
 				end
 			end
 			map(keys.leave, function() routines.leave_closed_lists(buf) end, "Write and leave the closed lists")
