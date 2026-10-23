@@ -653,6 +653,9 @@ function M.load_history(cwd)
 		error("Invalid current working directory.")
 	end
 	local file_path = get_session_filepath(cwd)
+	-- an arrival queued before this load (the restore's own buffers flashing by) is noise the load
+	-- replaces, so it's dropped when it settles.
+	history.data.loads = history.data.loads + 1
 
 	-- Try to load existing session data
 	local saved_data = nil
@@ -690,6 +693,21 @@ function M.load_history(cwd)
 	history.sm:to(historyState.ATTACHED, { buf = vim.api.nvim_get_current_buf() }, history.states.mode.UPDATE)
 	-- print_table(history.data)
 	-- print_table(window.data)
+end
+
+---Once the restore's batch is over: the window the restore left focused becomes the last valid
+---window when it has a triquetra, and the bufferline order is built for it.
+---
+---@return nil
+function M.after_restore()
+	local winid = vim.api.nvim_get_current_win()
+	if window.data.crux[winid] then
+		window.data.last_valid_window = winid
+		window.data.current_window = winid
+		history.routines.construct_crux(winid)
+		history.routines.update_buffer_history_ordered()
+		history.routines.update_buffer_history_ordered_nonharpooned()
+	end
 end
 
 ---Save complete session history data to persistent storage.

@@ -181,17 +181,4 @@ M.last_valid_window = vim.api.nvim_get_current_win()
 ---@type WinId
 M.current_window = vim.api.nvim_get_current_win()
 
----Set the last valid window once the editor has had a moment to settle. setup() calls this, so
----nothing runs at require.
----@return nil
-function M.init_last_valid_window()
-	vim.defer_fn(function()
-		local current_window = vim.api.nvim_get_current_win()
-		if M.crux[current_window] then
-			M.last_valid_window = current_window
-			M.current_window = current_window
-		end
-	end, 200)
-end
-
 return M

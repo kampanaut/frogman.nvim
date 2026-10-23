@@ -246,7 +246,8 @@ end
 
 local derive_cache_lock = {}
 
-local function derive_cache_from_window_triquetra(winid)
+---@param again boolean|nil True on the one retry after a cleanup
+local function derive_cache_from_window_triquetra(winid, again)
 	local window_triquetra = window.get_triquetra(winid)
 	if not  window_triquetra then
 		return nil
@@ -338,10 +339,11 @@ local function derive_cache_from_window_triquetra(winid)
 	ui_triquetra.has_primary = ui_triquetra.has_primary and window_triquetra.primary_enabled
 
 	if ui_triquetra.current_bufnr == nil and not (ui_triquetra.deleted_slots.current and ui_triquetra.visiting) then
-		if not derive_cache_lock[winid] then
+		-- the retry is counted here: resolve_slot clears derive_cache_lock when another slot resolves.
+		if not again then
 			derive_cache_lock[winid] = true
 			window.routines.cleanup_triquetras() -- I know it's really good to do this, but we need to clean up the triquetra.
-			return derive_cache_from_window_triquetra(winid) -- We redo it again.
+			return derive_cache_from_window_triquetra(winid, true) -- We redo it again.
 		else
 			error("Impossible state: current_bufnr is nil in derive_cache_from_window_triquetra() for winid " .. winid .. " , even cleanup_triquetras() couldn't fix it. So what the fuck right?")
 		end

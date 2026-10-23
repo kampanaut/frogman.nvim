@@ -77,7 +77,7 @@ end
 
 -- Loading -------------------------------------------------------------------------
 
-T['T295 [target] (S2) a load from idle goes idle -> bare -> loading'] = function()
+T['T295 [char] (S2) a load from idle goes idle -> bare -> loading'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b' })
 	eq(Misc.save(child), { true })
@@ -114,7 +114,7 @@ end
 -- Three calls in one batch, then a 30 ms wait (scheduled callbacks run, no
 -- timer anywhere near), then a fourth call. With T145 (three calls, one load),
 -- two loads in all tells vim.schedule apart from a timer and from no flag.
-T['T297 [target] (S2) the repeat flag is re-armed by vim.schedule: a call after the batch is a full load'] = function()
+T['T297 [char] (S2) the repeat flag is re-armed by vim.schedule: a call after the batch is a full load'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b' })
@@ -139,7 +139,7 @@ end
 -- and Neovim's restart session is a real :mksession! file, named the way
 -- :restart names it. It's sourced in the same batch as the startup load, as in
 -- the desk's tmux run, and rebuilds the windows with events on.
-T['T298 [target] (S2) after Neovim\'s :restart session, cavediver loads again by itself, ignoring the repeat flag'] = function()
+T['T298 [char] (S2) after Neovim\'s :restart session, cavediver loads again by itself, ignoring the repeat flag'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b' })
@@ -173,7 +173,7 @@ end
 -- The current window is a split on c, made with no events, so nothing has
 -- told cavediver about it before the load. Timer handles are counted: the
 -- decided load uses vim.schedule, and a fixed delay needs a timer.
-T['T299 [target] (S2) one post-restore callback replaces the load\'s 210 ms delay'] = function()
+T['T299 [char] (S2) one post-restore callback replaces the load\'s 210 ms delay'] = function()
 	local s = S2.shared()
 	S2.start(child, s, { history_view = 'window' })
 	child.steps({ ':e a', ':e b' })

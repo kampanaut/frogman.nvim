@@ -82,5 +82,7 @@ local corpus = {
 	closed_buffers = {},
 	-- Content storage for [No Name] buffers (identifier → content)
 	noname_content = {},
+	-- How many session loads have run: an arrival queued before one is the restore's own, and dropped
+	loads = 0,
 }
 return corpus

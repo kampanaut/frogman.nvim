@@ -206,7 +206,7 @@ T['T89 [target] <M-S-w> on a missing file says so and leaves the entry on the st
 	eq(child.closed(), 'f')
 end
 
-T['T90 [target] a reopened No Name buffer gets its cursor in its own window'] = function()
+T['T90 [char] a reopened No Name buffer gets its cursor in its own window'] = function()
 	child.steps({ ':e a' })
 	-- Cursor on line 3; a.txt, where <M-.> lands, has one line.
 	noname({ 'one', 'two', 'three' }, nil, { 3, 2 })
@@ -220,7 +220,7 @@ T['T90 [target] a reopened No Name buffer gets its cursor in its own window'] = 
 	eq(child.lua('return vim.api.nvim_win_get_cursor(0)'), { 3, 2 })
 end
 
-T['T91 [target] after a No Name buffer is reopened, its old hash is renamed everywhere'] = function()
+T['T91 [char] after a No Name buffer is reopened, its old hash is renamed everywhere'] = function()
 	-- b is left while the No Name buffer is its ternary, so dtm[b] names it;
 	-- then the No Name buffer is closed from c, where it lands in the ternary.
 	child.steps({ ':e a' })

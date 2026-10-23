@@ -81,15 +81,16 @@ T['T10 [char] :e registers a file; help, terminal, scheme:// and otter\'s unlist
 	eq(got, { file = true, help = false, terminal = false, scheme = false, otter = false })
 end
 
-T['T11 [today] an entered No Name buffer is registered as NONAME_<bufnr>'] = function()
+T['T11 [char] an entered No Name buffer is registered as NONAME_<id>, its id kept on the buffer (I16)'] = function()
 	child.steps({ ':e a', ':enew' })
 	local got = child.lua([[
 		local H = require('cavediver.domains.history')
 		local buf = vim.api.nvim_get_current_buf()
 		local hash = H.get_hash_from_buffer(buf)
-		return { path = hash and H.get_filepath_from_hash(hash), want = 'NONAME_' .. buf }
+		return { path = hash and H.get_filepath_from_hash(hash), want = 'NONAME_' .. tostring(vim.b[buf].cavediver_noname) }
 	]])
 	eq(got.path, got.want)
+	eq(got.path ~= 'NONAME_' .. child.lua('return vim.api.nvim_get_current_buf()'), true)
 end
 
 T['T12 [char] registering a second buffer under the same hash binds it to the newer one'] = function()

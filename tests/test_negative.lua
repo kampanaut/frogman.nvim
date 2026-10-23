@@ -219,7 +219,7 @@ end
 
 -- Two fresh processes, the same steps, so the No Name buffer gets the same
 -- buffer number in both.
-T['T216 [target] (I16) a No Name id is not reused across sessions'] = function()
+T['T216 [char] (I16) a No Name id is not reused across sessions'] = function()
 	local function noname()
 		child.setup()
 		child.steps({ ':e a', ':enew' })
@@ -637,7 +637,7 @@ T['T237 [char] (A19) with nothing left to land on, the window keeps Neovim\'s em
 end
 
 -- The decided move (DESK:1924): no ghost on the closed stack, and the No Name's notes follow to the new name.
-T['T238 [target] (A20) :w name on a No Name buffer is a move: no ghost on the closed stack, and its notes follow'] = function()
+T['T238 [char] (A20) :w name on a No Name buffer is a move: no ghost on the closed stack, and its notes follow'] = function()
 	child.steps({ ':e a', ':enew' })
 	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "draft" })')
 	child.steps({ ':e b', ':buffer #' })

@@ -56,9 +56,55 @@ historySM:on("*", "*", "handle_deletion", function(context, from, to)
 	end
 end, 0, true, states.mode.DELETE)
 
+-- a load from idle starts from nothing, as at startup. a cycle left open ends with it, and nothing is picked.
+local storageSM = require('cavediver.domains.storage.sm')
+local storageStates = require('cavediver.domains.storage.states')
+storageSM:on(storageStates.IDLE, storageStates.BARE, "history_teardown", function()
+	routines.teardown()
+	historySM.current_state = states.ATTACHED
+end, 3, true)
+
 navigationSM:on("*", "*", "winenter_update_history_view", function(context)
 	routines.construct_crux(require("cavediver.domains.navigation").routines.find_most_recent_tracked_window())
 end, 3, true, navigationSMStates.mode.WINENTER)
+
+-- renames on their way: the old hash, kept from BufFilePre until the rename settles.
+---@type table<Bufnr, { hash: Filehash, history: table|nil }>
+local renames = {}
+
+-- No Name buffers deleted in this batch of events. One that's written under a name in the same batch
+-- (:w name) was renamed, not closed; anything else, like :e reusing an empty one, wasn't.
+---@type table<Bufnr, { hash: Filehash, history: table }>
+local noname_deleted = {}
+
+---Settle a rename once the command that made it is over: the disk decides whether it was a copy or a
+---move (routines.settle_rename), then the buffer is taken in under its new name, as an arrival in the
+---window that shows it, or just registered when no window does.
+---
+---@param bufnr Bufnr
+---@param rename { hash: Filehash, history: table }
+local function settle_rename(bufnr, rename)
+	if not vim.api.nvim_buf_is_valid(bufnr) or vim.api.nvim_buf_get_name(bufnr) == "" then
+		return -- deleted for good (a No Name buffer closed), not renamed.
+	end
+	local moved_from = routines.settle_rename(bufnr, rename.hash, rename.history)
+	if not moved_from and routines.get_hash_from_buffer(bufnr) == rename.hash then
+		-- a copy: the old name is still a file, and it's closed as a delete closes it.
+		historySM:to(historySM:state(), { buf = bufnr }, states.mode.DELETE)
+	end
+	if routines.is_trackable(bufnr) and not routines.get_hash_from_buffer(bufnr) then
+		routines.register_buffer(bufnr) -- known by its new name, whatever the history state (a cycle).
+	end
+	local winid = vim.fn.bufwinid(bufnr)
+	if winid ~= -1 then
+		vim.api.nvim_win_call(winid, function()
+			historySM:to(historySM:state(), { buf = bufnr }, states.mode.UPDATE)
+		end)
+	end
+	if moved_from then
+		routines.unregister_filepath(moved_from)
+	end
+end
 
 local M = {}
 
@@ -76,6 +122,16 @@ function M.init_autocmds(group)
 			-- print("BufUnload"..args.buf .. " - "..vim.api.nvim_buf_get_name(args.buf))
 			if vim.b[args.buf].skip_bufdelete ~= true then
 				-- print("I was ran!" .. args.buf)
+				-- a No Name buffer written under a name is deleted and made again under it: a rename, if the
+				-- write follows in this batch (BufWritePost claims it); otherwise it's dropped once it settles.
+				local hash = routines.get_hash_from_buffer(args.buf)
+				local path = hash and routines.get_filepath_from_hash(hash)
+				if path and path:match("^NONAME_") then
+					noname_deleted[args.buf] = { hash = hash, history = routines.history_of(hash) }
+					vim.schedule(function()
+						noname_deleted[args.buf] = nil
+					end)
+				end
 				historySM:to(historySM:state(), { buf = args.buf }, states.mode.DELETE)
 			end
 		end,
@@ -84,15 +140,22 @@ function M.init_autocmds(group)
 	vim.api.nvim_create_autocmd("BufWritePost", {
 		group = group,
 		callback = function(args)
-			local bufname = vim.api.nvim_buf_get_name(args.buf)
+			local rename = noname_deleted[args.buf]
+			noname_deleted[args.buf] = nil
+			-- once the write is over: a No Name buffer written under a name settles as a rename.
+			vim.schedule(function()
+				if rename then
+					settle_rename(args.buf, rename)
+					return
+				end
+				-- Skip if already registered
+				if not vim.api.nvim_buf_is_valid(args.buf) or routines.get_hash_from_buffer(args.buf) then
+					return
+				end
 
-			-- Skip if already registered
-			if routines.get_hash_from_buffer(args.buf) then
-				return
-			end
-
-			-- Only process normal file buffers with valid filenames
-			historySM:to(historySM:state(), { buf = args.buf }, states.mode.UPDATE)
+				-- Only process normal file buffers with valid filenames
+				historySM:to(historySM:state(), { buf = args.buf }, states.mode.UPDATE)
+			end)
 		end
 	})
 
@@ -110,6 +173,7 @@ function M.init_autocmds(group)
 			-- the settle rule: the arrival is slotted once the event is over, against the window it
 			-- happened in (not the focused one), and only if that window still shows the buffer then.
 			local cycling_step = historySM:state() == states.DETACHED
+			local loads = data.loads
 			vim.schedule(function()
 				if
 					not vim.api.nvim_win_is_valid(winid) or
@@ -120,6 +184,9 @@ function M.init_autocmds(group)
 				end
 				if cycling_step and historySM:state() ~= states.DETACHED then
 					return -- a cycle's step, and the cycle ended since: the pick or the cancel settled the window.
+				end
+				if data.loads ~= loads then
+					return -- a session loaded since: this was the restore's own arrival, which the load replaced.
 				end
 				vim.api.nvim_win_call(winid, function()
 					historySM:to(historySM:state(), { buf = args.buf }, states.mode.UPDATE)
@@ -137,8 +204,10 @@ function M.init_autocmds(group)
 			-- print(args.file)
 			-- only a buffer we track gets its new identity at BufFilePost. the buffer :saveas makes for
 			-- the old name isn't one, it's like a :badd buffer until it's entered.
-			vim.b[args.buf].cavediver_renaming = routines.get_hash_from_buffer(args.buf) ~= nil
-			historySM:to(historySM:state(), { buf = args.buf }, states.mode.DELETE)
+			-- the old name stays registered until the rename settles (BufFilePost), so nothing prunes what
+			-- a move carries over; a copy closes it then.
+			local old_hash = routines.get_hash_from_buffer(args.buf)
+			renames[args.buf] = old_hash and { hash = old_hash } or nil
 		end
 	})
 
@@ -149,11 +218,15 @@ function M.init_autocmds(group)
 			-- print("rename post")
 			-- print(vim.bo[args.buf].buftype)
 			-- print(args.file)
-			if not vim.b[args.buf].cavediver_renaming then
+			local rename = renames[args.buf]
+			renames[args.buf] = nil
+			if not rename then
 				return
 			end
-			vim.b[args.buf].cavediver_renaming = nil
-			historySM:to(historySM:state(), { buf = args.buf }, states.mode.UPDATE)
+			-- the disk decides once the rename is over (the settle rule).
+			vim.schedule(function()
+				settle_rename(args.buf, rename)
+			end)
 		end
 	})
 

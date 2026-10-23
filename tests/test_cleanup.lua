@@ -90,7 +90,7 @@ end
 
 -- b is the ternary, the primary and a note's key; it's moved on disk to g.txt
 -- and renamed in place, the way LSP and oil renames do (nvim_buf_set_name).
-T['T107 [target] a rename whose old file is gone moves every reference and pushes nothing'] = function()
+T['T107 [char] a rename whose old file is gone moves every reference and pushes nothing'] = function()
 	child.steps({ ':e a', ':e b', '<M-;><M-c>', ':e c' })
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
 	eq(child.primary(), '[b]on')

@@ -11,6 +11,21 @@ local data = require('cavediver.domains.ui.data')
 local routines = require('cavediver.domains.ui.routines')
 local navigation = require('cavediver.domains.navigation')
 
+-- a load from idle starts from nothing, as at startup: the display caches go with what they showed.
+local storageSM = require('cavediver.domains.storage.sm')
+local storageStates = require('cavediver.domains.storage.states')
+storageSM:on(storageStates.IDLE, storageStates.BARE, "ui_teardown", function()
+	for winid, _ in pairs(data.window_display_cache) do
+		data.clear_window_display_cache(winid)
+	end
+	data.clear_display_name_cache()
+	local cache = data.bufferline_state
+	cache.harpooned_buffers, cache.harpooned_lookup = {}, {}
+	cache.recent_buffers, cache.buffer_ranking = {}, {}
+	cache.current_buf, cache.current_window_triquetra = nil, nil
+	cache.initialized, cache.history_detached = false, false
+end, 4, true)
+
 uiMachines.loop:on("*", states.LOOP.SELF, "update_ui_state", function()
 	local navigation = require('cavediver.domains.navigation')
 	local tracked_winid = navigation.routines.find_most_recent_tracked_window()
