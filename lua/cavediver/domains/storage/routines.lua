@@ -822,6 +822,16 @@ function M.load_history(cwd, name)
 		local window_histories, matched = load_window_buffer_relationships(saved_data.windows)
 		history.routines.initialise_crux_internals({ window = window_histories, global = saved_data.buffers.global })
 		reopen_noname_buffers(saved_data.noname_content or {}, key, scratch_dir)
+		for filehash, tag in pairs(saved_data.missing or {}) do
+			history.data.missing[filehash] = tag
+		end
+		for _, filehash in ipairs(saved_data.unwritten or {}) do
+			history.data.unwritten[filehash] = true
+		end
+		if type(saved_data.label) == "string" then
+			history.data.last_label = saved_data.label
+			history.data.label_seen = true
+		end
 		-- the caches once every slot's buffer is back, the reopened No Name texts included
 		local set_cache_from_window_triquetra = require('cavediver').set_cache_from_window_triquetra
 		for _, winid in ipairs(matched) do
@@ -944,6 +954,9 @@ function M.save_history(cwd, name)
 		windows = windows,
 		closed = serialise_closed_buffers(),
 		noname_content = noname_content,
+		missing = history.data.missing, -- where each file gone from disk went missing
+		label = history.data.last_label, -- where you were at this save: the label being left at the next load
+		unwritten = next(history.data.unwritten) and vim.tbl_keys(history.data.unwritten) or nil, -- files never written
 	}
 
 	-- Write updated data back to file

@@ -335,6 +335,13 @@ local function derive_cache_from_window_triquetra(winid, again)
 	ui_triquetra.ternary_bufnr, ui_triquetra.ternary_display_name, ui_triquetra.has_ternary, ui_triquetra.loaded_slots.ternary, ui_triquetra.deleted_slots.ternary =
 		resolve_slot(window_triquetra.ternary_slot)
 
+	-- a file gone from disk shows where it went missing
+	ui_triquetra.missing = {
+		current = history.data.missing[window_triquetra.current_slot],
+		secondary = window_triquetra.secondary_slot and history.data.missing[window_triquetra.secondary_slot],
+		ternary = window_triquetra.ternary_slot and history.data.missing[window_triquetra.ternary_slot],
+	}
+
 	-- reflect the primary_enabled state.
 	ui_triquetra.has_primary = ui_triquetra.has_primary and window_triquetra.primary_enabled
 
@@ -481,6 +488,16 @@ local function construct_winbar_string(winid, theme)
 	local display_string = ""
 	local display_string_length = 0
 
+	-- a file gone from disk shows, dimmed, where it went missing
+	local function missing_tag(slot)
+		local tag = triquetra.missing and triquetra.missing[slot]
+		if not tag then
+			return
+		end
+		display_string = display_string .. string.format("%%#Comment#⎇%s ", tag)
+		display_string_length = display_string_length + vim.api.nvim_strwidth("⎇" .. tag) + 1
+	end
+
 	if triquetra.has_ternary then
 		if not triquetra.deleted_slots.ternary then
 			display_string = display_string .. string.format(
@@ -498,6 +515,7 @@ local function construct_winbar_string(winid, theme)
 			display_string_length = display_string_length +
 				8 + vim.api.nvim_strwidth(triquetra.ternary_display_name)
 		end
+		missing_tag("ternary")
 	end
 
 	local current_name = triquetra.current_display_name
@@ -512,6 +530,7 @@ local function construct_winbar_string(winid, theme)
 			theme.current_slot_bufnr, theme.current_slot_filename, current_name, theme.secondary_slot_filename
 		)
 		display_string_length = display_string_length + 5 + vim.api.nvim_strwidth(current_name)
+		missing_tag("current")
 		goto secondary
 	end
 
@@ -550,6 +569,7 @@ local function construct_winbar_string(winid, theme)
 	display_string_length = display_string_length +
 		vim.api.nvim_strwidth(current_name) +
 		vim.api.nvim_strwidth(tostring(triquetra.current_bufnr))
+	missing_tag("current")
 
 	::secondary::
 
@@ -581,6 +601,7 @@ local function construct_winbar_string(winid, theme)
 			display_string_length = display_string_length + 8
 			display_string_length = display_string_length + vim.api.nvim_strwidth(triquetra.secondary_display_name)
 		end
+		missing_tag("secondary")
 	end
 
 	local diff = vim.api.nvim_strwidth(display_string)

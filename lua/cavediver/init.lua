@@ -156,6 +156,7 @@ function M.setup(user_config)
 	ui.init_winbar_highlights()
 	ui.init_refresh_timer()
 	history.init_cleanup_timer()
+	history.routines.enable_head_watch(true)
 	setup_debug_commands()
 
 	-- Setup keymaps
@@ -383,6 +384,7 @@ function M.disable()
 	vim.api.nvim_create_augroup("cavediver", { clear = true })
 	ui.stop_refresh_timer()
 	history.stop_cleanup_timer()
+	history.routines.enable_head_watch(false)
 end
 
 ---API Exports - Direct access to domain functionality

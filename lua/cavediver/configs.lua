@@ -129,6 +129,8 @@ local defaults = {
 
 		open_primary_buffer_history = "<M-;>F", -- Open primary buffer history
 	},
+	-- label_provider: where you are, for tagging files that go missing: nil reads .git/HEAD, a
+	-- function returning a string gives the label, false turns labels off (the tag is then the time).
 	cleanup_interval = 4000,              -- seconds
 	winbar_refresh_interval = 140         -- milliseconds
 }
