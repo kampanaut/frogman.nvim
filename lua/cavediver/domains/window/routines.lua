@@ -249,6 +249,26 @@ local function remove_from_closed_buffers(filehash)
 	end
 end
 
+---Whether a slot's file is closed and gone from disk. Its pointer is kept, since the file may come
+---back, and using it says so instead.
+---@param filehash Filehash|nil
+---@return boolean
+local function is_missing(filehash)
+	local filepath = filehash and history.get_filepath_from_hash(filehash)
+	return filepath ~= nil and
+		history.get_buffer_from_hash(filehash) == nil and
+		not filepath:match("^NONAME_") and
+		vim.fn.filereadable(filepath) == 0
+end
+
+---Say that a slot's file is gone from disk, and that the slot keeps it.
+---@param filehash Filehash
+---@param slot string
+local function say_missing(filehash, slot)
+	vim.notify(require('cavediver.domains.ui').routines.get_smart_basename(filehash) ..
+		" isn't on disk right now; the " .. slot .. " keeps it.", vim.log.levels.WARN)
+end
+
 ---A function used to handle conflicts of slot allocations in the triquetra.
 ---@param winid WinId
 ---@param new_bufnr Bufnr
@@ -615,7 +635,6 @@ function M.cleanup_triquetras(bufnr_ondelete)
 				(
 					not filepath:match("^NONAME_") and
 					(
-						(bufnr == nil and vim.fn.filereadable(filepath) == 0) or
 						(
 							bufnr == nil and
 							not history.routines.is_filehash_closed(triquetra.secondary_slot)
@@ -642,7 +661,6 @@ function M.cleanup_triquetras(bufnr_ondelete)
 				(
 					not filepath:match("^NONAME_") and
 					(
-						(bufnr == nil and vim.fn.filereadable(filepath) == 0) or
 						(
 							bufnr == nil and
 							not history.routines.is_filehash_closed(triquetra.ternary_slot)
@@ -671,7 +689,6 @@ function M.cleanup_triquetras(bufnr_ondelete)
 				(
 					not filepath:match("^NONAME_") and
 					(
-						(bufnr == nil and vim.fn.filereadable(filepath) == 0) or
 						(
 							bufnr == nil and
 							not history.routines.is_filehash_closed(pfilehash)
@@ -733,6 +750,10 @@ function M.swap_with_secondary(winid)
 	local cbufnr = history.get_buffer_from_hash(triquetra.current_slot)
 	if cbufnr == nil and history.get_hash_from_buffer(vim.api.nvim_win_get_buf(winid)) == nil then
 		-- visiting, with the current slot closed: going back to it reopens it.
+		if is_missing(triquetra.current_slot) then
+			say_missing(triquetra.current_slot, "current slot")
+			return
+		end
 		cbufnr = history.reopen_filehash(triquetra.current_slot)
 	end
 
@@ -766,6 +787,10 @@ function M.swap_with_secondary(winid)
 			vim.notify("Cannot populate secondary slot - insufficent history.", vim.log.levels.WARN)
 		end
 	else
+		if is_missing(triquetra.secondary_slot) then
+			say_missing(triquetra.secondary_slot, "secondary slot")
+			return
+		end
 		if triquetra.current_slot then
 			M.write_secondary_swap_notes(triquetra)
 		else
@@ -825,6 +850,10 @@ function M.swap_with_ternary(winid)
 	local cbufnr = history.get_buffer_from_hash(triquetra.current_slot)
 	if cbufnr == nil and history.get_hash_from_buffer(vim.api.nvim_win_get_buf(winid)) == nil then
 		-- visiting, with the current slot closed: going back to it reopens it.
+		if is_missing(triquetra.current_slot) then
+			say_missing(triquetra.current_slot, "current slot")
+			return
+		end
 		cbufnr = history.reopen_filehash(triquetra.current_slot)
 	end
 
@@ -839,6 +868,10 @@ function M.swap_with_ternary(winid)
 
 	if triquetra.ternary_slot == nil then
 		vim.notify("No ternary buffer to swap with.", vim.log.levels.WARN)
+		return
+	end
+	if is_missing(triquetra.ternary_slot) then
+		say_missing(triquetra.ternary_slot, "ternary slot")
 		return
 	end
 
@@ -909,6 +942,10 @@ function M.jump_to_primary(winid)
 		return
 	end
 
+	if is_missing(triquetra.primary_buffer[1]) then
+		say_missing(triquetra.primary_buffer[1], "primary queue")
+		return
+	end
 	local cbufnr = history.get_buffer_from_hash(triquetra.primary_buffer[1])
 	if cbufnr == nil then
 		cbufnr = history.reopen_filehash(triquetra.primary_buffer[1])
@@ -917,8 +954,13 @@ function M.jump_to_primary(winid)
 			table.insert(triquetra.primary_buffer, 1, history.get_hash_from_buffer(cbufnr))
 		end
 		if cbufnr == nil then
-			error("Primary buffer not found in filesystem: " ..
-				history.get_filepath_from_hash(triquetra.primary_buffer[1]))
+			-- a No Name text that's lost can't come back, so it leaves the queue
+			vim.notify("Removed primary file not found in filesystem: " ..
+				require('cavediver.domains.ui').routines.get_smart_basename(triquetra.primary_buffer[1]),
+				vim.log.levels.WARN)
+			table.remove(triquetra.primary_buffer, 1)
+			loop_sm:to(loop_states.SELF)
+			return
 		else
 			remove_from_closed_buffers(triquetra.primary_buffer[1])
 		end

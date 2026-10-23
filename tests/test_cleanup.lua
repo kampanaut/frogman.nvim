@@ -179,7 +179,7 @@ T['T113 [char] a stale registration re-points to a copy reloaded under noautocmd
 	eq(got, { copy_open = true, points_at_copy = true })
 end
 
-T['T114 [target] a closed entry whose file is gone from disk stays on the stack'] = function()
+T['T114 [char] a closed entry whose file is gone from disk stays on the stack'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.cmd('bdelete b.txt')
 	child.settle()

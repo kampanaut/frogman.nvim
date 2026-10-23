@@ -104,7 +104,7 @@ T['T56 [char] with a closed primary, the jump reopens it'] = function()
 	eq(vim.tbl_contains(vim.split(child.closed(), ','), 'a'), false)
 end
 
--- The primary a closed and kept: it survives only while the ternary c is closed too (I4).
+-- The primary a closed and kept in the queue (I4).
 local function closed_primary()
 	child.steps({ ':e a', '<M-;><M-c>', ':e b', ':e c', ':e d' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦-⟧')
@@ -116,15 +116,19 @@ local function closed_primary()
 	child.messages()
 end
 
-T['T57 [today] with the primary file deleted on disk, it throws "Primary buffer not found in filesystem"'] = function()
+T['T57 [char] with the primary file deleted on disk, a cleanup pass keeps it in the queue, and the jump says so'] = function()
 	closed_primary()
-	-- Delete a.txt and jump in one go, before a cleanup tick can prune the entry.
-	local ok, err = K.press_after(child, K.rm_code('a'), '<M-;><M-f>')
-	eq(ok, false)
-	no_eq(tostring(err):find('Primary buffer not found in filesystem', 1, true), nil)
+	child.lua(K.rm_code('a'))
+	child.lua('require("cavediver.domains.history").cleanup_system()')
+	child.settle()
+	eq(child.primary(), '[a]on')
+	local ok, err = child.step('<M-;><M-f>')
+	eq({ ok, err }, { true, nil })
+	eq(K.has(K.messages(child), "isn't on disk right now"), true)
+	eq({ slots = child.slots(), primary = child.primary() }, { slots = '⦉c⦊ [d] ⟦-⟧', primary = '[a]on' })
 end
 
-T['T58 [target] with the primary file deleted on disk, it says so and keeps the pointer'] = function()
+T['T58 [char] with the primary file deleted on disk, it says so and keeps the pointer'] = function()
 	closed_primary()
 	local ok, err = K.press_after(child, K.rm_code('a'), '<M-;><M-f>')
 	eq({ ok, err }, { true, nil })

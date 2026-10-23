@@ -574,15 +574,16 @@ T['T312 [char] (S2) a file with no header points to the migration script'] = fun
 end
 
 -- b.txt is deleted from disk after the save and isn't brought back.
-T['T313 [target] (S2) a reference that resolves to nothing is kept, says so when used, and works again when its file is back'] = function()
+T['T313 [char] (S2) a reference that resolves to nothing is kept, says so when used, and works again when its file is back'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 	eq(Misc.save(child), { true })
-	os.remove(s.root .. '/b.txt')
 
 	S2.start(child, s)
+	-- after the start: a child's setup writes the project's files again
+	os.remove(s.root .. '/b.txt')
 	Misc.restore(child, { 'a', 'c', 'd' }, 'd')
 	eq(Misc.load(child), { true })
 	child.settle(300)

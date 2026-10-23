@@ -63,7 +63,7 @@ function M.init_cleanup_timer()
 				if #report.orphaned_hashes > 0 then
 					table.insert(output, "  Orphaned files:")
 					for _, hash in ipairs(report.orphaned_hashes) do
-						local path = data.hash_filepath_registry.filepaths[hash] or hash
+						local path = report.orphaned_paths[hash] or data.hash_filepath_registry.filepaths[hash] or hash
 						table.insert(output, "    - " .. path)
 					end
 				end

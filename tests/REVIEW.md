@@ -206,7 +206,7 @@ note: <M-f> (f graduates), <M-f> (to f), :e e, <M-f> (to b). :bdelete f, delete 
 spec: (D9) The missing-file rule on the secondary map: `:e f`, `:e b`, `<M-f>` (f graduates), `<M-f>` (to f), `:e e`, `<M-f>` (to b) give `⦉f⦊ [b] ⟦e⟧` with `dsm{b-swap>f b>f}`. After `:bdelete f` and deleting f.txt on disk, `<M-;><M-t>` on b says the file is missing, changes no slot, …  
 `tests/test_keep_older.lua:274`
 
-## tests/test_cleanup.lua (15 cases: 14 char, 1 target)
+## tests/test_cleanup.lua (15 cases: 15 char)
 
 **T102 [char]** :bdelete of the ternary keeps it as a closed hash  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -298,10 +298,10 @@ note: b's buffer is wiped without events and a copy of b.txt loaded the same way
 spec: A stale registration with a copy reloaded under `noautocmd` re-points to the copy and wipes nothing.  
 `tests/test_cleanup.lua:162`
 
-**T114 [target]** a closed entry whose file is gone from disk stays on the stack  
+**T114 [char]** a closed entry whose file is gone from disk stays on the stack  
 `:e a`, `:e b`, `:e c`, `:bdelete b.txt` → `closed = 'b'`  
 → `closed = 'b'`  
-spec: A closed entry whose file is gone from disk stays on the stack.  
+spec: A closed entry whose file is gone from disk stays on the stack, after a `cleanup_system` pass (A22).  
 `tests/test_cleanup.lua:182`
 
 **T163 [char]** a re-point to the shown buffer moves the old current into the ternary (Q18) ⚑ state set by hand  
@@ -311,7 +311,7 @@ note: {c=A s=S t=T} is {c=a s=b t=c}; X is d, outside the slots. The window is p
 spec: When cleanup re-points a window's current slot to the registered buffer X the window shows (A21 step 1), with X outside the slots, `{c=A s=S t=T}` becomes `{c=X s=S t=A}`, as plain navigation would. Set it up by showing X without a `BufEnter` (`noautocmd`) after A's buffer is gon…  
 `tests/test_cleanup.lua:195`
 
-## tests/test_closing.lua (21 cases: 19 char, 2 target)
+## tests/test_closing.lua (21 cases: 21 char)
 
 **T80 [char]** <M-.> on the newest lands on the next, closes it, and keeps it in the ternary  
 `:e d`, `:e e`, `:e f` → `ordered = 'f,e,d'`  
@@ -415,7 +415,7 @@ spec: `<M-S-w>` with an empty stack warns "No closed buffers to reopen."
 spec: A No Name buffer closed with text comes back with the same lines and filetype.  
 `tests/test_closing.lua:183`
 
-**T89 [target]** <M-S-w> on a missing file says so and leaves the entry on the stack  
+**T89 [char]** <M-S-w> on a missing file says so and leaves the entry on the stack  
 `:e d`, `:e e`, `:e f`, `<M-.>` → `closed = 'f'`  
 `<M-S-w>` → `eq({ ok, err }, { true, nil })`  
 → `eq(said, true)`  
@@ -445,10 +445,10 @@ note: b is left while the No Name buffer is its ternary, so dtm[b] names it; the
 spec: After a No Name buffer is reopened, every slot and map entry that held its old hash holds the new one.  
 `tests/test_closing.lua:223`
 
-**T162 [target]** pushing a hash already on the closed stack keeps one copy, as the newest  
+**T162 [char]** pushing a hash already on the closed stack keeps one copy, as the newest  
 `:e a` → `eq(got, true)`  
 → `closed = 't,x'`  
-spec: (Q15) I22: pushing a hash that's already on the closed stack (for example, `track_closing_filehash_force` twice) leaves it on the stack once, as the newest entry. With pools: closing `notes.md` in two tabs' pools and merging both entries leaves one, the newer.  
+spec: (Q15) I22: pushing a hash that's already on the closed stack (for example, `track_closing_filehash_force` on x, t, then x again) leaves it on the stack once, as the newest entry: `t,x`. With pools: closing `notes.md` in two tabs' pools and merging both entries leaves one, the new…  
 `tests/test_closing.lua:245`
 
 **T164 [char]** <M-.> in a window visiting an untracked buffer closes it and lands on the current slot  
@@ -753,7 +753,7 @@ note: T200's route. The scratch buffer isn't opened inside the failing call, onl
 spec: (A26) A dump opens its scratch buffer only once the editor settles, and names files by alias and basename, never by full path: on T200's route, no buffer is added inside the failing call, the scratch buffer is there once it settles, and neither it nor the file holds the project's…  
 `tests/test_cycling.lua:627`
 
-## tests/test_decisions.lua (52 cases: 44 char, 8 target)
+## tests/test_decisions.lua (52 cases: 45 char, 7 target)
 
 **T250 [char]** (P2, A1) the slotting happens after the event, not inside it  
 `:e a`, `:e b` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
@@ -784,12 +784,12 @@ note: Saved: the split (listed first) ⦉c⦊ [d], the first window ⦉a⦊ [b].
 spec: (P3) The load matches windows by what they show, not by position: two windows saved (`⦉c⦊ [d] ⟦-⟧` in the split, listed first, and `⦉a⦊ [b] ⟦-⟧`) and restored the other way round (the first-listed window on b) give the window on b `⦉a⦊ [b] ⟦-⟧` and the window on d `⦉c⦊ [d] ⟦-⟧`.  
 `tests/test_decisions.lua:86`
 
-**T252 [target]** (P10, I17) a closed file still on the closed stack keeps its history entry  
+**T252 [char]** (P10, I17) a closed file still on the closed stack keeps its history entry  
 `:e a`, `:e b`, `:e c` → `eq(child.lua('return require("cavediver.domains.history").data.crux_internals.global[...] ~= nil', { h }), true)`  
 `:bdelete b.txt` → `closed = 'b'`  
 → `eq(child.lua('return require("cavediver.domains.history").data.crux_internals.global[...] ~= nil', { h }), true)`  
 note: b is closed and stays known through the closed stack.  
-spec: (P10, I17) History follows along and doesn't let go early: `:e a`, `:e b`, `:e c`, `:bdelete b.txt` leave b on the closed stack, still known, and its global history entry stays. Today the entry goes as soon as b is unregistered. "Known" means cavediver still remembers the file (r…  
+spec: (P10, I17) History follows along and doesn't let go early: `:e a`, `:e b`, `:e c`, `:bdelete b.txt` leave b on the closed stack, still known, and its global history entry stays. Before step 6 the entry went as soon as b was unregistered. "Known" means cavediver still remembers th…  
 `tests/test_decisions.lua:108`
 
 **T253 [char]** (P11) a failing hook is reported with a stack trace  
@@ -1588,7 +1588,7 @@ spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary
 spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary write the same notes: from `⦉c⦊ [d] ⟦b⟧`, either one gives `⦉c⦊ [b] ⟦d⟧` with the swap notes `dsm{d-swap>b}` and `dtm{d-swap>c}`, and no plain secondary note for d. T30 and T39 pin the same notes. Plain na…  
 `tests/test_navigation.lua:147`
 
-## tests/test_negative.lua (48 cases: 37 char, 11 target)
+## tests/test_negative.lua (48 cases: 40 char, 8 target)
 
 **T207 [char]** (P5) a nofile scratch entered in a tracked window is not registered  
 `:e a`, `:e b` → `eq(registered(), true)`  
@@ -1597,14 +1597,14 @@ spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary
 spec: (P5) A `nofile` scratch entered in a tracked window isn't registered (M3). Help, terminal, `scheme://` and otter buffers are T10; the quickfix list is T217.  
 `tests/test_negative.lua:72`
 
-**T208 [target]** (P10, I17) the notes about an empty No Name buffer go once it is wiped  
+**T208 [char]** (P10, I17) the notes about an empty No Name buffer go once it is wiped  
 `:e a`, `:e b`, `:e c`, `:enew` → `eq(type(h), 'string')`  
 `:e b`, `:e d` → `slots = '⦉b⦊ [d] ⟦-⟧'`  
 → `eq(#child.refs(h) > 0, true)`  
 → `closed = ''`  
 → `eq(child.refs(h), {})`  
 note: N is an empty No Name buffer that ends up only in the notes: a key (N>c) and a value (b>N). Wiping it pushes nothing (M5); its path stays only because the notes still name it (I2), so once the notes follow along, nothing names it.  
-spec: (P10, I17) Notes follow along: `:e a`, `:e b`, `:e c`, `:enew` (an empty No Name N), `:e b`, `:e d` leave N only in the notes (`N>c`, `b>N`). After `:bwipeout` of N, which pushes nothing (M5), no note names N. Today both notes stay (M7: the maps are never pruned), and they keep N…  
+spec: (P10, I17) Notes follow along: `:e a`, `:e b`, `:e c`, `:enew` (an empty No Name N), `:e b`, `:e d` leave N only in the notes (`N>c`, `b>N`). After `:bwipeout` of N, which pushes nothing (M5), no note names N. Before step 6 both notes stayed, since the maps were never pruned, and…  
 `tests/test_negative.lua:84`
 
 **T209 [char]** (P14) the secondary changes only when you act: navigation elsewhere, cycle steps, a split and a window jump leave it  
@@ -1656,13 +1656,13 @@ spec: (P22, S2) The session file is written with mode 0600 whatever the umask: `
 spec: (P24, M6) A save with a No Name current slot leaves the live triquetra, the notes, the primary queue, the closed stack and the history order as they were: the save writes the slots as they are, the No Name current slot included.  
 `tests/test_negative.lua:170`
 
-**T214 [target]** (P24) a save leaves the closed stack as it was, a closed file gone from disk included  
+**T214 [char]** (P24) a save leaves the closed stack as it was, a closed file gone from disk included  
 `:e a`, `:e b`, `:e c`, `:e d` → `slots = '⦉c⦊ [d] ⟦-⟧'`  
 `:bdelete b.txt` → `closed = 'b'`  
 → `eq(got.ok, true)`  
 → `eq(got.after, got.before)`  
 note: b is closed and outside the slots; its file goes, then the save, in one call so no other pass runs in between.  
-spec: (P24, A22) A save leaves the closed stack as it was: with b closed and outside the slots, deleting b.txt and saving straight away keeps b on the stack. Today the save's `cleanup_system` drops it (S1 save step 1, A22 step 3).  
+spec: (P24, A22) A save leaves the closed stack as it was: with b closed and outside the slots, deleting b.txt and saving straight away keeps b on the stack, and the slots, the notes and the history order stay as they were too. Before step 6 the save's `cleanup_system` dropped b, in it…  
 `tests/test_negative.lua:184`
 
 **T215 [target]** (P26) with harpoon not installed, navigation, the slot keys and the UI raise nothing  
@@ -1671,7 +1671,7 @@ spec: (P24, A22) A save leaves the closed stack as it was: with b closed and out
 → `eq(Extra.at_least(child.messages()), {})`  
 → `slots = '⦉d⦊ [c] ⟦b⟧'`  
 note: Ex commands raise; keys return ok, err.  
-spec: (P26) With harpoon not installed, `:e`, `<M-f>`, `<M-S-f>`, `<M-;><M-c>`, `<M-;><M-r>` and the UI ticks raise nothing and report no hook failure. Today every history update fails at `history/routines.lua:416` with "module 'harpoon' not found".  
+spec: (P26) With harpoon not installed, `:e`, `<M-f>`, `<M-S-f>`, `<M-;><M-c>`, `<M-;><M-r>` and the UI ticks raise nothing and report no hook failure. Today every history update fails at `history/routines.lua:494` with "module 'harpoon' not found".  
 `tests/test_negative.lua:202`
 
 **T216 [char]** (I16) a No Name id is not reused across sessions  
@@ -1774,14 +1774,14 @@ spec: (A2, M6) Windows born untracked never get a triquetra: a `:help` window an
 spec: (A6, A7, A8) With no triquetra (a `:help` window), `<M-f>`, `<M-S-f>` and `<M-;><M-f>` each warn "Window with unregistered buffer.", raise nothing, switch nothing, and leave the other window's slots alone.  
 `tests/test_negative.lua:425`
 
-**T227 [target]** (A7, P9) <M-S-f> on a closed ternary whose file is gone says so and keeps the pointer  
+**T227 [char]** (A7, P9) <M-S-f> on a closed ternary whose file is gone says so and keeps the pointer  
 `:e a`, `:e b`, `:e c`, `:bdelete b.txt` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 → `closed = 'b'`  
 → `eq({ ok, err }, { true, nil })`  
 → `eq(K.hook_failures(msgs), {})`  
 → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 note: b is closed and stays in the ternary (T102); its file is deleted in the same call as the key, before any other pass.  
-spec: (A7, P9) `<M-S-f>` on a closed ternary whose file is gone from disk says so and keeps the pointer: `:e a`, `:e b`, `:e c`, `:bdelete b.txt`, then b.txt deleted and `<M-S-f>` pressed straight away give a warning, no throw, and `⦉b⦊ [c] ⟦-⟧`. Today "Removed ternary file not found i…  
+spec: (A7, P9) `<M-S-f>` on a closed ternary whose file is gone from disk says so and keeps the pointer: `:e a`, `:e b`, `:e c`, `:bdelete b.txt`, then b.txt deleted and `<M-S-f>` pressed straight away give a warning, no throw, and `⦉b⦊ [c] ⟦-⟧`. Before step 6 it said "Removed ternary …  
 `tests/test_negative.lua:448`
 
 **T228 [char]** (A11, D9) a restore switches no buffer and reopens nothing: a closed hash waits in the slot until <M-S-f> uses it  
@@ -2013,7 +2013,7 @@ spec: (A1, A11) No note names its own buffer: random walks with T190's mix, in o
 spec: (A1, A11) No note names its own buffer: random walks with T190's mix, in one window and across windows, check after every action that no map holds `X>X` or `X-swap>X`. The decided check drops a stale note when the note it would copy names the current buffer (A11), and runs after …  
 `tests/test_negative.lua:914`
 
-## tests/test_primary_jump.lua (10 cases: 8 char, 1 target, 1 today)
+## tests/test_primary_jump.lua (10 cases: 10 char)
 
 **T50 [char]** {c=e s=d t=b p=[x]on}, jump shows x, {c=x s=d t=e}, dtm{e-swap→b}  
 `:e x`, `<M-;><M-c>`, `:e d`, `:e b`, `<M-f>`, `:e e` → `slots = '⦉b⦊ [e] ⟦d⟧'`  
@@ -2077,18 +2077,20 @@ note: The ternary b stays open; the closed primary stays in the queue (I4).
 spec: With a closed primary, the jump reopens it.  
 `tests/test_primary_jump.lua:94`
 
-**T57 [today]** with the primary file deleted on disk, it throws "Primary buffer not found in filesystem"  
-→ `eq(ok, false)`  
-note: Delete a.txt and jump in one go, before a cleanup tick can prune the entry.  
-spec: With the primary's file deleted on disk, it throws "Primary buffer not found in filesystem". Paired with T58.  
+**T57 [char]** with the primary file deleted on disk, a cleanup pass keeps it in the queue, and the jump says so  
+→ `primary = '[a]on'`  
+`<M-;><M-f>` → `eq({ ok, err }, { true, nil })`  
+→ `eq(K.has(K.messages(child), "isn't on disk right now"), true)`  
+→ `eq({ slots = child.slots(), primary = child.primary() }, { slots = '⦉c⦊ [d] ⟦-⟧', primary = '[a]on' })`  
+spec: With the primary's file deleted on disk, a cleanup pass keeps it in the queue, and the jump says so: `:e a`, `<M-;><M-c>`, `:e b`, `:e c`, `:e d` give `⦉c⦊ [d] ⟦-⟧` with `p=[a]on`; after `:bdelete c.txt` and `:bdelete a.txt`, a.txt deleted and a `cleanup_system` pass leave `[a]on…  
 `tests/test_primary_jump.lua:119`
 
-**T58 [target]** with the primary file deleted on disk, it says so and keeps the pointer  
+**T58 [char]** with the primary file deleted on disk, it says so and keeps the pointer  
 → `eq({ ok, err }, { true, nil })`  
 → `eq(K.hook_failures(msgs), {})`  
 → `primary = '[a]on'`  
 spec: With the primary's file deleted on disk, it says so and keeps the pointer.  
-`tests/test_primary_jump.lua:127`
+`tests/test_primary_jump.lua:131`
 
 **T153 [char]** Q6 on the fallback: primary disabled, {c=A s=S t=T}, dtm[T] = S; <M-;><M-f> rewrites dtm[T] to A before the swap  
 `:e x`, `<M-;><M-x>`, `<M-;><M-x>` → `primary = '[x]off'`  
@@ -2098,7 +2100,7 @@ spec: With the primary's file deleted on disk, it says so and keeps the pointer.
 → `eq(K.note(child, 'dtm', 'b'), 'c')`  
 note: x is the primary, switched off; then T150's first seven keys give {c=c s=a t=b}, dtm[b] = a.  
 spec: Q6 on the fallback: with the primary disabled, `{c=A s=S t=T}` and `dtm[T] = S`, `<M-;><M-f>` acts as `<M-f>` and rewrites `dtm[T]` to A before the swap.  
-`tests/test_primary_jump.lua:137`
+`tests/test_primary_jump.lua:141`
 
 ## tests/test_primary_keys.lua (3 cases: 2 char, 1 target)
 
@@ -2286,7 +2288,7 @@ note: A hash that no buffer or path has.
 spec: An unknown hash in a map doesn't make a restore throw.  
 `tests/test_restores.lua:122`
 
-## tests/test_s2.lua (50 cases: 34 char, 16 target)
+## tests/test_s2.lua (50 cases: 35 char, 15 target)
 
 **T292 [char]** (S2) save_session() and load_session() take no directory: the file is named after getcwd(-1, -1) and a fresh process loads it  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
@@ -2496,14 +2498,14 @@ note: The main file's bytes replaced by a file in the format from before encrypt
 spec: (S2 Checks; DESK:1682) A file with no header, plain JSON in the format from before step 5 at the main file's name, gives a message naming the migration script at load. Matched on "migration script". The newer header is T245.  
 `tests/test_s2.lua:556`
 
-**T313 [target]** (S2) a reference that resolves to nothing is kept, says so when used, and works again when its file is back  
+**T313 [char]** (S2) a reference that resolves to nothing is kept, says so when used, and works again when its file is back  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 → `eq(Misc.save(child), { true })`  
 → `eq(Misc.load(child), { true })`  
 → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 `<M-f>` → `eq({ ok = ok, err = err, told = #child.messages() > 0, slots = child.slots() },`  
 `<M-f>` → `slots = '⦉c⦊ [b] ⟦d⟧'`  
-note: b.txt is deleted from disk after the save and isn't brought back.  
+note: b.txt is deleted from disk after the save and isn't brought back. after the start: a child's setup writes the project's files again  
 spec: (S2 Checks; DESK:1689) A reference that resolves to nothing at load is kept, says so when it's used, and works again when its file comes back: saved at `⦉c⦊ [d] ⟦b⟧`, with b.txt deleted and not restored, the load keeps `⦉c⦊ [d] ⟦b⟧`; `<M-f>` gives a message, raises nothing and ch…  
 `tests/test_s2.lua:577`
 
@@ -2513,7 +2515,7 @@ spec: (S2 Checks; DESK:1689) A reference that resolves to nothing at load is kep
 `:e x` → `eq({ at_load = at_load, entered = S2.registered(child, 'x') }, { at_load = false, entered = true })`  
 note: x is loaded and hidden when the load runs, and the saved file never knew it.  
 spec: (S2 Contents; DESK:1432, DESK:1436) A restored buffer the file doesn't know waits for `BufEnter`: x, loaded and hidden at the load but never saved, isn't registered by the load, and is once `:e x` enters it.  
-`tests/test_s2.lua:602`
+`tests/test_s2.lua:603`
 
 **T337 [char]** (S2) a reference whose buffer the manager doesn't restore is kept, and reopens when used  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
@@ -2523,7 +2525,7 @@ spec: (S2 Contents; DESK:1432, DESK:1436) A restored buffer the file doesn't kno
 `<M-f>` → `eq({ slots = child.slots(), shown = child.shown() }, { slots = '⦉c⦊ [b] ⟦d⟧', shown = 'b' })`  
 note: b.txt stays on disk, but the manager doesn't bring b back. A cleanup pass after the load leaves the reference alone.  
 spec: (S2 Contents; DESK:1943) A reference whose buffer the manager doesn't restore is kept, and reopens when used: saved at `⦉c⦊ [d] ⟦b⟧`, a fresh process that restores a, c and d but not b (b.txt stays on disk), loads and runs a `cleanup_system` pass has `⦉c⦊ [d] ⟦b⟧`, with b unregis…  
-`tests/test_s2.lua:619`
+`tests/test_s2.lua:620`
 
 **T315 [char]** (S2) windows on the same file keep their saved order, and a window that matches nothing starts fresh ⚑ state set by hand  
 `:e a`, `:e b`, `:vsplit`, `:e c`, `:e b` → `slots = '⦉c⦊ [b] ⟦-⟧'`  
@@ -2533,7 +2535,7 @@ spec: (S2 Contents; DESK:1943) A reference whose buffer the manager doesn't rest
 → `eq({ child.slots(wins[1]), child.slots(wins[2]), child.slots(wins[3]) },`  
 note: Saved: the split (listed first) ⦉c⦊ [b], the first window ⦉a⦊ [b]. The manager brings both back, behind a new first-listed window on e.  
 spec: (S2 Contents; DESK:1440) Windows on the same file keep their saved order, and a window that matches nothing starts fresh: saved as `⦉c⦊ [b] ⟦-⟧` (the split, listed first) and `⦉a⦊ [b] ⟦-⟧`, and restored behind a new first-listed window on e, the windows read `⦉-⦊ [e] ⟦-⟧`, `⦉c⦊ […  
-`tests/test_s2.lua:638`
+`tests/test_s2.lua:639`
 
 **T316 [char]** (S2) a No Name buffer reopened at load gets a fresh id, and every reference to the old one is renamed ⚑ state set by hand  
 `:e a`, `:e b` → `eq(type(old), 'string')`  
@@ -2544,7 +2546,7 @@ spec: (S2 Contents; DESK:1440) Windows on the same file keep their saved order, 
 → `eq(got, { fresh = true, in_ternary = true, stale = {} })`  
 note: The No Name text sits in the ternary at save.  
 spec: (S2 Save-as-closed; DESK:1634, DESK:2299) A No Name buffer reopened at load gets a fresh id, and every reference to its old hash is renamed: a No Name text in the ternary (`:e a`, `:enew` with text, `:e b`) comes back as the ternary under a hash that differs from the saved one, a…  
-`tests/test_s2.lua:662`
+`tests/test_s2.lua:663`
 
 **T338 [char]** (S2) the migration script converts an old file found through resession's session list, and a load reads it  
 → `eq({ code = first.code, converted = first.stdout:find('converted 1 session', 1, true) ~= nil },`  
@@ -2553,7 +2555,7 @@ spec: (S2 Save-as-closed; DESK:1634, DESK:2299) A No Name buffer reopened at loa
 → `eq({ slots = child.slots(), closed = child.closed() }, { slots = '⦉c⦊ [d] ⟦b⟧', closed = 'b' })`  
 → `eq({ code = second.code, already = second.stdout:find('1 already converted', 1, true) ~= nil },`  
 spec: (S2 The file; DESK:1543, DESK:1112-1114) The migration script converts an old file it finds through resession's session list, and a load reads it: an old file made by hand in the format from before encryption (paths XOR'd with the cwd and base64-encoded, raw hashes for open buffe…  
-`tests/test_s2.lua:750`
+`tests/test_s2.lua:751`
 
 **T342 [char]** (S2) the migration script reports a session saved fresh before it ran, and --replace converts over it  
 → `eq(Misc.load(child), { true })`  
@@ -2565,14 +2567,14 @@ spec: (S2 The file; DESK:1543, DESK:1112-1114) The migration script converts an 
 → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 note: The new code runs a session before the script: its load starts fresh and its save writes a file in the new format. The script doesn't take that for a conversion: it reports the conflict, and --replace converts over it.  
 spec: (S2 The file; DESK:1554) The migration script reports a session saved fresh before it ran, and `--replace` converts over it: T338's old file and resession session, then a process on the encrypted format loads (a fresh start, `⦉-⦊ [d] ⟦-⟧`) and saves; the script reports one sessio…  
-`tests/test_s2.lua:773`
+`tests/test_s2.lua:774`
 
 **T340 [char]** (S2) a load that finds only a file named the old way points to the migration script  
 → `eq(Misc.load(child), { true })`  
 → `eq({ told = S2.has(child.messages(), 'migration script'), slots = child.slots(), left = vim.fn.filereadable(old) },`  
 note: Only a file named the old way is there: the first 32 hex characters of sha256(cwd .. "\n"), plus .json, in the format from before encryption.  
 spec: (S2 Checks; DESK:1683) A load that finds only a file named the old way points to the migration script: with only `sha256(cwd .. "\n")`'s first 32 hex characters plus `.json` in `session_dir`, the load gives a message naming the migration script, starts fresh (`⦉-⦊ [a] ⟦-⟧`) and l…  
-`tests/test_s2.lua:799`
+`tests/test_s2.lua:800`
 
 **T317 [char]** (S2) with two editors on one project, the last writer wins  
 `:e a`, `:e b` → `eq(Misc.save(child), { true })`  
@@ -2581,23 +2583,23 @@ spec: (S2 Checks; DESK:1683) A load that finds only a file named the old way poi
 → `slots = '⦉c⦊ [d] ⟦-⟧'`  
 note: Two editors on one project and one session directory save in turn. It held before the encrypted format and holds with it.  
 spec: (S2 Errors and drift; DESK:1070) With two editors on one project, the last writer wins: both save in turn without an error, and a fresh process loads the second one's `⦉c⦊ [d] ⟦-⟧`. It held before the encrypted format and holds with it.  
-`tests/test_s2.lua:819`
+`tests/test_s2.lua:820`
 
 **T318 [target]** (S2) a tab session's file says its scope, and its load works on the current tab only  
 → `eq({ session_tab = child.slots(w2), first_tab = child.slots(w1) },`  
 spec: (S2 Tab sessions; DESK:949) A tab session's file says its scope, and its load works on the current tab only: a session saved with `{ tab = … }` from a tab at `⦉c⦊ [d] ⟦-⟧`, loaded by name alone into a second tab of a fresh process, gives that tab `⦉c⦊ [d] ⟦-⟧` and leaves the firs…  
-`tests/test_s2.lua:851`
+`tests/test_s2.lua:852`
 
 **T319 [target]** (S2) closes go to the pool of the tab they happen in, and <M-S-w> reopens from the current tab's  
 `:tabprevious`, `:bdelete x.txt`, `:tabnext`, `:bdelete c.txt`, `:tabprevious`, `<M-S-w>`, `:tabnext`, `<M-S-w>` → `eq({ first_tab = first_tab, session_tab = child.shown(w2) }, { first_tab = 'x', session_tab = 'c' })`  
 spec: (S2 Tab sessions; DESK:952) Closes go to the pool of the tab they happen in, and `<M-S-w>` reopens from the current tab's: in T318's state, after `:bdelete x.txt` in the first tab and then `:bdelete c.txt` in the session's tab, `<M-S-w>` in the first tab reopens x and in the sess…  
-`tests/test_s2.lua:858`
+`tests/test_s2.lua:859`
 
 **T320 [target]** (S2) a tab session's tab ranks its own visits first, a buffer visited from both tabs included  
 `:tabprevious`, `:e a`, `:e b`, `:tabnext`, `:e a` → `eq(first, { 'a', 'c', 'd' })`  
 note: Only membership is checked: the spec doesn't fix the order inside the overlay.  
 spec: (S2 Tab sessions; DESK:951, DESK:954) The session's tab ranks its own visits first, and a buffer belongs to every tab that visited it: in T318's state, `:e a`, `:e b` in the first tab and `:e a` in the session's tab leave a, c and d as the first three in the session tab's bufferl…  
-`tests/test_s2.lua:876`
+`tests/test_s2.lua:877`
 
 **T321 [target]** (S2) saves are snapshots: a whole-editor save merges the pools by close time in the file only  
 `:tabprevious`, `:bdelete x.txt`, `:tabnext`, `:bdelete c.txt`, `:tabprevious`, `:e e`, `:bdelete e.txt` → `eq(S2.save(child), { true })`  
@@ -2605,19 +2607,19 @@ spec: (S2 Tab sessions; DESK:951, DESK:954) The session's tab ranks its own visi
 `<M-S-w>` → `eq({ live = live, merged = merged }, { live = { 'e', 'x' }, merged = { 'e', 'c', 'x' } })`  
 note: x closed in the first tab, c in the session's tab, then e in the first tab, a second apart so their close times differ whatever the clock's grain.  
 spec: (S2 Tab sessions; DESK:955) Saves are snapshots: in T318's state, with x closed in the first tab, c in the session's tab and e in the first tab, a second apart, a whole-editor `save_session()` leaves the pools apart in memory (`<M-S-w>` in the first tab reopens e, then x), and a …  
-`tests/test_s2.lua:891`
+`tests/test_s2.lua:892`
 
 **T322 [target]** (S2) a tab session's tab closed with no save wired gives a notice  
 `:tabclose` → `eq(#S2.notices(child.messages()) > 0, true)`  
 note: No TabClosedPre hook calls save_session here. The notice's wording isn't fixed, so any notification that isn't a hook failure counts.  
 spec: (S2 Tab sessions; DESK:956) A tab session's tab closed with nothing wired to save it keeps its pool, with no tab, and gives a notice: in T318's state, `:tabclose` on the session's tab, with no `TabClosedPre` hook calling `save_session`, gives a notification; and with c closed in …  
-`tests/test_s2.lua:925`
+`tests/test_s2.lua:926`
 
 **T322 [target]** (S2) a tab session's tab closed with no save wired keeps its pool, still in the picker  
 `:bdelete c.txt`, `:tabclose` → `eq(S2.line_of(p.lines, 'c.txt') ~= nil, true)`  
 note: c is closed in the session's tab before the tab goes; its pool is kept with no tab, so the picker still lists it.  
 spec: (S2 Tab sessions; DESK:956) A tab session's tab closed with nothing wired to save it keeps its pool, with no tab, and gives a notice: in T318's state, `:tabclose` on the session's tab, with no `TabClosedPre` hook calling `save_session`, gives a notification; and with c closed in …  
-`tests/test_s2.lua:936`
+`tests/test_s2.lua:937`
 
 **T323 [target]** (S2) a tab-session save refreshes the unnamed session's records and leaves its references  
 → `eq(S2.save_tab_session(child, s, 't'), { true })`  
@@ -2629,7 +2631,7 @@ spec: (S2 Tab sessions; DESK:956) A tab session's tab closed with nothing wired 
 → `eq({ closed = child.closed(), slots = child.slots() }, { closed = 'x', slots = '⦉x⦊ [t] ⟦-⟧' })`  
 note: The whole editor is saved (the unnamed session) at ⦉x⦊ [t]; then t is loaded into a second tab, x is closed and e visited in the first tab, and t is saved.  
 spec: (S2 Tab sessions, Errors and drift; DESK:957, DESK:1068) A tab-session save refreshes the unnamed session's records and leaves its references: with the whole editor saved by `save_session()` at `⦉x⦊ [t] ⟦-⟧`, the tab session loaded into a second tab, x closed and e visited in the…  
-`tests/test_s2.lua:948`
+`tests/test_s2.lua:949`
 
 **T332 [target]** (S2) a tab session's file holds the No Name texts its own tab owns, and not another tab's  
 `:e d`, `:tabprevious`, `:e t`, `:tabnext` → `eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
@@ -2637,7 +2639,7 @@ spec: (S2 Tab sessions, Errors and drift; DESK:957, DESK:1068) A tab-session sav
 → `eq({ session_text = S2.holding(child, 'session text'), first_text = S2.holding(child, 'first text') },`  
 note: In T318's state, a No Name text made in the session's tab and left there (the window goes back to d), and another made in the first tab and left there (back to t). Only the tab session is saved; a fresh process loads it into a second tab.  
 spec: (S2 Tab sessions; DESK:951, DESK:954, DESK:1640) A pool holds its own No Name texts: in T318's state, a No Name text left in the session's tab's history and another left in the first tab's, a save of the tab session alone, and a load of it into a second tab of a fresh process bri…  
-`tests/test_s2.lua:975`
+`tests/test_s2.lua:976`
 
 **T324 [char]** (S2) an oil window comes back as oil, with oil_original_buffer set from its current slot  
 `:e a`, `:e b` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
@@ -2645,54 +2647,54 @@ spec: (S2 Tab sessions; DESK:951, DESK:954, DESK:1640) A pool holds its own No N
 → `eq(Misc.load(child), { true })`  
 → `eq({ got = got, slots = child.slots() },`  
 spec: (S2 Oil; DESK:2087, DESK:2093) An oil window comes back as oil, with `vim.w.oil_original_buffer` set from its current slot: a window at `⦉a⦊ [b] ⟦-⟧` showing an oil listing at save, restored on the listing, still shows it after the load, keeps `⦉a⦊ [b] ⟦-⟧`, and has `oil_original…  
-`tests/test_s2.lua:1006`
+`tests/test_s2.lua:1007`
 
 **T325 [target]** (S2) :CavediverClosed opens an editable buffer listing the closed entries, newest first, and no open buffer  
 → `eq({`  
 spec: (S2 Closed-stack picker; DESK:2367, DESK:2371, DESK:2374) `:CavediverClosed` opens an editable buffer that lists the closed entries, newest first, and no open buffer: with b and then c closed, the buffer is modifiable, a line naming c.txt sits above one naming b.txt, and no line …  
-`tests/test_s2.lua:1053`
+`tests/test_s2.lua:1054`
 
 **T326 [target]** (S2) a No Name entry shows its first line in quotes, its filetype and its close time  
 `:e a`, `<M-.>` → `shown = 'a'`  
 → `eq({ listed = i ~= nil, quoted = line:find('"TODO: fix the', 1, true) ~= nil,`  
 note: The format is given as an example (`[No Name] "TODO: fix the…"  lua`), so the pieces are matched on their own; a digit stands for the close time.  
 spec: (S2 Closed-stack picker; DESK:2368) A No Name entry shows its first line in quotes, its filetype and its close time: a No Name buffer holding `TODO: fix the thing` with filetype lua, closed with `<M-.>`, is listed on a line holding `[No Name]`, `"TODO: fix the`, `lua` and a digit…  
-`tests/test_s2.lua:1067`
+`tests/test_s2.lua:1068`
 
 **T327 [target]** (S2) reordering the picker's lines and :w reorders the stack  
 → `eq(c ~= nil and b ~= nil, true)`  
 `<M-S-w>` → `shown = 'b'`  
 spec: (S2 Closed-stack picker; DESK:2371) Reordering the picker's lines reorders the stack: with c on top of b, swapping their lines and `:w` make `<M-S-w>` in the window you came from reopen b.  
-`tests/test_s2.lua:1081`
+`tests/test_s2.lua:1082`
 
 **T328 [target]** (S2) <CR> in the picker reopens the entry under the cursor in the window you came from  
 → `eq(b ~= nil, true)`  
 `<CR> (via vim.keycode)` → `eq({ shown = child.shown(p.came_from), closed = child.closed() }, { shown = 'b', closed = 'c' })`  
 note: <CR> is typed into the picker, since its own mapping isn't known in advance.  
 spec: (S2 Closed-stack picker; DESK:2372) `<CR>` reopens the entry under the cursor in the window you came from: on b's line it puts b in that window and leaves c alone on the stack. `<CR>` is typed with `feedkeys`, since the picker's mapping isn't known in advance.  
-`tests/test_s2.lua:1096`
+`tests/test_s2.lua:1097`
 
 **T329 [target]** (S2) deleting a file's line in the picker and :w discards it  
 → `eq(c ~= nil, true)`  
 → `closed = 'b'`  
 spec: (S2 Closed-stack picker; DESK:2370) Deleting a file's line and `:w` discard it: with b and c closed, deleting c's line leaves b alone on the stack.  
-`tests/test_s2.lua:1110`
+`tests/test_s2.lua:1111`
 
 **T330 [target]** (S2) the picker shows each pool as a header with its closed entries under it  
 → `eq(x ~= nil and c ~= nil, true)`  
 → `eq({ first_line_is_header = header(1), header_between_pools = between },`  
 note: A header is a line that isn't empty and names neither entry.  
 spec: (S2 Closed-stack picker, Tab sessions; DESK:2367) Each pool is a header with its closed entries under it: in T318's state, with x closed in the first tab and c in the session's tab, the picker's first line is a header, and a header sits between the lines naming x and c. A header …  
-`tests/test_s2.lua:1135`
+`tests/test_s2.lua:1136`
 
 **T331 [target]** (S2) pools merge by moving a line under another pool's header  
 → `eq(c ~= nil and S2.line_of(p.lines, 'x.txt') ~= nil, true)`  
 `<M-S-w>`, `:tabnext`, `<M-S-w>` → `eq({ first_tab = first_tab, session_tab = child.shown(w2) }, { first_tab = { 'x', 'c' }, session_tab = 'd' })`  
 note: c's line is cut from the session's pool and pasted right under x's line.  
 spec: (S2 Closed-stack picker, Tab sessions; DESK:2369) Pools merge by moving lines: in T330's state, c's line moved under x's and `:w` make `<M-S-w>` in the first tab reopen x and then c, and leave nothing for `<M-S-w>` in the session's tab.  
-`tests/test_s2.lua:1154`
+`tests/test_s2.lua:1155`
 
-## tests/test_secondary_key.lua (11 cases: 9 char, 1 target, 1 today)
+## tests/test_secondary_key.lua (11 cases: 11 char)
 
 **T36 [char]** graduation: {c=c t=b}, dtm{b→a}, <M-f> gives {c=c s=b}, dsm{b→a}, same buffer, "Ternary slot graduated"  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -2763,23 +2765,23 @@ note: The other window cycles (history frozen at c,b,a), then <C-w>p into the fr
 spec: After a cycle, `<M-f>` with secondary and ternary empty never puts the current buffer in the secondary.  
 `tests/test_secondary_key.lua:95`
 
-**T44 [today]** with the secondary closed and its file deleted, <M-f> warns "Removed secondary file not found in filesystem" and empties the slot  
+**T44 [char]** with the secondary closed and its file deleted, a cleanup pass keeps the slot, and <M-f> says so  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
-`:bdelete c.txt`, `:bdelete b.txt` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
-→ `eq({ ok, err }, { true, nil })`  
-→ `eq(K.has(K.messages(child), 'Removed secondary file not found in filesystem'), true)`  
-→ `slots = '⦉c⦊ [d] ⟦-⟧'`  
-note: The ternary c is closed too; a closed secondary stays in its slot either way (I4). Delete b.txt and press in one go, before any other history event.  
-spec: With the secondary closed and its file then deleted on disk, `<M-f>` warns "Removed secondary file not found in filesystem" and empties the slot. Paired with T45. Cleanup prunes a closed secondary whose file is gone at the next history event (A21), so `<M-f>` has to come before a…  
+`:bdelete c.txt`, `:bdelete b.txt` → `eq({ slots = child.slots(), closed = child.closed() }, { slots = '⦉c⦊ [d] ⟦b⟧', closed = 'c,b' })`  
+`<M-f>` → `eq({ ok, err }, { true, nil })`  
+→ `eq(K.has(K.messages(child), "isn't on disk right now"), true)`  
+→ `slots = '⦉c⦊ [d] ⟦b⟧'`  
+note: The ternary c is closed too; a closed secondary stays in its slot either way (I4).  
+spec: With the secondary closed and its file deleted, a cleanup pass keeps the slot, and `<M-f>` says so: `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` give `⦉c⦊ [d] ⟦b⟧`; after `:bdelete c.txt` and `:bdelete b.txt` (the ternary c is closed too; a closed secondary stays in its slot either wa…  
 `tests/test_secondary_key.lua:111`
 
-**T45 [target]** with the secondary file deleted on disk, the pointer is kept and <M-f> says the file is missing  
+**T45 [char]** with the secondary file deleted on disk, the pointer is kept and <M-f> says the file is missing  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:bdelete c.txt`, `:bdelete b.txt` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 → `eq({ ok, err }, { true, nil })`  
 → `eq(K.hook_failures(msgs), {})`  
 → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 spec: With the secondary's file deleted on disk, the pointer is kept and `<M-f>` says the file is missing (DESK:2022).  
-`tests/test_secondary_key.lua:128`
+`tests/test_secondary_key.lua:130`
 
 **T150 [char]** Q6's ten keys: the third <M-f> rewrites dtm[b] := c, and the restore gives {c=b s=a t=c}  
 `:e a`, `:e b`, `:e c`, `:e b`, `<M-f>`, `:e a`, `<M-f>` → `slots = '⦉b⦊ [c] ⟦a⟧'`  
@@ -2789,7 +2791,7 @@ spec: With the secondary's file deleted on disk, the pointer is kept and `<M-f>`
 → `eq(K.hook_failures(K.messages(child)), {})`  
 → `slots = '⦉c⦊ [b] ⟦a⟧'`  
 spec: Q6's ten keys, as the author ran them: `:e a`, `:e b`, `:e c`, `:e b`, `<M-f>`, `:e a`, `<M-f>`, `<M-f>`, `<M-S-f>`, `<M-;><M-r>`. The third `<M-f>` rewrites the ternary's note to the buffer it leaves (`dtm[b] := c`), and the restore doesn't throw: it gives `{c=b s=a t=c}` **[sim…  
-`tests/test_secondary_key.lua:144`
+`tests/test_secondary_key.lua:146`
 
 ## tests/test_sessions.lua (16 cases: 16 char)
 

@@ -191,7 +191,7 @@ T['T88 [char] a No Name buffer closed with text comes back with the same lines a
 	eq(child.lua('return vim.bo.filetype'), 'markdown')
 end
 
-T['T89 [target] <M-S-w> on a missing file says so and leaves the entry on the stack'] = function()
+T['T89 [char] <M-S-w> on a missing file says so and leaves the entry on the stack'] = function()
 	child.steps({ ':e d', ':e e', ':e f', '<M-.>' })
 	eq(child.closed(), 'f')
 	child.lua('os.remove(_G.CDV_TEST.root .. "/f.txt")')
@@ -242,7 +242,7 @@ T['T91 [char] after a No Name buffer is reopened, its old hash is renamed everyw
 	eq(child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()].displacement_ternary_map[...]', { child.hash_of('b') }), new)
 end
 
-T['T162 [target] pushing a hash already on the closed stack keeps one copy, as the newest'] = function()
+T['T162 [char] pushing a hash already on the closed stack keeps one copy, as the newest'] = function()
 	child.steps({ ':e a' })
 	local got = child.lua([[
 		local H = require('cavediver.domains.history')

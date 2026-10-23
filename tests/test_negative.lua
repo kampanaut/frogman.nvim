@@ -81,7 +81,7 @@ end
 -- N is an empty No Name buffer that ends up only in the notes: a key (N>c) and
 -- a value (b>N). Wiping it pushes nothing (M5); its path stays only because the
 -- notes still name it (I2), so once the notes follow along, nothing names it.
-T['T208 [target] (P10, I17) the notes about an empty No Name buffer go once it is wiped'] = function()
+T['T208 [char] (P10, I17) the notes about an empty No Name buffer go once it is wiped'] = function()
 	child.steps({ ':e a', ':e b', ':e c', ':enew' })
 	local n = child.lua('return vim.api.nvim_get_current_buf()')
 	local h = child.lua('return require("cavediver.domains.history").get_hash_from_buffer(...)', { n })
@@ -181,7 +181,7 @@ end
 
 -- b is closed and outside the slots; its file goes, then the save, in one call
 -- so no other pass runs in between.
-T['T214 [target] (P24) a save leaves the closed stack as it was, a closed file gone from disk included'] = function()
+T['T214 [char] (P24) a save leaves the closed stack as it was, a closed file gone from disk included'] = function()
 	child.steps({ ':e a', ':e b', ':e c', ':e d' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦-⟧')
 	child.cmd('bdelete b.txt')
@@ -445,7 +445,7 @@ end
 
 -- b is closed and stays in the ternary (T102); its file is deleted in the same
 -- call as the key, before any other pass.
-T['T227 [target] (A7, P9) <M-S-f> on a closed ternary whose file is gone says so and keeps the pointer'] = function()
+T['T227 [char] (A7, P9) <M-S-f> on a closed ternary whose file is gone says so and keeps the pointer'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.cmd('bdelete b.txt')
 	child.settle()

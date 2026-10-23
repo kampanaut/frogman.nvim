@@ -175,6 +175,84 @@ function M.is_filehash_referenced(filehash)
 	return false
 end
 
+---Whether cavediver still knows a hash: an open buffer, a slot or a primary queue holds it, or the
+---closed stack does. Notes and history never keep a hash known; they follow along.
+---
+---@param filehash Filehash
+---@return boolean
+function M.is_filehash_known(filehash)
+	return M.known_filehashes()[filehash] == true
+end
+
+---Every hash cavediver still knows, as a set, built once for a pass over many hashes.
+---
+---@return table<Filehash, boolean>
+function M.known_filehashes()
+	local known = {}
+	for filehash, _ in pairs(data.hash_buffer_registry.buffers) do
+		known[filehash] = true
+	end
+	for _, filehash in ipairs(data.closed_buffers) do
+		known[filehash] = true
+	end
+	for _, triquetra in pairs(require('cavediver.domains.window.data').crux) do
+		for _, filehash in pairs({ triquetra.current_slot, triquetra.secondary_slot, triquetra.ternary_slot }) do
+			known[filehash] = true
+		end
+		for _, filehash in ipairs(triquetra.primary_buffer or {}) do
+			known[filehash] = true
+		end
+	end
+	return known
+end
+
+---Follow along: a note or a history entry goes once what it points at is no longer known, and then
+---the path of a hash nothing references any more is forgotten.
+---
+---@param known_set table<Filehash, boolean>|nil The known hashes, when a caller has them already
+---@return integer forgotten How many hashes went
+function M.follow_along(known_set)
+	known_set = known_set or M.known_filehashes()
+	local unknown = {}
+	local function known(filehash)
+		if not known_set[filehash] then
+			unknown[filehash] = true
+		end
+		return known_set[filehash] == true
+	end
+	for _, triquetra in pairs(require('cavediver.domains.window.data').crux) do
+		for _, map in ipairs({ triquetra.displacement_ternary_map or {}, triquetra.displacement_secondary_map or {} }) do
+			for key, value in pairs(map) do
+				if not known((key:gsub("%-swap$", ""))) or not known(value) then
+					map[key] = nil
+				end
+			end
+		end
+	end
+	local histories = { data.crux, data.crux_internals.global }
+	for _, window_crux in pairs(data.crux_internals.window) do
+		table.insert(histories, window_crux)
+	end
+	for _, history in ipairs(histories) do
+		for filehash, _ in pairs(history) do
+			if not known(filehash) then
+				history[filehash] = nil
+			end
+		end
+	end
+	local forgotten = 0
+	for filehash, is_unknown in pairs(unknown) do
+		local filepath = data.hash_filepath_registry.filepaths[filehash]
+		if is_unknown and filepath then
+			M.unregister_filepath(filepath)
+			if data.hash_filepath_registry.filepaths[filehash] == nil then
+				forgotten = forgotten + 1
+			end
+		end
+	end
+	return forgotten
+end
+
 ---unregister a filepath from the registry. A path is never forgotten while anything references its
 ---hash, so a referenced one stays.
 ---@param filepath Filepath
@@ -493,6 +571,9 @@ function M.reopen_filehash(filehash)
 	if filepath == nil then
 		return nil
 	end
+	if not filepath:match("^NONAME_") and vim.fn.filereadable(filepath) ~= 1 then
+		return nil -- a file gone from disk keeps its place on the closed stack: it may come back
+	end
 
 	for i = #data.closed_buffers, 1, -1 do
 		if data.closed_buffers[i] == filehash then
@@ -648,8 +729,10 @@ function M.track_closing_filehash(filehash)
 
 		-- Check if buffer is empty (no lines or single empty line)
 		if #lines == 0 or (#lines == 1 and lines[1] == "") then
-			M.untrack_buffer(bufnr) -- its own history goes first, and it leaves the slots, so only a note can keep the path.
+			M.untrack_buffer(bufnr) -- its own history goes first, and it leaves the slots.
 			require('cavediver.domains.window.data').forget_hash_in_slots(filehash)
+			M.unregister_buffer(bufnr)
+			M.follow_along() -- the notes about it go, and then its path
 			M.unregister_filepath(filepath) -- Yes, remove it from the system entirely. We are not interested in empty no name buffers.
 			return false           -- Don't track empty [No Name] buffers
 		end
@@ -663,6 +746,7 @@ function M.track_closing_filehash(filehash)
 		}
 	end
 
+	M.remove_from_closed_stack(filehash) -- one copy on the stack: a file closed again is the newest
 	table.insert(data.closed_buffers, filehash)
 	return true
 end
@@ -678,7 +762,19 @@ function M.track_closing_filehash_force(filehash)
 		error("This must not happen: Closing filehash is not registered at all.")
 	end
 
+	M.remove_from_closed_stack(filehash)
 	table.insert(data.closed_buffers, filehash)
+end
+
+---Take every copy of a hash off the closed stack.
+---
+---@param filehash Filehash
+function M.remove_from_closed_stack(filehash)
+	for i = #data.closed_buffers, 1, -1 do
+		if data.closed_buffers[i] == filehash then
+			table.remove(data.closed_buffers, i)
+		end
+	end
 end
 
 
@@ -703,10 +799,13 @@ function M.reopen_last_closed()
 		return nil
 	end
 
-	local filehash = table.remove(data.closed_buffers)
+	local filehash = data.closed_buffers[#data.closed_buffers]
 	local bufnr = M.reopen_filehash(filehash)
 	if bufnr then
 		vim.api.nvim_set_current_buf(bufnr)
+	elseif data.closed_buffers[#data.closed_buffers] == filehash then
+		vim.notify(require('cavediver.domains.ui').routines.get_smart_basename(filehash) ..
+			" isn't on disk right now; it stays on the closed stack.", vim.log.levels.WARN)
 	end
 end
 
@@ -732,6 +831,9 @@ function M.delete_buffer(winid)
 			(M.get_buffer_from_hash(triquetra.current_slot) or M.reopen_filehash(triquetra.current_slot))
 		if current_bufnr and vim.api.nvim_buf_is_valid(current_bufnr) then
 			vim.api.nvim_win_set_buf(winid, current_bufnr)
+		elseif triquetra and M.get_filepath_from_hash(triquetra.current_slot) then
+			vim.notify(require('cavediver.domains.ui').routines.get_smart_basename(triquetra.current_slot) ..
+				" isn't on disk right now, so the window can't go back to it.", vim.log.levels.WARN)
 		end
 		vim.api.nvim_buf_delete(bufnr, { force = true })
 		return true
@@ -924,6 +1026,7 @@ function M.cleanup_system()
 	local report = {
 		orphaned_history = 0,
 		orphaned_hashes = {},
+		orphaned_paths = {},
 		invalid_closed_buffers = 0,
 		invalid_closed_hashes = {},
 		stale_hash_entries = 0,
@@ -949,54 +1052,47 @@ function M.cleanup_system()
 			goto continue
 		end
 		-- a file whose buffer went without events is closed like any other: slots keep it and reopen it.
-		if filepath and not filepath:match("^NONAME_") and not vim.tbl_contains(data.closed_buffers, filehash) then
-			table.insert(data.closed_buffers, filehash)
+		if filepath and not filepath:match("^NONAME_") then
+			if not vim.tbl_contains(data.closed_buffers, filehash) then
+				table.insert(data.closed_buffers, filehash)
+			end
+			-- closed, it's still known, so its history stays: only its buffer is forgotten
+			data.hash_buffer_registry.hashes[bufnr] = nil
+			data.hash_buffer_registry.buffers[filehash] = nil
+		else
+			detach_filehash_from_crux(filepath, filehash)
 		end
-		detach_filehash_from_crux(filepath, filehash)
 		table.insert(report.stale_hashes, filehash)
 		report.stale_hash_entries = report.stale_hash_entries + 1
 		::continue::
 	end
 	
-	-- 1. Clean orphaned history entries (filehashes in crux without buffer registration)
-	for filehash, _ in pairs(data.crux) do
-		local filepath = data.hash_filepath_registry.filepaths[filehash]
-		-- a registered buffer stays whatever the disk says: its file may not be written yet, or
-		-- may come back.
-		if data.hash_buffer_registry.buffers[filehash] then
-			goto continue
-		end
-		detach_filehash_from_crux(filepath, filehash)
-		table.insert(report.orphaned_hashes, filehash)
-		report.orphaned_history = report.orphaned_history + 1
-		::continue::
-	end
-
-	-- 2. Clean invalid closed buffers (files that no longer exist)
-	for i, filehash in ipairs(data.closed_buffers) do
-		local filepath = data.hash_filepath_registry.filepaths[filehash]
-		local is_no_name = filepath:match("^NONAME_")
-		if
-			not (
-				(not filepath) or
-				(
-					not is_no_name and
-					vim.fn.filereadable(filepath) == 0
-				) or
-				(
-					data.hash_buffer_registry.buffers[filehash] ~= nil
-				)
-			)
-		then
-			goto continue
-		end
-
+	-- 2. Clean invalid closed buffers (entries nothing names, or open again). A closed file gone from
+	-- disk stays: it may come back.
+	for i = #data.closed_buffers, 1, -1 do
 		local filehash = data.closed_buffers[i]
+		local filepath = data.hash_filepath_registry.filepaths[filehash]
+		if filepath and data.hash_buffer_registry.buffers[filehash] == nil then
+			goto continue
+		end
+
 		table.insert(report.invalid_closed_hashes, filehash)
 		table.remove(data.closed_buffers, i)
 		report.invalid_closed_buffers = report.invalid_closed_buffers + 1
 		::continue::
 	end
+
+	-- 1. Follow along: the notes and history of hashes no longer known go, and then their paths. A
+	-- registered buffer stays whatever the disk says: its file may not be written yet, or may come back.
+	local known = M.known_filehashes()
+	for filehash, _ in pairs(data.crux_internals.global) do
+		if not known[filehash] then
+			table.insert(report.orphaned_hashes, filehash)
+			report.orphaned_paths[filehash] = data.hash_filepath_registry.filepaths[filehash] -- before it goes
+			report.orphaned_history = report.orphaned_history + 1
+		end
+	end
+	M.follow_along(known)
 
 
 	-- 4. Validate triquetra references across windows
