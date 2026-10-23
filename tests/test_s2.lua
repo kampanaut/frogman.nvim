@@ -704,6 +704,114 @@ T['T316 [char] (S2) a No Name buffer reopened at load gets a fresh id, and every
 	eq(got, { fresh = true, in_ternary = true, stale = {} })
 end
 
+-- The old file is made by hand in the format from before encryption: paths
+-- XOR'd with the cwd and base64-encoded, raw hashes for open buffers, the
+-- six-field window entry. So is the resession session that names the project,
+-- in the test run's own data directory. The directory is the one the child
+-- sees, symlinks resolved. Returns the old file's path and a function that runs
+-- the script with extra arguments.
+local function old_session(s)
+	S2.start(child, s)
+	local root = S2.cwd(child)
+	local function xor(text)
+		local out = {}
+		for n = 1, #text do
+			out[n] = string.char(bit.bxor(text:byte(n), root:byte(((n - 1) % #root) + 1)))
+		end
+		return vim.base64.encode(table.concat(out))
+	end
+	local function hash(file) return vim.fn.sha256(root .. '/' .. file .. '\n'):sub(1, 16) end
+	local old = {
+		buffers = { window = {}, global = { [hash('a.txt')] = 1, [hash('c.txt')] = 3, [hash('d.txt')] = 4 } },
+		windows = { { hash('d.txt'), xor(root .. '/b.txt'), {}, hash('c.txt'), {}, {} } },
+		closed = { xor(root .. '/b.txt') },
+		noname_content = {},
+	}
+	local old_path = s.session_dir .. vim.fn.sha256(root .. '\n'):sub(1, 32) .. '.json'
+	vim.fn.writefile({ vim.json.encode(old) }, old_path)
+	local resession_dir = vim.fn.stdpath('data') .. '/cavediver_test_sessions/'
+	vim.fn.delete(resession_dir, 'rf')
+	vim.fn.mkdir(resession_dir, 'p')
+	local session = {
+		global = { cwd = root },
+		buffers = { { name = root .. '/a.txt' }, { name = root .. '/c.txt' }, { name = root .. '/d.txt' } },
+		tab_scoped = false,
+		tabs = { {} },
+	}
+	vim.fn.writefile({ vim.json.encode(session) }, resession_dir .. root:gsub('/', '_'):gsub(':', '_') .. '.json')
+	local function migrate(...)
+		local cmd = { vim.v.progpath, '--clean', '-l', 'scripts/migrate_sessions.lua',
+			'--resession-dir', 'cavediver_test_sessions', '--session-dir', s.session_dir, ... }
+		return vim.system(cmd, { text = true }):wait()
+	end
+	return old_path, migrate
+end
+
+T['T338 [char] (S2) the migration script converts an old file found through resession\'s session list, and a load reads it'] = function()
+	local s = S2.shared()
+	local old_path, migrate = old_session(s)
+
+	local first = migrate()
+	eq({ code = first.code, converted = first.stdout:find('converted 1 session', 1, true) ~= nil },
+		{ code = 0, converted = true })
+	eq({ old = vim.fn.filereadable(old_path), marked = vim.fn.filereadable(old_path .. '.migrated') }, { old = 0, marked = 1 })
+
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'c', 'd' }, 'd')
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq({ slots = child.slots(), closed = child.closed() }, { slots = '⦉c⦊ [d] ⟦b⟧', closed = 'b' })
+
+	local second = migrate()
+	eq({ code = second.code, already = second.stdout:find('1 already converted', 1, true) ~= nil },
+		{ code = 0, already = true })
+end
+
+-- The new code runs a session before the script: its load starts fresh and its
+-- save writes a file in the new format. The script doesn't take that for a
+-- conversion: it reports the conflict, and --replace converts over it.
+T['T342 [char] (S2) the migration script reports a session saved fresh before it ran, and --replace converts over it'] = function()
+	local s = S2.shared()
+	local _, migrate = old_session(s)
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'c', 'd' }, 'd')
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq(child.slots(), '⦉-⦊ [d] ⟦-⟧')
+	eq(Misc.save(child), { true })
+
+	local first = migrate()
+	eq({ code = first.code, conflict = first.stdout:find('1 with a file in the new format already', 1, true) ~= nil },
+		{ code = 0, conflict = true })
+	local replaced = migrate('--replace')
+	eq({ code = replaced.code, converted = replaced.stdout:find('converted 1 session', 1, true) ~= nil },
+		{ code = 0, converted = true })
+
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'c', 'd' }, 'd')
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
+end
+
+-- Only a file named the old way is there: the first 32 hex characters of
+-- sha256(cwd .. "\n"), plus .json, in the format from before encryption.
+T['T340 [char] (S2) a load that finds only a file named the old way points to the migration script'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	local root = S2.cwd(child)
+	local old = s.session_dir .. vim.fn.sha256(root .. '\n'):sub(1, 32) .. '.json'
+	vim.fn.writefile({ '{"buffers":{"window":[],"global":[]},"windows":[],"closed":[],"noname_content":[]}' }, old)
+
+	S2.start(child, s)
+	Misc.restore(child, { 'a' }, 'a')
+	child.messages()
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq({ told = S2.has(child.messages(), 'migration script'), slots = child.slots(), left = vim.fn.filereadable(old) },
+		{ told = true, slots = '⦉-⦊ [a] ⟦-⟧', left = 1 })
+end
+
 -- Errors and drift ----------------------------------------------------------------
 
 -- Two editors on one project and one session directory save in turn. It held

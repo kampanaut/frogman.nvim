@@ -804,6 +804,9 @@ function M.load_history(cwd, name)
 		vim.notify("cavediver: this session's file is in the format from before encryption. Run the migration script, scripts/migrate_sessions.lua, to convert it; the session starts fresh.", vim.log.levels.WARN)
 	elseif problem == "integrity" then
 		vim.notify("cavediver: this session's file failed its integrity check (edited or corrupted). The session starts fresh, and the next save replaces the file.", vim.log.levels.WARN)
+	elseif problem == "missing" and vim.uv.fs_stat(configs.session_dir .. vim.fn.sha256(cwd .. "\n"):sub(1, 32) .. ".json") then
+		-- a file named the way it was before sessions had names and were encrypted: left as it is
+		vim.notify("cavediver: this session has a file from before encryption. Run the migration script, scripts/migrate_sessions.lua, to convert it; the session starts fresh.", vim.log.levels.WARN)
 	end
 	if saved_data and not (saved_data.paths and saved_data.buffers and saved_data.windows) then
 		saved_data = nil
