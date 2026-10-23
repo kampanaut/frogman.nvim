@@ -134,12 +134,17 @@ local function new_step(cause, trigger, winid)
 		trigger = trigger,
 		win = winid,
 		tab = winid and vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_tabpage(winid) or nil,
+		pool = nil,
 		names = {},
 		events = {},
 		moves = {},
 		told = {},
 	}
 	step.row_before = row_of(winid, step.names)
+	-- the list of its tab, so each session's file keeps its own steps
+	if step.tab then
+		step.pool = require('cavediver.domains.history').routines.pool_of_tab(step.tab).id
+	end
 	return step
 end
 
@@ -408,12 +413,32 @@ function M.steps()
 	return data.ring
 end
 
----A day's steps that made moves, oldest first.
+---A day's steps that made moves, oldest first, the step still open included when it made some.
 ---
 ---@param day string|nil `YYYY-MM-DD`; today when nil
 ---@return CavediverLedgerStep[]
 function M.trail(day)
-	return data.days[day or os.date("%Y-%m-%d")] or {}
+	day = day or os.date("%Y-%m-%d")
+	local steps = data.days[day] or {}
+	local open = data.open
+	if open and #open.moves > 0 and os.date("%Y-%m-%d", math.floor(open.time)) == day then
+		steps = vim.list_extend(vim.list_slice(steps, 1, #steps), { open })
+	end
+	return steps
+end
+
+---The days the ledger holds steps with moves of, the step still open's included.
+---@return string[]
+function M.trail_days()
+	local days = vim.tbl_keys(data.days)
+	local open = data.open
+	if open and #open.moves > 0 then
+		local day = os.date("%Y-%m-%d", math.floor(open.time))
+		if not data.days[day] then
+			table.insert(days, day)
+		end
+	end
+	return days
 end
 
 return M

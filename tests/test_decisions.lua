@@ -192,12 +192,17 @@ T['T255 [char] (M1) a session "a" in /proj and a nameless save in /proja are two
 		local root = _G.CDV_TEST.root
 		local dir = require('cavediver.configs').session_dir
 		vim.fn.mkdir(root .. '/proj', 'p'); vim.fn.mkdir(root .. '/proja', 'p')
-		local before = vim.fn.isdirectory(dir) == 1 and #vim.fn.readdir(dir) or 0
+		-- the files: a session's .d directory, which the trail's pages make too, isn't one
+		local function files()
+			if vim.fn.isdirectory(dir) == 0 then return 0 end
+			return #vim.tbl_filter(function(name) return vim.fn.isdirectory(dir .. name) == 0 end, vim.fn.readdir(dir))
+		end
+		local before = files()
 		vim.cmd('cd ' .. vim.fn.fnameescape(root .. '/proj'))
 		pcall(require('cavediver').save_session, 'a')
 		vim.cmd('cd ' .. vim.fn.fnameescape(root .. '/proja'))
 		pcall(require('cavediver').save_session)
-		local after = vim.fn.isdirectory(dir) == 1 and #vim.fn.readdir(dir) or 0
+		local after = files()
 		return after - before
 	]])
 	eq(got, 2)

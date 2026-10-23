@@ -1482,6 +1482,156 @@ local function narrow(storage)
 	end
 end
 
+---The trail's pages --------------------------------------------------------------------
+
+---A page's file name, through the session's key, after its date, and marked as a page, so it's told
+---apart from a No Name text's file beside it.
+---@param key string
+---@param day string `YYYY-MM-DD`
+---@return string
+local function page_name(key, day)
+	return vim.fn.sha256(hex(key) .. "\ntrail\n" .. day) .. ".trail"
+end
+
+---A page's steps, read from its file; nil when it's missing or fails its check.
+---@param path string
+---@param key string
+---@param day string
+---@return table[]|nil
+local function read_page(path, key, day)
+	local bytes = read_file(path)
+	if bytes == nil then
+		return nil
+	end
+	local plaintext = crypto.open(key, bytes, HEADER .. "trail\n" .. day)
+	local ok, page = pcall(vim.json.decode, plaintext or "")
+	if not plaintext or not ok or type(page) ~= "table" or type(page.steps) ~= "table" then
+		return nil
+	end
+	return page.steps
+end
+
+---The steps a session's file keeps: every step for the whole editor while it's the editor's session;
+---for the unnamed one, the steps in tabs in no tab session, in detached tabs, and with no tab; for a
+---tab session, the steps in its tab and those whose moves name its list.
+---@param owner Pool|nil The session's pool: nil for the whole editor's session
+---@param steps CavediverLedgerStep[]
+---@return CavediverLedgerStep[]
+local function steps_kept(owner, steps)
+	if owner == nil then
+		return steps
+	end
+	local out = {}
+	local list = history.routines.list_name(owner)
+	for _, step in ipairs(steps) do
+		local kept
+		if owner.id == "" then
+			kept = step.pool == nil or step.pool == "" or step.pool:sub(1, 10) == "\0detached\n"
+		else
+			kept = step.pool == owner.id
+			for _, move in ipairs(kept and {} or step.moves) do
+				if move.subject == owner.id or (move.lists and vim.tbl_contains(move.lists, list)) then
+					kept = true
+					break
+				end
+			end
+		end
+		if kept then
+			table.insert(out, step)
+		end
+	end
+	return out
+end
+
+-- Per session file and day: the steps earlier editors wrote that day, read once, and how many of this
+-- editor's steps the page holds already.
+local pages_written = {}
+-- A page that couldn't be written at a save is said once.
+local trail_warned = false
+
+---Write the pages a session's file keeps, for each day the ledger holds steps of it: the steps earlier
+---editors wrote that day, then this editor's. A day with nothing new isn't written again, and earlier
+---days' pages stay as they are.
+---@param file_path string The session's main file
+---@param old_trail table<string, string>|nil The pages the main file lists: day -> file name
+---@param owner Pool|nil The session's pool: nil for the whole editor's session
+---@param key string
+---@param kept table<string, boolean> The names to keep in `<main>.d/`; the pages are added
+---@return table<string, string>|nil trail The pages the main file lists now
+local function write_trail_pages(file_path, old_trail, owner, key, kept)
+	local ledger = require('cavediver.domains.ledger')
+	local scratch_dir = file_path .. ".d/"
+	local trail = {}
+	for day, name in pairs(old_trail or {}) do
+		trail[day] = name
+	end
+	pages_written[file_path] = pages_written[file_path] or {}
+	for _, day in ipairs(ledger.trail_days()) do
+		local mine = steps_kept(owner, ledger.trail(day))
+		local moves = 0
+		for _, step in ipairs(mine) do
+			moves = moves + #step.moves
+		end
+		local count = #mine .. ":" .. moves
+		local name = page_name(key, day)
+		local written = pages_written[file_path][day]
+		if #mine > 0 and not (written and written.key == key and written.count == count and trail[day] == name) then
+			if not (written and written.key == key) then
+				-- what editors before this one wrote that day stays
+				local before = {}
+				for _, step in ipairs(trail[day] and read_page(scratch_dir .. trail[day], key, day) or {}) do
+					if type(step.time) == "number" and step.time < ledger.data.started then
+						table.insert(before, step)
+					end
+				end
+				written = { key = key, before = before }
+			end
+			local page = vim.list_slice(written.before, 1, #written.before)
+			for _, step in ipairs(mine) do
+				table.insert(page, {
+					seq = step.seq, time = step.time, cause = step.cause, trigger = step.trigger, pool = step.pool,
+					names = step.names, events = step.events, moves = step.moves, torn = step.torn,
+				})
+			end
+			vim.fn.mkdir(scratch_dir, "p", 448) -- 0700
+			write_atomic(scratch_dir .. name, crypto.seal(key, vim.json.encode({ steps = page }), HEADER .. "trail\n" .. day))
+			written.count = count
+			pages_written[file_path][day] = written
+			trail[day] = name
+		end
+	end
+	for _, name in pairs(trail) do
+		kept[name] = true
+	end
+	return next(trail) and trail or nil
+end
+
+---The days a session's file has trail pages for, oldest first.
+---@param directory string
+---@param name string|nil
+---@return string[]
+function M.trail_days(directory, name)
+	local saved = read_session_file(get_session_filepath(directory, name), directory)
+	local days = vim.tbl_keys(saved and saved.trail or {})
+	table.sort(days)
+	return days
+end
+
+---A day's page of a session's trail, its steps oldest first; nil when there's none or it can't be read.
+---@param directory string
+---@param name string|nil
+---@param day string `YYYY-MM-DD`
+---@return table[]|nil
+function M.read_trail(directory, name, day)
+	local file_path = get_session_filepath(directory, name)
+	local saved, key = read_session_file(file_path, directory)
+	local page = saved and saved.trail and saved.trail[day]
+	if not page then
+		return nil
+	end
+	return read_page(file_path .. ".d/" .. page, key, day)
+end
+
 ---Write a session's records, its closed list, close times and No Name texts, into its file, from its
 ---pool, leaving its references as the session manager last saved them. A file that isn't there isn't
 ---made; one that can't be read, or whose scope isn't the session's, isn't touched.
@@ -1545,6 +1695,7 @@ local function write_records(session, changes)
 			gone = true
 			return
 		end
+		saved.trail = write_trail_pages(file_path, saved.trail, session.owner, key, kept) -- today's page rides along
 		commit_session(file_path, key, salt, saved, kept)
 	end)
 	if not ok then
@@ -1566,13 +1717,18 @@ local function refresh_unnamed()
 		return
 	end
 	local editor = history.routines.pools()[""]
-	local ok, problem = write_records({
-		name = unnamed.name, directory = unnamed.directory, pools = { editor }, owner = editor, scope = "editor",
-	}) -- its detached lists ride with it
-	if ok then
-		require('cavediver.domains.ledger').move("refreshed", { subject = "", name = "editor",
-			words = "the whole editor's closed files and No Name texts written" })
-	end
+	local ledger = require('cavediver.domains.ledger')
+	-- the whole editor's session's step of its own, so its page keeps it and the tab session's doesn't
+	local ok, problem = ledger.within("save", vim.fn.fnamemodify(unnamed.name or unnamed.directory, ":t"), function()
+		local written, why = write_records({
+			name = unnamed.name, directory = unnamed.directory, pools = { editor }, owner = editor, scope = "editor",
+		}) -- its detached lists ride with it
+		if written then
+			ledger.move("refreshed", { subject = "", name = "editor",
+				words = "the whole editor's closed files and No Name texts written" })
+		end
+		return written, why
+	end)
 	if not ok and problem ~= "missing" then
 		vim.notify("cavediver: the whole editor's session file wasn't refreshed with its closed files and No Name texts, since " .. problem, vim.log.levels.WARN)
 	end
@@ -2018,6 +2174,23 @@ function M.save_history(cwd, name, tab)
 
 	if pool then
 		narrow(storage)
+	end
+	-- the trail's pages: today's written, earlier days' kept. A page that can't be written doesn't stop
+	-- the save: the pages it had stay.
+	local previous = read_session_file(file_path, cwd)
+	local written, trail = pcall(write_trail_pages, file_path, previous and previous.trail, pool, key, kept)
+	if written then
+		storage.trail = trail
+	else
+		storage.trail = previous and previous.trail
+		for _, page in pairs(storage.trail or {}) do
+			kept[page] = true
+		end
+		if not trail_warned then
+			trail_warned = true
+			vim.notify("cavediver: the trail's page couldn't be written (" .. tostring(trail) .. "); the session is saved without it.",
+				vim.log.levels.WARN)
+		end
 	end
 
 	-- Write updated data back to file

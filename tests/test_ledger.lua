@@ -178,6 +178,18 @@ T['T396 [char] (A27) a command typed on the command line is a step under its tex
 	eq(found, { cause = 'command', first = { kind = 'closed', name = 'c.txt', lists = { 'editor' }, dim = true } })
 end
 
+T['T396 [char] (A27) a path typed on the command line is kept as its last part'] = function()
+	child.setup()
+	child.steps({ ':e a' })
+	local root = child.lua('return _G.CDV_TEST.root')
+	child.type_keys(':e ' .. root .. '/b.txt<CR>')
+	child.settle(100)
+	local triggers = {}
+	for _, s in ipairs(steps()) do table.insert(triggers, s.trigger) end
+	eq({ cut = vim.tbl_contains(triggers, ':e b.txt'), whole = vim.tbl_contains(triggers, ':e ' .. root .. '/b.txt') },
+		{ cut = true, whole = false })
+end
+
 T['T397 [char] (A27) a step that changes no row and makes no move is not kept'] = function()
 	child.setup()
 	child.lua('require("cavediver").setup({ cleanup_interval = 100 })')
@@ -513,14 +525,16 @@ T['T414 [char] (A27, S1) a tab-session save\'s moves: saved, and the whole edito
 	child.settle()
 	child.lua('require("cavediver").save_session("t", { tab = vim.api.nvim_get_current_tabpage() })')
 	child.settle(100)
-	local kinds
+	-- the save's own move on its step; the whole editor's records refreshed on a step of their own
+	local kinds = {}
 	for _, st in ipairs(steps('full')) do
-		if st.cause == 'save' and st.trigger == 't' then
-			kinds = {}
-			for _, m in ipairs(st.moves) do table.insert(kinds, m.kind) end
+		if st.cause == 'save' then
+			local here = {}
+			for _, m in ipairs(st.moves) do table.insert(here, m.kind) end
+			kinds[st.trigger == 't' and 't' or 'editor'] = here
 		end
 	end
-	eq(kinds, { 'saved', 'refreshed' })
+	eq(kinds, { t = { 'saved' }, editor = { 'refreshed' } })
 end
 
 T['T415 [char] (A27, S1) :restart\'s reload is a step of its own'] = function()
@@ -621,6 +635,159 @@ T['T419 [char] (A27, M5) detached lists are moves: made, and left into the whole
 	local left = found('detached_left', 't_DETACHED')
 	eq({ made = made and made.cause, left = left and left.words },
 		{ made = 'load', left = 'into the whole editor\'s file' })
+end
+
+-- L2: the trail's pages ---------------------------------------------------------
+
+-- A day's page of a session's trail (today's by default), as a fresh read finds
+-- it: each step's trigger and its moves, `kind name`. nil when there's none.
+local PAGE = [==[
+local name, day = ...
+if name == vim.NIL then name = nil end
+if day == vim.NIL then day = nil end
+local steps = require('cavediver.domains.storage').routines.read_trail(vim.fn.getcwd(-1, -1), name, day or os.date('%Y-%m-%d'))
+if steps == nil then return vim.NIL end
+local out = {}
+for _, step in ipairs(steps) do
+	local moves = {}
+	for _, m in ipairs(step.moves or {}) do table.insert(moves, m.kind .. ' ' .. (m.name or '?')) end
+	table.insert(out, { trigger = step.trigger, moves = moves })
+end
+return out
+]==]
+local function page(name, day)
+	return child.lua(PAGE, { name or vim.NIL, day or vim.NIL })
+end
+
+-- The `closed …` moves of a page, in order.
+local function closes(steps)
+	local out = {}
+	for _, st in ipairs(type(steps) == 'table' and steps or {}) do
+		for _, m in ipairs(st.moves) do
+			if m:match('^closed ') then table.insert(out, m) end
+		end
+	end
+	return out
+end
+
+-- Today's page file of the nameless session, by its path.
+local PAGE_FILE = [==[
+local st = require('cavediver.domains.storage').routines
+local dir = vim.fn.getcwd(-1, -1)
+local saved = st.read_session(dir, nil)
+local name = saved and saved.trail and saved.trail[os.date('%Y-%m-%d')]
+if not name then return vim.NIL end
+for _, entry in ipairs(vim.fn.readdir(require('cavediver.configs').session_dir)) do
+	local path = require('cavediver.configs').session_dir .. entry .. '/' .. name
+	if entry:match('%.d$') and vim.uv.fs_stat(path) then return path end
+end
+return vim.NIL
+]==]
+
+T['T420 [char] (A27) a save writes today\'s page, sealed, and a fresh process reads it back'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
+	child.settle(100)
+	eq(S2.save(child), { true })
+	local path = child.lua(PAGE_FILE)
+	local clear = path ~= vim.NIL and table.concat(vim.fn.readfile(path, 'b'), '\n'):find('c.txt', 1, true) ~= nil
+	S2.start(child, s)
+	local held = false
+	for _, st in ipairs(page() ~= vim.NIL and page() or {}) do
+		if st.trigger == '<M-.>' and vim.tbl_contains(st.moves, 'closed c.txt') then held = true end
+	end
+	eq({ file = path ~= vim.NIL, clear = clear, held = held }, { file = true, clear = false, held = true })
+end
+
+T['T421 [char] (A27) today\'s page rides with the records'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(S2.save(child), { true })
+	child.cmd('bdelete b.txt')
+	child.settle(1500)
+	eq(vim.tbl_contains(closes(page()), 'closed b.txt'), true)
+end
+
+T['T422 [char] (A27) a load reads no page'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
+	child.settle(100)
+	eq(S2.save(child), { true })
+	S2.start(child, s) -- the first editor's quit writes the page again, so it's damaged after
+	local path = child.lua(PAGE_FILE)
+	eq(path ~= vim.NIL, true)
+	-- one byte of the page flipped
+	local bytes = table.concat(vim.fn.readfile(path, 'b'), '\n')
+	local i = math.floor(#bytes / 2)
+	bytes = bytes:sub(1, i - 1) .. string.char((bytes:byte(i) + 1) % 256) .. bytes:sub(i + 1)
+	local f = assert(io.open(path, 'wb'))
+	f:write(bytes)
+	f:close()
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	child.messages()
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local warned = {}
+	for _, m in ipairs(child.messages()) do
+		if m.level == vim.log.levels.WARN then table.insert(warned, m.msg) end
+	end
+	eq({ warned = warned, page = page() }, { warned = {}, page = vim.NIL })
+end
+
+T['T423 [char] (A27) pages outlive the editor that wrote them'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
+	child.settle(100)
+	-- a step the first editor kept on an earlier day
+	child.lua([[
+		require('cavediver').ledger.data.days['2026-10-20'] = { {
+			seq = 0, time = os.time({ year = 2026, month = 10, day = 20, hour = 9 }), cause = 'keymap',
+			trigger = '<M-.>', names = {}, events = {}, moves = { { kind = 'closed', name = 'old.txt' } },
+		} }
+	]])
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	child.steps({ ':e a', ':e b', '<M-.>' })
+	child.settle(100)
+	eq(S2.save(child), { true })
+	local days = child.lua('return require("cavediver.domains.storage").routines.trail_days(vim.fn.getcwd(-1, -1), nil)')
+	eq({ closes = closes(page()), earlier = vim.tbl_contains(days, '2026-10-20') },
+		{ closes = { 'closed c.txt', 'closed b.txt' }, earlier = true })
+end
+
+T['T424 [char] (A27) each file keeps its own moves'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(S2.save(child), { true })
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.cmd('tabprevious')
+	child.cmd('bdelete x.txt')
+	child.settle()
+	child.cmd('tabnext')
+	child.cmd('bdelete c.txt')
+	child.settle(1500)
+	-- t's own steps, its save (in the first editor) and its load, are in its file and not the whole editor's
+	local function own(steps)
+		local out = {}
+		for _, st in ipairs(type(steps) == 'table' and steps or {}) do
+			for _, m in ipairs(st.moves) do
+				if m == 'saved t' or m == 'loaded t' then out[m] = true end
+			end
+		end
+		return out
+	end
+	local t_page, editor_page = page('t'), page()
+	eq({ t = closes(t_page), editor = closes(editor_page), t_own = own(t_page), editor_own = own(editor_page) },
+		{ t = { 'closed c.txt' }, editor = { 'closed x.txt' }, t_own = { ['saved t'] = true, ['loaded t'] = true }, editor_own = {} })
 end
 
 return T

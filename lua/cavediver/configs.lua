@@ -62,6 +62,7 @@
 ---@field trigger string What set it off, as written: `<M-f>`, `:bdelete c.txt`, `BufDelete c.txt`, `cleanup`
 ---@field win integer|nil The window it's about
 ---@field tab integer|nil That window's tab
+---@field pool string|nil The id of that tab's list then: "" the editor's, or a session's
 ---@field row_before CavediverLedgerRow|nil The window's row as the step began
 ---@field row_after CavediverLedgerRow|nil The window's row as the step closed
 ---@field names table<Filehash, string> The name of every file in its rows and moves, as they were then
