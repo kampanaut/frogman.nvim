@@ -14,6 +14,17 @@
 ---@field closed_buffers Filehash[] Stack of closed buffer filehashes that can be reopened via hash_filepath_registry
 ---@field noname_content table<Filepath, NoNameBufferContent> Content storage for [No Name] buffers
 
+---@class Pool One session's own closed stack, close times and visits
+---@field id string "" for the editor's pool, a tab session's name and directory otherwise
+---@field name string|nil The tab session's name
+---@field directory string|nil The tab session's directory
+---@field closed Filehash[] Its closed stack, newest last
+---@field times table<Filehash, number> When each entry was closed, in seconds to the microsecond
+---@field visits table<Filehash, integer> Its own visits, ranked above the editor's history in its tab
+---@field tabs table<integer, boolean> The tabs it's loaded in (tabpage → true); none when its tab closed unsaved
+---@field saved_at integer|nil When it was last saved (vim.uv.hrtime())
+---@field changed_at integer|nil When it last changed (vim.uv.hrtime())
+
 ---@class BufferCruxInternals
 ---@field window table<WinId, table<Filehash, integer>> -- Window-specific crux: winid → file_hash → access_time. Can be partial
 ---@field global table<Filehash, integer> -- the fallback global crux: file_hash → access_time
@@ -91,5 +102,13 @@ local corpus = {
 	-- The last label seen (a git branch, say), and whether one was looked for yet
 	last_label = nil,
 	label_seen = false,
+	-- Each session's pool (id → pool): the editor's, id "", holds closed_buffers itself; a tab session's is
+	-- keyed by its name and directory
+	pools = {},
+	-- The tab session each tab belongs to (tabpage → pool id); a tab in none belongs to the editor's pool
+	tab_pools = {},
+	-- The pools a file came out of when it was opened again (filehash → pool id → true), for its next close
+	came_from = {},
 }
+corpus.pools[""] = { id = "", closed = corpus.closed_buffers, times = {}, visits = {}, tabs = {} }
 return corpus

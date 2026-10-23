@@ -60,6 +60,13 @@ M.loading_batch = false
 ---@type {name: string|nil}|nil
 M.last_loaded = nil
 
+---The last whole-editor session loaded or saved, and the unnamed session: the whole-editor session
+---in effect when tab sessions started, whose records each tab-session save refreshes in its file.
+---@type {name: string|nil, directory: string}|nil
+M.editor_session = nil
+---@type {name: string|nil, directory: string}|nil
+M.unnamed = nil
+
 ---Error state information
 ---@type table
 M.error_state = {

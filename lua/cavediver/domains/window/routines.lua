@@ -241,12 +241,7 @@ end
 ---Remove buffer from closed buffers list by filehash.
 ---@param filehash Filehash The filehash to remove from closed buffers
 local function remove_from_closed_buffers(filehash)
-	for i, closed_filehash in ipairs(history.data.closed_buffers) do
-		if closed_filehash == filehash then
-			table.remove(history.data.closed_buffers, i)
-			break
-		end
-	end
+	history.routines.open_out_of_pools(filehash) -- open again, it's closed nowhere
 end
 
 ---Whether a slot's file is closed and gone from disk. Its pointer is kept, since the file may come

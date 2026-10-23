@@ -234,9 +234,12 @@ function setup_debug_commands()
 		end
 
 		print("\n=== Closed Buffers ===")
-		for i, hash in ipairs(history.data.closed_buffers) do
-			local filepath = history.get_filepath_from_hash(hash)
-			print("  [" .. i .. "] " .. hash .. " -> " .. (filepath or "unknown"))
+		for id, pool in pairs(history.routines.pools()) do
+			print(id == "" and "  (the editor's)" or ("  (" .. (pool.name or id) .. ")"))
+			for i, hash in ipairs(pool.closed) do
+				local filepath = history.get_filepath_from_hash(hash)
+				print("  [" .. i .. "] " .. hash .. " -> " .. (filepath or "unknown"))
+			end
 		end
 	end, { desc = "Print hash-buffer and hash-filepath registry mappings" })
 

@@ -289,7 +289,7 @@ local function derive_cache_from_window_triquetra(winid, again)
 			return bufnr, display_name, true, is_loaded, false
 		else
 			-- Check if it's a closed buffer
-			local is_closed = vim.tbl_contains(history.data.closed_buffers, filehash)
+			local is_closed = history.routines.is_filehash_closed(filehash) -- on any pool
 			if is_closed then
 				-- Closed buffer - can be reopened
 				derive_cache_lock[winid] = nil

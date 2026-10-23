@@ -134,7 +134,7 @@ M.repopulate_history = routines.repopulate_history
 ---@param filehash Filehash
 ---@return boolean True if the filehash is registered as closed
 function M.filehash_is_closed(filehash)
-	return vim.tbl_contains(data.closed_buffers, filehash)
+	return routines.is_filehash_closed(filehash)
 end
 
 function M.clear_closed_buffers()

@@ -28,17 +28,24 @@ function M.save_session(name, opts)
 	if opts and opts.tab then
 		directory = vim.fn.getcwd(-1, vim.api.nvim_tabpage_get_number(opts.tab))
 	end
-	storageSM:to(states.SAVING, { name = name, directory = directory })
-	storageSM:to(states.IDLE, { name = name, directory = directory })
+	local tab = opts and opts.tab
+	storageSM:to(states.SAVING, { name = name, directory = directory, tab = tab })
+	storageSM:to(states.IDLE, { name = name, directory = directory, tab = tab })
 end
 
 ---Load a session, whether or not one is loaded already. From idle, every domain tears its own
----state down first (idle -> bare), so the load starts as it does at startup.
+---state down first (idle -> bare), so the load starts as it does at startup; a tab session's file
+---loads into the tab you're in instead, with nothing torn down.
 ---
 ---@param name string|nil
 ---@return nil
 local function load(name)
-	local session = { name = name, directory = vim.fn.getcwd(-1, -1) }
+	local directory = vim.fn.getcwd(-1, -1)
+	-- a tab with a directory of its own: a tab session saved from it has its file there
+	if vim.fn.haslocaldir(-1, 0) == 1 and routines.session_exists(vim.fn.getcwd(-1, 0), name) then
+		directory = vim.fn.getcwd(-1, 0)
+	end
+	local session = { name = name, directory = directory }
 	data.loading_batch = true
 	data.last_loaded = { name = name }
 	-- once the restore's batch is over: the next call is a full load again, and the window the
@@ -47,7 +54,9 @@ local function load(name)
 		data.loading_batch = false
 		routines.after_restore()
 	end)
-	if storageSM:state() == states.IDLE then
+	-- the file is read first, since its scope decides whether anything is torn down
+	local tab_session = routines.prepare_load(directory, name)
+	if storageSM:state() == states.IDLE and not tab_session then
 		storageSM:to(states.BARE, session)
 	end
 	storageSM:to(states.LOADING, session)
@@ -87,6 +96,32 @@ function M.init_autocmds(group)
 			vim.schedule(function()
 				load(name)
 			end)
+		end,
+	})
+
+	-- A tab session's tab closed: its pool goes with it when its session was saved since it last
+	-- changed (the contract saves it on TabClosedPre); otherwise the pool stays, with no tab, and you're
+	-- told.
+	vim.api.nvim_create_autocmd("TabClosed", {
+		group = group,
+		callback = function()
+			local history = require('cavediver.domains.history')
+			for tabpage, id in pairs(history.data.tab_pools) do
+				local pool = history.data.pools[id]
+				if not vim.api.nvim_tabpage_is_valid(tabpage) then
+					history.data.tab_pools[tabpage] = nil
+					if pool then
+						pool.tabs[tabpage] = nil
+					end
+					if pool and next(pool.tabs) == nil then
+						if pool.saved_at and pool.saved_at >= (pool.changed_at or 0) then
+							history.data.pools[id] = nil -- its file has everything
+						else
+							vim.notify("cavediver: the tab session " .. (pool.name or vim.fn.fnamemodify(pool.directory or "", ":t")) .. "'s tab closed without being saved; its closed files stay, with no tab, in :CavediverClosed until you merge or discard them.", vim.log.levels.WARN)
+						end
+					end
+				end
+			end
 		end,
 	})
 end
