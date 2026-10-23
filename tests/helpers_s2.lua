@@ -281,6 +281,21 @@ S2.line_of = function(lines, text)
 	return nil
 end
 
+-- Line i of buffer buf as it shows: its text, then the text of every piece of
+-- virtual text drawn on it, from any namespace, joined with spaces.
+S2.shown_line = function(child, buf, i)
+	return child.lua([[
+		local buf, i = ...
+		local out = { vim.api.nvim_buf_get_lines(buf, i - 1, i, false)[1] or '' }
+		for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, -1, { i - 1, 0 }, { i - 1, -1 }, { details = true })) do
+			for _, chunk in ipairs(m[4].virt_text or {}) do
+				table.insert(out, chunk[1])
+			end
+		end
+		return table.concat(out, ' ')
+	]], { buf, i })
+end
+
 -- Set the picker's lines and write it.
 S2.write_picker = function(child, p, lines)
 	child.lua([[

@@ -1,6 +1,6 @@
 # Test review sheet
 
-426 cases in 25 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+434 cases in 25 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -1721,7 +1721,7 @@ spec: (P24, A22) A save leaves the closed stack as it was: with b closed and out
 → `eq(Extra.at_least(child.messages()), {})`  
 → `slots = '⦉d⦊ [c] ⟦b⟧'`  
 note: Ex commands raise; keys return ok, err.  
-spec: (P26) With harpoon not installed, `:e`, `<M-f>`, `<M-S-f>`, `<M-;><M-c>`, `<M-;><M-r>` and the UI ticks raise nothing and report no hook failure. Today every history update fails at `history/routines.lua:914` with "module 'harpoon' not found".  
+spec: (P26) With harpoon not installed, `:e`, `<M-f>`, `<M-S-f>`, `<M-;><M-c>`, `<M-;><M-r>` and the UI ticks raise nothing and report no hook failure. Today every history update fails at `history/routines.lua:915` with "module 'harpoon' not found".  
 `tests/test_negative.lua:202`
 
 **T216 [char]** (I16) a No Name id is not reused across sessions  
@@ -1968,7 +1968,7 @@ spec: (A26) The recorder never records raw keystrokes: text typed in insert mode
 → `slots = '⦉c⦊ [b] ⟦-⟧'`  
 → `eq(Extra.at_least(child.messages()), {})`  
 note: A bug found while porting: a tracked buffer wiped with noautocmd, here the window's current buffer. Decided 2026-10-21: the UI repairs it on the spot, within one refresh, as cleanup's re-point would (like navigation, Q18): the window shows b, so b is current and c the ternary.  
-spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't make the UI loop error: `:e a`, `:e b`, `:e c`, then `noautocmd bwipeout` of c give no hook failure over the next ticks. Without the repair, "Invalid buffer id" comes on every tick (`ui/routines.lua:553`); wi…  
+spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't make the UI loop error: `:e a`, `:e b`, `:e c`, then `noautocmd bwipeout` of c give no hook failure over the next ticks. Without the repair, "Invalid buffer id" comes on every tick (`ui/routines.lua:1012`); w…  
 `tests/test_negative.lua:723`
 
 **T243 [char]** (I23) the check runs at graduation: a stale secondary note naming the graduated buffer is dropped ⚑ state set by hand  
@@ -2338,7 +2338,7 @@ note: A hash that no buffer or path has.
 spec: An unknown hash in a map doesn't make a restore throw.  
 `tests/test_restores.lua:122`
 
-## tests/test_s2.lua (73 cases: 64 char, 8 target, 1 today)
+## tests/test_s2.lua (81 cases: 79 char, 1 target, 1 today)
 
 **T292 [char]** (S2) save_session() and load_session() take no directory: the file is named after getcwd(-1, -1) and a fresh process loads it  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
@@ -2871,50 +2871,96 @@ spec: (S2 Contract and API) The hint's tab is the tab the load works on, whereve
 spec: (S2 Oil; DESK:2087, DESK:2093) An oil window comes back as oil, with `vim.w.oil_original_buffer` set from its current slot: a window at `⦉a⦊ [b] ⟦-⟧` showing an oil listing at save, restored on the listing, still shows it after the load, keeps `⦉a⦊ [b] ⟦-⟧`, and has `oil_original…  
 `tests/test_s2.lua:1579`
 
-**T325 [target]** (S2) :CavediverClosed opens an editable buffer listing the closed entries, newest first, and no open buffer  
+**T325 [char]** (S2) :CavediverClosed opens an editable buffer listing the closed entries, newest first, and no open buffer  
 → `eq({`  
 spec: (S2 Closed-stack picker; DESK:2367, DESK:2371, DESK:2374) `:CavediverClosed` opens an editable buffer that lists the closed entries, newest first, and no open buffer: with b and then c closed, the buffer is modifiable, a line naming c.txt sits above one naming b.txt, and no line …  
 `tests/test_s2.lua:1626`
 
-**T326 [target]** (S2) a No Name entry shows its first line in quotes, its filetype and its close time  
+**T326 [char]** (S2) a No Name entry shows its first line in quotes, its filetype and its close time  
 `:e a`, `<M-.>` → `shown = 'a'`  
 → `eq({ listed = i ~= nil, quoted = line:find('"TODO: fix the', 1, true) ~= nil,`  
-note: The format is given as an example (`[No Name] "TODO: fix the…"  lua`), so the pieces are matched on their own; a digit stands for the close time.  
+note: The format is given as an example (`[No Name] "TODO: fix the…"  lua`), so the pieces are matched on their own; a digit stands for the close time. The line is read as it shows, virtual text included (the decoration is virtual text).  
 spec: (S2 Closed-stack picker; DESK:2368) A No Name entry shows its first line in quotes, its filetype and its close time: a No Name buffer holding `TODO: fix the thing` with filetype lua, closed with `<M-.>`, is listed on a line holding `[No Name]`, `"TODO: fix the`, `lua` and a digit…  
-`tests/test_s2.lua:1640`
+`tests/test_s2.lua:1641`
 
-**T327 [target]** (S2) reordering the picker's lines and :w reorders the stack  
+**T327 [char]** (S2) reordering the picker's lines and :w reorders the stack  
 → `eq(c ~= nil and b ~= nil, true)`  
 `<M-S-w>` → `shown = 'b'`  
 spec: (S2 Closed-stack picker; DESK:2371) Reordering the picker's lines reorders the stack: with c on top of b, swapping their lines and `:w` make `<M-S-w>` in the window you came from reopen b.  
-`tests/test_s2.lua:1654`
+`tests/test_s2.lua:1655`
 
-**T328 [target]** (S2) <CR> in the picker reopens the entry under the cursor in the window you came from  
+**T328 [char]** (S2) <CR> in the picker reopens the entry under the cursor in the window you came from  
 → `eq(b ~= nil, true)`  
 `<CR> (via vim.keycode)` → `eq({ shown = child.shown(p.came_from), closed = child.closed() }, { shown = 'b', closed = 'c' })`  
 note: <CR> is typed into the picker, since its own mapping isn't known in advance.  
 spec: (S2 Closed-stack picker; DESK:2372) `<CR>` reopens the entry under the cursor in the window you came from: on b's line it puts b in that window and leaves c alone on the stack. `<CR>` is typed with `feedkeys`, since the picker's mapping isn't known in advance.  
-`tests/test_s2.lua:1669`
+`tests/test_s2.lua:1670`
 
-**T329 [target]** (S2) deleting a file's line in the picker and :w discards it  
+**T329 [char]** (S2) deleting a file's line in the picker and :w discards it  
 → `eq(c ~= nil, true)`  
 → `closed = 'b'`  
 spec: (S2 Closed-stack picker; DESK:2370) Deleting a file's line and `:w` discard it: with b and c closed, deleting c's line leaves b alone on the stack.  
-`tests/test_s2.lua:1683`
+`tests/test_s2.lua:1684`
 
-**T330 [target]** (S2) the picker shows each pool as a header with its closed entries under it  
+**T330 [char]** (S2) the picker shows each pool as a header with its closed entries under it  
 → `eq(x ~= nil and c ~= nil, true)`  
 → `eq({ first_line_is_header = header(1), header_between_pools = between },`  
 note: A header is a line that isn't empty and names neither entry.  
 spec: (S2 Closed-stack picker, Tab sessions; DESK:2367) Each pool is a header with its closed entries under it: in T318's state, with x closed in the first tab and c in the session's tab, the picker's first line is a header, and a header sits between the lines naming x and c. A header …  
-`tests/test_s2.lua:1708`
+`tests/test_s2.lua:1709`
 
-**T331 [target]** (S2) pools merge by moving a line under another pool's header  
+**T331 [char]** (S2) pools merge by moving a line under another pool's header  
 → `eq(c ~= nil and S2.line_of(p.lines, 'x.txt') ~= nil, true)`  
 `<M-S-w>`, `:tabnext`, `<M-S-w>` → `eq({ first_tab = first_tab, session_tab = child.shown(w2) }, { first_tab = { 'x', 'c' }, session_tab = 'd' })`  
 note: c's line is cut from the session's pool and pasted right under x's line.  
 spec: (S2 Closed-stack picker, Tab sessions; DESK:2369) Pools merge by moving lines: in T330's state, c's line moved under x's and `:w` make `<M-S-w>` in the first tab reopen x and then c, and leave nothing for `<M-S-w>` in the session's tab.  
-`tests/test_s2.lua:1727`
+`tests/test_s2.lua:1728`
+
+**T370 [char]** (S2) the picker's keys: gf acts and stays, za folds, H and L go between lists, q writes and leaves  
+→ `eq(x ~= nil and c ~= nil, true)`  
+→ `eq(got, { next = true, previous = true, folded = true, reopened = true, stays = true, c_listed = true, left = true, c_closed = '' })`  
+note: q writes, then leaves: c's line deleted first  
+spec: (S2 Closed-stack picker; the author's 2026-10-23 key grammar) The picker's keys: with b and c closed, `gf` on b's line reopens b in the window you came from and leaves the picker open, with c still listed; `za` on a header folds its list; `L` and `H` go to the next and the previo…  
+`tests/test_s2.lua:1794`
+
+**T371 [char]** (S2) the picker's merge keeps one copy of a file, the newer  
+→ `eq(#xs, 2)`  
+→ `eq({ editor = after[''], session = after.t }, { editor = 'x@' .. newer, session = 'c@' .. before.t:match('c@([%d%.]+)') })`  
+note: The session's x line is moved under the first tab's header, beside its own.  
+spec: (S2 Closed-stack picker, I22; T162's pool half) The picker's merge keeps one copy, the newer: in T330's state, with x also on the session's list, its close time there set by hand a minute after the first tab's, the session's x line moved under the first tab's header, beside that …  
+`tests/test_s2.lua:1827`
+
+**T372 [char]** (S2) a :w in the picker with no edits changes nothing  
+→ `eq(child.lua(LISTS_STATE), before)`  
+spec: (S2 Closed-stack picker, I22) A `:w` with no edits changes nothing: in T330's state, with x on both lists at different close times (set by hand), `:w` with the lines as drawn leaves every list's entries and close times as they were.  
+`tests/test_s2.lua:1846`
+
+**T373 [char]** (S2) the picker shows a missing file's tag  
+`:e a`, `:e b`, `:e c`, `:bdelete b.txt` → `eq(b ~= nil and S2.shown_line(child, p.buf, b):find('⎇feature', 1, true) ~= nil, true)`  
+note: b is deleted on disk, so no check clears its tag, and tagged by hand.  
+spec: (S2 Closed-stack picker, M14) The picker shows a missing file's tag: b closed and tagged `feature` (`history.data.missing`, set by hand), b's line shows `⎇feature`.  
+`tests/test_s2.lua:1856`
+
+**T374 [char]** (S2) with the ASCII glyph set the picker draws nothing outside ASCII  
+→ `eq({ lines = #p.lines > 0, ascii = ascii }, { lines = true, ascii = true })`  
+spec: (S2 Closed-stack picker; the author's "Glyphs, with an ASCII set") With `glyphs = { set = "ascii" }` in the config, the picker draws no glyph outside ASCII: its lines and its virtual text are ASCII alone.  
+`tests/test_s2.lua:1871`
+
+**T375 [char]** (S2) <M-;>W opens the picker, named keymaps.open_closed_lists  
+`<M-;>W` → `eq({ moved = got.moved, modifiable = got.modifiable, c = got.lines:find('c.txt', 1, true) ~= nil, named = got.named },`  
+spec: (S2 Closed-stack picker; DESK:2374) The keymap: `<M-;>W` opens the picker, as `:CavediverClosed` does, and `keymaps.open_closed_lists` names it.  
+`tests/test_s2.lua:1883`
+
+**T376 [char]** (S2) discarding a No Name entry in the picker asks first  
+`:e a`, `<M-.>` → `eq({ kept = kept, discarded = not noname_listed() }, { kept = true, discarded = true })`  
+note: vim.fn.confirm is answered by hand: the choice named Keep, then Discard.  
+spec: (S2 Closed-stack picker; DESK:2370) Discarding a No Name entry asks first: a No Name text closed with `<M-.>`, its line deleted and `:w` with the question answered "Keep" leaves it on the list; answered "Discard", it's gone, text and all.  
+`tests/test_s2.lua:1902`
+
+**T377 [char]** (S2) a typed header that names no list refuses the write  
+→ `eq({ named = S2.has(child.messages(), 'nowhere'), closed = child.closed() }, { named = true, closed = 'b,c' })`  
+spec: (S2 Closed-stack picker; DESK:2373) A typed header that names no list refuses the write: with b and c closed, a line `≡nowhere` added and `:w` give an error naming it, and every list stays as it was.  
+`tests/test_s2.lua:1946`
 
 ## tests/test_secondary_key.lua (11 cases: 11 char)
 

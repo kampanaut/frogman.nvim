@@ -135,6 +135,27 @@ function M.init_autocmds(group)
 		end
 	})
 
+	-- The closed lists' keys, the same as every view's (keymaps.views)
+	vim.api.nvim_create_autocmd("Filetype", {
+		group = group,
+		pattern = "cavediver-closed-lists",
+		callback = function(args)
+			local keys = require('cavediver.configs').keymaps.views or {}
+			local buf = args.buf
+			local function map(lhs, fn, desc)
+				if lhs then
+					vim.keymap.set("n", lhs, fn, { buffer = buf, desc = desc })
+				end
+			end
+			map(keys.leave, function() routines.leave_closed_lists(buf) end, "Write and leave the closed lists")
+			map(keys.act, function() routines.reopen_from_closed_lists(buf, false) end, "Reopen the file under the cursor and leave")
+			map(keys.act_and_stay, function() routines.reopen_from_closed_lists(buf, true) end, "Reopen the file under the cursor and stay")
+			map(keys.fold, "za", "Fold or unfold the list")
+			map(keys.previous_section, function() routines.closed_lists_section(buf, -1) end, "Go to the previous list")
+			map(keys.next_section, function() routines.closed_lists_section(buf, 1) end, "Go to the next list")
+		end
+	})
+
 	-- WinClosed - only happens once, should be removed
 	vim.api.nvim_create_autocmd("WinClosed", {
 		group = group,

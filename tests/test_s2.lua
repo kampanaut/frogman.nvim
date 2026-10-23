@@ -1623,7 +1623,7 @@ local function two_closed()
 	eq(child.closed(), 'b,c')
 end
 
-T['T325 [target] (S2) :CavediverClosed opens an editable buffer listing the closed entries, newest first, and no open buffer'] = function()
+T['T325 [char] (S2) :CavediverClosed opens an editable buffer listing the closed entries, newest first, and no open buffer'] = function()
 	two_closed()
 	local p = S2.picker(child)
 	local c, b = S2.line_of(p.lines, 'c.txt'), S2.line_of(p.lines, 'b.txt')
@@ -1636,8 +1636,9 @@ T['T325 [target] (S2) :CavediverClosed opens an editable buffer listing the clos
 end
 
 -- The format is given as an example (`[No Name] "TODO: fix the…"  lua`), so the
--- pieces are matched on their own; a digit stands for the close time.
-T['T326 [target] (S2) a No Name entry shows its first line in quotes, its filetype and its close time'] = function()
+-- pieces are matched on their own; a digit stands for the close time. The line
+-- is read as it shows, virtual text included (the decoration is virtual text).
+T['T326 [char] (S2) a No Name entry shows its first line in quotes, its filetype and its close time'] = function()
 	child.setup()
 	child.steps({ ':e a' })
 	S2.noname(child, { 'TODO: fix the thing', 'more' }, 'lua')
@@ -1645,13 +1646,13 @@ T['T326 [target] (S2) a No Name entry shows its first line in quotes, its filety
 	eq(child.shown(), 'a')
 	local p = S2.picker(child)
 	local i = S2.line_of(p.lines, '[No Name]')
-	local line = i and p.lines[i] or ''
+	local line = i and S2.shown_line(child, p.buf, i) or ''
 	eq({ listed = i ~= nil, quoted = line:find('"TODO: fix the', 1, true) ~= nil,
 		filetype = line:find('lua', 1, true) ~= nil, time = line:find('%d') ~= nil },
 		{ listed = true, quoted = true, filetype = true, time = true })
 end
 
-T['T327 [target] (S2) reordering the picker\'s lines and :w reorders the stack'] = function()
+T['T327 [char] (S2) reordering the picker\'s lines and :w reorders the stack'] = function()
 	two_closed()
 	local p = S2.picker(child)
 	local c, b = S2.line_of(p.lines, 'c.txt'), S2.line_of(p.lines, 'b.txt')
@@ -1666,7 +1667,7 @@ T['T327 [target] (S2) reordering the picker\'s lines and :w reorders the stack']
 end
 
 -- <CR> is typed into the picker, since its own mapping isn't known in advance.
-T['T328 [target] (S2) <CR> in the picker reopens the entry under the cursor in the window you came from'] = function()
+T['T328 [char] (S2) <CR> in the picker reopens the entry under the cursor in the window you came from'] = function()
 	two_closed()
 	local p = S2.picker(child)
 	local b = S2.line_of(p.lines, 'b.txt')
@@ -1680,7 +1681,7 @@ T['T328 [target] (S2) <CR> in the picker reopens the entry under the cursor in t
 	eq({ shown = child.shown(p.came_from), closed = child.closed() }, { shown = 'b', closed = 'c' })
 end
 
-T['T329 [target] (S2) deleting a file\'s line in the picker and :w discards it'] = function()
+T['T329 [char] (S2) deleting a file\'s line in the picker and :w discards it'] = function()
 	two_closed()
 	local p = S2.picker(child)
 	local c = S2.line_of(p.lines, 'c.txt')
@@ -1705,7 +1706,7 @@ local function two_pools(s)
 end
 
 -- A header is a line that isn't empty and names neither entry.
-T['T330 [target] (S2) the picker shows each pool as a header with its closed entries under it'] = function()
+T['T330 [char] (S2) the picker shows each pool as a header with its closed entries under it'] = function()
 	local s = S2.shared()
 	two_pools(s)
 	local p = S2.picker(child)
@@ -1724,7 +1725,7 @@ T['T330 [target] (S2) the picker shows each pool as a header with its closed ent
 end
 
 -- c's line is cut from the session's pool and pasted right under x's line.
-T['T331 [target] (S2) pools merge by moving a line under another pool\'s header'] = function()
+T['T331 [char] (S2) pools merge by moving a line under another pool\'s header'] = function()
 	local s = S2.shared()
 	local w1, w2 = two_pools(s)
 	local p = S2.picker(child)
@@ -1745,6 +1746,211 @@ T['T331 [target] (S2) pools merge by moving a line under another pool\'s header'
 	child.settle()
 	child.steps({ '<M-S-w>' })
 	eq({ first_tab = first_tab, session_tab = child.shown(w2) }, { first_tab = { 'x', 'c' }, session_tab = 'd' })
+end
+
+-- Each list's entries and close times, by the list's name ("" for the editor's),
+-- as file names and times.
+local LISTS_STATE = [[
+	local H = require('cavediver.domains.history')
+	local out = {}
+	for id, pool in pairs(H.routines.pools()) do
+		local entries = {}
+		for _, h in ipairs(pool.closed) do
+			table.insert(entries, vim.fn.fnamemodify(H.get_filepath_from_hash(h) or h, ':t:r') .. '@' .. tostring(pool.times[h]))
+		end
+		out[pool.name or id] = table.concat(entries, ',')
+	end
+	return out
+]]
+
+-- In T330's state, x also goes on the session's list, closed a minute after
+-- the first tab's x (set by hand).
+local function x_on_both(s)
+	local w1, w2 = two_pools(s)
+	child.lua([[
+		local H = require('cavediver.domains.history')
+		local w2 = ...
+		local x = H.get_hash_from_filepath(vim.fn.getcwd(-1, -1) .. '/x.txt')
+		local editor = H.routines.pools()['']
+		local session = H.routines.pool_of_tab(vim.api.nvim_win_get_tabpage(w2))
+		table.insert(session.closed, x)
+		session.times[x] = editor.times[x] + 60
+	]], { w2 })
+	return w1, w2
+end
+
+-- Keys are typed into the picker as a user would, so its own mappings run;
+-- line 0 leaves the cursor where it is.
+local function press(win, line, keys)
+	child.lua([[
+		local win, line, keys = ...
+		vim.api.nvim_set_current_win(win)
+		if line > 0 then vim.api.nvim_win_set_cursor(win, { line, 0 }) end
+		vim.api.nvim_feedkeys(vim.keycode(keys), 'mx', false)
+	]], { win, line, keys })
+	child.settle()
+end
+
+T['T370 [char] (S2) the picker\'s keys: gf acts and stays, za folds, H and L go between lists, q writes and leaves'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	local p = S2.picker(child)
+	local x, c = S2.line_of(p.lines, 'x.txt'), S2.line_of(p.lines, 'c.txt')
+	eq(x ~= nil and c ~= nil, true)
+	local second
+	for i = 2, #p.lines do
+		if not p.lines[i]:find('.txt', 1, true) and vim.trim(p.lines[i]) ~= '' then second = second or i end
+	end
+	local got = {}
+	press(p.win, 1, 'L')
+	got.next = child.lua('return vim.api.nvim_win_get_cursor(...)[1]', { p.win }) == second
+	press(p.win, 0, 'H')
+	got.previous = child.lua('return vim.api.nvim_win_get_cursor(...)[1]', { p.win }) == 1
+	press(p.win, 1, 'za')
+	got.folded = child.lua('return vim.fn.foldclosed(...) ~= -1', { x })
+	press(p.win, 1, 'za')
+	press(p.win, x, 'gf')
+	got.reopened = child.shown(p.came_from) == 'x'
+	got.stays = child.lua('return vim.api.nvim_win_is_valid(...)', { p.win })
+	local lines = child.lua('return vim.api.nvim_buf_get_lines(..., 0, -1, false)', { p.buf })
+	got.c_listed = S2.line_of(lines, 'c.txt') ~= nil
+	-- q writes, then leaves: c's line deleted first
+	local ci = S2.line_of(lines, 'c.txt')
+	child.lua('local buf, i = ...; vim.api.nvim_buf_set_lines(buf, i - 1, i, false, {})', { p.buf, ci })
+	press(p.win, 1, 'q')
+	got.left = not child.lua('return vim.api.nvim_win_is_valid(...)', { p.win })
+	got.c_closed = child.lua(LISTS_STATE).t or ''
+	eq(got, { next = true, previous = true, folded = true, reopened = true, stays = true, c_listed = true, left = true, c_closed = '' })
+end
+
+-- The session's x line is moved under the first tab's header, beside its own.
+T['T371 [char] (S2) the picker\'s merge keeps one copy of a file, the newer'] = function()
+	local s = S2.shared()
+	x_on_both(s)
+	local before = child.lua(LISTS_STATE)
+	local p = S2.picker(child)
+	local xs = {}
+	for i, l in ipairs(p.lines) do
+		if l:find('x.txt', 1, true) then table.insert(xs, i) end
+	end
+	eq(#xs, 2)
+	local lines = vim.deepcopy(p.lines)
+	local moved = table.remove(lines, xs[2])
+	table.insert(lines, xs[1] + 1, moved)
+	S2.write_picker(child, p, lines)
+	local after = child.lua(LISTS_STATE)
+	local newer = before.t:match('x@([%d%.]+)')
+	eq({ editor = after[''], session = after.t }, { editor = 'x@' .. newer, session = 'c@' .. before.t:match('c@([%d%.]+)') })
+end
+
+T['T372 [char] (S2) a :w in the picker with no edits changes nothing'] = function()
+	local s = S2.shared()
+	x_on_both(s)
+	local before = child.lua(LISTS_STATE)
+	local p = S2.picker(child)
+	S2.write_picker(child, p, p.lines)
+	eq(child.lua(LISTS_STATE), before)
+end
+
+-- b is deleted on disk, so no check clears its tag, and tagged by hand.
+T['T373 [char] (S2) the picker shows a missing file\'s tag'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b', ':e c' })
+	child.cmd('bdelete b.txt')
+	child.lua([[
+		os.remove(_G.CDV_TEST.root .. '/b.txt')
+		local H = require('cavediver.domains.history')
+		H.data.missing[H.get_hash_from_filepath(_G.CDV_TEST.root .. '/b.txt')] = 'feature'
+	]])
+	child.settle()
+	local p = S2.picker(child)
+	local b = S2.line_of(p.lines, 'b.txt')
+	eq(b ~= nil and S2.shown_line(child, p.buf, b):find('⎇feature', 1, true) ~= nil, true)
+end
+
+T['T374 [char] (S2) with the ASCII glyph set the picker draws nothing outside ASCII'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	child.lua([[require('cavediver').setup({ session_dir = require('cavediver.configs').session_dir, glyphs = { set = 'ascii' } })]])
+	local p = S2.picker(child)
+	local ascii = true
+	for i = 1, #p.lines do
+		if S2.shown_line(child, p.buf, i):find('[\128-\255]') then ascii = false end
+	end
+	eq({ lines = #p.lines > 0, ascii = ascii }, { lines = true, ascii = true })
+end
+
+T['T375 [char] (S2) <M-;>W opens the picker, named keymaps.open_closed_lists'] = function()
+	two_closed()
+	local came_from = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ '<M-;>W' })
+	child.settle()
+	local got = child.lua([[
+		local buf = vim.api.nvim_get_current_buf()
+		return {
+			moved = vim.api.nvim_get_current_win() ~= ...,
+			modifiable = vim.bo[buf].modifiable,
+			lines = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n'),
+			named = require('cavediver.configs').keymaps.open_closed_lists,
+		}
+	]], { came_from })
+	eq({ moved = got.moved, modifiable = got.modifiable, c = got.lines:find('c.txt', 1, true) ~= nil, named = got.named },
+		{ moved = true, modifiable = true, c = true, named = '<M-;>W' })
+end
+
+-- vim.fn.confirm is answered by hand: the choice named Keep, then Discard.
+T['T376 [char] (S2) discarding a No Name entry in the picker asks first'] = function()
+	child.setup()
+	child.steps({ ':e a' })
+	S2.noname(child, { 'draft' })
+	child.steps({ '<M-.>' })
+	local function answer(choice)
+		child.lua([[
+			local choice = ...
+			vim.fn.confirm = function(_, choices)
+				local i = 0
+				for c in (choices or ''):gmatch('[^\n]+') do
+					i = i + 1
+					if c:gsub('&', '') == choice then return i end
+				end
+				return 0
+			end
+		]], { choice })
+	end
+	local function noname_listed()
+		return child.lua([[
+			local H = require('cavediver.domains.history')
+			for _, h in ipairs(H.data.closed_buffers) do
+				if (H.get_filepath_from_hash(h) or ''):match('^NONAME_') then return H.data.noname_content[h] ~= nil end
+			end
+			return false
+		]])
+	end
+	local function delete_and_write()
+		local p = S2.picker(child)
+		local i = S2.line_of(p.lines, '[No Name]')
+		local lines = vim.deepcopy(p.lines)
+		if i then table.remove(lines, i) end
+		S2.write_picker(child, p, lines)
+		child.lua('if vim.api.nvim_win_is_valid(...) then vim.api.nvim_win_close(..., true) end', { p.win })
+		child.settle()
+	end
+	answer('Keep')
+	delete_and_write()
+	local kept = noname_listed()
+	answer('Discard')
+	delete_and_write()
+	eq({ kept = kept, discarded = not noname_listed() }, { kept = true, discarded = true })
+end
+
+T['T377 [char] (S2) a typed header that names no list refuses the write'] = function()
+	two_closed()
+	local p = S2.picker(child)
+	local lines = vim.deepcopy(p.lines)
+	table.insert(lines, '≡nowhere')
+	child.messages()
+	S2.write_picker(child, p, lines)
+	eq({ named = S2.has(child.messages(), 'nowhere'), closed = child.closed() }, { named = true, closed = 'b,c' })
 end
 
 return T
