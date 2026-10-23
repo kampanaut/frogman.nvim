@@ -246,6 +246,25 @@ S2.load_tab_session = function(child, name)
 	return got
 end
 
+-- In the current child, the way a manager restores several tabs with no events:
+-- the first tab is the current one, each other a new tab; each tab's files are
+-- brought back (listed and loaded) and its window shows `shown`. tabs is a list
+-- of { files = { 'x', 't' }, shown = 't' }, file letters as in the steps.
+S2.restore_tabs = function(child, tabs)
+	child.lua([[
+		for i, tab in ipairs(...) do
+			if i > 1 then vim.cmd('noautocmd tabnew') end
+			for _, f in ipairs(tab.files) do
+				local b = vim.fn.bufadd(f .. '.txt')
+				vim.fn.bufload(b)
+				vim.bo[b].buflisted = true
+			end
+			vim.cmd('noautocmd edit ' .. tab.shown .. '.txt')
+		end
+		vim.cmd('noautocmd tabnext 1')
+	]], { tabs })
+end
+
 -- The closed-stack picker ---------------------------------------------------------
 
 -- Run :CavediverClosed and find its buffer: the current one if the command
