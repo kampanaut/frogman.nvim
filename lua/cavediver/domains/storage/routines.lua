@@ -1493,12 +1493,16 @@ local function page_name(key, day)
 	return vim.fn.sha256(hex(key) .. "\ntrail\n" .. day) .. ".trail"
 end
 
+---How many pages were read since cavediver started: a page is read only when it's shown or searched.
+M.page_reads = 0
+
 ---A page's steps, read from its file; nil when it's missing or fails its check.
 ---@param path string
 ---@param key string
 ---@param day string
 ---@return table[]|nil
 local function read_page(path, key, day)
+	M.page_reads = M.page_reads + 1
 	local bytes = read_file(path)
 	if bytes == nil then
 		return nil
@@ -2207,6 +2211,79 @@ function M.save_history(cwd, name, tab)
 		dirty[""] = nil
 	end
 	forget_closed_keys()
+end
+
+---The session whose trail the tab you're in shows: its tab session's, or else the whole editor's; and
+---the list whose steps its file keeps (nil while the whole editor's session covers every tab).
+---
+---@return {name: string|nil, directory: string}|nil session nil when there's no session file to read yet
+---@return Pool|nil owner
+function M.trail_session()
+	local pool = history.routines.current_pool()
+	if pool.id ~= "" and not pool.detached then
+		return { name = pool.name, directory = pool.directory }, pool
+	end
+	local session = whole_editor_session()
+	if session then
+		return session, session.owner
+	end
+	-- no whole-editor session yet: with tab sessions about, the tabs in none are the editor's list
+	for id, other in pairs(history.data.pools) do
+		if id ~= "" and not other.detached then
+			return nil, history.routines.pools()[""]
+		end
+	end
+	return nil, nil
+end
+
+---A reader of the trail of the tab you're in: its session's main file is read once, and each page
+---once, when it's asked for, so a view reads only the pages it shows. A day's steps are the page's
+---from editors before this one, then this editor's that the session's file keeps, by the rule its pages
+---are written by.
+---
+---@return {days: fun(): string[], steps: fun(day: string): table[]}
+function M.trail_reader()
+	local ledger = require('cavediver.domains.ledger')
+	local session, owner = M.trail_session()
+	local file_path, saved, key
+	if session then
+		file_path = get_session_filepath(session.directory, session.name)
+		saved, key = read_session_file(file_path, session.directory)
+	end
+	local trail = saved and saved.trail or {}
+	local pages = {}
+	local reader = {}
+	---The days it has steps of, oldest first.
+	function reader.days()
+		local days = {}
+		for day, _ in pairs(trail) do
+			days[day] = true
+		end
+		for _, day in ipairs(ledger.trail_days()) do
+			if #steps_kept(owner, ledger.trail(day)) > 0 then
+				days[day] = true
+			end
+		end
+		local list = vim.tbl_keys(days)
+		table.sort(list)
+		return list
+	end
+	---A day's steps, oldest first.
+	function reader.steps(day)
+		if pages[day] == nil then
+			local steps = {}
+			if trail[day] and key then
+				for _, step in ipairs(read_page(file_path .. ".d/" .. trail[day], key, day) or {}) do
+					if type(step.time) == "number" and step.time < ledger.data.started then
+						table.insert(steps, step)
+					end
+				end
+			end
+			pages[day] = steps
+		end
+		return vim.list_extend(vim.list_slice(pages[day], 1, #pages[day]), steps_kept(owner, ledger.trail(day)))
+	end
+	return reader
 end
 
 ---Write a session's file from data in the saved shape, as a save writes it. The migration script

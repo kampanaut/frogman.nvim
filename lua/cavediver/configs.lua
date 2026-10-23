@@ -18,6 +18,7 @@
 
 ---@class CavediverViewKeymaps
 ---@field leave string Write, then leave the view
+---@field leave_too string Leave the view as `leave` does, a second key for it
 ---@field act string The view's main action on the line under the cursor, then leave
 ---@field act_and_stay string The main action, staying in the view
 ---@field fold string Fold or unfold a section
@@ -68,6 +69,8 @@
 ---@field names table<Filehash, string> The name of every file in its rows and moves, as they were then
 ---@field events string[] The events it set off, `BufEnter b.txt`, listed under it
 ---@field moves CavediverLedgerMove[] What cavediver did in it
+---@field told table[] The messages it queued, said as it closes
+---@field closed boolean|nil Whether it has closed
 ---@field torn boolean|nil A whole-editor load replaced what it did: the session manager's teardown
 
 ---Something cavediver did in a step.
@@ -94,6 +97,14 @@ local defaults = {
 	closed_lists_popup = {
 		height = 0.5, -- can be a ratio or a whole number
 		width = 0.7, -- can be a ratio or a whole number
+	},
+	trail_popup = {
+		height = 0.8, -- can be a ratio or a whole number
+		width = 0.8, -- can be a ratio or a whole number
+	},
+	-- the trail's header: its tally of the day's moves, its gauge of the days, its fill shaded by depth
+	trail = {
+		header = { tally = true, gauge = true, shade = true },
 	},
 	glyphs = {
 		set = "unicode", -- "unicode" | "ascii"; a glyph named here (list, closed, tag) replaces the set's
@@ -160,6 +171,35 @@ local defaults = {
 			time = "#878580", -- base-500
 			tag = "#6F6E69", -- base-600
 			dim = "#575653", -- base-700
+			-- the trail's own
+			wave = { "#4385BE", "#205EA6", "#1A4F8C", "#163B66" }, -- the fill: today, a week, a month, older
+			title = "#879A39", -- green-400
+			date = "#B7B5AC", -- base-300
+			depth = "#DA702C", -- orange-400
+			count = "#878580", -- base-500
+			gauge = "#4385BE", -- blue-400
+			gauge_now = "#FFAF00",
+			key_on = "#8B7EC8", -- purple-400
+			key_off = "#575653", -- base-700
+			gutter = "#575653", -- base-700
+			trigger = "#878580", -- base-500
+			name = "#B7B5AC", -- base-300
+			words = "#878580", -- base-500
+			ring = "#6F6E69", -- base-600
+			fold = "#8B7EC8", -- purple-400
+			reopened = "#879A39", -- green-400
+			forgot = "#6F6E69", -- base-600
+			gone = "#D14D41", -- red-400
+			back = "#879A39", -- green-400
+			repair = "#D0A215", -- yellow-400
+			slot = "#3AA99F", -- cyan-400
+			note = "#CE5D97", -- magenta-400
+			cycle = "#4385BE", -- blue-400
+			session = "#4385BE", -- blue-400
+			rename = "#4385BE", -- blue-400
+			row_t = "#9F9D96", -- base-400
+			row_c = "#879A39", -- green-400
+			row_s = "#DA702C", -- orange-400
 		},
 		cokeline = {
 			is_picking_close = "#D14D41", -- red-400
@@ -213,6 +253,7 @@ local defaults = {
 		-- Inside cavediver's own views
 		views = {
 			leave = "q",
+			leave_too = "<C-c>",
 			act = "<CR>",
 			act_and_stay = "gf",
 			fold = "za",

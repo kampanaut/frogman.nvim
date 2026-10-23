@@ -155,6 +155,7 @@ function M.init_autocmds(group)
 				end
 			end
 			map(keys.leave, function() routines.leave_closed_lists(buf) end, "Write and leave the closed lists")
+			map(keys.leave_too, function() routines.leave_closed_lists(buf) end, "Write and leave the closed lists")
 			map(keys.act, function() routines.reopen_from_closed_lists(buf, false) end, "Reopen the file under the cursor and leave")
 			map(keys.act_and_stay, function() routines.reopen_from_closed_lists(buf, true) end, "Reopen the file under the cursor and stay")
 			map(keys.fold, "za", "Fold or unfold the list")
