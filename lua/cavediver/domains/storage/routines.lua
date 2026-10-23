@@ -743,14 +743,19 @@ end
 ---@param key string The session's key
 ---@param scratch_dir string The session's scratch directory
 ---@param times table<Filehash, integer>|nil When each was closed
+---@param merge boolean|nil The pool is open already: what's in memory stays, and the file's entries it
+---doesn't have go under them, as the oldest
 ---@return nil
-local function load_closed_buffers(closed_buffers, noname_content, key, scratch_dir, times)
-	if load_pool.id == "" then
+local function load_closed_buffers(closed_buffers, noname_content, key, scratch_dir, times, merge)
+	if merge then
+		-- what's in memory is newer than the file
+	elseif load_pool.id == "" then
 		history.clear_closed_buffers()
 		load_pool = history.routines.pools()[""]
 	else
 		load_pool.closed, load_pool.times = {}, {}
 	end
+	local at = 1
 
 	-- TODO: Open closed no name buffers with their content.
 	if closed_buffers == nil then
@@ -765,8 +770,11 @@ local function load_closed_buffers(closed_buffers, noname_content, key, scratch_
 		if history.get_buffer_from_hash(filehash) then
 			goto continue -- the session manager brought it back
 		end
+		if merge and vim.tbl_contains(load_pool.closed, filehash) then
+			goto continue
+		end
 		if filepath:match("^NONAME_") then
-			if history.data.noname_content[filehash] == nil or load_pool.id ~= "" then
+			if history.data.noname_content[filehash] == nil or (load_pool.id ~= "" and not merge) then
 				local content = noname_content[filehash]
 				if content == nil then
 					error("This is impossible. Noname content must be created for this closed No Name buffer.")
@@ -778,12 +786,17 @@ local function load_closed_buffers(closed_buffers, noname_content, key, scratch_
 					key = key,
 					read = scratch_reader(source, key, filehash),
 				}
-			else
+			elseif not merge then -- merged into an open pool, its text is cached already
 				error("This is impossible. The closed buffer must not already exist in noname_content.")
 			end
 		end
-		table.insert(load_pool.closed, filehash)
-		load_pool.times[filehash] = times and times[filehash] or nil
+		if merge then
+			table.insert(load_pool.closed, at, filehash)
+			at = at + 1
+		else
+			table.insert(load_pool.closed, filehash)
+		end
+		load_pool.times[filehash] = load_pool.times[filehash] or (times and times[filehash]) or nil
 		::continue::
 	end
 	-- print_table(history.data.closed_buffers)
@@ -810,16 +823,38 @@ local function get_session_filepath(directory, name)
 	return project_filepath
 end
 
+-- each session's key once it's made, by directory and salt: another editor's save can give a file a
+-- new salt, and a key kept by the file's path would then seal it with the wrong one. Each file's last
+-- key is noted, so a session's key can go once the session isn't open.
+local keys, key_of = {}, {}
+
+---A session's key, made once for its directory and salt.
+---@param directory string
+---@param salt string
+---@param file_path string The session's file, whose key this is now
+---@return string key
+local function key_for(directory, salt, file_path)
+	local id = directory .. "\0" .. salt
+	keys[id] = keys[id] or crypto.derive_key(directory, salt)
+	key_of[file_path] = id
+	return keys[id]
+end
+
+---Let the keys of sessions no longer open go (defined with the records, below).
+---@type fun()
+local forget_closed_keys
+
 ---Read and decrypt a session's main file.
 ---
 ---@param file_path string
 ---@param directory string The session's directory, the secret its key is stretched from
+---@param bytes string|nil The file's bytes, when they're read already
 ---@return table|nil saved_data
 ---@return string|nil key
 ---@return string|nil problem "missing", "newer" (a newer format's header), "unencrypted" (the format
 ---before encryption) or "integrity" (the check failed: edited or corrupted, or not this directory's)
-local function read_session_file(file_path, directory)
-	local bytes = read_file(file_path)
+local function read_session_file(file_path, directory, bytes)
+	bytes = bytes or read_file(file_path)
 	if bytes == nil then
 		return nil, nil, "missing"
 	end
@@ -832,7 +867,7 @@ local function read_session_file(file_path, directory)
 		return nil, nil, "integrity"
 	end
 	local salt = bytes:sub(#HEADER + 1, #HEADER + crypto.salt_length)
-	local key = crypto.derive_key(directory, salt)
+	local key = key_for(directory, salt, file_path)
 	local plaintext = crypto.open(key, bytes:sub(#HEADER + crypto.salt_length + 1), HEADER .. salt)
 	local ok, saved_data = pcall(vim.json.decode, plaintext or "")
 	if not plaintext or not ok or type(saved_data) ~= "table" then
@@ -859,11 +894,16 @@ local prepared = nil
 ---
 ---@param directory string The session's directory
 ---@param name string|nil The session's name; nil for a nameless save
+---@param hint integer|nil The tab the call names (load_session's { tab = … }): it's a tab session, loading
+---into that tab
 ---@return boolean tab_session Whether it's a tab session's file
-function M.prepare_load(directory, name)
+function M.prepare_load(directory, name, hint)
 	local saved_data, key, problem = read_session_file(get_session_filepath(directory, name), directory)
-	prepared = { directory = directory, name = name, saved_data = saved_data, key = key, problem = problem }
-	return saved_data ~= nil and saved_data.scope == "tab"
+	prepared = { directory = directory, name = name, saved_data = saved_data, key = key, problem = problem, hint = hint }
+	if saved_data and saved_data.paths and saved_data.buffers and saved_data.windows then
+		return saved_data.scope == "tab" -- a file's scope wins over the hint
+	end
+	return hint ~= nil
 end
 
 ---Whether a session has a file, in that directory under that name.
@@ -875,18 +915,31 @@ function M.session_exists(directory, name)
 	return vim.uv.fs_stat(get_session_filepath(directory, name)) ~= nil
 end
 
----A tab session loads into the tab you're in, and nothing else changes: that tab's windows start over
----and take the file's entries, the session's pool comes in with its closed stack and its own visits,
----and the editor's history stays underneath.
+---A tab joins a session's pool for a load. The session it was in until then is closed in that tab, its
+---windows' triquetras dropped already: once no tab is left in it, its records are written and its pool
+---goes, as when its last tab closes.
 ---
----@param saved_data table
----@param key string
----@param file_path string
+---@param tabpage integer
+---@param name string|nil
+---@param directory string
+---@return Pool
+local function join_for_load(tabpage, name, directory)
+	local before = history.routines.pool_of_tab(tabpage)
+	local pool = history.routines.join_pool(tabpage, name, directory)
+	if before ~= pool and before.id ~= "" and next(before.tabs) == nil then
+		M.close_tab_pool(before)
+	end
+	return pool
+end
+
+---A tab session with no file it can use, loaded with the hint, starts only the tab the hint names fresh:
+---its windows start over with what they show, and nothing else changes.
+---
 ---@param directory string
 ---@param name string|nil
----@return WinId[] matched
-local function load_tab_session(saved_data, key, file_path, directory, name)
-	local tabpage = vim.api.nvim_get_current_tabpage()
+---@param tabpage integer The tab the hint names
+---@return nil
+local function start_tab_fresh(directory, name, tabpage)
 	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
 		if window.data.crux[winid] then
 			window.data.unregister_triquetra(winid)
@@ -895,19 +948,55 @@ local function load_tab_session(saved_data, key, file_path, directory, name)
 	if data.unnamed == nil and data.editor_session then
 		data.unnamed = vim.deepcopy(data.editor_session) -- the whole editor's session, as tab sessions start
 	end
-	load_pool = history.routines.join_pool(tabpage, name, directory)
+	load_pool = join_for_load(tabpage, name, directory)
+	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
+		local bufnr = vim.api.nvim_win_get_buf(winid)
+		if vim.api.nvim_win_get_config(winid).relative == "" and history.routines.is_trackable(bufnr) then
+			vim.api.nvim_win_call(winid, function()
+				history.routines.update_buffer_history(bufnr)
+			end)
+			window.get_triquetra(winid)
+		end
+	end
+end
+
+---A tab session loads into one tab, and nothing else changes: that tab's windows start over and take
+---the file's entries, the session's pool comes in with its closed stack and its own visits, and the
+---editor's history stays underneath.
+---
+---@param saved_data table
+---@param key string
+---@param file_path string
+---@param directory string
+---@param name string|nil
+---@param tabpage integer The tab it loads into: the hint's, or the one you're in
+---@return WinId[] matched
+local function load_tab_session(saved_data, key, file_path, directory, name, tabpage)
+	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
+		if window.data.crux[winid] then
+			window.data.unregister_triquetra(winid)
+		end
+	end
+	if data.unnamed == nil and data.editor_session then
+		data.unnamed = vim.deepcopy(data.editor_session) -- the whole editor's session, as tab sessions start
+	end
+	-- a session already open in a tab, or whose list was kept: what's in memory is newer than the file
+	local open = history.data.pools[history.routines.pool_id(name, directory)] ~= nil
+	load_pool = join_for_load(tabpage, name, directory)
 	local scratch_dir = file_path .. ".d/"
 	load_buffer_history({ global = {} }, load_paths(saved_data.paths, saved_data.outsiders))
-	-- its own visits, older than any made from now on
-	load_pool.visits = {}
-	local latest = 0
-	for _, time in pairs(saved_data.buffers.global or {}) do
-		latest = math.max(latest, time)
+	if not open then
+		-- its own visits, older than any made from now on
+		load_pool.visits = {}
+		local latest = 0
+		for _, time in pairs(saved_data.buffers.global or {}) do
+			latest = math.max(latest, time)
+		end
+		for filehash, time in pairs(saved_data.buffers.global or {}) do
+			load_pool.visits[filehash] = time - latest - 1
+		end
 	end
-	for filehash, time in pairs(saved_data.buffers.global or {}) do
-		load_pool.visits[filehash] = time - latest - 1
-	end
-	load_closed_buffers(saved_data.closed or {}, saved_data.noname_content or {}, key, scratch_dir, saved_data.closed_times)
+	load_closed_buffers(saved_data.closed or {}, saved_data.noname_content or {}, key, scratch_dir, saved_data.closed_times, open)
 	local window_histories, matched = load_window_buffer_relationships(saved_data.windows, tabpage)
 	for winid, window_crux in pairs(window_histories) do
 		history.data.crux_internals.window[winid] = window_crux
@@ -947,8 +1036,9 @@ function M.load_history(cwd, name)
 
 	-- Try to load existing session data: the read the load made before it started, when it's this one
 	local saved_data, key, problem
+	local hint = nil
 	if prepared and prepared.directory == cwd and prepared.name == name then
-		saved_data, key, problem = prepared.saved_data, prepared.key, prepared.problem
+		saved_data, key, problem, hint = prepared.saved_data, prepared.key, prepared.problem, prepared.hint
 	else
 		saved_data, key, problem = read_session_file(file_path, cwd)
 	end
@@ -967,8 +1057,10 @@ function M.load_history(cwd, name)
 		saved_data = nil
 	end
 
-	if saved_data and saved_data.scope == "tab" then
-		local matched = load_tab_session(saved_data, key, file_path, cwd, name)
+	if saved_data == nil and hint then
+		start_tab_fresh(cwd, name, hint)
+	elseif saved_data and saved_data.scope == "tab" then
+		local matched = load_tab_session(saved_data, key, file_path, cwd, name, hint or vim.api.nvim_get_current_tabpage())
 		local set_cache_from_window_triquetra = require('cavediver').set_cache_from_window_triquetra
 		for _, winid in ipairs(matched) do
 			set_cache_from_window_triquetra(winid)
@@ -1010,6 +1102,7 @@ function M.load_history(cwd, name)
 		data.editor_session, data.unnamed = { name = name, directory = cwd }, nil
 	end
 	load_pool = nil
+	forget_closed_keys() -- the sessions this load closed let their keys go
 
 	-- Run cleanup after loading to handle any inconsistencies
 	history.cleanup_system()
@@ -1051,7 +1144,7 @@ local function session_key(file_path, directory)
 	if existing:sub(1, #HEADER) ~= HEADER or #salt ~= crypto.salt_length then
 		salt = crypto.random_bytes(crypto.salt_length)
 	end
-	return crypto.derive_key(directory, salt), salt
+	return key_for(directory, salt, file_path), salt
 end
 
 ---Write the main file, the commit point, after the texts it names; then sweep the text files
@@ -1156,33 +1249,29 @@ local function narrow(storage)
 	end
 end
 
----At a tab-session save, the unnamed session's records are refreshed in its file: its closed stack and
----its No Name texts, from the editor's pool. Its references stay as the session manager last saved them.
----A file that isn't there isn't made, and one that can't be read isn't overwritten.
----@return nil
-local function refresh_unnamed()
-	local unnamed = data.unnamed
-	if unnamed == nil then
-		return
+---Write a session's records, its closed list, close times and No Name texts, into its file, from its
+---pool, leaving its references as the session manager last saved them. A file that isn't there isn't
+---made; one that can't be read, or whose scope isn't the session's, isn't touched.
+---
+---@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string}
+---@return boolean written
+---@return string|nil problem Why not: "missing", or what went wrong
+local function write_records(session)
+	local file_path = get_session_filepath(session.directory, session.name)
+	local bytes = read_file(file_path)
+	if bytes == nil then
+		return false, "missing"
 	end
-	local file_path = get_session_filepath(unnamed.directory, unnamed.name)
-	local saved, key, problem = read_session_file(file_path, unnamed.directory)
-	if problem == "missing" then
-		return
+	-- one read: the salt and the key come from the same bytes
+	local saved, key, problem = read_session_file(file_path, session.directory, bytes)
+	if not saved or not key or (saved.scope == "tab") ~= (session.scope == "tab") then
+		return false, "it couldn't be read (" .. (problem or "another scope") .. "): " .. file_path
 	end
-	if not saved or not key or saved.scope == "tab" then
-		vim.notify("cavediver: the whole editor's session file couldn't be read, so its closed files and No Name texts weren't refreshed: " .. file_path, vim.log.levels.WARN)
-		return
-	end
-	-- the tab session's own file is written by now, so nothing here may fail its save
+	local gone = false
 	local ok, err = pcall(function()
-		local salt = (read_file(file_path) or ""):sub(#HEADER + 1, #HEADER + crypto.salt_length)
-		if #salt ~= crypto.salt_length then
-			error("its file went away while it was refreshed")
-		end
-		local editor = history.routines.pools()[""]
-		saved.closed, saved.closed_times = serialise_closed_buffers({ editor })
-		local noname_content, kept = write_noname_texts(serialise_noname_content(editor), key, file_path .. ".d/")
+		local salt = bytes:sub(#HEADER + 1, #HEADER + crypto.salt_length)
+		saved.closed, saved.closed_times = serialise_closed_buffers(session.pools)
+		local noname_content, kept = write_noname_texts(serialise_noname_content(session.owner), key, file_path .. ".d/")
 		saved.noname_content = noname_content
 		saved.paths = saved.paths or {}
 		for _, filehash in ipairs(saved.closed) do
@@ -1191,11 +1280,223 @@ local function refresh_unnamed()
 		for filehash, _ in pairs(noname_content) do
 			saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
 		end
+		-- a file removed meanwhile isn't made again
+		if not vim.uv.fs_stat(file_path) then
+			gone = true
+			return
+		end
 		commit_session(file_path, key, salt, saved, kept)
 	end)
 	if not ok then
-		vim.notify("cavediver: the whole editor's session file couldn't be written, so its closed files and No Name texts weren't refreshed: " .. tostring(err), vim.log.levels.WARN)
+		return false, "it couldn't be written: " .. tostring(err)
+	elseif gone then
+		return false, "missing"
 	end
+	return true, nil
+end
+
+---At a tab-session save, the unnamed session's records are refreshed in its file: its closed stack and
+---its No Name texts, from the editor's pool. Its references stay as the session manager last saved them.
+---A file that isn't there isn't made, and one that can't be read or written isn't overwritten; the
+---tab session's own save, written by then, goes through.
+---@return nil
+local function refresh_unnamed()
+	local unnamed = data.unnamed
+	if unnamed == nil then
+		return
+	end
+	local editor = history.routines.pools()[""]
+	local ok, problem = write_records({
+		name = unnamed.name, directory = unnamed.directory, pools = { editor }, owner = editor, scope = "editor",
+	})
+	if not ok and problem ~= "missing" then
+		vim.notify("cavediver: the whole editor's session file wasn't refreshed with its closed files and No Name texts, since " .. problem, vim.log.levels.WARN)
+	end
+end
+
+-- Records written on time ------------------------------------------------------------------------
+
+-- the sessions whose records changed since they were last written (pool id → true), whether writes
+-- run (between setup() and disable()), a generation a load moves on so a write it overtook is dropped,
+-- the second's timer, the problems already reported (so each is told once), and the pools whose last
+-- tab closed, waiting for the next tick (pool id → pool)
+local dirty, writing, generation, quiet, told, closing = {}, false, 0, nil, {}, {}
+
+---Every session cavediver knows: the whole editor's and each tab session's. The whole editor's covers
+---every tab, so every pool, until tab sessions start after its last save or load; from then on it's the
+---unnamed session, covering the tabs in no tab session, so the editor's pool.
+---@return {id: string, name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, tabs: table|nil, scope: string}[]
+local function known_sessions()
+	local sessions = {}
+	local editor_pool = history.routines.pools()[""]
+	if data.unnamed then
+		table.insert(sessions, { id = "", name = data.unnamed.name, directory = data.unnamed.directory, pools = { editor_pool }, owner = editor_pool, scope = "editor" })
+	elseif data.editor_session then
+		table.insert(sessions, { id = "", name = data.editor_session.name, directory = data.editor_session.directory, pools = every_pool(), scope = "editor" })
+	end
+	for id, pool in pairs(history.routines.pools()) do
+		if id ~= "" and pool.directory then
+			table.insert(sessions, { id = id, name = pool.name, directory = pool.directory, pools = { pool }, owner = pool, tabs = pool.tabs, scope = "tab" })
+		end
+	end
+	return sessions
+end
+
+---Whether the editor is still where the session would be saved from: the global directory for the
+---whole editor's, one of its tabs' for a tab session. A switch whose load isn't wired leaves it
+---elsewhere, and nothing is written then.
+---@param session table
+---@return boolean
+local function still_there(session)
+	if session.scope == "editor" then
+		return vim.fn.getcwd(-1, -1) == session.directory
+	end
+	for tabpage, _ in pairs(session.tabs or {}) do
+		if vim.api.nvim_tabpage_is_valid(tabpage) and vim.fn.getcwd(-1, vim.api.nvim_tabpage_get_number(tabpage)) == session.directory then
+			return true
+		end
+	end
+	return false
+end
+
+forget_closed_keys = function()
+	local open = {}
+	for _, session in ipairs(known_sessions()) do
+		local id = key_of[get_session_filepath(session.directory, session.name)]
+		if id then
+			open[id] = true
+		end
+	end
+	for id, _ in pairs(keys) do
+		if not open[id] then
+			keys[id] = nil
+		end
+	end
+	for file_path, id in pairs(key_of) do
+		if not open[id] then
+			key_of[file_path] = nil
+		end
+	end
+end
+
+---Write a session's records now, telling once what stops it.
+---@param session table
+---@return boolean written
+local function write_now(session)
+	local ok, problem = write_records(session)
+	if ok then
+		dirty[session.id] = nil
+	elseif problem ~= "missing" and not told[session.id .. problem] then
+		told[session.id .. problem] = true
+		vim.notify("cavediver: " .. (session.name or vim.fn.fnamemodify(session.directory, ":t")) .. "'s closed files and No Name texts weren't written, since " .. problem, vim.log.levels.WARN)
+	end
+	return ok
+end
+
+---A pool whose last tab closed: its records go into its file, and then it goes. When they can't be
+---written, it's kept with no tab, and a warning says so. A load since, which tore it down, or a tab
+---back in it, leaves it alone.
+---@param pool Pool
+---@return nil
+local function close_now(pool)
+	closing[pool.id] = nil
+	if history.data.pools[pool.id] ~= pool or next(pool.tabs) ~= nil then
+		return
+	end
+	local ok, problem = write_records({ name = pool.name, directory = pool.directory, pools = { pool }, owner = pool, scope = "tab" })
+	if ok then
+		dirty[pool.id] = nil
+		history.data.pools[pool.id] = nil
+		forget_closed_keys()
+		return
+	end
+	vim.notify("cavediver: " .. (pool.name or vim.fn.fnamemodify(pool.directory or "", ":t")) .. "'s tab closed, and its closed files couldn't be written (" ..
+		(problem == "missing" and "it has no session file yet" or problem) .. "); they stay, with no tab, in :CavediverClosed.", vim.log.levels.WARN)
+end
+
+---Write every changed session's records, when storage is idle and the editor is still where each
+---would be saved from.
+---@param all boolean|nil Every known session, changed or not (at quit), and the pools whose last tab
+---closed, which nothing scheduled writes after a quit
+---@return nil
+function M.write_records(all)
+	if not writing or require('cavediver.domains.storage.sm'):state() ~= "idle" then
+		return
+	end
+	if all then
+		for _, pool in pairs(closing) do
+			close_now(pool)
+		end
+	end
+	for _, session in ipairs(known_sessions()) do
+		if (all or dirty[session.id]) and still_there(session) then
+			write_now(session)
+		end
+	end
+end
+
+---A pool's records changed: the first change after a quiet second is written on the next tick, and the
+---rest of that second when it ends.
+---@param id string The pool's id
+---@return nil
+function M.records_changed(id)
+	if not writing then
+		return
+	end
+	dirty[id] = true
+	if quiet and quiet:is_active() then
+		return
+	end
+	local mine = generation
+	vim.schedule(function()
+		if mine == generation then
+			M.write_records()
+		end
+	end)
+	quiet = quiet or vim.uv.new_timer()
+	quiet:start(1000, 0, vim.schedule_wrap(function()
+		if mine == generation then
+			M.write_records()
+		end
+	end))
+end
+
+---A load is starting: a write still waiting may hold the manager's teardown, so it's dropped, and so is
+---the write of a tab the teardown closed.
+---@return nil
+function M.drop_pending_records()
+	generation = generation + 1
+	if quiet then
+		quiet:stop()
+	end
+	dirty = {}
+	closing = {}
+end
+
+---Start or stop writing records: setup() starts, disable() stops.
+---@param on boolean
+---@return nil
+function M.write_records_on(on)
+	writing = on
+	if not on then
+		M.drop_pending_records()
+	end
+	history.routines.on_records_change = on and M.records_changed or nil
+end
+
+---A tab session's last tab left it: its records go into its file on the next tick, and then its pool
+---goes. A manager's switch closes tabs inside its teardown, before the load it ends with, so a load in
+---the same batch drops this write with the rest.
+---@param pool Pool
+---@return nil
+function M.close_tab_pool(pool)
+	closing[pool.id] = pool
+	local mine = generation
+	vim.schedule(function()
+		if mine == generation and closing[pool.id] == pool then
+			close_now(pool)
+		end
+	end)
 end
 
 ---Save complete session history data to persistent storage.
@@ -1237,6 +1538,24 @@ function M.save_history(cwd, name, tab)
 		if data.unnamed == nil and data.editor_session then
 			data.unnamed = vim.deepcopy(data.editor_session) -- the whole editor's session, as tab sessions start
 		end
+		if pool ~= before then
+			-- saved under a session it wasn't in: what the tab holds goes under that name, the closed
+			-- files its slots hold included; the list it leaves keeps its copy
+			for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
+				local triquetra = window.data.crux[winid]
+				if triquetra then
+					history.routines.carry_closed(before, pool, triquetra.current_slot)
+					history.routines.carry_closed(before, pool, triquetra.secondary_slot)
+					history.routines.carry_closed(before, pool, triquetra.ternary_slot)
+					for _, filehash in ipairs(triquetra.primary_buffer or {}) do
+						history.routines.carry_closed(before, pool, filehash)
+					end
+				end
+			end
+			if before.id ~= "" and next(before.tabs) == nil then
+				M.close_tab_pool(before) -- the session it leaves, with no tab left, is written and goes
+			end
+		end
 	end
 
 	local outsiders = {}
@@ -1265,10 +1584,14 @@ function M.save_history(cwd, name, tab)
 	commit_session(file_path, key, salt, storage, kept)
 	if pool then
 		pool.saved_at = vim.uv.hrtime()
+		dirty[pool.id] = nil
 		refresh_unnamed()
 	else
-		data.editor_session = { name = name, directory = cwd }
+		-- a whole-editor save covers every tab again: tab sessions started after it make it the unnamed one
+		data.editor_session, data.unnamed = { name = name, directory = cwd }, nil
+		dirty[""] = nil
 	end
+	forget_closed_keys()
 end
 
 ---Write a session's file from data in the saved shape, as a save writes it. The migration script

@@ -56,8 +56,8 @@ M.session_template = {
 M.loading_batch = false
 
 ---What the last load in this startup loaded, so cavediver can load it again after Neovim's own
----:restart session. `name` is nil for a nameless load.
----@type {name: string|nil}|nil
+---:restart session. `name` is nil for a nameless load, and `tab` is true when the load had the hint.
+---@type {name: string|nil, tab: boolean}|nil
 M.last_loaded = nil
 
 ---The last whole-editor session loaded or saved, and the unnamed session: the whole-editor session

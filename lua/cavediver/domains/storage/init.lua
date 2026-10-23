@@ -35,19 +35,23 @@ end
 
 ---Load a session, whether or not one is loaded already. From idle, every domain tears its own
 ---state down first (idle -> bare), so the load starts as it does at startup; a tab session's file
----loads into the tab you're in instead, with nothing torn down.
+---loads into one tab instead, the hint's or the one you're in, with nothing torn down.
 ---
 ---@param name string|nil
+---@param opts {tab: integer|nil}|nil `tab` says it's a tab session, for when its file can't say so
 ---@return nil
-local function load(name)
+local function load(name, opts)
+	local hint = opts ~= nil and opts.tab ~= nil
 	local directory = vim.fn.getcwd(-1, -1)
 	-- a tab with a directory of its own: a tab session saved from it has its file there
-	if vim.fn.haslocaldir(-1, 0) == 1 and routines.session_exists(vim.fn.getcwd(-1, 0), name) then
+	if hint then
+		directory = vim.fn.getcwd(-1, vim.api.nvim_tabpage_get_number(opts.tab))
+	elseif vim.fn.haslocaldir(-1, 0) == 1 and routines.session_exists(vim.fn.getcwd(-1, 0), name) then
 		directory = vim.fn.getcwd(-1, 0)
 	end
 	local session = { name = name, directory = directory }
 	data.loading_batch = true
-	data.last_loaded = { name = name }
+	data.last_loaded = { name = name, tab = hint }
 	-- once the restore's batch is over: the next call is a full load again, and the window the
 	-- restore left focused is taken in.
 	vim.schedule(function()
@@ -55,7 +59,11 @@ local function load(name)
 		routines.after_restore()
 	end)
 	-- the file is read first, since its scope decides whether anything is torn down
-	local tab_session = routines.prepare_load(directory, name)
+	local tab_session = routines.prepare_load(directory, name, hint and opts.tab or nil)
+	if not tab_session then
+		-- the manager has torn the outgoing session down by now: a write still waiting would hold that
+		routines.drop_pending_records()
+	end
 	if storageSM:state() == states.IDLE and not tab_session then
 		storageSM:to(states.BARE, session)
 	end
@@ -67,12 +75,13 @@ end
 ---loaded buffer) is skipped.
 ---
 ---@param name string|nil The session's name, as the session manager passes it; nil for a nameless save
+---@param opts {tab: integer|nil}|nil `tab` is the tabpage of a tab session, for when its file can't say so
 ---@return nil
-function M.load_session(name)
+function M.load_session(name, opts)
 	if data.loading_batch then
 		return
 	end
-	load(name)
+	load(name, opts)
 end
 
 ---Create the storage domain's autocmds in cavediver's augroup. setup() calls this, so nothing
@@ -92,16 +101,14 @@ function M.init_autocmds(group)
 			then
 				return
 			end
-			local name = data.last_loaded.name
+			local name, tab = data.last_loaded.name, data.last_loaded.tab
 			vim.schedule(function()
-				load(name)
+				load(name, tab and { tab = vim.api.nvim_get_current_tabpage() } or nil)
 			end)
 		end,
 	})
 
-	-- A tab session's tab closed: its pool goes with it when its session was saved since it last
-	-- changed (the contract saves it on TabClosedPre); otherwise the pool stays, with no tab, and you're
-	-- told.
+	-- A tab session's tab closed: its records go into its file, and its pool goes with the tab.
 	vim.api.nvim_create_autocmd("TabClosed", {
 		group = group,
 		callback = function()
@@ -114,16 +121,33 @@ function M.init_autocmds(group)
 						pool.tabs[tabpage] = nil
 					end
 					if pool and next(pool.tabs) == nil then
-						if pool.saved_at and pool.saved_at >= (pool.changed_at or 0) then
-							history.data.pools[id] = nil -- its file has everything
-						else
-							vim.notify("cavediver: the tab session " .. (pool.name or vim.fn.fnamemodify(pool.directory or "", ":t")) .. "'s tab closed without being saved; its closed files stay, with no tab, in :CavediverClosed until you merge or discard them.", vim.log.levels.WARN)
-						end
+						routines.close_tab_pool(pool)
 					end
 				end
 			end
 		end,
 	})
+
+	-- Records cavediver writes itself: every known session's, as the editor quits (nothing scheduled
+	-- runs after this), and an open No Name text's, as it's edited.
+	vim.api.nvim_create_autocmd("VimLeavePre", {
+		group = group,
+		callback = function()
+			routines.write_records(true)
+		end,
+	})
+	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+		group = group,
+		callback = function(args)
+			local history = require('cavediver.domains.history')
+			if vim.api.nvim_buf_get_name(args.buf) == "" and history.get_hash_from_buffer(args.buf) then
+				for id, _ in pairs(history.routines.pools()) do
+					routines.records_changed(id)
+				end
+			end
+		end,
+	})
+	routines.write_records_on(true)
 end
 
 return M
