@@ -2,11 +2,12 @@
 --
 -- A load can follow nothing else in one process, so a round trip saves in one
 -- child and loads in a fresh one. Both start in a project the test runner
--- makes, with the same cwd (today's session file is named after it), and with
--- a session directory the test runner makes, handed to setup() (Misc.start).
--- The second child brings the buffers back the way a session manager does
--- (Misc.restore) before loading. save_session and load_session get the cwd,
--- as the README wires them; the decided API takes a session name instead (S2).
+-- makes, with the same cwd (the session file is named after the directory
+-- and the session's name), and with a session directory the test runner
+-- makes, handed to setup() (Misc.start). The second child brings the buffers
+-- back the way a session manager does (Misc.restore) before loading.
+-- save_session and load_session get the cwd as the session's name, as the
+-- README wires them.
 local Helpers = dofile('tests/helpers.lua')
 local Misc = dofile('tests/helpers_misc.lua')
 local eq = Helpers.eq

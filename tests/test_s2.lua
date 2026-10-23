@@ -3,10 +3,10 @@
 --
 -- Most cases save in one child and load in a fresh one, both in a project and
 -- with a session directory the test runner makes (tests/helpers_s2.lua). They
--- call save_session and load_session with the cwd, as the README wires them
--- today: under the decided API the cwd is just the session's name, so these
--- cases test their own rule and not the API. The cases on the API and on tab
--- sessions pass a name, no argument, or { tab = … }.
+-- call save_session and load_session with the cwd, as the README wires them:
+-- the cwd is then just the session's name, so these cases test their own rule
+-- and not the API. The cases on the API and on tab sessions pass a name, no
+-- argument, or { tab = … }.
 local Helpers = dofile('tests/helpers.lua')
 local Misc = dofile('tests/helpers_misc.lua')
 local S2 = dofile('tests/helpers_s2.lua')
@@ -30,7 +30,7 @@ end
 
 -- Contract and API ----------------------------------------------------------------
 
-T['T292 [target] (S2) save_session() and load_session() take no directory: the file is named after getcwd(-1, -1) and a fresh process loads it'] = function()
+T['T292 [char] (S2) save_session() and load_session() take no directory: the file is named after getcwd(-1, -1) and a fresh process loads it'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
@@ -46,7 +46,7 @@ T['T292 [target] (S2) save_session() and load_session() take no directory: the f
 end
 
 -- The second tab's local directory is sub/, inside the project.
-T['T293 [target] (S2) a whole-editor save is keyed by the global directory, not by a tab-local :tcd'] = function()
+T['T293 [char] (S2) a whole-editor save is keyed by the global directory, not by a tab-local :tcd'] = function()
 	child.setup()
 	child.steps({ ':e a' })
 	child.lua('vim.fn.mkdir(_G.CDV_TEST.root .. "/sub", "p")')
@@ -61,7 +61,7 @@ T['T293 [target] (S2) a whole-editor save is keyed by the global directory, not 
 		{ global = true, tab = false })
 end
 
-T['T294 [target] (S2) a tab session is keyed by its tab\'s directory'] = function()
+T['T294 [char] (S2) a tab session is keyed by its tab\'s directory'] = function()
 	child.setup()
 	child.steps({ ':e a' })
 	child.lua('vim.fn.mkdir(_G.CDV_TEST.root .. "/sub", "p")')

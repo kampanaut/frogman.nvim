@@ -753,7 +753,7 @@ note: T200's route. The scratch buffer isn't opened inside the failing call, onl
 spec: (A26) A dump opens its scratch buffer only once the editor settles, and names files by alias and basename, never by full path: on T200's route, no buffer is added inside the failing call, the scratch buffer is there once it settles, and neither it nor the file holds the project's…  
 `tests/test_cycling.lua:627`
 
-## tests/test_decisions.lua (52 cases: 41 char, 11 target)
+## tests/test_decisions.lua (52 cases: 43 char, 9 target)
 
 **T250 [char]** (P2, A1) the slotting happens after the event, not inside it  
 `:e a`, `:e b` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
@@ -808,13 +808,13 @@ spec: (P12, A25) Nothing runs at `require`, and `setup()` makes everything insid
 spec: (P12, A25) Nothing runs at `require`, and `setup()` makes everything inside the `cavediver` augroup: `require('cavediver')` alone creates no `Cavediver*` user command and starts no timer, and every autocmd `setup()` creates is in the `cavediver` augroup, with the commands made.  
 `tests/test_decisions.lua:151`
 
-**T255 [target]** (M1) the session file is named sha256(directory .. "\\n" .. name)  
+**T255 [char]** (M1) the session file is named sha256(directory .. "\\n" .. name)  
 `:e a`, `:e b` → `eq(got, true)`  
 note: Decided 2026-10-21: a separator between directory and name, so "/proj" + "a" and "/proja" + "" can't share a file.  
 spec: (M1) The session file is named `sha256(directory .. "\n" .. name)`: `save_session('work')` writes a file in `session_dir` whose name starts with `vim.fn.sha256(getcwd(-1, -1) .. "\n" .. 'work')`; and a session `a` saved in `/proj` and a nameless save in `/proja` are two files. Wi…  
 `tests/test_decisions.lua:174`
 
-**T255 [target]** (M1) a session "a" in /proj and a nameless save in /proja are two files  
+**T255 [char]** (M1) a session "a" in /proj and a nameless save in /proja are two files  
 `:e a` → `eq(got, 2)`  
 spec: (M1) The session file is named `sha256(directory .. "\n" .. name)`: `save_session('work')` writes a file in `session_dir` whose name starts with `vim.fn.sha256(getcwd(-1, -1) .. "\n" .. 'work')`; and a session `a` saved in `/proj` and a nameless save in `/proja` are two files. Wi…  
 `tests/test_decisions.lua:189`
@@ -2286,9 +2286,9 @@ note: A hash that no buffer or path has.
 spec: An unknown hash in a map doesn't make a restore throw.  
 `tests/test_restores.lua:122`
 
-## tests/test_s2.lua (43 cases: 7 char, 36 target)
+## tests/test_s2.lua (43 cases: 10 char, 33 target)
 
-**T292 [target]** (S2) save_session() and load_session() take no directory: the file is named after getcwd(-1, -1) and a fresh process loads it  
+**T292 [char]** (S2) save_session() and load_session() take no directory: the file is named after getcwd(-1, -1) and a fresh process loads it  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 → `eq(S2.save(child), { true })`  
 → `eq(S2.main_file(s.session_dir, S2.cwd(child)) ~= nil, true)`  
@@ -2297,14 +2297,14 @@ spec: An unknown hash in a map doesn't make a restore throw.
 spec: (S2 Contract and API; DESK:758, DESK:1074) `save_session()` and `load_session()` take no directory: with no argument the save writes a file whose name starts with `sha256(getcwd(-1, -1))`, and `load_session()` in a fresh process brings back `⦉c⦊ [d] ⟦b⟧`. A nameless save is named…  
 `tests/test_s2.lua:33`
 
-**T293 [target]** (S2) a whole-editor save is keyed by the global directory, not by a tab-local :tcd  
+**T293 [char]** (S2) a whole-editor save is keyed by the global directory, not by a tab-local :tcd  
 `:e a`, `:tabnew`, `:tcd sub` → `eq(S2.save(child, 'work'), { true })`  
 → `eq({ global = S2.main_file(dir, global, 'work') ~= nil, tab = S2.main_file(dir, tab, 'work') ~= nil },`  
 note: The second tab's local directory is sub/, inside the project.  
-spec: (S2 Contract and API; DESK:758, DESK:1146) A whole-editor save is keyed by the global directory, not by a tab-local `:tcd`: `save_session('work')` from a tab with `:tcd sub` writes a file named after `sha256(getcwd(-1, -1) .. "\n" .. 'work')`, and none after the tab's directory. …  
+spec: (S2 Contract and API; DESK:758, DESK:1146) A whole-editor save is keyed by the global directory, not by a tab-local `:tcd`: `save_session('work')` from a tab with `:tcd sub` writes a file named after `sha256(getcwd(-1, -1) .. "\n" .. 'work')`, and none after the tab's directory.  
 `tests/test_s2.lua:49`
 
-**T294 [target]** (S2) a tab session is keyed by its tab's directory  
+**T294 [char]** (S2) a tab session is keyed by its tab's directory  
 `:e a`, `:tabnew`, `:tcd sub`, `:edit ../b.txt` → `eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
 → `eq(S2.main_file(session_dir(), tab, 't') ~= nil, true)`  
 spec: (S2 Contract and API, Tab sessions; DESK:949, DESK:1074) A tab session is keyed by its tab's directory: `save_session('t', { tab = … })` from a tab with `:tcd sub` writes a file whose name starts with `sha256(<project>/sub .. "\n" .. 't')`. The spec makes the scope's directory th…  
@@ -2730,7 +2730,7 @@ spec: Q6's ten keys, as the author ran them: `:e a`, `:e b`, `:e c`, `:e b`, `<M
 → `eq(Misc.save(child), { true })`  
 → `eq(got, {`  
 spec: `save_session(cwd)` writes the keys `buffers`, `windows`, `closed` and `noname_content`, with `windows[i] = [c, s, p[], t, dtm, dsm]`.  
-`tests/test_sessions.lua:32`
+`tests/test_sessions.lua:33`
 
 **T135 [char]** a round trip with every slot buffer restored and loaded gives back the slots and maps  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:e e` → `eq(slots, '⦉d⦊ [e] ⟦b⟧')`  
@@ -2740,7 +2740,7 @@ spec: `save_session(cwd)` writes the keys `buffers`, `windows`, `closed` and `no
 → `slots = slots`  
 → `notes = notes`  
 spec: A round trip with every slot buffer restored and loaded gives back the same slots and maps.  
-`tests/test_sessions.lua:64`
+`tests/test_sessions.lua:65`
 
 **T136 [target]** primary_enabled = false survives a round trip  
 `:e a`, `:e b`, `<M-;><M-c>`, `<M-;><M-x>` → `primary = '[b]off'`  
@@ -2748,14 +2748,14 @@ spec: A round trip with every slot buffer restored and loaded gives back the sam
 → `eq(Misc.load(child), { true })`  
 → `primary = '[b]off'`  
 spec: `primary_enabled = false` survives a round trip.  
-`tests/test_sessions.lua:81`
+`tests/test_sessions.lua:82`
 
 **T137 [char]** load_session after save_session in the same process goes through and ends idle  
 `:e a` → `eq(Misc.save(child), { true })`  
 → `eq(Misc.load(child), { true })`  
 → `eq(child.lua('return require("cavediver.domains.storage").sm:state()'), 'idle')`  
 spec: `load_session` after a `save_session` in the same process goes through and ends `idle`.  
-`tests/test_sessions.lua:95`
+`tests/test_sessions.lua:96`
 
 **T138 [char]** load_session from idle tears down and loads ⚑ state set by hand  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -2763,7 +2763,7 @@ spec: `load_session` after a `save_session` in the same process goes through and
 `:e d`, `:noautocmd edit c.txt` → `eq({ got[1], child.lua('return require("cavediver").get_storage_state()'), child.slots() },`  
 note: After the save the window moves on to d; the manager's restore puts it back on c (noautocmd edit) before the load.  
 spec: `load_session` from `idle` tears down and loads.  
-`tests/test_sessions.lua:105`
+`tests/test_sessions.lua:106`
 
 **T139 [target]** a slot whose buffer comes back unloaded keeps its value after load  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
@@ -2771,7 +2771,7 @@ spec: `load_session` from `idle` tears down and loads.
 → `eq(Misc.load(child), { true })`  
 → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 spec: A slot whose buffer comes back unloaded (`badd`) keeps its value after load.  
-`tests/test_sessions.lua:118`
+`tests/test_sessions.lua:119`
 
 **T140 [target]** a save with a No Name current slot succeeds and the load reopens it, hidden and modified  
 `:e a`, `:enew` → `eq(Misc.save(child), { true })`  
@@ -2779,13 +2779,13 @@ spec: A slot whose buffer comes back unloaded (`badd`) keeps its value after loa
 → `eq(Misc.load(child), { true })`  
 → `eq(got, { found = true, modified = true, hidden = true })`  
 spec: A save with a No Name current slot succeeds and reopens the buffer at load, hidden and modified.  
-`tests/test_sessions.lua:132`
+`tests/test_sessions.lua:133`
 
 **T141 [char]** a save with a :vsplit window that has no visits succeeds  
 `:e a`, `:vsplit` → `eq(Misc.save(child), { true })`  
 → `eq(Misc.errors(child), {})`  
 spec: A save with a `:vsplit` window that has no visits succeeds.  
-`tests/test_sessions.lua:157`
+`tests/test_sessions.lua:158`
 
 **T142 [target]** two windows, one on a No Name buffer: after save and load each window gets its own entry  
 `:e a`, `:e b`, `:vsplit`, `:e c`, `:enew` → `slots = '⦉c⦊ [NONAME_' .. child.lua('return vim.b.cavediver_noname') .. '] ⟦-⟧'`  
@@ -2795,13 +2795,13 @@ spec: A save with a `:vsplit` window that has no visits succeeds.
 → `slots = '⦉a⦊ [b] ⟦-⟧'`  
 note: The first window has ⦉a⦊ [b]; the split (listed first) visits c, then a No Name buffer. A session manager brings back only the window showing b.  
 spec: Two windows, one showing a No Name buffer: after save and load each window gets its own entry.  
-`tests/test_sessions.lua:167`
+`tests/test_sessions.lua:168`
 
 **T143 [char]** a save into a read-only directory throws to the caller  
 `:e a` → `eq(got[1], false)`  
 note: The session directory is made read-only before the child starts.  
 spec: A save into a read-only directory throws to the caller.  
-`tests/test_sessions.lua:185`
+`tests/test_sessions.lua:186`
 
 **T144 [target]** a file that fails the integrity check gives the notification and a fresh start  
 `:e a`, `:e b` → `eq(Misc.save(child), { true })`  
@@ -2810,20 +2810,20 @@ spec: A save into a read-only directory throws to the caller.
 → `eq({ told, child.slots(), child.closed() }, { true, '⦉-⦊ [b] ⟦-⟧', '' })`  
 note: One byte in the middle of the saved file (the one regular file in the session directory) is flipped.  
 spec: A file that fails the integrity check gives the notification and a fresh start.  
-`tests/test_sessions.lua:197`
+`tests/test_sessions.lua:198`
 
 **T145 [char]** three load_session calls in one batch load once  
 `:e a`, `:e b` → `eq(Misc.save(child), { true })`  
 → `eq(got, { oks = { true, true, true }, loads = 1 })`  
 spec: Three `load_session` calls in one batch load once.  
-`tests/test_sessions.lua:225`
+`tests/test_sessions.lua:226`
 
 **T146 [char]** a save never wipes a buffer or changes what a window shows ⚑ the split visits a file first, so the save reaches the oil case  
 `:e a`, `:vsplit`, `:e b` → `eq(got, { true })`  
 → `eq(snapshot(), before)`  
 note: The window shows b, whose file is deleted on disk just before the save.  
 spec: A save never wipes a buffer or changes what a window shows, an oil window included. Its no-wipe half holds today and has its own [char] case; the oil half, a save leaving an oil window on its oil buffer, waits for the saved format's work (oil coming back as oil, S2). (spec tag: [target])  
-`tests/test_sessions.lua:262`
+`tests/test_sessions.lua:263`
 
 **T146 [target]** a save leaves an oil window on its oil buffer ⚑ state set by hand; the split visits a file first, so the save reaches the oil case  
 `:e a`, `:e b`, `:vsplit`, `:e c` → `eq(child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()] ~= nil'), true)`  
@@ -2831,7 +2831,7 @@ spec: A save never wipes a buffer or changes what a window shows, an oil window 
 → `eq(snapshot(), before)`  
 note: The split visits c, then shows an oil-like buffer (acwrite, oil://) and keeps its triquetra.  
 spec: A save never wipes a buffer or changes what a window shows, an oil window included. Its no-wipe half holds today and has its own [char] case; the oil half, a save leaving an oil window on its oil buffer, waits for the saved format's work (oil coming back as oil, S2).  
-`tests/test_sessions.lua:277`
+`tests/test_sessions.lua:278`
 
 **T147 [char]** with no file, a load gives every window {c=<shown>} and an empty closed stack ⚑ state set by hand  
 `:noautocmd edit a.txt`, `:noautocmd vsplit`, `:noautocmd edit b.txt` → `eq(Misc.session_files(child), {})`  
@@ -2839,7 +2839,7 @@ spec: A save never wipes a buffer or changes what a window shows, an oil window 
 → `eq(got, { '⦉-⦊ [a] ⟦-⟧', '⦉-⦊ [b] ⟦-⟧' })`  
 → `closed = ''`  
 spec: With no file, a load gives every window `{c=<shown>}` and an empty closed stack.  
-`tests/test_sessions.lua:295`
+`tests/test_sessions.lua:296`
 
 **T148 [char]** after switching sessions, the outgoing No Name text is not in the incoming file ⚑ state set by hand  
 `:e a`, `:enew`, `<M-.>` → `shown = 'a'`  
@@ -2849,7 +2849,7 @@ spec: With no file, a load gives every window `{c=<shown>}` and an empty closed 
 → `eq(found, false)`  
 note: Project one has a No Name buffer with text, closed with <M-.> (its text is kept for reopening). Then the editor switches to project two: save, cd, the manager's restore, load, and later a save there. Both share one session directory. A fresh child loads project two's file and looks for the text.  
 spec: After switching sessions, the outgoing No Name text isn't in the incoming file.  
-`tests/test_sessions.lua:316`
+`tests/test_sessions.lua:317`
 
 ## tests/test_setup.lua (3 cases: 3 char)
 

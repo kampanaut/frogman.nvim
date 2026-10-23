@@ -619,22 +619,21 @@ local function load_closed_buffers(closed_buffers, noname_content, cwd)
 	-- print_table(history.data.closed_buffers)
 end
 
----Helper function to get project hash from project path.
----@param pwd string Project path
----@return string project_hash Project hash derived from the project path
-local function get_session_filepath(pwd)
-	if not pwd then
-		error("No pwd provided to get_project_hash")
+---Helper function to get the session's file path from its directory and name.
+---@param directory string The session's directory
+---@param name string|nil The session's name; nil for a nameless save
+---@return string project_filepath
+local function get_session_filepath(directory, name)
+	if not directory then
+		error("No directory provided to get_session_filepath")
 	end
 
-	local dir_hash = string.sub(
-		vim.fn.sha256(pwd .. "\n"), -- as `echo "<pwd>" | sha256sum`, so saved files keep their names
-		1, 32 -- Use 32 chars for better collision resistance
-	)
+	-- the separator keeps a session "a" in /proj apart from a nameless save in /proja
+	local session_hash = vim.fn.sha256(name and (directory .. "\n" .. name) or directory)
 
 	-- TODO: implement configurable path for session storage
 	local session_dir = configs.session_dir
-	local project_filepath = session_dir .. dir_hash .. '.json'
+	local project_filepath = session_dir .. session_hash .. '.json'
 
 	vim.fn.mkdir(session_dir, "p")
 
@@ -646,13 +645,14 @@ end
 ---Main entry point for restoring all buffer and window state from saved session.
 ---Coordinates loading of buffer history, window relationships, and closed buffers.
 ---
----@param cwd string current working directory
+---@param cwd string the session's directory
+---@param name string|nil the session's name; nil for a nameless save
 ---@return nil
-function M.load_history(cwd)
+function M.load_history(cwd, name)
 	if not cwd then
 		error("Invalid current working directory.")
 	end
-	local file_path = get_session_filepath(cwd)
+	local file_path = get_session_filepath(cwd, name)
 	-- an arrival queued before this load (the restore's own buffers flashing by) is noise the load
 	-- replaces, so it's dropped when it settles.
 	history.data.loads = history.data.loads + 1
@@ -713,11 +713,12 @@ end
 ---Save complete session history data to persistent storage.
 ---
 ---Serializes all buffer history, window relationships, and closed buffers
----to a JSON file organized by current working directory for per-project sessions.
+---to a JSON file named after the session's directory and name.
 ---
----@param cwd string Current working directory to save session data for
+---@param cwd string The session's directory to save session data for
+---@param name string|nil The session's name; nil for a nameless save
 ---@return nil
-function M.save_history(cwd)
+function M.save_history(cwd, name)
 	if not cwd then
 		error("Invalid current working directory.")
 	end
@@ -725,7 +726,7 @@ function M.save_history(cwd)
 	-- Run cleanup before saving to ensure clean state
 	history.cleanup_system()
 
-	local file_path = get_session_filepath(cwd)
+	local file_path = get_session_filepath(cwd, name)
 
 	-- Create empty JSON file if it doesn't exist
 	---@diagnostic disable-next-line: undefined-field

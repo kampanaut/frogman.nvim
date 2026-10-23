@@ -56,8 +56,8 @@ M.session_template = {
 M.loading_batch = false
 
 ---What the last load in this startup loaded, so cavediver can load it again after Neovim's own
----:restart session.
----@type string|nil
+---:restart session. `name` is nil for a nameless load.
+---@type {name: string|nil}|nil
 M.last_loaded = nil
 
 ---Error state information
