@@ -9,7 +9,7 @@ local storageSM = require('cavediver.domains.storage.sm')
 
 storageSM:on("{idle,bare}", states.SAVING, "save_history_pre_quit", function(context, _, _)
 	-- Trigger auto-save when entering SAVING state
-	routines.save_history(context.cwd)
+	routines.save_history(context.directory, context.name)
 end, 1, true)
 
 -- the save is critical: if it fails (a full disk, a directory that can't be written), the error
@@ -18,7 +18,7 @@ storageSM:make_hook_critical("save_history_pre_quit")
 
 storageSM:on(states.BARE, states.LOADING, "load_history_pre_start", function(context, _, _)
 	-- Load history when entering LOADING state
-	routines.load_history(context.cwd)
+	routines.load_history(context.directory, context.name)
 end, 1, true)
 
 storageSM:on("{bare,saving,loading}", "{idle,saving}", "back_to_idle", function(_, _, _) end, 1, true)

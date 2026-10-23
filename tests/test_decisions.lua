@@ -171,7 +171,7 @@ end
 
 -- Decided 2026-10-21: a separator between directory and name, so "/proj" + "a" and
 -- "/proja" + "" can't share a file.
-T['T255 [target] (M1) the session file is named sha256(directory .. "\\n" .. name)'] = function()
+T['T255 [char] (M1) the session file is named sha256(directory .. "\\n" .. name)'] = function()
 	child.steps({ ':e a', ':e b' })
 	local got = child.lua([[
 		local dir = require('cavediver.configs').session_dir
@@ -186,7 +186,7 @@ T['T255 [target] (M1) the session file is named sha256(directory .. "\\n" .. nam
 	eq(got, true)
 end
 
-T['T255 [target] (M1) a session "a" in /proj and a nameless save in /proja are two files'] = function()
+T['T255 [char] (M1) a session "a" in /proj and a nameless save in /proja are two files'] = function()
 	child.steps({ ':e a' })
 	local got = child.lua([[
 		local root = _G.CDV_TEST.root
