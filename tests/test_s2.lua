@@ -849,14 +849,28 @@ local function tab_session(s)
 	return w1, child.lua('return vim.api.nvim_get_current_win()')
 end
 
-T['T318 [target] (S2) a tab session\'s file says its scope, and its load works on the current tab only'] = function()
+T['T318 [char] (S2) a tab session\'s file says its scope, and its load works on the current tab only'] = function()
 	local s = S2.shared()
 	local w1, w2 = tab_session(s)
 	eq({ session_tab = child.slots(w2), first_tab = child.slots(w1) },
 		{ session_tab = '⦉c⦊ [d] ⟦-⟧', first_tab = '⦉x⦊ [t] ⟦-⟧' })
 end
 
-T['T319 [target] (S2) closes go to the pool of the tab they happen in, and <M-S-w> reopens from the current tab\'s'] = function()
+-- The same, from idle: a whole-editor save in that process first.
+T['T318 [char] (S2) a tab session\'s load from idle works on the current tab only too'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	local w1 = child.lua('return vim.api.nvim_get_current_win()')
+	eq(S2.save(child), { true })
+	eq(S2.load_tab_session(child, 't'), { true })
+	local w2 = child.lua('return vim.api.nvim_get_current_win()')
+	eq({ session_tab = child.slots(w2), first_tab = child.slots(w1) },
+		{ session_tab = '⦉c⦊ [d] ⟦-⟧', first_tab = '⦉x⦊ [t] ⟦-⟧' })
+end
+
+T['T319 [char] (S2) closes go to the pool of the tab they happen in, and <M-S-w> reopens from the current tab\'s'] = function()
 	local s = S2.shared()
 	local w1, w2 = tab_session(s)
 	child.cmd('tabprevious')
@@ -874,7 +888,7 @@ T['T319 [target] (S2) closes go to the pool of the tab they happen in, and <M-S-
 end
 
 -- Only membership is checked: the spec doesn't fix the order inside the overlay.
-T['T320 [target] (S2) a tab session\'s tab ranks its own visits first, a buffer visited from both tabs included'] = function()
+T['T320 [char] (S2) a tab session\'s tab ranks its own visits first, a buffer visited from both tabs included'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	child.cmd('tabprevious')
@@ -888,8 +902,10 @@ T['T320 [target] (S2) a tab session\'s tab ranks its own visits first, a buffer 
 end
 
 -- x closed in the first tab, c in the session's tab, then e in the first tab,
--- a second apart so their close times differ whatever the clock's grain.
-T['T321 [target] (S2) saves are snapshots: a whole-editor save merges the pools by close time in the file only'] = function()
+-- a second apart so their close times differ whatever the clock's grain. The
+-- window goes back to t before e is closed: :bdelete of what the only window
+-- of a tab shows closes that tab.
+T['T321 [char] (S2) saves are snapshots: a whole-editor save merges the pools by close time in the file only'] = function()
 	local s = S2.shared()
 	local w1 = tab_session(s)
 	child.cmd('tabprevious')
@@ -899,7 +915,7 @@ T['T321 [target] (S2) saves are snapshots: a whole-editor save merges the pools 
 	child.cmd('bdelete c.txt')
 	child.settle(1100)
 	child.cmd('tabprevious')
-	child.steps({ ':e e' })
+	child.steps({ ':e e', ':e t' })
 	child.cmd('bdelete e.txt')
 	child.settle()
 	eq(S2.save(child), { true })
@@ -923,7 +939,7 @@ end
 
 -- No TabClosedPre hook calls save_session here. The notice's wording isn't
 -- fixed, so any notification that isn't a hook failure counts.
-T['T322 [target] (S2) a tab session\'s tab closed with no save wired gives a notice'] = function()
+T['T322 [char] (S2) a tab session\'s tab closed with no save wired gives a notice'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	child.messages()
@@ -946,7 +962,7 @@ end
 
 -- The whole editor is saved (the unnamed session) at ⦉x⦊ [t]; then t is loaded
 -- into a second tab, x is closed and e visited in the first tab, and t is saved.
-T['T323 [target] (S2) a tab-session save refreshes the unnamed session\'s records and leaves its references'] = function()
+T['T323 [char] (S2) a tab-session save refreshes the unnamed session\'s records and leaves its references'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 't'), { true })
 	S2.start(child, s)
@@ -961,6 +977,12 @@ T['T323 [target] (S2) a tab-session save refreshes the unnamed session\'s record
 	child.settle()
 	eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),
 		{ true })
+	-- the whole editor's file, as the load reads it
+	eq(child.lua([[
+		local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+		local x = require('cavediver.domains.history').get_hash_from_filepath(vim.fn.getcwd(-1, -1) .. '/x.txt')
+		return vim.tbl_contains(saved.closed or {}, x)
+	]]), true)
 
 	S2.start(child, s)
 	Misc.restore(child, { 't' }, 't')
@@ -973,7 +995,7 @@ end
 -- (the window goes back to d), and another made in the first tab and left
 -- there (back to t). Only the tab session is saved; a fresh process loads it
 -- into a second tab.
-T['T332 [target] (S2) a tab session\'s file holds the No Name texts its own tab owns, and not another tab\'s'] = function()
+T['T332 [char] (S2) a tab session\'s file holds the No Name texts its own tab owns, and not another tab\'s'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	S2.noname(child, { 'session text' })
@@ -991,6 +1013,114 @@ T['T332 [target] (S2) a tab session\'s file holds the No Name texts its own tab 
 	eq(S2.load_tab_session(child, 't'), { true })
 	eq({ session_text = S2.holding(child, 'session text'), first_text = S2.holding(child, 'first text') },
 		{ session_text = 1, first_text = 0 })
+end
+
+-- a is visited in both tabs and closed in the first; x is visited and closed
+-- in the first tab only. The answer to Q15 (2026-10-23): "Both".
+T['T349 [char] (S2) a close goes back on the pool of every tab that visited the file'] = function()
+	local s = S2.shared()
+	local _, w2 = tab_session(s)
+	child.steps({ ':e a', ':e d' })
+	child.cmd('tabprevious')
+	child.cmd('bdelete x.txt')
+	child.steps({ ':e a' })
+	child.cmd('bdelete a.txt')
+	child.cmd('tabnext')
+	child.settle()
+	child.steps({ '<M-S-w>' })
+	local first = child.shown(w2)
+	child.steps({ '<M-S-w>' })
+	eq({ first = first, second = child.shown(w2) }, { first = 'a', second = 'a' })
+end
+
+-- e is closed into the session's pool from a split that's gone by then, so no
+-- window of the session's tab has it in its history; reopened and closed in the
+-- first tab, it goes back on the pool it came out of.
+T['T350 [char] (S2) a file reopened from one pool goes back on the pools it came out of when it is closed again'] = function()
+	local s = S2.shared()
+	local _, w2 = tab_session(s)
+	child.cmd('vsplit')
+	child.steps({ ':e e' })
+	child.cmd('close')
+	child.cmd('bdelete e.txt')
+	child.cmd('tabprevious')
+	child.cmd('bdelete x.txt')
+	child.steps({ ':e e' })
+	child.cmd('bdelete e.txt')
+	child.cmd('tabnext')
+	child.settle()
+	child.steps({ '<M-S-w>' })
+	local first = child.shown(w2)
+	child.steps({ '<M-S-w>' })
+	eq({ first = first, second = child.shown(w2) }, { first = 'e', second = 'e' })
+end
+
+-- The contract's TabClosedPre save is wired here. The load afterwards brings d
+-- back and not c, as a manager would after c was closed.
+T['T351 [char] (S2) a tab session\'s tab closed with its save wired gives no notice'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	child.lua([[
+		vim.api.nvim_create_autocmd('TabClosedPre', { callback = function()
+			require('cavediver').save_session('t', { tab = vim.api.nvim_get_current_tabpage() })
+		end })
+	]])
+	child.cmd('bdelete c.txt')
+	child.settle()
+	child.messages()
+	child.cmd('tabclose')
+	child.settle(300)
+	local notices = S2.notices(child.messages())
+	local got = child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		return { pcall(require('cavediver').load_session, 't') }
+	]])
+	child.settle(300)
+	child.steps({ '<M-S-w>' })
+	eq({ notices = notices, got = got, reopened = child.shown() }, { notices = {}, got = { true }, reopened = 'c' })
+end
+
+-- The tab's own directory is sub, in the save and in the load, as the manager
+-- restores it.
+T['T352 [char] (S2) a tab session saved from a tab with a :tcd of its own is found at load in that tab'] = function()
+	local s = S2.shared()
+	vim.fn.mkdir(s.root .. '/sub', 'p')
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.cmd('tcd sub')
+	child.steps({ ':e ../c.txt', ':e ../d.txt' })
+	eq(child.slots(), '⦉c⦊ [d] ⟦-⟧')
+	eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),
+		{ true })
+
+	S2.start(child, s)
+	local got = child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd tcd sub')
+		local b = vim.fn.bufadd(vim.fn.fnamemodify('../c.txt', ':p'))
+		vim.fn.bufload(b)
+		vim.bo[b].buflisted = true
+		vim.cmd('noautocmd edit ../d.txt')
+		return { pcall(require('cavediver').load_session, 't') }
+	]])
+	child.settle(300)
+	eq({ got = got, slots = child.slots() }, { got = { true }, slots = '⦉c⦊ [d] ⟦-⟧' })
+end
+
+-- One process: a save, then a load from idle, then a close and a reopen.
+T['T353 [char] (S1) after a load from idle, closes and <M-S-w> use one closed stack'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e b', ':e c' })
+	eq(Misc.save(child), { true })
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	child.steps({ ':e a' })
+	child.cmd('bdelete c.txt')
+	child.settle()
+	child.steps({ '<M-S-w>' })
+	eq(child.shown(), 'c')
 end
 
 -- Oil -----------------------------------------------------------------------------

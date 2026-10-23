@@ -152,8 +152,10 @@ function M.is_filehash_referenced(filehash)
 			return true
 		end
 	end
-	if vim.tbl_contains(data.closed_buffers, filehash) then
-		return true
+	for _, pool in pairs(M.pools()) do
+		if pool.visits[filehash] or vim.tbl_contains(pool.closed, filehash) then
+			return true
+		end
 	end
 	for _, triquetra in pairs(require('cavediver.domains.window.data').crux) do
 		if
@@ -192,8 +194,10 @@ function M.known_filehashes()
 	for filehash, _ in pairs(data.hash_buffer_registry.buffers) do
 		known[filehash] = true
 	end
-	for _, filehash in ipairs(data.closed_buffers) do
-		known[filehash] = true
+	for _, pool in pairs(M.pools()) do
+		for _, filehash in ipairs(pool.closed) do
+			known[filehash] = true
+		end
 	end
 	for _, triquetra in pairs(require('cavediver.domains.window.data').crux) do
 		for _, filehash in pairs({ triquetra.current_slot, triquetra.secondary_slot, triquetra.ternary_slot }) do
@@ -204,6 +208,171 @@ function M.known_filehashes()
 		end
 	end
 	return known
+end
+
+---The editor's pool. It holds closed_buffers itself, whatever replaced that table last.
+---
+---@return Pool
+local function editor_pool()
+	local pool = data.pools[""]
+	if pool == nil or not rawequal(pool.closed, data.closed_buffers) then
+		pool = { id = "", closed = data.closed_buffers, times = {}, visits = {}, tabs = {} }
+		data.pools[""] = pool
+	end
+	return pool
+end
+
+---Every pool, the editor's included.
+---
+---@return table<string, Pool>
+function M.pools()
+	editor_pool()
+	return data.pools
+end
+
+---Back to the editor's pool alone, as at startup.
+function M.reset_pools()
+	data.pools = {}
+	data.tab_pools = {}
+	data.came_from = {}
+	editor_pool()
+end
+
+---The pool a tab belongs to: its tab session's, or the editor's.
+---
+---@param tabpage integer
+---@return Pool
+function M.pool_of_tab(tabpage)
+	local id = data.tab_pools[tabpage]
+	return id and data.pools[id] or editor_pool()
+end
+
+---The pool of the tab you're in.
+---
+---@return Pool
+function M.current_pool()
+	return M.pool_of_tab(vim.api.nvim_get_current_tabpage())
+end
+
+---A tab session's pool, made when it's first needed, with the tab joining it.
+---
+---@param tabpage integer
+---@param name string|nil
+---@param directory string
+---@return Pool
+function M.join_pool(tabpage, name, directory)
+	local id = (name or "") .. "\n" .. directory
+	local pool = data.pools[id]
+	if pool == nil then
+		pool = { id = id, name = name, directory = directory, closed = {}, times = {}, visits = {}, tabs = {} }
+		data.pools[id] = pool
+	end
+	local previous = data.tab_pools[tabpage]
+	if previous and previous ~= id and data.pools[previous] then
+		data.pools[previous].tabs[tabpage] = nil
+	end
+	data.tab_pools[tabpage] = id
+	pool.tabs[tabpage] = true
+	return pool
+end
+
+---Now, to the microsecond, so closes within one second still have an order.
+---@return number
+local function close_time()
+	local seconds, microseconds = vim.uv.gettimeofday()
+	return seconds + microseconds / 1e6
+end
+
+---Put a file on a pool's closed stack as its newest entry, one copy per pool.
+---
+---@param pool Pool
+---@param filehash Filehash
+---@param time integer|nil When it was closed; now when nil
+local function push_closed(pool, filehash, time)
+	for i = #pool.closed, 1, -1 do
+		if pool.closed[i] == filehash then
+			table.remove(pool.closed, i)
+		end
+	end
+	table.insert(pool.closed, filehash)
+	pool.times[filehash] = time or close_time()
+	pool.changed_at = vim.uv.hrtime()
+end
+
+---The tabs that visited a file: their windows show it or have it in their history.
+---
+---@param filehash Filehash
+---@return table<integer, boolean> tabpages
+function M.tabs_that_visited(filehash)
+	local tabpages = {}
+	for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+		for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
+			local window_crux = data.crux_internals.window[winid]
+			if
+				(window_crux and window_crux[filehash]) or
+				data.hash_buffer_registry.hashes[vim.api.nvim_win_get_buf(winid)] == filehash
+			then
+				tabpages[tabpage] = true
+				break
+			end
+		end
+	end
+	return tabpages
+end
+
+---Close a file into its pools: the pool of the tab it's closed in, every pool it came out of when it
+---was opened again, and the pool of every tab whose windows show it or have it in their history.
+---
+---@param filehash Filehash
+function M.close_into_pools(filehash)
+	local time = close_time()
+	local targets = { [M.current_pool()] = true }
+	for id, _ in pairs(data.came_from[filehash] or {}) do
+		if data.pools[id] then
+			targets[data.pools[id]] = true
+		end
+	end
+	data.came_from[filehash] = nil
+	for tabpage, _ in pairs(M.tabs_that_visited(filehash)) do
+		targets[M.pool_of_tab(tabpage)] = true
+	end
+	for pool, _ in pairs(targets) do
+		push_closed(pool, filehash, time)
+	end
+end
+
+---A file open again is closed nowhere: it leaves every pool, and the pools it left are remembered for
+---its next close.
+---
+---@param filehash Filehash
+function M.open_out_of_pools(filehash)
+	for id, pool in pairs(M.pools()) do
+		for i = #pool.closed, 1, -1 do
+			if pool.closed[i] == filehash then
+				table.remove(pool.closed, i)
+				pool.times[filehash] = nil
+				pool.changed_at = vim.uv.hrtime()
+				data.came_from[filehash] = data.came_from[filehash] or {}
+				data.came_from[filehash][id] = true
+			end
+		end
+	end
+end
+
+---Take a hash off every pool, remembering nothing: it's gone, not opened again.
+---
+---@param filehash Filehash
+function M.discard_from_pools(filehash)
+	for _, pool in pairs(M.pools()) do
+		for i = #pool.closed, 1, -1 do
+			if pool.closed[i] == filehash then
+				table.remove(pool.closed, i)
+				pool.times[filehash] = nil
+				pool.changed_at = vim.uv.hrtime()
+			end
+		end
+	end
+	data.came_from[filehash] = nil
 end
 
 ---The git directory for the session's directory, found upward from it. A `.git` file, as a
@@ -429,6 +598,9 @@ function M.follow_along(known_set)
 	for _, window_crux in pairs(data.crux_internals.window) do
 		table.insert(histories, window_crux)
 	end
+	for _, pool in pairs(M.pools()) do
+		table.insert(histories, pool.visits)
+	end
 	for _, history in ipairs(histories) do
 		for filehash, _ in pairs(history) do
 			if not known(filehash) then
@@ -519,6 +691,20 @@ function M.construct_crux(winid)
 		previous_window_constructed = winid
 	end
 
+	-- in a tab session's tab, the session's own visits rank above the editor's history, in either view
+	local pool = winid and vim.api.nvim_win_is_valid(winid) and M.pool_of_tab(vim.api.nvim_win_get_tabpage(winid))
+	if pool and pool.id ~= "" and next(pool.visits) then
+		local visits = {}
+		for hash, time in pairs(pool.visits) do
+			table.insert(visits, { hash = hash, time = time })
+		end
+		table.sort(visits, function(a, b) return a.time > b.time end)
+		data.history_index = data.history_index + #visits
+		for rank, visit in ipairs(visits) do
+			global_copy[visit.hash] = data.history_index - rank
+		end
+	end
+
 	if not winid or configs.bufferline.history_view == "global" then
 		data.crux = global_copy
 		return
@@ -580,11 +766,13 @@ function M.track_buffer(filehash, time)
 		data.crux_internals.window[winid][filehash] = data.history_index - 1
 	end
 
-	for i, closed_filehash in ipairs(data.closed_buffers) do
-		if closed_filehash == filehash then
-			table.remove(data.closed_buffers, i)
-			break
-		end
+	-- open again, it's closed nowhere: it leaves every pool, which remember it for its next close.
+	M.open_out_of_pools(filehash)
+	-- a visit in a tab session's tab is the session's own too.
+	local pool = M.pool_of_tab(winid and vim.api.nvim_win_get_tabpage(winid) or vim.api.nvim_get_current_tabpage())
+	if time == nil and pool.id ~= "" then
+		pool.visits[filehash] = data.history_index - 1
+		pool.changed_at = vim.uv.hrtime()
 	end
 end
 
@@ -771,12 +959,7 @@ function M.reopen_filehash(filehash)
 		return nil -- a file gone from disk keeps its place on the closed stack: it may come back
 	end
 
-	for i = #data.closed_buffers, 1, -1 do
-		if data.closed_buffers[i] == filehash then
-			table.remove(data.closed_buffers, i)
-			break
-		end
-	end
+	M.open_out_of_pools(filehash)
 	local bufnr
 	if filepath:match("^NONAME_") then
 		local cache = data.noname_content[filehash]
@@ -809,6 +992,7 @@ function M.reopen_filehash(filehash)
 			-- and history.
 			require('cavediver.domains.window.data').rename_hash_in_triquetras(old_filehash, filehash)
 			M.rename_hash_in_history(old_filehash, filehash)
+			data.came_from[filehash], data.came_from[old_filehash] = data.came_from[old_filehash], nil
 		end
 		if M.get_filepath_from_buffer(bufnr) ~= filepath then
 			M.unregister_filepath(filepath) -- This NONAME_ buffer is now irrelevant, we don't want to track it anymore.
@@ -840,6 +1024,9 @@ function M.rename_hash_in_history(old_hash, new_hash)
 	local cruxes = { data.crux, data.crux_internals.global }
 	for _, window_crux in pairs(data.crux_internals.window) do
 		table.insert(cruxes, window_crux)
+	end
+	for _, pool in pairs(M.pools()) do
+		table.insert(cruxes, pool.visits)
 	end
 	for _, crux in ipairs(cruxes) do
 		if crux[old_hash] ~= nil then
@@ -881,11 +1068,7 @@ function M.settle_rename(bufnr, old_hash, old_history)
 		return nil
 	end
 	local new_hash = M.get_filehash(vim.api.nvim_buf_get_name(bufnr))
-	for i = #data.closed_buffers, 1, -1 do
-		if data.closed_buffers[i] == old_hash then
-			table.remove(data.closed_buffers, i)
-		end
-	end
+	M.discard_from_pools(old_hash)
 	data.noname_content[old_hash] = nil -- a No Name buffer's text is in its file now.
 	if data.hash_buffer_registry.hashes[bufnr] == old_hash then
 		M.unregister_buffer(bufnr) -- the buffer is registered under its new name next.
@@ -942,8 +1125,7 @@ function M.track_closing_filehash(filehash)
 		}
 	end
 
-	M.remove_from_closed_stack(filehash) -- one copy on the stack: a file closed again is the newest
-	table.insert(data.closed_buffers, filehash)
+	M.close_into_pools(filehash) -- one copy per pool: a file closed again is the newest
 	return true
 end
 
@@ -958,19 +1140,7 @@ function M.track_closing_filehash_force(filehash)
 		error("This must not happen: Closing filehash is not registered at all.")
 	end
 
-	M.remove_from_closed_stack(filehash)
-	table.insert(data.closed_buffers, filehash)
-end
-
----Take every copy of a hash off the closed stack.
----
----@param filehash Filehash
-function M.remove_from_closed_stack(filehash)
-	for i = #data.closed_buffers, 1, -1 do
-		if data.closed_buffers[i] == filehash then
-			table.remove(data.closed_buffers, i)
-		end
-	end
+	push_closed(M.current_pool(), filehash)
 end
 
 
@@ -982,7 +1152,12 @@ function M.is_filehash_closed(filehash)
 		return false
 	end
 
-	return vim.tbl_contains(data.closed_buffers, filehash)
+	for _, pool in pairs(M.pools()) do
+		if vim.tbl_contains(pool.closed, filehash) then
+			return true
+		end
+	end
+	return false
 end
 
 
@@ -990,16 +1165,17 @@ end
 ---
 ---@return Bufnr|nil bufnr Buffer number of the reopened buffer, or nil if no closed buffers exist
 function M.reopen_last_closed()
-	if #data.closed_buffers == 0 then
+	local closed = M.current_pool().closed -- the pool of the tab you're in
+	if #closed == 0 then
 		vim.notify("No closed buffers to reopen.", vim.log.levels.WARN)
 		return nil
 	end
 
-	local filehash = data.closed_buffers[#data.closed_buffers]
+	local filehash = closed[#closed]
 	local bufnr = M.reopen_filehash(filehash)
 	if bufnr then
 		vim.api.nvim_set_current_buf(bufnr)
-	elseif data.closed_buffers[#data.closed_buffers] == filehash then
+	elseif closed[#closed] == filehash then
 		vim.notify(require('cavediver.domains.ui').routines.get_smart_basename(filehash) ..
 			" isn't on disk right now; it stays on the closed stack.", vim.log.levels.WARN)
 	end
@@ -1251,8 +1427,8 @@ function M.cleanup_system(on_tick)
 		end
 		-- a file whose buffer went without events is closed like any other: slots keep it and reopen it.
 		if filepath and not filepath:match("^NONAME_") then
-			if not vim.tbl_contains(data.closed_buffers, filehash) then
-				table.insert(data.closed_buffers, filehash)
+			if not M.is_filehash_closed(filehash) then
+				M.close_into_pools(filehash)
 			end
 			-- closed, it's still known, so its history stays: only its buffer is forgotten
 			data.hash_buffer_registry.hashes[bufnr] = nil
@@ -1267,17 +1443,25 @@ function M.cleanup_system(on_tick)
 	
 	-- 2. Clean invalid closed buffers (entries nothing names, or open again). A closed file gone from
 	-- disk stays: it may come back.
-	for i = #data.closed_buffers, 1, -1 do
-		local filehash = data.closed_buffers[i]
-		local filepath = data.hash_filepath_registry.filepaths[filehash]
-		if filepath and data.hash_buffer_registry.buffers[filehash] == nil then
-			goto continue
-		end
+	for id, pool in pairs(M.pools()) do
+		for i = #pool.closed, 1, -1 do
+			local filehash = pool.closed[i]
+			local filepath = data.hash_filepath_registry.filepaths[filehash]
+			if filepath and data.hash_buffer_registry.buffers[filehash] == nil then
+				goto continue
+			end
 
-		table.insert(report.invalid_closed_hashes, filehash)
-		table.remove(data.closed_buffers, i)
-		report.invalid_closed_buffers = report.invalid_closed_buffers + 1
-		::continue::
+			table.insert(report.invalid_closed_hashes, filehash)
+			table.remove(pool.closed, i)
+			pool.times[filehash] = nil
+			pool.changed_at = vim.uv.hrtime()
+			if filepath then -- open again: the pool is remembered for its next close
+				data.came_from[filehash] = data.came_from[filehash] or {}
+				data.came_from[filehash][id] = true
+			end
+			report.invalid_closed_buffers = report.invalid_closed_buffers + 1
+			::continue::
+		end
 	end
 
 	-- 1. Follow along: the notes and history of hashes no longer known go, and then their paths. A
@@ -1340,6 +1524,7 @@ function M.teardown()
 	data.unwritten = {}
 	data.last_label = nil
 	data.label_seen = false
+	M.reset_pools()
 	previous_window_constructed = nil
 end
 
@@ -1353,6 +1538,7 @@ function M.repopulate_history()
 	data.cycling_origins = {}
 	data.closed_buffers = {}
 	data.noname_content = {}
+	M.reset_pools()
 
 	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
 		if vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_is_loaded(bufnr) then
