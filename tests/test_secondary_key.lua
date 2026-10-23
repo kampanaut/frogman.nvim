@@ -108,7 +108,7 @@ T['T43 [char] after a cycle, <M-f> with secondary and ternary empty never puts t
 	eq(K.duplicate(child), false)
 end
 
-T['T44 [today] with the secondary closed and its file deleted, <M-f> warns "Removed secondary file not found in filesystem" and empties the slot'] = function()
+T['T44 [char] with the secondary closed and its file deleted, a cleanup pass keeps the slot, and <M-f> says so'] = function()
 	-- The ternary c is closed too; a closed secondary stays in its slot either way (I4).
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
@@ -116,16 +116,18 @@ T['T44 [today] with the secondary closed and its file deleted, <M-f> warns "Remo
 	child.settle()
 	child.cmd('bdelete b.txt')
 	child.settle()
-	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
+	child.lua(K.rm_code('b'))
+	child.lua('require("cavediver.domains.history").cleanup_system()')
+	child.settle()
+	eq({ slots = child.slots(), closed = child.closed() }, { slots = '⦉c⦊ [d] ⟦b⟧', closed = 'c,b' })
 	child.messages()
-	-- Delete b.txt and press in one go, before any other history event.
-	local ok, err = K.press_after(child, K.rm_code('b'), '<M-f>')
+	local ok, err = child.step('<M-f>')
 	eq({ ok, err }, { true, nil })
-	eq(K.has(K.messages(child), 'Removed secondary file not found in filesystem'), true)
-	eq(child.slots(), '⦉c⦊ [d] ⟦-⟧')
+	eq(K.has(K.messages(child), "isn't on disk right now"), true)
+	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 end
 
-T['T45 [target] with the secondary file deleted on disk, the pointer is kept and <M-f> says the file is missing'] = function()
+T['T45 [char] with the secondary file deleted on disk, the pointer is kept and <M-f> says the file is missing'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	child.cmd('bdelete c.txt')
 	child.settle()

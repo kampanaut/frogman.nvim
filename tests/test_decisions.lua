@@ -105,7 +105,7 @@ T['T251 [char] (P3) the load matches windows by what they show, not by position'
 end
 
 -- b is closed and stays known through the closed stack.
-T['T252 [target] (P10, I17) a closed file still on the closed stack keeps its history entry'] = function()
+T['T252 [char] (P10, I17) a closed file still on the closed stack keeps its history entry'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	local h = child.hash_of('b')
 	eq(child.lua('return require("cavediver.domains.history").data.crux_internals.global[...] ~= nil', { h }), true)
