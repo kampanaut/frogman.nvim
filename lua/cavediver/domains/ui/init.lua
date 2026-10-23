@@ -53,6 +53,17 @@ function M.init_winbar_highlights()
 	vim.api.nvim_set_hl(0, "BothWayNerdArrowNC", { fg = configs.colors.both_way_arrow.unfocused, bg = configs.colors.base.unfocused.bg})                      -- Amber buffer ID
 end
 
+---Initiate the highlight groups cavediver's own views draw with (colors.trail).
+---@return nil
+function M.init_trail_highlights()
+	local trail = configs.colors.trail
+	vim.api.nvim_set_hl(0, "CavediverTrailList", { fg = trail.list, bold = true })
+	vim.api.nvim_set_hl(0, "CavediverTrailClosed", { fg = trail.closed, bold = true })
+	vim.api.nvim_set_hl(0, "CavediverTrailTime", { fg = trail.time })
+	vim.api.nvim_set_hl(0, "CavediverTrailTag", { fg = trail.tag })
+	vim.api.nvim_set_hl(0, "CavediverTrailDim", { fg = trail.dim })
+end
+
 local periodic_timer = nil
 
 ---Stop the UI refresh timer, if it's running.

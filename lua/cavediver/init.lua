@@ -116,6 +116,12 @@ local function setup_keymaps(keymaps)
 			M.open_primary_buffer_history()
 		end, { desc = "Toggle current buffer as primary" })
 	end
+
+	if keymaps.open_closed_lists then
+		vim.keymap.set('n', keymaps.open_closed_lists, function()
+			M.open_closed_lists()
+		end, { desc = "Open the closed lists" })
+	end
 end
 
 local setup_debug_commands
@@ -154,10 +160,14 @@ function M.setup(user_config)
 	storage.init_autocmds(group)
 
 	ui.init_winbar_highlights()
+	ui.init_trail_highlights()
 	ui.init_refresh_timer()
 	history.init_cleanup_timer()
 	history.routines.enable_head_watch(true)
 	setup_debug_commands()
+	vim.api.nvim_create_user_command("CavediverClosed", function()
+		M.open_closed_lists()
+	end, { desc = "Open the closed lists" })
 
 	-- Setup keymaps
 	setup_keymaps(settings.keymaps)
@@ -435,6 +445,7 @@ M.toggle_window = navigation.toggle_window
 M.cycle_select = navigation.select_buffer
 
 M.open_primary_buffer_history = ui.routines.show_primary_buffer_history
+M.open_closed_lists = ui.routines.show_closed_lists
 
 -- Primary buffer management (to be implemented in window domain)
 M.toggle_primary = function()

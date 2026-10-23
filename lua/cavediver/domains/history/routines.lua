@@ -235,6 +235,7 @@ local function changed(pool)
 		M.on_records_change(pool.id)
 	end
 end
+M.pool_changed = changed
 
 ---The id of a tab session's pool.
 ---@param name string|nil

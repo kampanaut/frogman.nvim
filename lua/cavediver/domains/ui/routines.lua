@@ -136,6 +136,469 @@ function M.show_primary_buffer_history()
 	vim.wo[dwin].relativenumber = false
 end
 
+-- The closed lists ---------------------------------------------------------------------------------
+--
+-- One editable floating window for every list of closed files: the editor's, and each tab session's.
+-- The text of a line is only what you edit: a list's header (`≡editor`, `≡notes`) or an entry's name
+-- (a path, or `[No Name] "first line…"`). Everything else is drawn around it as virtual text, and drawn
+-- again as you edit: the closed glyph, the close time, a No Name text's filetype, a missing file's
+-- tag, a list's tabs.
+
+local closed_ns = vim.api.nvim_create_namespace("cavediver_closed_lists")
+-- each open closed-lists buffer's state, by buffer
+local closed_pickers = {}
+
+local glyph_sets = {
+	unicode = { list = "≡", closed = "↓", tag = "⎇", more = "…" },
+	ascii = { list = "#", closed = "v", tag = "@", more = "..." },
+}
+
+---The glyphs cavediver's views draw with: config's set, with any glyph it names in that glyph's place.
+---@return table<string, string>
+function M.glyphs()
+	local configured = require('cavediver.configs').glyphs or {}
+	local glyphs = vim.deepcopy(glyph_sets[configured.set] or glyph_sets.unicode)
+	for name, glyph in pairs(configured) do
+		if name ~= "set" then
+			glyphs[name] = glyph
+		end
+	end
+	return glyphs
+end
+
+---A close time, short when it's today.
+---@param time number|nil
+---@return string
+local function close_time_text(time)
+	if time == nil then
+		return ""
+	elseif os.date("%Y%m%d", math.floor(time)) == os.date("%Y%m%d") then
+		return os.date("%H:%M", math.floor(time))
+	end
+	return os.date("%a %d %b %H:%M", math.floor(time))
+end
+
+---A closed entry's name, as its line holds it: the path from the cwd, or a No Name text's first line.
+---@param filehash Filehash
+---@param glyphs table
+---@return string name
+---@return string|nil filetype A No Name text's
+local function closed_entry_name(filehash, glyphs)
+	local filepath = history.get_filepath_from_hash(filehash) or filehash
+	if not filepath:match("^NONAME_") then
+		return vim.fn.fnamemodify(filepath, ":~:."), nil
+	end
+	local content = history.data.noname_content[filehash]
+	if content and content.lines == nil and content.read then
+		-- a text from the session file, read now to show it, and kept so it's read once; one whose
+		-- file fails its check stays as it was
+		local read = content.read()
+		if read then
+			history.data.noname_content[filehash] = read
+		end
+		content = read
+	end
+	local first = content and content.lines and vim.trim(content.lines[1] or "") or ""
+	if vim.fn.strchars(first) > 24 then
+		first = vim.fn.strcharpart(first, 0, 24) .. glyphs.more
+	end
+	local filetype = content and content.filetype ~= "" and content.filetype or nil
+	return '[No Name] "' .. first .. '"', filetype
+end
+
+---The time an entry is drawn and written with under a list: the list's own, when it held the file;
+---otherwise the newest of the lists that held it, since the line came from one of them.
+---@param picker table
+---@param pool Pool
+---@param filehash Filehash
+---@param own boolean Whether to take the list's own time when it has one
+---@return number|nil
+local function closed_entry_time(picker, pool, filehash, own)
+	if own and picker.times[pool] and picker.times[pool][filehash] then
+		return picker.times[pool][filehash]
+	end
+	local newest
+	for _, other in ipairs(picker.order) do
+		local time = picker.times[other][filehash]
+		if time and (newest == nil or time > newest) then
+			newest = time
+		end
+	end
+	return newest
+end
+
+---The virtual text after an entry: a No Name text's filetype, the close time, a missing file's tag.
+---@param entry CavediverClosedEntry
+---@param glyphs table
+---@return table[]
+local function closed_entry_text(entry, glyphs)
+	local after = {}
+	if entry.filetype then
+		table.insert(after, { "  " .. entry.filetype, "CavediverTrailDim" })
+	end
+	table.insert(after, { "  " .. close_time_text(entry.time), "CavediverTrailTime" })
+	if entry.tag then
+		table.insert(after, { "  " .. glyphs.tag .. entry.tag, "CavediverTrailTag" })
+	end
+	return after
+end
+
+---Draw the virtual text around each line, from what the line's text names.
+---@param dbuf Bufnr
+---@return nil
+local function decorate_closed_lists(dbuf)
+	local picker = closed_pickers[dbuf]
+	if not picker then
+		return
+	end
+	local glyphs = M.glyphs()
+	local formatter = require('cavediver.configs').formatters.closed_entry or closed_entry_text
+	vim.api.nvim_buf_clear_namespace(dbuf, closed_ns, 0, -1)
+	local current
+	for i, line in ipairs(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) do
+		local text = vim.trim(line)
+		local pool = picker.headers[text]
+		local filehash = picker.hashes[text]
+		if pool then
+			current = pool
+			vim.api.nvim_buf_set_extmark(dbuf, closed_ns, i - 1, 0, {
+				end_col = #line, hl_group = "CavediverTrailList",
+				virt_text = { { "  " .. picker.where[pool], "CavediverTrailDim" } }, virt_text_pos = "eol",
+			})
+		elseif filehash then
+			local entry = {
+				name = text,
+				path = history.get_filepath_from_hash(filehash) or filehash,
+				time = current and closed_entry_time(picker, current, filehash, true),
+				filetype = picker.filetypes[filehash],
+				tag = history.data.missing[filehash],
+				list = current and picker.label[current] or "",
+			}
+			vim.api.nvim_buf_set_extmark(dbuf, closed_ns, i - 1, 0, {
+				virt_text = { { "  " .. glyphs.closed .. " ", "CavediverTrailClosed" } }, virt_text_pos = "inline",
+			})
+			vim.api.nvim_buf_set_extmark(dbuf, closed_ns, i - 1, 0, { virt_text = formatter(entry, glyphs) or {}, virt_text_pos = "eol" })
+		end
+	end
+end
+
+---Draw the closed lists into a buffer: each list a header with its closed entries under it, newest
+---first; the editor's list first, then the tab sessions' with a tab, then any with none.
+---@param dbuf Bufnr
+---@return nil
+local function draw_closed_lists(dbuf)
+	local picker = closed_pickers[dbuf]
+	local glyphs = M.glyphs()
+	local pools = history.routines.pools()
+	local order, others = { pools[""] }, {}
+	for id, pool in pairs(pools) do
+		if id ~= "" then
+			table.insert(others, pool)
+		end
+	end
+	table.sort(others, function(a, b)
+		local a_tab, b_tab = next(a.tabs) ~= nil, next(b.tabs) ~= nil
+		if a_tab ~= b_tab then
+			return a_tab
+		end
+		return a.id < b.id
+	end)
+	vim.list_extend(order, others)
+
+	-- a list's name: "editor", or its session's; two sessions of one name are told apart by directory
+	local label, named = {}, {}
+	for _, pool in ipairs(order) do
+		label[pool] = pool.id == "" and "editor" or (pool.name or vim.fn.fnamemodify(pool.directory, ":t"))
+		named[label[pool]] = (named[label[pool]] or 0) + 1
+	end
+	for _, pool in ipairs(order) do
+		if named[label[pool]] > 1 and pool.directory then
+			label[pool] = label[pool] .. " (" .. vim.fn.fnamemodify(pool.directory, ":t") .. ")"
+		end
+	end
+
+	local headers, where, hashes, filetypes, times, drawn, lines = {}, {}, {}, {}, {}, {}, {}
+	for _, pool in ipairs(order) do
+		local tabs = {}
+		for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+			if history.routines.pool_of_tab(tabpage) == pool then
+				table.insert(tabs, vim.api.nvim_tabpage_get_number(tabpage))
+			end
+		end
+		where[pool] = #tabs == 0 and "no tab" or (#tabs == 1 and ("tab " .. tabs[1]) or ("tabs " .. table.concat(tabs, ", ")))
+		local header = glyphs.list .. label[pool]
+		headers[header] = pool
+		table.insert(lines, header)
+		times[pool], drawn[pool] = vim.deepcopy(pool.times), {}
+		for i = #pool.closed, 1, -1 do
+			local filehash = pool.closed[i]
+			local name, filetype = closed_entry_name(filehash, glyphs)
+			-- one line's text names one file: another file with the same name gets a number
+			local text, n = name, 1
+			while hashes[text] and hashes[text] ~= filehash do
+				n = n + 1
+				text = name .. "  #" .. n
+			end
+			hashes[text], filetypes[filehash] = filehash, filetype
+			table.insert(drawn[pool], filehash)
+			table.insert(lines, text)
+		end
+	end
+	picker.order, picker.label, picker.headers, picker.where = order, label, headers, where
+	picker.hashes, picker.filetypes, picker.times, picker.drawn = hashes, filetypes, times, drawn
+	vim.api.nvim_buf_set_lines(dbuf, 0, -1, false, lines)
+	vim.bo[dbuf].modified = false
+	decorate_closed_lists(dbuf)
+end
+
+---Write a closed-lists buffer back: each list becomes its lines, newest first. A line moved under
+---another header moves to that list; a file twice in one list is kept once, with the newer close; a
+---deleted line is discarded, a No Name text only once you confirm, since it exists nowhere else. Each
+---list keeps its own close times for the files it held. A line that names no list or entry refuses
+---the whole write, and so does a No Name text kept at the question.
+---@param dbuf Bufnr
+---@return boolean written
+local function write_closed_lists(dbuf)
+	local picker = closed_pickers[dbuf]
+	local current, new, count, errors = nil, {}, {}, {}
+	for _, line in ipairs(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) do
+		local text = vim.trim(line)
+		if text ~= "" then
+			local filehash = picker.hashes[text]
+			if picker.headers[text] then
+				current = picker.headers[text]
+				new[current], count[current] = new[current] or {}, count[current] or {}
+			elseif filehash and current then
+				count[current][filehash] = (count[current][filehash] or 0) + 1
+				if count[current][filehash] == 1 then
+					table.insert(new[current], filehash)
+				end
+			else
+				table.insert(errors, text)
+			end
+		end
+	end
+	if #errors > 0 then
+		vim.notify("cavediver: the closed lists weren't written: these lines name no list or entry (a list's header comes first):\n  " ..
+			table.concat(errors, "\n  "), vim.log.levels.ERROR)
+		return false
+	end
+
+	-- what's left on no list: a No Name text goes for good, so it's asked first
+	local placed, gone, lost = {}, {}, {}
+	for _, filehashes in pairs(new) do
+		for _, filehash in ipairs(filehashes) do
+			placed[filehash] = true
+		end
+	end
+	for text, filehash in pairs(picker.hashes) do
+		if not placed[filehash] and not gone[filehash] then
+			gone[filehash] = true
+			if (history.get_filepath_from_hash(filehash) or ""):match("^NONAME_") then
+				table.insert(lost, text)
+			end
+		end
+	end
+	table.sort(lost)
+	if #lost > 0 and vim.fn.confirm("Discard these No Name texts? They exist nowhere else.\n" ..
+			table.concat(lost, "\n"), "&Discard\n&Keep", 2) ~= 1 then
+		return false
+	end
+
+	for _, pool in ipairs(picker.order) do
+		-- a list a load tore down while the window was open is left alone
+		if history.data.pools[pool.id] == pool then
+			local filehashes, was_drawn = new[pool] or {}, {}
+			for _, filehash in ipairs(picker.drawn[pool]) do
+				was_drawn[filehash] = true
+			end
+			local closed, times = {}, {}
+			for i = #filehashes, 1, -1 do
+				local filehash = filehashes[i]
+				table.insert(closed, filehash)
+				times[filehash] = closed_entry_time(picker, pool, filehash, count[pool][filehash] == 1)
+			end
+			-- closed onto it since it was drawn: kept, as the newest
+			for _, filehash in ipairs(pool.closed) do
+				if not was_drawn[filehash] and not placed[filehash] then
+					table.insert(closed, filehash)
+					times[filehash] = pool.times[filehash]
+				end
+			end
+			if not vim.deep_equal(closed, pool.closed) or not vim.deep_equal(times, pool.times) then
+				for i = #pool.closed, 1, -1 do
+					pool.closed[i] = nil -- in place: the editor's list is closed_buffers itself
+				end
+				vim.list_extend(pool.closed, closed)
+				pool.times = times
+				history.routines.pool_changed(pool)
+			end
+		end
+	end
+	for filehash, _ in pairs(gone) do
+		if not history.routines.is_filehash_closed(filehash) then
+			history.data.noname_content[filehash] = nil
+			history.data.came_from[filehash] = nil
+		end
+	end
+	return true
+end
+
+---Close a closed-lists window; its buffer goes with it.
+---@param dbuf Bufnr
+---@return nil
+local function close_closed_lists(dbuf)
+	local dwin = vim.b[dbuf].display_window
+	if dwin and vim.api.nvim_win_is_valid(dwin) then
+		vim.api.nvim_win_close(dwin, true)
+	end
+end
+
+---Leave the closed lists, writing them first when they were edited. A write that's refused leaves
+---the window open, so the lines can be fixed.
+---@param dbuf Bufnr
+---@return nil
+function M.leave_closed_lists(dbuf)
+	if vim.bo[dbuf].modified and not write_closed_lists(dbuf) then
+		return
+	end
+	close_closed_lists(dbuf)
+end
+
+---Reopen the entry under the cursor in the window the closed lists were opened from, writing the
+---lists first when they were edited; then leave, or stay with the lists drawn again.
+---@param dbuf Bufnr
+---@param stay boolean
+---@return nil
+function M.reopen_from_closed_lists(dbuf, stay)
+	local picker = closed_pickers[dbuf]
+	local text = vim.trim(vim.api.nvim_get_current_line())
+	local filehash = picker and picker.hashes[text]
+	if not filehash then
+		return
+	end
+	if vim.bo[dbuf].modified and not write_closed_lists(dbuf) then
+		return
+	end
+	local bufnr = history.routines.reopen_filehash(filehash)
+	if not bufnr then
+		if not (history.get_filepath_from_hash(filehash) or ""):match("^NONAME_") then
+			vim.notify(text .. " isn't on disk right now; it stays on the closed list.", vim.log.levels.WARN)
+		end
+		draw_closed_lists(dbuf)
+		return
+	end
+	local target = picker.came_from
+	if not vim.api.nvim_win_is_valid(target) then
+		target = window.data.last_valid_window
+	end
+	if stay then
+		vim.api.nvim_win_call(target, function()
+			vim.api.nvim_set_current_buf(bufnr)
+		end)
+		draw_closed_lists(dbuf)
+	else
+		close_closed_lists(dbuf)
+		vim.api.nvim_set_current_win(target)
+		vim.api.nvim_set_current_buf(bufnr)
+	end
+end
+
+---Go to the next list's header (step 1) or the previous one's (step -1).
+---@param dbuf Bufnr
+---@param step integer
+---@return nil
+function M.closed_lists_section(dbuf, step)
+	local picker = closed_pickers[dbuf]
+	local lines = vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)
+	local i = vim.api.nvim_win_get_cursor(0)[1] + step
+	while picker and i >= 1 and i <= #lines do
+		if picker.headers[vim.trim(lines[i])] then
+			vim.api.nvim_win_set_cursor(0, { i, 0 })
+			return
+		end
+		i = i + step
+	end
+end
+
+---The fold of a line in the closed lists: each list folds under its header.
+---@return string
+function M.closed_lists_fold()
+	local picker = closed_pickers[vim.api.nvim_get_current_buf()]
+	if picker and picker.headers[vim.trim(vim.fn.getline(vim.v.lnum))] then
+		return ">1"
+	end
+	return picker and "1" or "0"
+end
+
+---Open the closed lists in a floating window: every list of closed files, the editor's and each tab
+---session's, to reorder, merge, discard or reopen from.
+---@return nil
+function M.show_closed_lists()
+	local cwin = vim.api.nvim_get_current_win()
+	if vim.api.nvim_win_get_config(cwin).relative ~= "" and window.data.last_valid_window then
+		cwin = window.data.last_valid_window -- opened from a float: reopen into the last tracked window
+	end
+	local existing = vim.fn.bufnr("cavediver://closed-lists")
+	if existing ~= -1 then
+		vim.api.nvim_buf_delete(existing, { force = true })
+	end
+
+	local dbuf = vim.api.nvim_create_buf(false, false)
+	vim.bo[dbuf].buftype = "acwrite"
+	vim.bo[dbuf].swapfile = false
+	vim.bo[dbuf].bufhidden = "wipe" -- the buffer goes with its window, however the window closes
+	vim.api.nvim_buf_set_name(dbuf, "cavediver://closed-lists")
+	closed_pickers[dbuf] = { came_from = cwin }
+	draw_closed_lists(dbuf)
+
+	vim.api.nvim_create_autocmd("BufWriteCmd", {
+		buffer = dbuf,
+		callback = function()
+			if write_closed_lists(dbuf) then
+				draw_closed_lists(dbuf)
+			end
+		end,
+		desc = "Write the closed lists",
+	})
+	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+		buffer = dbuf,
+		callback = function()
+			decorate_closed_lists(dbuf)
+		end,
+	})
+	vim.api.nvim_create_autocmd("BufWipeout", {
+		buffer = dbuf,
+		once = true,
+		callback = function()
+			closed_pickers[dbuf] = nil
+		end,
+	})
+
+	local size = require('cavediver.configs').closed_lists_popup
+	local width = math.abs(size.width) <= 1 and math.floor(vim.o.columns * math.abs(size.width)) or math.min(vim.o.columns, math.floor(math.abs(size.width)))
+	local height = math.abs(size.height) <= 1 and math.floor(vim.o.lines * math.abs(size.height)) or math.min(vim.o.lines, math.floor(math.abs(size.height)))
+	local dwin = vim.api.nvim_open_win(dbuf, true, {
+		relative = "editor",
+		width = width,
+		height = height,
+		col = math.floor((vim.o.columns - width) / 2),
+		row = math.floor((vim.o.lines - height) / 2),
+		style = "minimal",
+		border = "rounded",
+		title = " Closed lists ",
+		title_pos = "center",
+	})
+	vim.b[dbuf].display_window = dwin
+	vim.wo[dwin].wrap = false
+	vim.wo[dwin].cursorline = true
+	vim.wo[dwin].foldmethod = "expr"
+	vim.wo[dwin].foldexpr = "v:lua.require'cavediver.domains.ui.routines'.closed_lists_fold()"
+	vim.wo[dwin].foldlevel = 99
+	vim.wo[dwin].foldenable = true
+	vim.bo[dbuf].filetype = "cavediver-closed-lists"
+end
+
 ---Find buffers with conflicting basenames.
 ---
 ---@param basename string The basename to check for conflicts

@@ -13,6 +13,34 @@
 ---@field close_buffer string Unregister and delete current buffer
 ---@field toggle_window string Jump between previous windows
 ---@field open_primary_buffer_history string Open primary buffer history window
+---@field open_closed_lists string Open the closed lists
+---@field views CavediverViewKeymaps The keys inside cavediver's own views, the same in each
+
+---@class CavediverViewKeymaps
+---@field leave string Write, then leave the view
+---@field act string The view's main action on the line under the cursor, then leave
+---@field act_and_stay string The main action, staying in the view
+---@field fold string Fold or unfold a section
+---@field previous_section string Go to the previous section
+---@field next_section string Go to the next section
+
+---@class CavediverGlyphs
+---@field set "unicode"|"ascii" The glyph set; any glyph named here replaces the set's own
+---@field list string|nil Before a list's name
+---@field closed string|nil Before a closed entry
+---@field tag string|nil Before a missing file's tag
+
+---A closed entry, as the closed lists draw it and hand it to a formatter.
+---@class CavediverClosedEntry
+---@field name string The line's text: the file's path, or `[No Name] "first line…"`
+---@field path string The file's path, or its NONAME_ name
+---@field time number|nil When it was closed, in seconds
+---@field filetype string|nil A No Name text's filetype
+---@field tag string|nil Where the file went missing, when it's gone from disk
+---@field list string The list's name
+
+---@class CavediverFormatters
+---@field closed_entry fun(entry: CavediverClosedEntry, glyphs: table): table[]|nil The virtual text after an entry, as {text, highlight} chunks
 
 
 ---Default configuration
@@ -26,6 +54,14 @@ local defaults = {
 		height = 0.2, -- can be a ratio or a whole number
 		width = 0.7, -- can be a ratio or a whole number
 	},
+	closed_lists_popup = {
+		height = 0.5, -- can be a ratio or a whole number
+		width = 0.7, -- can be a ratio or a whole number
+	},
+	glyphs = {
+		set = "unicode", -- "unicode" | "ascii"; a glyph named here (list, closed, tag) replaces the set's
+	},
+	formatters = {}, -- closed_entry: a function of the entry and the glyphs, giving the text after it
 	colors = {
 		base = {
 			focused = {
@@ -81,6 +117,13 @@ local defaults = {
 			focused = "#4385BE", -- blue-400
 			unfocused = "#4385BE"
 		},
+		trail = {
+			list = "#8B7EC8", -- purple-400
+			closed = "#DA702C", -- orange-400
+			time = "#878580", -- base-500
+			tag = "#6F6E69", -- base-600
+			dim = "#575653", -- base-700
+		},
 		cokeline = {
 			is_picking_close = "#D14D41", -- red-400
 			active = "#FFAF00",
@@ -128,6 +171,17 @@ local defaults = {
 		close_buffer = "<M-.>",
 
 		open_primary_buffer_history = "<M-;>F", -- Open primary buffer history
+		open_closed_lists = "<M-;>W", -- Open the closed lists
+
+		-- Inside cavediver's own views
+		views = {
+			leave = "q",
+			act = "<CR>",
+			act_and_stay = "gf",
+			fold = "za",
+			previous_section = "H",
+			next_section = "L",
+		},
 	},
 	-- label_provider: where you are, for tagging files that go missing: nil reads .git/HEAD, a
 	-- function returning a string gives the label, false turns labels off (the tag is then the time).
