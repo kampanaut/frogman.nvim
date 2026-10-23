@@ -1700,6 +1700,242 @@ T['T383 [char] (S2) a second detach of a session is numbered'] = function()
 		{ second = 't_DETACHED', third = 't_DETACHED_2' })
 end
 
+-- Keys typed into a window as a user would, so its own mappings run.
+local function type_into(win, keys)
+	child.lua([[
+		local win, keys = ...
+		vim.api.nvim_set_current_win(win)
+		vim.api.nvim_feedkeys(vim.keycode(keys), 'mx', false)
+	]], { win, keys })
+	child.settle()
+end
+
+-- Case 8: T369's state, optionally with a whole-editor save right after T318's
+-- load, then t loaded back into the second tab, which holds t_DETACHED, with d
+-- restored there. Returns the second tab's window and the third's.
+local function case8(s, saved)
+	local _, w2 = tab_session(s)
+	if saved then
+		eq(S2.save(child), { true })
+	end
+	child.steps({ ':e x', ':e c', ':e d' })
+	child.cmd('bdelete x.txt')
+	child.cmd('bdelete c.txt')
+	child.settle()
+	child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		require('cavediver').load_session('t')
+	]])
+	child.settle(300)
+	local w3 = child.lua('return vim.api.nvim_get_current_win()')
+	child.lua([[
+		vim.api.nvim_set_current_win(...)
+		vim.cmd('noautocmd edit d.txt')
+		require('cavediver').load_session('t')
+	]], { w2 })
+	child.settle(300)
+	return w2, w3
+end
+
+-- The closed lists' window, when it's open: { buf, win, lines, cursor_line }.
+local OPEN_LISTS = [==[
+	for _, win in ipairs(vim.api.nvim_list_wins()) do
+		local buf = vim.api.nvim_win_get_buf(win)
+		if vim.bo[buf].filetype == 'cavediver-closed-lists' then
+			local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+			return { buf = buf, win = win, lines = lines, cursor_line = lines[vim.api.nvim_win_get_cursor(win)[1]] }
+		end
+	end
+	return vim.NIL
+]==]
+
+-- Whether a list of that name is in memory.
+local IN_MEMORY = [[
+	for _, pool in pairs(require('cavediver.domains.history').routines.pools()) do
+		if pool.name == ... then return true end
+	end
+	return false
+]]
+
+T['T384 [char] (S2) t loaded back into its detached tab opens the closed lists, on t_DETACHED, and pushes the other tab out'] = function()
+	local s = S2.shared()
+	local w2, w3 = case8(s)
+	local lists = child.lua(OPEN_LISTS)
+	eq({ open = lists ~= vim.NIL, cursor = lists ~= vim.NIL and lists.cursor_line or nil,
+		second = child.lua(LIST_OF, { w2 }):match('^[^:]*'), third = child.lua(LIST_OF, { w3 }):match('^[^:]*') },
+		{ open = true, cursor = '≡t_DETACHED', second = 't', third = 't_DETACHED_2' })
+end
+
+-- t_DETACHED's entry lines go under t's header.
+T['T385 [char] (S2) merging t_DETACHED in case 8\'s picker ends it'] = function()
+	local s = S2.shared()
+	case8(s, true)
+	local p = child.lua(OPEN_LISTS)
+	eq(p ~= vim.NIL, true)
+	local lines, moved, under = {}, {}, nil
+	local section
+	for _, l in ipairs(p.lines) do
+		if l:sub(1, 3) == '≡' then section = l end
+		if section == '≡t_DETACHED' and l ~= '≡t_DETACHED' then
+			table.insert(moved, l)
+		else
+			table.insert(lines, l)
+		end
+	end
+	for i, l in ipairs(lines) do
+		if l == '≡t' then under = i end
+	end
+	for k, l in ipairs(moved) do
+		table.insert(lines, under + k, l)
+	end
+	S2.write_picker(child, p, lines)
+	type_into(p.win, 'q')
+	child.settle(300)
+	eq({ in_memory = child.lua(IN_MEMORY, { 't_DETACHED' }), in_file = child.lua(EDITOR_FILE).detached.t_DETACHED ~= nil },
+		{ in_memory = false, in_file = false })
+end
+
+T['T386 [char] (S2) leaving case 8\'s picker with t_DETACHED as it was sends it into the whole editor\'s file'] = function()
+	local s = S2.shared()
+	case8(s, true)
+	local p = child.lua(OPEN_LISTS)
+	eq(p ~= vim.NIL, true)
+	type_into(p.win, 'q')
+	child.settle(300)
+	local file = child.lua(EDITOR_FILE).detached.t_DETACHED
+	eq({ in_memory = child.lua(IN_MEMORY, { 't_DETACHED' }), in_file = file and file.closed },
+		{ in_memory = false, in_file = 'c,x' })
+end
+
+T['T387 [char] (S2) t loaded into a tab other than its detached one opens no closed lists'] = function()
+	local s = S2.shared()
+	detached_state(s)
+	child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		require('cavediver').load_session('t')
+	]])
+	child.settle(300)
+	eq(child.lua(OPEN_LISTS), vim.NIL)
+end
+
+-- T381's state: t_DETACHED in the whole editor's file alone, holding e.
+-- Returns the first tab's window.
+local function file_only_state(s)
+	local w1, w2 = tab_session(s)
+	eq(S2.save(child), { true })
+	child.steps({ ':e e', ':e d' })
+	child.cmd('bdelete e.txt')
+	child.settle()
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('tabclose')
+	child.settle(300)
+	eq(child.lua(EDITOR_FILE).detached.t_DETACHED, { closed = 'e', windows = 0 })
+	return w1
+end
+
+-- The line of e under t_DETACHED's header, and that header's line.
+local function under_detached(lines)
+	local section, header, e
+	for i, l in ipairs(lines) do
+		if l:sub(1, 3) == '≡' then section = l end
+		if l == '≡t_DETACHED' then header = i end
+		if section == '≡t_DETACHED' and l:find('e.txt', 1, true) then e = i end
+	end
+	return header, e
+end
+
+T['T388 [char] (S2) a list in the whole editor\'s file alone shows in the picker, marked in the file, and is edited there'] = function()
+	local s = S2.shared()
+	local w1 = file_only_state(s)
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	local p = S2.picker(child)
+	local header, e = under_detached(p.lines)
+	eq({ header = header ~= nil, e = e ~= nil }, { header = true, e = true })
+	local marked = S2.shown_line(child, p.buf, header):find('in the file', 1, true) ~= nil
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, e)
+	S2.write_picker(child, p, lines)
+	child.settle(300)
+	eq({ marked = marked, in_file = child.lua(EDITOR_FILE).detached.t_DETACHED ~= nil }, { marked = true, in_file = false })
+end
+
+T['T389 [char] (S2) a line moved out of a list in the file alone lands on the list it\'s moved under'] = function()
+	local s = S2.shared()
+	local w1 = file_only_state(s)
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	local p = S2.picker(child)
+	local _, e = under_detached(p.lines)
+	eq(e ~= nil, true)
+	local lines = vim.deepcopy(p.lines)
+	local moved = table.remove(lines, e)
+	table.insert(lines, 2, moved) -- under ≡editor, the first header
+	S2.write_picker(child, p, lines)
+	child.lua('if vim.api.nvim_win_is_valid(...) then vim.api.nvim_win_close(..., true) end', { p.win })
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	child.settle(300)
+	child.steps({ '<M-S-w>' })
+	eq({ in_file = child.lua(EDITOR_FILE).detached.t_DETACHED ~= nil, reopened = child.shown(w1) }, { in_file = false, reopened = 'e' })
+end
+
+-- T381's state with b closed too, so t_DETACHED in the file alone holds e and b.
+-- Returns the first tab's window.
+local function file_only_two(s)
+	local w1, w2 = tab_session(s)
+	eq(S2.save(child), { true })
+	child.steps({ ':e e', ':e b', ':e d' })
+	child.cmd('bdelete e.txt')
+	child.cmd('bdelete b.txt')
+	child.settle()
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('tabclose')
+	child.settle(300)
+	eq(child.lua(EDITOR_FILE).detached.t_DETACHED, { closed = 'b,e', windows = 0 })
+	return w1
+end
+
+-- b's line is deleted, unsaved; then <CR> on e's line, both under t_DETACHED.
+T['T390 [char] (S2) an edit to a list in the file alone survives <CR> on another of its entries'] = function()
+	local s = S2.shared()
+	local w1 = file_only_two(s)
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	local p = S2.picker(child)
+	local section, b, e
+	for i, l in ipairs(p.lines) do
+		if l:sub(1, 3) == '≡' then section = l end
+		if section == '≡t_DETACHED' and l:find('b.txt', 1, true) then b = i end
+		if section == '≡t_DETACHED' and l:find('e.txt', 1, true) then e = i end
+	end
+	eq(b ~= nil and e ~= nil, true)
+	child.lua('local buf, i = ...; vim.api.nvim_buf_set_lines(buf, i - 1, i, false, {})', { p.buf, b })
+	type_into(p.win, '') -- focus the picker
+	child.lua('vim.api.nvim_win_set_cursor(..., { ' .. (e < b and e or e - 1) .. ', 0 })', { p.win })
+	type_into(p.win, '<CR>')
+	child.settle(300)
+	eq({ in_file = child.lua(EDITOR_FILE).detached.t_DETACHED, reopened = child.shown(w1) }, { in_file = nil, reopened = 'e' })
+end
+
+-- The session directory is made read-only after the picker draws.
+T['T391 [char] (S2) an edit to a list in the file alone that can\'t be written says so and stays on screen'] = function()
+	local s = S2.shared()
+	local w1 = file_only_state(s)
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	local p = S2.picker(child)
+	local _, e = under_detached(p.lines)
+	eq(e ~= nil, true)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, e)
+	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
+	child.messages()
+	S2.write_picker(child, p, lines)
+	local got = { warned = #S2.notices(child.messages()) > 0, modified = child.lua('return vim.bo[...].modified', { p.buf }) }
+	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+	eq(got, { warned = true, modified = true })
+end
+
 -- From the first tab, the hint names another tab: u has no file, so the tab
 -- it names starts fresh; t's file loads into the tab it names.
 T['T367 [char] (S2) the hint\'s tab is the tab the load works on, wherever the focus is'] = function()

@@ -1067,12 +1067,14 @@ local function carry_detached(lists, live, old, texts, paths, key, scratch_dir)
 		if not live[list.label] then
 			for _, filehash in ipairs(list.closed or {}) do
 				local entry = old and old.noname_content and old.noname_content[filehash]
-				if entry and texts[filehash] == nil then
+				if texts[filehash] == nil and entry then
 					local source = scratch_dir .. entry.scratch
 					texts[filehash] = { scratch = entry.scratch, source = source, key = key, read = scratch_reader(source, key, filehash) }
+				elseif texts[filehash] == nil and history.data.noname_content[filehash] then
+					texts[filehash] = history.data.noname_content[filehash] -- moved in from a list in memory
 				end
-				if paths[filehash] == nil and old and old.paths and old.paths[filehash] then
-					paths[filehash] = old.paths[filehash]
+				if paths[filehash] == nil then
+					paths[filehash] = old and old.paths and old.paths[filehash] or history.get_filepath_from_hash(filehash)
 				end
 			end
 		end
@@ -1090,7 +1092,14 @@ end
 local function join_for_load(tabpage, name, directory)
 	local before = history.routines.pool_of_tab(tabpage)
 	local pool = history.routines.join_pool(tabpage, name, directory)
-	if before ~= pool and before.id ~= "" and next(before.tabs) == nil then
+	if before ~= pool and before.detached and before.of == pool.id and next(before.tabs) == nil then
+		-- the session loaded back into its detached tab: the closed lists open at once, on that list,
+		-- which waits in memory for them to close
+		before.merging = true
+		vim.schedule(function()
+			require('cavediver.domains.ui').routines.show_closed_lists({ focus = before })
+		end)
+	elseif before ~= pool and before.id ~= "" and next(before.tabs) == nil then
 		M.close_tab_pool(before) -- a detached list goes into the whole editor's file instead
 	end
 	return pool
@@ -1441,9 +1450,11 @@ end
 ---made; one that can't be read, or whose scope isn't the session's, isn't touched.
 ---
 ---@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string}
+---@param changes table<string, {closed: Filehash[], times: table}|false>|nil For the whole editor's: new
+---entries and close times for lists in the file alone, by name; false, or no entries, and the list goes
 ---@return boolean written
 ---@return string|nil problem Why not: "missing", or what went wrong
-local function write_records(session)
+local function write_records(session, changes)
 	local file_path = get_session_filepath(session.directory, session.name)
 	local bytes = read_file(file_path)
 	if bytes == nil then
@@ -1463,6 +1474,19 @@ local function write_records(session)
 		if session.scope == "editor" then
 			-- the detached lists ride with the whole editor's records
 			local lists, live = detached_lists(saved, nil)
+			if changes then
+				local kept = {}
+				for _, list in ipairs(lists) do
+					local change = changes[list.label]
+					if live[list.label] or change == nil then
+						table.insert(kept, list)
+					elseif change and #change.closed > 0 then
+						list.closed, list.closed_times = change.closed, change.times
+						table.insert(kept, list)
+					end
+				end
+				lists = kept
+			end
 			carry_detached(lists, live, saved, texts, saved.paths, key, file_path .. ".d/")
 			saved.detached = #lists > 0 and lists or nil
 			for _, list in ipairs(lists) do
@@ -1533,6 +1557,99 @@ local function whole_editor_session()
 		return { id = "", name = data.editor_session.name, directory = data.editor_session.directory, pools = every_pool(), scope = "editor" }
 	end
 	return nil
+end
+
+-- what the last look at the whole editor's file found, for an entry moved out of a list there
+local file_view = nil
+
+---The detached lists the whole editor's file holds alone, as the closed lists show them: each list's
+---entries and close times, with their paths and each No Name text's first line and filetype, read
+---from the file.
+---@return {label: string, closed: Filehash[], times: table, paths: table, texts: table}[]
+function M.file_only_lists()
+	file_view = nil
+	local session = whole_editor_session()
+	if session == nil then
+		return {}
+	end
+	local file_path = get_session_filepath(session.directory, session.name)
+	local saved, key = read_session_file(file_path, session.directory)
+	if not saved or not saved.detached then
+		return {}
+	end
+	local scratch_dir = file_path .. ".d/"
+	file_view = { paths = saved.paths or {}, noname_content = saved.noname_content or {}, key = key, scratch_dir = scratch_dir }
+	local in_memory, lists = {}, {}
+	for _, pool in pairs(history.data.pools) do
+		if pool.detached then
+			in_memory[pool.name] = true
+		end
+	end
+	for _, list in ipairs(saved.detached) do
+		if not in_memory[list.label] then
+			local texts = {}
+			for _, filehash in ipairs(list.closed or {}) do
+				local entry = file_view.noname_content[filehash]
+				if entry then
+					local text = scratch_reader(scratch_dir .. entry.scratch, key, filehash)()
+					texts[filehash] = { first = text and text.lines and text.lines[1] or "", filetype = text and text.filetype }
+				end
+			end
+			table.insert(lists, { label = list.label, closed = list.closed or {}, times = list.closed_times or {}, paths = file_view.paths, texts = texts })
+		end
+	end
+	return lists
+end
+
+---An entry moved out of a list in the file alone onto a list in memory: its path is registered, and a
+---No Name text's file is held unread, as a load holds a closed one's.
+---@param filehash Filehash
+---@return nil
+function M.adopt_file_entry(filehash)
+	if file_view == nil then
+		return
+	end
+	local path = file_view.paths[filehash]
+	if path and history.get_filepath_from_hash(filehash) == nil then
+		history.register_filepath(path)
+	end
+	local entry = file_view.noname_content[filehash]
+	if entry and history.data.noname_content[filehash] == nil then
+		local source = file_view.scratch_dir .. entry.scratch
+		history.data.noname_content[filehash] = { scratch = entry.scratch, source = source, key = file_view.key, read = scratch_reader(source, file_view.key, filehash) }
+	end
+end
+
+---Write the closed lists' edits to the lists in the whole editor's file alone.
+---@param changes table<string, {closed: Filehash[], times: table}|false>
+---@return boolean written
+---@return string|nil problem
+function M.write_file_only_lists(changes)
+	local session = whole_editor_session()
+	if session == nil then
+		return false, "missing"
+	end
+	return write_records(session, changes)
+end
+
+---Once the closed lists case 8 opened are gone: a detached list still waiting goes into the whole
+---editor's file, as any left with no tab does; one the merge emptied goes from memory and from the file.
+---@return nil
+function M.settle_merging()
+	for id, pool in pairs(history.data.pools) do
+		if pool.merging and next(pool.tabs) == nil then
+			pool.merging = nil
+			if #pool.closed == 0 then
+				history.data.pools[id] = nil
+				local session = whole_editor_session()
+				if session then
+					write_records(session, { [pool.name] = false })
+				end
+			else
+				M.close_tab_pool(pool)
+			end
+		end
+	end
 end
 
 ---Every session cavediver knows: the whole editor's and each tab session's.
