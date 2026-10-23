@@ -333,6 +333,13 @@ local function load_window_buffer_relationships(window_buffer)
 			}
 		)
 		window_histories[actual_winid] = triquetra_serialised[9] or {}
+		-- oil keeps the buffer it was opened from in a window variable no session manager saves, so
+		-- `q` there goes back to the window's current slot
+		local wbufnr = vim.api.nvim_win_get_buf(actual_winid)
+		local current_bufnr = history.get_buffer_from_hash(current_slot)
+		if vim.bo[wbufnr].filetype == "oil" and current_bufnr then
+			vim.w[actual_winid].oil_original_buffer = current_bufnr
+		end
 		close_if_not_restored(current_slot)
 		close_if_not_restored(sfilehash)
 		close_if_not_restored(tfilehash)
@@ -401,8 +408,6 @@ local function serialise_window_relationships(outsiders)
 	local compressed_index = 1
 	for _, winid in pairs(vim.api.nvim_list_wins()) do
 		if window.data.crux[winid] ~= nil then -- yes, a direct existence check sorry for breaking encapsulation
-			local wbufnr = vim.api.nvim_win_get_buf(winid)
-
 			local triquetra = window.get_triquetra(winid)
 
 			---@type Filehash|vim.NIL|nil
@@ -470,19 +475,7 @@ local function serialise_window_relationships(outsiders)
 				sdisplacement_map = {}
 			end
 
-			-- Switch oil buffers to current_slot before serialization
-			if vim.bo[wbufnr].filetype == "oil" then
-				local bufnr = history.get_buffer_from_hash(triquetra.current_slot)
-				if bufnr then
-					local eventignore = vim.o.eventignore
-					vim.o.eventignore = "BufEnter,BufLeave"
-					vim.api.nvim_win_set_buf(winid, bufnr)
-					vim.o.eventignore = eventignore
-					wbufnr = bufnr
-				end
-			end
-
-			-- what the window shows once the save is done, which is what the session manager saves
+			-- what the window shows, which is what the session manager saves
 			local shows, outsider = shown_by(winid)
 			if outsider then
 				outsiders[shows] = outsider
