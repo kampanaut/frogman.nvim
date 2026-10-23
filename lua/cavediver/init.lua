@@ -388,6 +388,7 @@ function M.disable()
 	ui.stop_refresh_timer()
 	history.stop_cleanup_timer()
 	history.routines.enable_head_watch(false)
+	require('cavediver.domains.storage').routines.write_records_on(false)
 end
 
 ---API Exports - Direct access to domain functionality

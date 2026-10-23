@@ -101,14 +101,16 @@ T['T296 [char] (S2) every domain tears its own state down at idle -> bare'] = fu
 	eq(Misc.save(child), { true })
 	child.steps({ ':e d', ':e x' })
 	child.cmd('bdelete d.txt')
+	child.settle()
 	child.steps({ '<M-m>' })
 	eq({ closed = child.closed(), states = S2.states(child), x = S2.registered(child, 'x') },
 		{ closed = 'd', states = { nav = 'cycling', hist = 'detached' }, x = true })
 	child.cmd('noautocmd edit c.txt')
 	eq(Misc.load(child), { true })
 	child.settle(300)
+	-- d's close was written into the file as it happened, so it comes back from there, once
 	eq({ slots = child.slots(), closed = child.closed(), states = S2.states(child), x = S2.registered(child, 'x') },
-		{ slots = '⦉b⦊ [c] ⟦-⟧', closed = '', states = { nav = 'normal', hist = 'attached' }, x = false })
+		{ slots = '⦉b⦊ [c] ⟦-⟧', closed = 'd', states = { nav = 'normal', hist = 'attached' }, x = false })
 end
 
 -- Three calls in one batch, then a 30 ms wait (scheduled callbacks run, no
@@ -400,6 +402,7 @@ end
 T['T307 [char] (S2) the main file is the commit point: a crash before it lands leaves the old session whole'] = function()
 	local s = S2.shared()
 	local v = two_versions(s)
+	pcall(child.lua, 'vim.uv.kill(vim.uv.os_getpid(), "sigkill")') -- the crash: no VimLeavePre
 	S2.write(v.main, v.main1)
 	S2.write(v.d .. v.v1, v.v1bytes)
 
@@ -919,45 +922,53 @@ T['T321 [char] (S2) saves are snapshots: a whole-editor save merges the pools by
 	child.cmd('bdelete e.txt')
 	child.settle()
 	eq(S2.save(child), { true })
+	local function in_file()
+		return child.lua([[
+			local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+			local out = {}
+			for _, h in ipairs(saved.closed or {}) do
+				table.insert(out, vim.fn.fnamemodify(saved.paths[h] or h, ':t:r'))
+			end
+			return table.concat(out, ',')
+		]])
+	end
+	local saved = in_file()
 	local live = {}
 	for _ = 1, 2 do
 		child.steps({ '<M-S-w>' })
 		table.insert(live, child.shown(w1))
 	end
+	child.settle(1200)
 
+	-- e and x are open again, and the file follows them
 	S2.start(child, s)
 	Misc.restore(child, { 't' }, 't')
 	eq(S2.load(child), { true })
 	child.settle(300)
-	local merged = {}
-	for _ = 1, 3 do
-		child.steps({ '<M-S-w>' })
-		table.insert(merged, child.shown())
-	end
-	eq({ live = live, merged = merged }, { live = { 'e', 'x' }, merged = { 'e', 'c', 'x' } })
+	child.steps({ '<M-S-w>' })
+	eq({ saved = saved, live = live, after = child.shown() }, { saved = 'x,c,e', live = { 'e', 'x' }, after = 'c' })
 end
 
--- No TabClosedPre hook calls save_session here. The notice's wording isn't
--- fixed, so any notification that isn't a hook failure counts.
-T['T322 [char] (S2) a tab session\'s tab closed with no save wired gives a notice'] = function()
-	local s = S2.shared()
-	tab_session(s)
-	child.messages()
-	child.cmd('tabclose')
-	child.settle(300)
-	eq(#S2.notices(child.messages()) > 0, true)
-end
-
--- c is closed in the session's tab before the tab goes; its pool is kept with
--- no tab, so the picker still lists it.
-T['T322 [target] (S2) a tab session\'s tab closed with no save wired keeps its pool, still in the picker'] = function()
+-- No TabClosedPre hook calls save_session here: cavediver writes the session's
+-- records itself as the tab closes (the author, 2026-10-23). The load
+-- afterwards brings d back and not c, as a manager would after c was closed.
+T['T322 [char] (S2) a tab session\'s tab closed with nothing wired writes its records, and gives no notice'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	child.cmd('bdelete c.txt')
+	child.settle()
+	child.messages()
 	child.cmd('tabclose')
 	child.settle(300)
-	local p = S2.picker(child)
-	eq(S2.line_of(p.lines, 'c.txt') ~= nil, true)
+	local notices = S2.notices(child.messages())
+	local got = child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		return { pcall(require('cavediver').load_session, 't') }
+	]])
+	child.settle(300)
+	child.steps({ '<M-S-w>' })
+	eq({ notices = notices, got = got, reopened = child.shown() }, { notices = {}, got = { true }, reopened = 'c' })
 end
 
 -- The whole editor is saved (the unnamed session) at ⦉x⦊ [t]; then t is loaded
@@ -1121,6 +1132,437 @@ T['T353 [char] (S1) after a load from idle, closes and <M-S-w> use one closed st
 	child.settle()
 	child.steps({ '<M-S-w>' })
 	eq(child.shown(), 'c')
+end
+
+-- The session u has no cavediver file; the hint says it's a tab session.
+T['T354 [char] (S2) a tab session with no file, loaded with the hint, starts only its tab fresh'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e x', ':e t' })
+	child.cmd('bdelete a.txt')
+	child.settle()
+	local w1 = child.lua('return vim.api.nvim_get_current_win()')
+	eq(S2.save(child), { true })
+	local got = child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		return { pcall(require('cavediver').load_session, 'u', { tab = vim.api.nvim_get_current_tabpage() }) }
+	]])
+	child.settle(300)
+	local w2 = child.lua('return vim.api.nvim_get_current_win()')
+	local state = { got = got, session_tab = child.slots(w2), first_tab = child.slots(w1), closed = child.closed() }
+	child.messages()
+	eq(child.lua('return { pcall(require("cavediver").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	state.notices = S2.notices(child.messages())
+	eq(state, { got = { true }, session_tab = '⦉-⦊ [d] ⟦-⟧', first_tab = '⦉x⦊ [t] ⟦-⟧', closed = 'a', notices = {} })
+end
+
+-- The hint is read (T354, T367); a usable file's scope wins over it.
+T['T355 [char] (S2) a file\'s scope wins over the hint'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', ':e d' })
+	eq(Misc.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'c', 'd' }, 'd')
+	local got = child.lua('return { pcall(require("cavediver").load_session, vim.fn.getcwd(), { tab = vim.api.nvim_get_current_tabpage() }) }')
+	child.settle(300)
+	eq({ got = got, slots = child.slots(),
+		editor = child.lua('return require("cavediver.domains.history").routines.current_pool().id') },
+		{ got = { true }, slots = '⦉c⦊ [d] ⟦-⟧', editor = '' })
+end
+
+-- The session directory is read-only, so the records can't be written: the
+-- failure path of T322's write.
+T['T356 [char] (S2) a tab session\'s records that can\'t be written as its tab closes keep its list, with a warning'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
+	child.cmd('bdelete c.txt')
+	child.settle(300)
+	child.messages()
+	child.cmd('tabclose')
+	child.settle(300)
+	local warned = #S2.notices(child.messages()) > 0
+	local kept = child.lua([[
+		local H = require('cavediver.domains.history')
+		for id, pool in pairs(H.routines.pools()) do
+			if id ~= '' and next(pool.tabs) == nil then
+				return #pool.closed
+			end
+		end
+		return 0
+	]])
+	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+	eq({ warned = warned, kept = kept }, { warned = true, kept = 1 })
+end
+
+-- t is open in a second tab, where e is visited and closed; e isn't in t's
+-- saved slots, so only t's list brings it back. A third tab loads t too.
+T['T357 [today] (S2) a second tab loading a session already open shares its list'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	child.steps({ ':e e', ':e d' })
+	child.cmd('bdelete e.txt')
+	child.settle()
+	local got = child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		return { pcall(require('cavediver').load_session, 't') }
+	]])
+	child.settle(300)
+	child.steps({ '<M-S-w>' })
+	eq({ got = got, reopened = child.shown() }, { got = { true }, reopened = 'e' })
+end
+
+-- The whole editor saved, then a tab session loaded (so resession would leave
+-- the whole editor's session unsaved at quit), its tab closed, and work in the
+-- first tab; then a quit with nothing saved.
+T['T358 [char] (S2) quitting writes every known session\'s records'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(S2.save(child), { true })
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.cmd('tabclose')
+	child.settle(300)
+	S2.noname(child, { 'note' })
+	child.steps({ ':e t' })
+
+	S2.start(child, s)
+	Misc.restore(child, { 't' }, 't')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	eq(S2.holding(child, 'note'), 1)
+end
+
+-- e is visited in t's tab; then e is closed, the tab closes, the quit's
+-- VimLeavePre runs and the process is killed, all in one call, so no write
+-- gets its tick, as at a real quit. e isn't in t's saved slots, so only t's
+-- list brings it back; the load afterwards brings d back and not e.
+T['T358 [char] (S2) a quit in the same batch as a tab close writes that tab session\'s records'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	child.steps({ ':e e', ':e d' })
+	pcall(child.lua, [[
+		vim.cmd('bdelete e.txt')
+		vim.cmd('tabclose')
+		vim.api.nvim_exec_autocmds('VimLeavePre', {})
+		vim.uv.kill(vim.uv.os_getpid(), 'sigkill')
+	]])
+	S2.start(child, s)
+	local got = child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		return { pcall(require('cavediver').load_session, 't') }
+	]])
+	child.settle(300)
+	child.steps({ '<M-S-w>' })
+	eq({ got = got, reopened = child.shown() }, { got = { true }, reopened = 'e' })
+end
+
+-- a is closed after the save and sits in no slot, so only a write after the
+-- close can bring it back; the process is then killed, with no VimLeavePre.
+T['T359 [char] (S2) a crash loses no close'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(Misc.save(child), { true })
+	child.cmd('bdelete a.txt')
+	child.settle(1200)
+	pcall(child.lua, 'vim.uv.kill(vim.uv.os_getpid(), "sigkill")')
+	S2.start(child, s)
+	Misc.restore(child, { 'b', 'c' }, 'c')
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq(child.closed(), 'a')
+end
+
+-- a is closed, and its write lands; then, in one go, the manager's teardown
+-- closes b and c with events on, and the load of another session follows.
+T['T360 [char] (S2) a load cancels a write still pending, so the teardown\'s closes stay out of the old file'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(S2.save(child, 'one'), { true })
+	child.cmd('bdelete a.txt')
+	child.settle()
+	child.lua([[
+		vim.cmd('enew')
+		vim.cmd('bdelete b.txt')
+		vim.cmd('bdelete c.txt')
+		require('cavediver').load_session('two')
+	]])
+	child.settle(1500)
+	local closed = child.lua([[
+		local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 'one')
+		local out = {}
+		for _, h in ipairs(saved.closed or {}) do
+			table.insert(out, vim.fn.fnamemodify(saved.paths[h] or h, ':t:r'))
+		end
+		table.sort(out)
+		return table.concat(out, ',')
+	]])
+	eq(closed, 'a')
+end
+
+-- Closes are written on every change; the write never makes a file.
+T['T361 [char] (S2) records never make a file'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	child.cmd('bdelete a.txt')
+	child.settle(1200)
+	eq(Misc.files_in(s.session_dir), {})
+end
+
+-- The global directory moves to another project with no load, as a switch
+-- with post_load unwired leaves it.
+T['T362 [char] (S2) records aren\'t written into a session the editor has moved away from'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(S2.save(child), { true })
+	local file = S2.main_file(s.session_dir, S2.cwd(child), nil)
+	local before = S2.read(s.session_dir .. file)
+	child.cmd('cd ' .. Misc.make_project())
+	child.cmd('bdelete a.txt')
+	child.settle(1200)
+	eq(S2.read(s.session_dir .. file) == before, true)
+end
+
+-- The other editor saves after the file was removed, so with a new salt; this
+-- editor then closes a, and its write has to use the new salt's key.
+T['T363 [char] (S2) a session\'s key is kept by its directory and salt'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	S2.start(other, s)
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(S2.save(child), { true })
+	local file = s.session_dir .. S2.main_file(s.session_dir, S2.cwd(child), nil)
+	os.remove(file)
+	other.steps({ ':e b', ':e c' })
+	eq(S2.save(other), { true })
+	other.stop()
+	child.cmd('bdelete a.txt')
+	child.settle(1200)
+
+	S2.start(child, s)
+	Misc.restore(child, { 'b', 'c' }, 'c')
+	child.messages()
+	eq(S2.load(child), { true })
+	child.settle(300)
+	eq({ integrity = S2.has(child.messages(), 'integrity'), closed = child.closed() }, { integrity = false, closed = 'a' })
+end
+
+-- A close, then disable() at once: the write it set off never lands.
+T['T364 [char] (S2) disable() stops the writes'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(S2.save(child), { true })
+	local file = s.session_dir .. S2.main_file(s.session_dir, S2.cwd(child), nil)
+	local before = S2.read(file)
+	child.lua([[
+		vim.cmd('bdelete a.txt')
+		require('cavediver').disable()
+	]])
+	child.settle(1200)
+	eq(S2.read(file) == before, true)
+end
+
+-- The whole editor is saved at ⦉a⦊ [b], and t from a second tab at ⦉c⦊ [d],
+-- in one process, so c's buffer comes before d's. Back in the first tab, in
+-- one go, as resession switches: a scratch buffer in the window, every listed
+-- buffer deleted with events on, in buffer order (c goes on t's list, then
+-- deleting d closes t's tab), the other tabs closed, and the load of another
+-- session, which has no file.
+T['T365 [char] (S2) a whole-editor switch keeps the manager\'s teardown out of an open tab session\'s file'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child, 'main'), { true })
+	child.cmd('tabnew')
+	child.steps({ ':e c', ':e d' })
+	eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),
+		{ true })
+	child.cmd('tabprevious')
+	child.settle()
+	child.lua([[
+		local scratch = vim.api.nvim_create_buf(false, true)
+		vim.api.nvim_win_set_buf(0, scratch)
+		for _, b in ipairs(vim.api.nvim_list_bufs()) do
+			if vim.bo[b].buflisted then
+				vim.api.nvim_buf_delete(b, { force = true })
+			end
+		end
+		vim.cmd('silent! tabonly')
+		require('cavediver').load_session('two')
+	]])
+	child.settle(1500)
+	local closed = child.lua([[
+		local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 't')
+		local out = {}
+		for _, h in ipairs(saved.closed or {}) do
+			table.insert(out, vim.fn.fnamemodify(saved.paths[h] or h, ':t:r'))
+		end
+		return table.concat(out, ',')
+	]])
+	eq(closed, '')
+end
+
+-- In T318's state, c is closed in the session's tab and stays in its ternary;
+-- that tab is then saved as u ("save as"), so t has no tab left. The load of t
+-- afterwards brings d back and not c, as a manager would after c was closed.
+T['T366 [char] (S2) a tab saved as another session writes the one it leaves, and carries the closed files its slots hold'] = function()
+	local s = S2.shared()
+	local _, w2 = tab_session(s)
+	child.cmd('bdelete c.txt')
+	child.settle()
+	eq(child.slots(w2), '⦉c⦊ [d] ⟦-⟧')
+	eq(child.lua('return { pcall(require("cavediver").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'),
+		{ true })
+	child.settle(300)
+	child.lua('require("cavediver.domains.history").cleanup_system()')
+	child.settle(300)
+	local state = child.lua([[
+		local H = require('cavediver.domains.history')
+		local tabless = 0
+		for id, pool in pairs(H.routines.pools()) do
+			if id ~= '' and next(pool.tabs) == nil then
+				tabless = tabless + 1
+			end
+		end
+		local u = {}
+		for _, h in ipairs(H.routines.current_pool().closed) do
+			table.insert(u, vim.fn.fnamemodify(H.get_filepath_from_hash(h) or h, ':t:r'))
+		end
+		return { pool = H.routines.current_pool().name, u = table.concat(u, ','), tabless = tabless }
+	]])
+	state.slots = child.slots(w2)
+	local got = child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		return { pcall(require('cavediver').load_session, 't') }
+	]])
+	child.settle(300)
+	child.steps({ '<M-S-w>' })
+	state.got, state.reopened = got, child.shown()
+	eq(state, { pool = 'u', u = 'c', tabless = 0, slots = '⦉c⦊ [d] ⟦-⟧', got = { true }, reopened = 'c' })
+end
+
+-- The lists a closed file is on, by pool: the editor's as "", a tab session's
+-- by its name, and whether each pool has a tab.
+local LISTS = [[
+	local H = require('cavediver.domains.history')
+	local h = H.get_hash_from_filepath(vim.fn.getcwd(-1, -1) .. '/' .. ... .. '.txt')
+	local out = {}
+	for id, pool in pairs(H.routines.pools()) do
+		if vim.tbl_contains(pool.closed, h) then
+			table.insert(out, (id == '' and 'editor' or pool.name) .. (next(pool.tabs) == nil and id ~= '' and ' (no tab)' or ''))
+		end
+	end
+	table.sort(out)
+	return table.concat(out, ',')
+]]
+
+-- Case A: the first tab is in no session, so b is closed on the editor's list;
+-- the tab is then saved as notes.
+T['T368 [char] (S2) a tab saved as a session for the first time carries the closed files its slots hold'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c' })
+	child.cmd('bdelete b.txt')
+	child.settle()
+	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
+	eq(child.lua('return { pcall(require("cavediver").save_session, "notes", { tab = vim.api.nvim_get_current_tabpage() }) }'),
+		{ true })
+	child.settle(300)
+	local lists = child.lua(LISTS, { 'b' })
+	child.steps({ '<M-S-w>' })
+	eq({ lists = lists, reopened = child.shown() }, { lists = 'editor,notes', reopened = 'b' })
+end
+
+-- Case B: t is open in the second tab and, loaded again, in a third; c is
+-- closed in the second, which is then saved as u.
+T['T368 [char] (S2) a tab saved as a new session while its old one is open elsewhere carries the closed files its slots hold'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.cmd('tabprevious')
+	child.cmd('bdelete c.txt')
+	child.settle()
+	eq(child.lua('return { pcall(require("cavediver").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'),
+		{ true })
+	child.settle(300)
+	local lists = child.lua(LISTS, { 'c' })
+	child.steps({ '<M-S-w>' })
+	eq({ lists = lists, reopened = child.shown() }, { lists = 't,u', reopened = 'c' })
+end
+
+-- In t's tab, x is closed after it has left the slots, and c from the
+-- ternary; then t is loaded into a third tab, with d restored and not c.
+T['T369 [target] (S2) a tab session is in one tab at a time, and the tab it leaves keeps a detached list'] = function()
+	local s = S2.shared()
+	local _, w2 = tab_session(s)
+	child.steps({ ':e x', ':e c', ':e d' })
+	child.cmd('bdelete x.txt')
+	child.cmd('bdelete c.txt')
+	child.settle()
+	eq(child.slots(w2), '⦉c⦊ [d] ⟦-⟧')
+	local got = child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		return { pcall(require('cavediver').load_session, 't') }
+	]])
+	child.settle(300)
+	local lists = child.lua([[
+		local H = require('cavediver.domains.history')
+		local function list(tabpage)
+			local pool = H.routines.pool_of_tab(tabpage)
+			local out = {}
+			for _, h in ipairs(pool.closed) do
+				table.insert(out, vim.fn.fnamemodify(H.get_filepath_from_hash(h) or h, ':t:r'))
+			end
+			return (pool.name or '') .. ':' .. table.concat(out, ',')
+		end
+		return { second = list(vim.api.nvim_win_get_tabpage(...)), third = list(vim.api.nvim_get_current_tabpage()) }
+	]], { w2 })
+	eq({ got = got, lists = lists }, { got = { true }, lists = { second = 't_DETACHED:x,c', third = 't:x,c' } })
+end
+
+-- From the first tab, the hint names another tab: u has no file, so the tab
+-- it names starts fresh; t's file loads into the tab it names.
+T['T367 [char] (S2) the hint\'s tab is the tab the load works on, wherever the focus is'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	child.steps({ ':e a', ':e x', ':e t' })
+	child.cmd('bdelete a.txt')
+	child.settle()
+	local w1 = child.lua('return vim.api.nvim_get_current_win()')
+	eq(S2.save(child), { true })
+	local function load_into_new_tab(name)
+		return child.lua([[
+			local first = vim.api.nvim_get_current_tabpage()
+			vim.cmd('noautocmd tabnew')
+			local b = vim.fn.bufadd('c.txt')
+			vim.fn.bufload(b)
+			vim.bo[b].buflisted = true
+			vim.cmd('noautocmd edit d.txt')
+			local tab, win = vim.api.nvim_get_current_tabpage(), vim.api.nvim_get_current_win()
+			vim.cmd('noautocmd tabnext ' .. vim.api.nvim_tabpage_get_number(first))
+			local ok = pcall(require('cavediver').load_session, ..., { tab = tab })
+			return { ok = ok, win = win }
+		]], { name })
+	end
+	local u = load_into_new_tab('u')
+	child.settle(300)
+	local t = load_into_new_tab('t')
+	child.settle(300)
+	eq({ u = u.ok, t = t.ok, u_tab = child.slots(u.win), t_tab = child.slots(t.win), first_tab = child.slots(w1), closed = child.closed() },
+		{ u = true, t = true, u_tab = '⦉-⦊ [d] ⟦-⟧', t_tab = '⦉c⦊ [d] ⟦-⟧', first_tab = '⦉x⦊ [t] ⟦-⟧', closed = 'a' })
 end
 
 -- Oil -----------------------------------------------------------------------------

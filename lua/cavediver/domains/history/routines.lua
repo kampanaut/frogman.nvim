@@ -222,6 +222,28 @@ local function editor_pool()
 	return pool
 end
 
+---Told when a pool's records (its closed list, its close times) change, with the pool's id; the
+---storage domain writes them.
+---@type fun(id: string)|nil
+M.on_records_change = nil
+
+---A pool's records changed.
+---@param pool Pool
+local function changed(pool)
+	pool.changed_at = vim.uv.hrtime()
+	if M.on_records_change then
+		M.on_records_change(pool.id)
+	end
+end
+
+---The id of a tab session's pool.
+---@param name string|nil
+---@param directory string
+---@return string
+function M.pool_id(name, directory)
+	return (name or "") .. "\n" .. directory
+end
+
 ---Every pool, the editor's included.
 ---
 ---@return table<string, Pool>
@@ -261,7 +283,7 @@ end
 ---@param directory string
 ---@return Pool
 function M.join_pool(tabpage, name, directory)
-	local id = (name or "") .. "\n" .. directory
+	local id = M.pool_id(name, directory)
 	local pool = data.pools[id]
 	if pool == nil then
 		pool = { id = id, name = name, directory = directory, closed = {}, times = {}, visits = {}, tabs = {} }
@@ -296,7 +318,7 @@ local function push_closed(pool, filehash, time)
 	end
 	table.insert(pool.closed, filehash)
 	pool.times[filehash] = time or close_time()
-	pool.changed_at = vim.uv.hrtime()
+	changed(pool)
 end
 
 ---The tabs that visited a file: their windows show it or have it in their history.
@@ -351,7 +373,7 @@ function M.open_out_of_pools(filehash)
 			if pool.closed[i] == filehash then
 				table.remove(pool.closed, i)
 				pool.times[filehash] = nil
-				pool.changed_at = vim.uv.hrtime()
+				changed(pool)
 				data.came_from[filehash] = data.came_from[filehash] or {}
 				data.came_from[filehash][id] = true
 			end
@@ -368,11 +390,25 @@ function M.discard_from_pools(filehash)
 			if pool.closed[i] == filehash then
 				table.remove(pool.closed, i)
 				pool.times[filehash] = nil
-				pool.changed_at = vim.uv.hrtime()
+				changed(pool)
 			end
 		end
 	end
 	data.came_from[filehash] = nil
+end
+
+---A file closed on one pool goes on another too, under that pool's own entries, with its close time.
+---
+---@param from Pool
+---@param to Pool
+---@param filehash Filehash|nil
+function M.carry_closed(from, to, filehash)
+	if filehash == nil or not vim.tbl_contains(from.closed, filehash) or vim.tbl_contains(to.closed, filehash) then
+		return
+	end
+	table.insert(to.closed, 1, filehash)
+	to.times[filehash] = from.times[filehash]
+	changed(to)
 end
 
 ---The git directory for the session's directory, found upward from it. A `.git` file, as a
@@ -1454,7 +1490,7 @@ function M.cleanup_system(on_tick)
 			table.insert(report.invalid_closed_hashes, filehash)
 			table.remove(pool.closed, i)
 			pool.times[filehash] = nil
-			pool.changed_at = vim.uv.hrtime()
+			changed(pool)
 			if filepath then -- open again: the pool is remembered for its next close
 				data.came_from[filehash] = data.came_from[filehash] or {}
 				data.came_from[filehash][id] = true
