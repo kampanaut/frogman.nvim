@@ -503,6 +503,9 @@ function M.reopen_filehash(filehash)
 	local bufnr
 	if filepath:match("^NONAME_") then
 		local cache = data.noname_content[filehash]
+		if cache and cache.lines == nil and cache.read then
+			cache = cache.read() -- a text from the session file is read only when it's reopened
+		end
 		if cache == nil then
 			return nil -- a No Name buffer with nothing cached (it was empty) can't be brought back.
 		end

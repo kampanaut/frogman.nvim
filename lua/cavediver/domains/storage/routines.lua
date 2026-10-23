@@ -30,9 +30,9 @@
 ---Example: { "a1b2c3d4e5f6g7h8", "z9y8x7w6v5u4t3s2" }
 ---@class ClosedBufferData: Filehash[]
 ---
----Every saved hash's path is in the session file's paths table, XOR'd with the session's
----directory, so a hash whose buffer doesn't come back still resolves to its file.
----Example: { ["a1b2c3d4e5f6g7h8"] = "<the path, XOR'd and base64-encoded>" }
+---Every saved hash's path is in the session file's paths table, so a hash whose buffer doesn't
+---come back still resolves to its file.
+---Example: { ["a1b2c3d4e5f6g7h8"] = "/path/to/file.lua" }
 ---@class PathsData: table<Filehash, string>
 
 local data = require('cavediver.domains.storage.data')
@@ -40,84 +40,87 @@ local history = require('cavediver.domains.history')
 local historyState = require('cavediver.domains.history.states')
 local window = require('cavediver.domains.window')
 local configs = require('cavediver.configs')
+local crypto = require('cavediver.domains.storage.crypto')
 
 local M = {}
 
 
-local function repeat_key(key, length)
-	if #key >= length then
-		return key:sub(1, length)
-	end
+---The clear header at the start of a main file, saying which format it is. The tag covers it.
+local HEADER = "CDV1"
 
-	local times = math.floor(length / #key)
-	local remain = length % #key
-
-	local result = ''
-
-	for i = 1, times do
-		result = result .. key
-	end
-
-	if remain > 0 then
-		result = result .. key:sub(1, remain)
-	end
-
-	return result
+---A key's text form, for naming a session's files.
+---@param bytes string
+---@return string
+local function hex(bytes)
+	return (bytes:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
 
----Create a one-pass xor cipher for text encryption.
----@param text string
----@param key string
----@return string ciphered Base64-encoded XOR result
-local function xor_cipher(text, key)
-	local rkey = repeat_key(key, #text)
-
-	local result = ''
-
-	for i = 1, #text do
-		local k_char = rkey:sub(i, i)
-		local m_char = text:sub(i, i)
-
-		local k_byte = k_char:byte()
-		local m_byte = m_char:byte()
-
-		local xor_byte = bit.bxor(m_byte, k_byte)
-
-		local xor_char = string.char(xor_byte)
-
-		result = result .. xor_char
+---Read a whole file.
+---@param path string
+---@return string|nil bytes nil when the file can't be read
+local function read_file(path)
+	local fh = io.open(path, "rb")
+	if not fh then
+		return nil
 	end
-
-	-- Base64 encode the result to make it JSON-safe
-	return vim.base64.encode(result)
+	local bytes = fh:read("*a")
+	fh:close()
+	return bytes
 end
 
----Create a one-pass xor decipher for text decryption.
----@param encoded_text string Base64-encoded XOR result
----@param key string
----@return string deciphered Original text
-local function xor_decipher(encoded_text, key)
-	-- Base64 decode first
-	local text = vim.base64.decode(encoded_text)
-	local rkey = repeat_key(key, #text)
-
-	local result = ''
-
-	for i = 1, #text do
-		local k_char = rkey:sub(i, i)
-		local m_char = text:sub(i, i)
-
-		local k_byte = k_char:byte()
-		local m_byte = m_char:byte()
-
-		local xor_byte = bit.bxor(m_byte, k_byte)
-
-		local xor_char = string.char(xor_byte)
-
-		result = result .. xor_char
+---Write a file atomically: a temporary file in the same directory, synced, then renamed over the
+---old one, readable by the user only. A crash leaves the old file or the new one, never half of one.
+---@param path string
+---@param bytes string
+---@return nil
+local function write_atomic(path, bytes)
+	local temporary = path .. ".tmp" .. string.format("%.0f", vim.uv.hrtime())
+	local fd, open_err = vim.uv.fs_open(temporary, "w", 384) -- 0600
+	if not fd then
+		error("Failed to write session data to file: " .. path .. " (" .. tostring(open_err) .. ")")
 	end
+	local written, write_err = vim.uv.fs_write(fd, bytes, 0)
+	local synced, sync_err = vim.uv.fs_fsync(fd)
+	vim.uv.fs_close(fd)
+	if written ~= #bytes or not synced then
+		vim.uv.fs_unlink(temporary)
+		error("Failed to write session data to file: " .. path .. " (" .. tostring(write_err or sync_err) .. ")")
+	end
+	vim.uv.fs_chmod(temporary, 384)
+	local renamed, rename_err = vim.uv.fs_rename(temporary, path)
+	if not renamed then
+		vim.uv.fs_unlink(temporary)
+		error("Failed to write session data to file: " .. path .. " (" .. tostring(rename_err) .. ")")
+	end
+end
 
-	return result
+---A No Name text's file name. It changes with the text, so an unchanged text keeps its file, and
+---through the key it gives nothing of the text away.
+---@param key string
+---@param filehash Filehash
+---@param plaintext string
+---@return string
+local function scratch_name(key, filehash, plaintext)
+	return vim.fn.sha256(hex(key) .. "\n" .. filehash .. "\n" .. plaintext)
+end
+
+---Reads a No Name text from its file when it's called. A text whose file fails its check (edited or
+---corrupted) is lost on its own, and the rest of the session isn't.
+---@param path string
+---@param key string
+---@param filehash Filehash
+---@return fun(): NoNameBufferContent|nil
+local function scratch_reader(path, key, filehash)
+	return function()
+		local bytes = read_file(path)
+		local plaintext = bytes and crypto.open(key, bytes, HEADER .. filehash)
+		local ok, text = pcall(vim.json.decode, plaintext or "")
+		if not plaintext or not ok or type(text) ~= "table" then
+			vim.notify("cavediver: a No Name text's file failed its integrity check (edited or corrupted), so that text is lost.", vim.log.levels.WARN)
+			return nil
+		end
+		return text
+	end
 end
 
 ---Whether the path registry knows a hash. Hashes are saved as they are, and the paths behind
@@ -159,22 +162,21 @@ local function shown_by(winid)
 	return history.routines.get_filehash(name), name
 end
 
----Loads the paths table: hash to path, deciphered, with the outsiders left out (they only help
----match windows, through what each window shows).
+---Loads the paths table: hash to path, with the outsiders left out (they only help match windows,
+---through what each window shows).
 ---
 ---@param paths PathsData
 ---@param outsiders Filehash[] The hashes in paths that untracked buffers had
----@param cwd string The session's directory
 ---@return table<Filehash, Filepath> paths
-local function load_paths(paths, outsiders, cwd)
+local function load_paths(paths, outsiders)
 	local outsider = {}
 	for _, filehash in ipairs(outsiders or {}) do
 		outsider[filehash] = true
 	end
 	local loaded = {}
-	for filehash, ciphered in pairs(paths) do
+	for filehash, filepath in pairs(paths) do
 		if not outsider[filehash] then
-			loaded[filehash] = xor_decipher(ciphered, cwd)
+			loaded[filehash] = filepath
 		end
 	end
 	return loaded
@@ -501,21 +503,14 @@ end
 ---Serialize the paths every saved hash points at.
 ---
 ---Everything the path registry knows, closed buffers and No Name names included,
----plus the outsiders, each path XOR'd with the session's directory.
+---plus the outsiders.
 ---
 ---@return PathsData paths
 ---@param outsiders table<Filehash, string> The untracked buffers the windows show
----@param cwd string The session's directory
-local function serialise_paths(outsiders, cwd)
-	local paths = {}
-	if cwd == nil then
-		error("Current working directory is not set.")
-	end
-	for filehash, filepath in pairs(history.data.hash_filepath_registry.filepaths) do
-		paths[filehash] = xor_cipher(filepath, cwd)
-	end
+local function serialise_paths(outsiders)
+	local paths = vim.deepcopy(history.data.hash_filepath_registry.filepaths)
 	for filehash, name in pairs(outsiders) do
-		paths[filehash] = xor_cipher(name, cwd)
+		paths[filehash] = name
 	end
 	return paths
 end
@@ -538,26 +533,17 @@ end
 
 ---Serialize [No Name] buffer content for session saving.
 ---
----Creates a copy of the [No Name] buffer content mapping that can be safely
----serialized to JSON. Preserves content, filetype, and cursor position. An
----open, non-empty [No Name] buffer is saved the way a closed one is, marked to
----be reopened at load: no session manager saves its text.
+---The closed [No Name] texts, with their filetype and cursor position, and every
+---open, non-empty [No Name] buffer's text the same way, marked to be reopened at
+---load: no session manager saves its text.
 ---
----@return table<Filehash, NoNameBufferContent> copy Serializable copy of [No Name] content
----@param cwd string The session's directory
-local function serialise_noname_content(cwd)
-	local copy = {}
-	if cwd == nil then
-		error("Current working directory is not set.")
-	end
+---@return table<Filehash, NoNameBufferContent> texts
+local function serialise_noname_content()
+	local texts = {}
 	for identifier, content in pairs(history.data.noname_content) do
 		-- print("identifier: " .. identifier)
 		if is_known(identifier) then
-			copy[identifier] = {
-				lines = vim.tbl_map(function(line) return xor_cipher(line, cwd) end, content.lines),
-				filetype = content.filetype,
-				cursor = content.cursor
-			}
+			texts[identifier] = content
 		end
 	end
 	for filehash, bufnr in pairs(history.data.hash_buffer_registry.buffers) do
@@ -566,8 +552,8 @@ local function serialise_noname_content(cwd)
 			local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 			if not (#lines == 0 or (#lines == 1 and lines[1] == "")) then -- empty ones are skipped, as when closed
 				local winid = vim.fn.bufwinid(bufnr)
-				copy[filehash] = {
-					lines = vim.tbl_map(function(line) return xor_cipher(line, cwd) end, lines),
+				texts[filehash] = {
+					lines = lines,
 					filetype = vim.bo[bufnr].filetype,
 					cursor = winid ~= -1 and vim.api.nvim_win_get_cursor(winid) or { 1, 0 },
 					reopen = true
@@ -575,7 +561,45 @@ local function serialise_noname_content(cwd)
 			end
 		end
 	end
-	return copy
+	return texts
+end
+
+---Each [No Name] text goes into a file of its own in the session's scratch directory,
+---encrypted, and the main file keeps each text's file name. Only a text that changed is
+---written; a closed text never read since the load keeps its file.
+---
+---@param texts table<Filehash, NoNameBufferContent> `reopen` marks a text open at the save
+---@param key string The session's key
+---@param scratch_dir string The session's scratch directory
+---@return table<Filehash, {scratch: string, reopen: boolean|nil}> noname_content Each text's file name
+---@return table<string, boolean> kept The file names the main file references
+local function write_noname_texts(texts, key, scratch_dir)
+	local noname_content = {}
+	local kept = {}
+	for filehash, text in pairs(texts) do
+		local reopen = text.reopen
+		local name = text.scratch
+		if text.lines == nil then
+			if text.source ~= scratch_dir .. name or text.key ~= key then
+				text = text.read() -- saved under another session or key: read, and written again here
+			elseif vim.uv.fs_stat(scratch_dir .. name) == nil then
+				text = nil -- its file is gone, swept by another editor's save: nothing is left to keep
+			end
+		end
+		if text and text.lines then
+			local plaintext = vim.json.encode({ lines = text.lines, filetype = text.filetype, cursor = text.cursor })
+			name = scratch_name(key, filehash, plaintext)
+			if vim.uv.fs_stat(scratch_dir .. name) == nil then
+				vim.fn.mkdir(scratch_dir, "p", 448) -- 0700
+				write_atomic(scratch_dir .. name, crypto.seal(key, plaintext, HEADER .. filehash))
+			end
+		end
+		if text then
+			noname_content[filehash] = { scratch = name, reopen = reopen }
+			kept[name] = true
+		end
+	end
+	return noname_content, kept
 end
 
 ---The unnamed buffer that is already the No Name buffer saved as `filehash`, when there's one: a
@@ -601,18 +625,22 @@ end
 ---under a fresh id, and every slot, note and history entry that named them follows. One that is
 ---already back is taken as it is.
 ---
----@param noname_content table<Filehash, NoNameBufferContent> [No Name] content from session
----@param cwd string The session's directory
+---@param noname_content table<Filehash, {scratch: string, reopen: boolean|nil}> Each text's file name
+---@param key string The session's key
+---@param scratch_dir string The session's scratch directory
 ---@return nil
-local function reopen_noname_buffers(noname_content, cwd)
-	for filehash, content in pairs(noname_content) do
+local function reopen_noname_buffers(noname_content, key, scratch_dir)
+	for filehash, entry in pairs(noname_content) do
 		local filepath = history.get_filepath_from_hash(filehash)
-		if content.reopen and filepath then
+		if entry.reopen and filepath then
 			local bufnr = noname_already_back(filehash)
+			local content = bufnr == nil and scratch_reader(scratch_dir .. entry.scratch, key, filehash)()
+			if bufnr == nil and not content then
+				goto continue -- its file failed its check: that text is lost, not the session
+			end
 			if bufnr == nil then
 				bufnr = vim.api.nvim_create_buf(true, false)
-				vim.api.nvim_buf_set_lines(bufnr, 0, -1, false,
-					vim.tbl_map(function(line) return xor_decipher(line, cwd) end, content.lines))
+				vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, content.lines)
 				vim.bo[bufnr].filetype = content.filetype
 				vim.b[bufnr].cavediver_reopened = filehash
 				-- the cursor goes back in the window that shows the buffer, once one does.
@@ -632,6 +660,7 @@ local function reopen_noname_buffers(noname_content, cwd)
 				history.routines.unregister_filepath(filepath)
 			end
 		end
+		::continue::
 	end
 end
 
@@ -641,14 +670,14 @@ end
 ---buffer the session manager brought back isn't closed any more, so it stays
 ---off the stack.
 ---
+---A closed [No Name] text is read from its file only when it's reopened.
+---
 ---@param closed_buffers ClosedBufferData Closed buffer list
----@param noname_content table<Filehash, NoNameBufferContent> [No Name] content from session
----@param cwd string The session's directory
+---@param noname_content table<Filehash, {scratch: string, reopen: boolean|nil}> Each text's file name
+---@param key string The session's key
+---@param scratch_dir string The session's scratch directory
 ---@return nil
-local function load_closed_buffers(closed_buffers, noname_content, cwd)
-	if cwd == nil then
-		error("Current working directory is not set.")
-	end
+local function load_closed_buffers(closed_buffers, noname_content, key, scratch_dir)
 	history.clear_closed_buffers()
 
 	-- TODO: Open closed no name buffers with their content.
@@ -670,10 +699,12 @@ local function load_closed_buffers(closed_buffers, noname_content, cwd)
 				if content == nil then
 					error("This is impossible. Noname content must be created for this closed No Name buffer.")
 				end
+				local source = scratch_dir .. content.scratch
 				history.data.noname_content[filehash] = {
-					lines = vim.tbl_map(function(line) return xor_decipher(line, cwd) end, content.lines),
-					filetype = content.filetype,
-					cursor = content.cursor
+					scratch = content.scratch,
+					source = source,
+					key = key,
+					read = scratch_reader(source, key, filehash),
 				}
 			else
 				error("This is impossible. The closed buffer must not already exist in noname_content.")
@@ -699,11 +730,53 @@ local function get_session_filepath(directory, name)
 
 	-- TODO: implement configurable path for session storage
 	local session_dir = configs.session_dir
-	local project_filepath = session_dir .. session_hash .. '.json'
+	local project_filepath = session_dir .. session_hash
 
 	vim.fn.mkdir(session_dir, "p")
 
 	return project_filepath
+end
+
+---Read and decrypt a session's main file.
+---
+---@param file_path string
+---@param directory string The session's directory, the secret its key is stretched from
+---@return table|nil saved_data
+---@return string|nil key
+---@return string|nil problem "missing", "newer" (a newer format's header), "unencrypted" (the format
+---before encryption) or "integrity" (the check failed: edited or corrupted, or not this directory's)
+local function read_session_file(file_path, directory)
+	local bytes = read_file(file_path)
+	if bytes == nil then
+		return nil, nil, "missing"
+	end
+	if bytes:sub(1, #HEADER) ~= HEADER then
+		if bytes:match("^CDV%d") then
+			return nil, nil, "newer"
+		elseif bytes:match("^%s*{") then
+			return nil, nil, "unencrypted"
+		end
+		return nil, nil, "integrity"
+	end
+	local salt = bytes:sub(#HEADER + 1, #HEADER + crypto.salt_length)
+	local key = crypto.derive_key(directory, salt)
+	local plaintext = crypto.open(key, bytes:sub(#HEADER + crypto.salt_length + 1), HEADER .. salt)
+	local ok, saved_data = pcall(vim.json.decode, plaintext or "")
+	if not plaintext or not ok or type(saved_data) ~= "table" then
+		return nil, nil, "integrity"
+	end
+	return saved_data, key, nil
+end
+
+---Read a session's saved data, as the load reads it.
+---
+---@param directory string The session's directory
+---@param name string|nil The session's name; nil for a nameless save
+---@return table|nil saved_data
+---@return string|nil problem See read_session_file
+function M.read_session(directory, name)
+	local saved_data, _, problem = read_session_file(get_session_filepath(directory, name), directory)
+	return saved_data, problem
 end
 
 ---Load complete session history data.
@@ -724,28 +797,28 @@ function M.load_history(cwd, name)
 	history.data.loads = history.data.loads + 1
 
 	-- Try to load existing session data
-	local saved_data = nil
-	if vim.loop.fs_stat(file_path) then
-		local success, file_content = pcall(vim.fn.readfile, file_path)
-		if success then
-			local json_success, json_data = pcall(vim.fn.json_decode, file_content)
-			if json_success and json_data then
-				if json_data.paths and json_data.buffers and json_data.windows then
-					saved_data = json_data
-				end
-			end
-		end
+	local saved_data, key, problem = read_session_file(file_path, cwd)
+	if problem == "newer" then
+		vim.notify("cavediver: this session's file was made by a newer cavediver. It's left alone, and the session starts fresh.", vim.log.levels.WARN)
+	elseif problem == "unencrypted" then
+		vim.notify("cavediver: this session's file is in the format from before encryption. Run the migration script, scripts/migrate_sessions.lua, to convert it; the session starts fresh.", vim.log.levels.WARN)
+	elseif problem == "integrity" then
+		vim.notify("cavediver: this session's file failed its integrity check (edited or corrupted). The session starts fresh, and the next save replaces the file.", vim.log.levels.WARN)
+	end
+	if saved_data and not (saved_data.paths and saved_data.buffers and saved_data.windows) then
+		saved_data = nil
 	end
 
 	if saved_data then
 		-- Restore from saved session
-		load_buffer_history(saved_data.buffers, load_paths(saved_data.paths, saved_data.outsiders, cwd))
+		local scratch_dir = file_path .. ".d/"
+		load_buffer_history(saved_data.buffers, load_paths(saved_data.paths, saved_data.outsiders))
 		if saved_data.closed then
-			load_closed_buffers(saved_data.closed, saved_data.noname_content or {}, cwd)
+			load_closed_buffers(saved_data.closed, saved_data.noname_content or {}, key, scratch_dir)
 		end
 		local window_histories, matched = load_window_buffer_relationships(saved_data.windows)
 		history.routines.initialise_crux_internals({ window = window_histories, global = saved_data.buffers.global })
-		reopen_noname_buffers(saved_data.noname_content or {}, cwd)
+		reopen_noname_buffers(saved_data.noname_content or {}, key, scratch_dir)
 		-- the caches once every slot's buffer is back, the reopened No Name texts included
 		local set_cache_from_window_triquetra = require('cavediver').set_cache_from_window_triquetra
 		for _, winid in ipairs(matched) do
@@ -782,10 +855,67 @@ function M.after_restore()
 	end
 end
 
+---The key for a session's file, and its salt. The salt stays from one save to the next, so the
+---key does too, and a text that didn't change keeps its file. A file a newer cavediver made isn't
+---overwritten.
+---
+---@param file_path string
+---@param directory string The session's directory
+---@return string key
+---@return string salt
+local function session_key(file_path, directory)
+	local existing = read_file(file_path) or ""
+	if existing:match("^CDV%d") and existing:sub(1, #HEADER) ~= HEADER then
+		error("cavediver: this session's file was made by a newer cavediver, so it isn't overwritten: " .. file_path)
+	end
+	local salt = existing:sub(#HEADER + 1, #HEADER + crypto.salt_length)
+	if existing:sub(1, #HEADER) ~= HEADER or #salt ~= crypto.salt_length then
+		salt = crypto.random_bytes(crypto.salt_length)
+	end
+	return crypto.derive_key(directory, salt), salt
+end
+
+---Write the main file, the commit point, after the texts it names; then sweep the text files
+---nothing references any more, and anything a crash left half-written. A closed No Name buffer
+---whose text couldn't be kept leaves the closed stack in the file too, so no load meets a closed
+---No Name entry without its text.
+---
+---@param file_path string
+---@param key string
+---@param salt string
+---@param storage table The session's data
+---@param kept table<string, boolean> The text files the main file references
+---@return nil
+local function commit_session(file_path, key, salt, storage, kept)
+	storage.closed = vim.tbl_filter(function(filehash)
+		local filepath = storage.paths[filehash]
+		return storage.noname_content[filehash] ~= nil or not (filepath and filepath:match("^NONAME_"))
+	end, storage.closed or {})
+	write_atomic(file_path, HEADER .. salt .. crypto.seal(key, vim.json.encode(storage), HEADER .. salt))
+
+	local scratch_dir = file_path .. ".d/"
+	if vim.fn.isdirectory(scratch_dir) == 1 then
+		for _, entry in ipairs(vim.fn.readdir(scratch_dir)) do
+			if not kept[entry] then
+				vim.uv.fs_unlink(scratch_dir .. entry)
+			end
+		end
+	end
+	local base = vim.fn.fnamemodify(file_path, ":t")
+	for _, entry in ipairs(vim.fn.readdir(configs.session_dir)) do
+		if entry:sub(1, #base + 4) == base .. ".tmp" then
+			vim.uv.fs_unlink(configs.session_dir .. entry)
+		end
+	end
+end
+
 ---Save complete session history data to persistent storage.
 ---
 ---Serializes all buffer history, window relationships, and closed buffers
----to a JSON file named after the session's directory and name.
+---into a file named after the session's directory and name, encrypted with a
+---key stretched from the directory. Every [No Name] text that changed goes into
+---a file of its own first; the main file goes last, so it's the commit point; then
+---the text files nothing references any more are swept.
 ---
 ---@param cwd string The session's directory to save session data for
 ---@param name string|nil The session's name; nil for a nameless save
@@ -799,29 +929,38 @@ function M.save_history(cwd, name)
 	history.cleanup_system()
 
 	local file_path = get_session_filepath(cwd, name)
-
-	-- Create empty JSON file if it doesn't exist
-	---@diagnostic disable-next-line: undefined-field
-	if vim.loop.fs_stat(file_path) == nil then
-		vim.fn.writefile({ "{}" }, file_path)
-	end
+	local key, salt = session_key(file_path, cwd)
 
 	local outsiders = {}
 	local windows = serialise_window_relationships(outsiders)
+	local noname_content, kept = write_noname_texts(serialise_noname_content(), key, file_path .. ".d/")
 	local storage = {
-		paths = serialise_paths(outsiders, cwd),
+		paths = serialise_paths(outsiders),
 		outsiders = vim.tbl_keys(outsiders),
 		buffers = serialise_buffer_history(),
 		windows = windows,
 		closed = serialise_closed_buffers(),
-		noname_content = serialise_noname_content(cwd),
+		noname_content = noname_content,
 	}
 
 	-- Write updated data back to file
-	local write_success = pcall(vim.fn.writefile, { vim.fn.json_encode(storage) }, file_path)
-	if not write_success then
-		error("Failed to write session data to file: " .. file_path)
-	end
+	commit_session(file_path, key, salt, storage, kept)
+end
+
+---Write a session's file from data in the saved shape, as a save writes it. The migration script
+---writes the files it converts with this.
+---
+---@param directory string The session's directory
+---@param name string|nil The session's name; nil for a nameless save
+---@param storage table `paths`, `outsiders`, `buffers`, `windows` and `closed`, as a save writes them
+---@param texts table<Filehash, NoNameBufferContent> The No Name texts, `reopen` marking open ones
+---@return nil
+function M.write_session(directory, name, storage, texts)
+	local file_path = get_session_filepath(directory, name)
+	local key, salt = session_key(file_path, directory)
+	local noname_content, kept = write_noname_texts(texts, key, file_path .. ".d/")
+	storage.noname_content = noname_content
+	commit_session(file_path, key, salt, storage, kept)
 end
 
 return M
