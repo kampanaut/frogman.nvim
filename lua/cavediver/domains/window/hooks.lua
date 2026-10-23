@@ -13,6 +13,22 @@ local windowSM = require('cavediver.domains.window.sm')
 local routines = require('cavediver.domains.window.routines')
 local data = require('cavediver.domains.window.data')
 
+-- a load from idle starts from nothing, as at startup: no window has a triquetra, nor its winbar.
+local storageSM = require('cavediver.domains.storage.sm')
+local storageStates = require('cavediver.domains.storage.states')
+storageSM:on(storageStates.IDLE, storageStates.BARE, "window_teardown", function()
+	for winid, _ in pairs(data.crux) do
+		if vim.api.nvim_win_is_valid(winid) then
+			require('cavediver.domains.ui.routines').remove_winbar_string(winid)
+		end
+	end
+	data.crux = {}
+	data.landing = {}
+	data.arrivals = {}
+	data.current_window = vim.api.nvim_get_current_win()
+	data.last_valid_window = data.current_window
+end, 2, true)
+
 history.sm:on("*", "*", "ensure_curwin_crux", function(context, _, _)
 	local winid = context.winid or vim.api.nvim_get_current_win()
 	local triquetra = data.get_window_triquetra(winid) -- creates triquetra for us, or not will return nil instead. 

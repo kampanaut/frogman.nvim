@@ -12,6 +12,18 @@ local function is_no_name_buffer(bufnr)
 		and vim.api.nvim_buf_is_loaded(bufnr) -- Buffer is loaded
 end
 
+---The name cavediver gives a No Name buffer: NONAME_ and an id kept on the buffer, made of the time and
+---a high-resolution clock, so a later session's buffer with the same number doesn't take it over.
+---
+---@param bufnr Bufnr
+---@return string
+function M.noname_name(bufnr)
+	if vim.b[bufnr].cavediver_noname == nil then
+		vim.b[bufnr].cavediver_noname = tostring(os.time()) .. tostring(vim.uv.hrtime())
+	end
+	return "NONAME_" .. vim.b[bufnr].cavediver_noname
+end
+
 ---Generate a file hash from filename for buffer tracking.
 ---
 ---Creates a 16-character SHA256 hash prefix from the filename for use as
@@ -68,7 +80,7 @@ function M.register_buffer(bufnr)
 		error("I don't want to track non-file buffers.")
 	end
 	if filepath == "" then
-		filepath = tostring("NONAME_" .. tostring(bufnr))
+		filepath = M.noname_name(bufnr)
 	end
 	local filehash = M.get_filehash(filepath)
 
@@ -225,12 +237,8 @@ function M.initialise_crux_internals(crux_internals)
 	local cwin = require('cavediver.domains.window').data.last_valid_window
 	M.construct_crux(cwin)
 	previous_window_constructed = cwin
-	vim.defer_fn(function()
-		local new_cwin = require('cavediver.domains.window').data.last_valid_window
-		if new_cwin ~= cwin then
-			M.construct_crux(new_cwin)
-		end
-	end, 210)
+	-- the window the restore leaves focused gets its view once the restore settles (the storage
+	-- domain's after_restore).
 end
 
 ---Construct the crux from the internal cruxes, from the global and
@@ -292,7 +300,7 @@ function M.track_buffer(filehash, time)
 		data.history_index = data.history_index + 1
 	else
 		data.crux[filehash] = time
-		data.crux_internals.global[filehash] = data.history_index
+		data.crux_internals.global[filehash] = time
 		if data.history_index <= time then
 			data.history_index = time + 1
 		end
@@ -364,7 +372,7 @@ function M.update_buffer_history(cbufnr)
 		end
 	else
 		if is_no_name_buffer(cbufnr) then
-			filehash = M.get_filehash("NONAME_" .. tostring(cbufnr))
+			filehash = M.get_filehash(M.noname_name(cbufnr))
 		elseif
 			vim.fn.isdirectory(filename) == 0 and
 			(
@@ -515,10 +523,25 @@ function M.reopen_filehash(filehash)
 		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, cache.lines)
 		vim.bo[bufnr].filetype = cache.filetype
 		vim.bo[bufnr].buftype = ""
-		vim.api.nvim_win_set_cursor(vim.api.nvim_get_current_win(), cache.cursor)
+		-- the cursor goes back in the window that shows the buffer, once one does.
+		local cursor = cache.cursor
+		vim.api.nvim_create_autocmd("BufWinEnter", {
+			buffer = bufnr,
+			once = true,
+			callback = function()
+				pcall(vim.api.nvim_win_set_cursor, 0, cursor)
+			end,
+		})
 		data.noname_content[filehash] = nil
+		local old_filehash = filehash
 		filehash = M.register_buffer(bufnr)
 		M.track_buffer(filehash)
+		if filehash ~= old_filehash then
+			-- it comes back under a new name, and everything that named the old one follows: slots, notes
+			-- and history.
+			require('cavediver.domains.window.data').rename_hash_in_triquetras(old_filehash, filehash)
+			M.rename_hash_in_history(old_filehash, filehash)
+		end
 		if M.get_filepath_from_buffer(bufnr) ~= filepath then
 			M.unregister_filepath(filepath) -- This NONAME_ buffer is now irrelevant, we don't want to track it anymore.
 		end
@@ -538,6 +561,79 @@ function M.reopen_filehash(filehash)
 	else
 		return nil
 	end
+end
+
+---Carry a hash's history to a new hash, as a reopened No Name buffer takes a new name: its visits,
+---overall and in each window. A visit the new hash has already, being newer, stays.
+---
+---@param old_hash Filehash
+---@param new_hash Filehash
+function M.rename_hash_in_history(old_hash, new_hash)
+	local cruxes = { data.crux, data.crux_internals.global }
+	for _, window_crux in pairs(data.crux_internals.window) do
+		table.insert(cruxes, window_crux)
+	end
+	for _, crux in ipairs(cruxes) do
+		if crux[old_hash] ~= nil then
+			crux[new_hash] = crux[new_hash] or crux[old_hash]
+			crux[old_hash] = nil
+		end
+	end
+end
+
+---A hash's visits, overall and in each window, kept so that a rename which turns out to be a move can
+---hand them to the new name: the delete a rename starts with untracks them.
+---
+---@param hash Filehash
+---@return { crux: integer|nil, global: integer|nil, windows: table<WinId, integer> }
+function M.history_of(hash)
+	local windows = {}
+	for winid, window_crux in pairs(data.crux_internals.window) do
+		windows[winid] = window_crux[hash]
+	end
+	return { crux = data.crux[hash], global = data.crux_internals.global[hash], windows = windows }
+end
+
+---Decide a rename once the command that made it is over: the disk decides. If the old name is still a
+---file, it was a copy (the caller closes the old name). If it isn't, or never was (a No Name buffer), it
+---was a move: the buffer, and every slot, note and history entry that named the old hash, follow to the
+---new name, and nothing stays on the closed stack.
+---
+---@param bufnr Bufnr The renamed buffer
+---@param old_hash Filehash Its hash before the rename
+---@param old_history table|nil Its history, when a delete untracked it before the rename settled
+---@return string|nil moved_from The old name, when it was a move
+function M.settle_rename(bufnr, old_hash, old_history)
+	local old_path = data.hash_filepath_registry.filepaths[old_hash]
+	if
+		old_path == nil or
+		not M.is_trackable(bufnr) or
+		(not old_path:match("^NONAME_") and vim.fn.filereadable(old_path) == 1)
+	then
+		return nil
+	end
+	local new_hash = M.get_filehash(vim.api.nvim_buf_get_name(bufnr))
+	for i = #data.closed_buffers, 1, -1 do
+		if data.closed_buffers[i] == old_hash then
+			table.remove(data.closed_buffers, i)
+		end
+	end
+	data.noname_content[old_hash] = nil -- a No Name buffer's text is in its file now.
+	if data.hash_buffer_registry.hashes[bufnr] == old_hash then
+		M.unregister_buffer(bufnr) -- the buffer is registered under its new name next.
+	end
+	require('cavediver.domains.window.data').rename_hash_in_triquetras(old_hash, new_hash)
+	M.rename_hash_in_history(old_hash, new_hash)
+	if old_history then
+		data.crux[new_hash] = data.crux[new_hash] or old_history.crux
+		data.crux_internals.global[new_hash] = data.crux_internals.global[new_hash] or old_history.global
+		for winid, time in pairs(old_history.windows) do
+			if data.crux_internals.window[winid] then
+				data.crux_internals.window[winid][new_hash] = data.crux_internals.window[winid][new_hash] or time
+			end
+		end
+	end
+	return old_path
 end
 
 ---Track closed filehashes for potential reopening.
@@ -714,9 +810,10 @@ function M.delete_buffer(winid)
 	-- Delete the buffer once the switch has settled, so the window's arrival is slotted first. a file
 	-- is only deleted, so neovim keeps its marks for when it's reopened; a No Name buffer is wiped,
 	-- its text is cached.
+	local loads = data.loads
 	vim.schedule(function()
-		if not vim.api.nvim_buf_is_valid(bufnr) then
-			return
+		if not vim.api.nvim_buf_is_valid(bufnr) or data.loads ~= loads then
+			return -- gone already, or a session loaded since.
 		end
 		if vim.api.nvim_buf_get_name(bufnr) ~= "" then
 			vim.cmd("bdelete " .. bufnr)
@@ -936,6 +1033,22 @@ function M.cleanup_system()
 end
 
 -- Fucking reset everything.
+---Tear the history domain's state down, for a load from idle: it starts from nothing, as at startup.
+---
+---@return nil
+function M.teardown()
+	data.crux = {}
+	data.crux_internals = { window = {}, global = {} }
+	data.ordered = { crux = {}, nonharpooned = {} }
+	data.history_index = 1
+	data.hash_buffer_registry = { buffers = {}, hashes = {} }
+	data.hash_filepath_registry = { filepaths = {}, hashes = {} }
+	data.cycling_origins = {}
+	data.closed_buffers = {}
+	data.noname_content = {}
+	previous_window_constructed = nil
+end
+
 function M.repopulate_history()
 	data.crux = {}
 	data.hash_buffer_registry.buffers = {}

@@ -92,18 +92,17 @@ T['T136 [target] primary_enabled = false survives a round trip'] = function()
 	eq(child.primary(), '[b]off')
 end
 
-T['T137 [today] load_session after save_session in the same process throws idle->loading'] = function()
+T['T137 [char] load_session after save_session in the same process goes through and ends idle'] = function()
 	child.setup()
 	child.steps({ ':e a' })
 	eq(Misc.save(child), { true })
-	local got = Misc.load(child)
-	eq(got[1], false)
-	eq(got[2]:find("Transition 'idle->loading' is not registered", 1, true) ~= nil, true)
+	eq(Misc.load(child), { true })
+	eq(child.lua('return require("cavediver.domains.storage").sm:state()'), 'idle')
 end
 
 -- After the save the window moves on to d; the manager's restore puts it back
 -- on c (noautocmd edit) before the load.
-T['T138 [target] load_session from idle tears down and loads'] = function()
+T['T138 [char] load_session from idle tears down and loads'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b', ':e c' })
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
@@ -169,7 +168,7 @@ T['T142 [target] two windows, one on a No Name buffer: after save and load each 
 	local s = shared()
 	start(s)
 	child.steps({ ':e a', ':e b', ':vsplit', ':e c', ':enew' })
-	eq(child.slots(), '⦉c⦊ [NONAME_' .. child.lua('return vim.api.nvim_get_current_buf()') .. '] ⟦-⟧')
+	eq(child.slots(), '⦉c⦊ [NONAME_' .. child.lua('return vim.b.cavediver_noname') .. '] ⟦-⟧')
 	child.cmd('wincmd p')
 	child.settle()
 	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
@@ -223,7 +222,7 @@ T['T144 [target] a file that fails the integrity check gives the notification an
 	eq({ told, child.slots(), child.closed() }, { true, '⦉-⦊ [b] ⟦-⟧', '' })
 end
 
-T['T145 [target] three load_session calls in one batch load once'] = function()
+T['T145 [char] three load_session calls in one batch load once'] = function()
 	local s = shared()
 	start(s)
 	child.steps({ ':e a', ':e b' })
@@ -314,7 +313,7 @@ end
 -- kept for reopening). Then the editor switches to project two: save, cd, the
 -- manager's restore, load, and later a save there. Both share one session
 -- directory. A fresh child loads project two's file and looks for the text.
-T['T148 [target] after switching sessions, the outgoing No Name text is not in the incoming file'] = function()
+T['T148 [char] after switching sessions, the outgoing No Name text is not in the incoming file'] = function()
 	local s = shared()
 	local two = Misc.make_project()
 	start(s)

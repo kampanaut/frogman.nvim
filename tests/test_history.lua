@@ -93,7 +93,7 @@ T['T19 [char] a visit is recorded in the history of the window that shows the bu
 	eq({ w1_has_c = (window_history(w1) or {}).c, w2_has_c = (window_history(w2) or {}).c }, { w1_has_c = true })
 end
 
-T['T20 [target] track_buffer(h, t) stores t in the global history'] = function()
+T['T20 [char] track_buffer(h, t) stores t in the global history'] = function()
 	child.steps({ ':e a' })
 	local got = child.lua([[
 		local H = require('cavediver.domains.history')

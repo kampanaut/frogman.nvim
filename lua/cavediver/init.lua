@@ -151,11 +151,11 @@ function M.setup(user_config)
 	navigation.init_autocmds(group)
 	window.init_autocmds(group)
 	ui.init_autocmds(group)
+	storage.init_autocmds(group)
 
 	ui.init_winbar_highlights()
 	ui.init_refresh_timer()
 	history.init_cleanup_timer()
-	window.data.init_last_valid_window()
 	setup_debug_commands()
 
 	-- Setup keymaps

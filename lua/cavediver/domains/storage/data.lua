@@ -50,6 +50,16 @@ M.session_template = {
     },
 }
 
+---Whether a load ran in the current batch of events. A native restore calls load_session once per
+---loaded buffer; only the first call loads, and vim.schedule clears this once the batch is over.
+---@type boolean
+M.loading_batch = false
+
+---What the last load in this startup loaded, so cavediver can load it again after Neovim's own
+---:restart session.
+---@type string|nil
+M.last_loaded = nil
+
 ---Error state information
 ---@type table
 M.error_state = {

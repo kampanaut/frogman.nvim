@@ -9,6 +9,16 @@ local states = require('cavediver.domains.navigation.states')
 local data = require('cavediver.domains.navigation.data')
 local navigationSM = require('cavediver.domains.navigation.sm')
 
+-- a load from idle starts from nothing, as at startup: a cycle left open ends, picking nothing, and
+-- the window jumps of the windows that were there go.
+local storageSM = require('cavediver.domains.storage.sm')
+local storageStates = require('cavediver.domains.storage.states')
+storageSM:on(storageStates.IDLE, storageStates.BARE, "navigation_teardown", function()
+	navigationSM.current_state = states.NORMAL
+	data.cycling_window = nil
+	data.window_jump_history = {}
+end, 1, true)
+
 navigationSM:on(states.NORMAL, states.CYCLING, "start_cycling", function(context)
 	-- When transitioning to cycling mode, notify history domain
 	---@cast context transitionContextArg

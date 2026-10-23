@@ -484,7 +484,7 @@ function M.cleanup_triquetras(bufnr_ondelete)
 					cbufnr = vim.api.nvim_win_get_buf(winid)
 					cbufname = vim.api.nvim_buf_get_name(cbufnr)
 					if cbufname == "" then
-						cbufname = tostring("NONAME_" .. tostring(cbufnr))
+						cbufname = history.routines.noname_name(cbufnr)
 					end
 					cbufhash = history.routines.get_filehash(cbufname)
 				else
@@ -502,7 +502,7 @@ function M.cleanup_triquetras(bufnr_ondelete)
 				end
 				if cbufhash == triquetra.current_slot and vim.bo[cbufnr].buftype == "" then
 					-- the window still shows the current slot's file, it's only unregistered for the moment
-					-- (a rename in progress, or a reload without events). there's nothing to heal.
+					-- (a reload without events). there's nothing to heal.
 					goto continue
 				end
 				if history.routines.is_filehash_closed(triquetra.current_slot) then
