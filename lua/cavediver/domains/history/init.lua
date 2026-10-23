@@ -72,9 +72,9 @@ function M.get_buffer_history()
 	return data.crux
 end
 
----Get the stack of closed buffer filenames.
+---Get the stack of closed buffer filehashes.
 ---
----@return string[] closed_buffers Array of closed buffer filenames that can be reopened
+---@return string[] closed_buffers Stack of closed buffer filehashes that can be reopened
 function M.get_closed_buffers()
 	return data.closed_buffers
 end

@@ -7,9 +7,6 @@
 local history = require('cavediver.domains.history')
 local navigation = require("cavediver.domains.navigation")
 
-local states = require('cavediver.domains.window.states')
-
-local windowSM = require('cavediver.domains.window.sm')
 local routines = require('cavediver.domains.window.routines')
 local data = require('cavediver.domains.window.data')
 

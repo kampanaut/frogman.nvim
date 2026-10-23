@@ -257,7 +257,7 @@ function M.should_execute_hook(statemachine, transition_mode, hook)
 	--- otherwise, hook.mode_filter is mode_filter pattern, which can be a single mode or a set of modes.
 	if hook.mode_filter then
 		if #M.get_keys(statemachine.transition_modes) == 0 then
-			error("This state machine doesn't have any transition modes registered. ")
+			error("No transition modes are registered yet.")
 		end
 
 		local expanded_filter = M.parse_mode_filter(hook.mode_filter, statemachine)
@@ -275,7 +275,7 @@ function M.should_execute_hook(statemachine, transition_mode, hook)
 				return false
 			end
 		else
-			error("Transition mode '" .. transition_mode .. "' is not registered in this state machine.")
+			error("Transition mode '" .. transition_mode .. "' is not registered.")
 		end
 	else
 		return true -- default to true if no mode_filter is set

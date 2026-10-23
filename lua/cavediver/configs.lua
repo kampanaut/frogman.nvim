@@ -7,7 +7,7 @@
 ---@field restore_secondary string Restore secondary relationship
 ---@field cycle_left string Cycle left during cycling mode
 ---@field cycle_right string Cycle right during cycling mode
----@field cycle_select string Toggle current buffer as primary
+---@field cycle_select string Select cycling buffer and attach history
 ---@field toggle_primary string Toggle current buffer as primary
 ---@field set_primary string Set current buffer as primary
 ---@field close_buffer string Unregister and delete current buffer

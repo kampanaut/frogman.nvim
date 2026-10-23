@@ -126,10 +126,10 @@ function M.init_autocmds(group)
 			-- Quick save
 			vim.keymap.set("n", "<C-s>", "<cmd>write<cr>", { buffer = args.buf, desc = "Save queue" })
 
-			-- Close without saving
-			vim.keymap.set("n", "<C-c>", close_window, { buffer = args.buf, desc = "Close without saving" })
+			-- Save and close
+			vim.keymap.set("n", "<C-c>", close_window, { buffer = args.buf, desc = "Save and close" })
 
-			vim.keymap.set("n", "q", close_window, { buffer = args.buf, desc = "Close without saving" })
+			vim.keymap.set("n", "q", close_window, { buffer = args.buf, desc = "Save and close" })
 
 			vim.keymap.set("n", "<cr>", promote_to_primary_and_quit, { buffer = args.buf, desc = "Promote file under cursor and quit floating window"})
 		end

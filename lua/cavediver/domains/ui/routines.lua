@@ -995,7 +995,7 @@ function M.refresh_ui(cwin)
 	end
 	-- Pre-compute recent buffers using history domain data
 	cache.recent_buffers = {}
-	for i = 1, math.max(#history.data.ordered.crux, 30) do
+	for i = 1, math.max(#history.data.ordered.crux) do
 		if i <= #history.data.ordered.crux then
 			local recent = history.data.ordered.crux[i]
 			if recent and recent.buf then

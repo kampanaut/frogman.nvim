@@ -107,6 +107,8 @@ local StateMachine = {
 	---@type transitionName[]
 	history = {},
 
+	-- The transition modes: one table shared by every machine, on purpose, so a hook may name a mode
+	-- another machine registered.
 	---@type table<transitionMode, boolean>
 	transition_modes = {}
 }
@@ -356,9 +358,11 @@ function StateMachine:off(from_state, to_state, name)
 			goto continue
 		end
 
-		for i, hook in ipairs(self.bindings[transition_name]) do
-			if hook.name == name then
-				table.remove(self.bindings, i)
+		-- backwards, so a removal doesn't skip the hook after it
+		local bound = self.bindings[transition_name]
+		for i = #bound, 1, -1 do
+			if bound[i].name == name then
+				table.remove(bound, i)
 			end
 		end
 
@@ -379,7 +383,7 @@ function StateMachine:unregister_hook(hook_name)
 		error("hook '" .. hook_name .. "' is not registered")
 	end
 
-	StateMachine:off("*", "*", hook_name)
+	self:off("*", "*", hook_name)
 
 	self.hooks[hook_name] = nil
 end

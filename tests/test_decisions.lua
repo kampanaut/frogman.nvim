@@ -848,7 +848,7 @@ local function read(path)
 	return Misc.read(path)
 end
 
-T['T289 [target] (D25) the window machine is gone: its file, its SHOWING_ constants and its require'] = function()
+T['T289 [char] (D25) the window machine is gone: its file, its SHOWING_ constants and its require'] = function()
 	local requires = false
 	for _, f in ipairs(vim.fn.globpath('lua/cavediver', '**/*.lua', true, true)) do
 		if Misc.has(read(f), "require('cavediver.domains.window.sm')") or Misc.has(read(f), 'require("cavediver.domains.window.sm")') then

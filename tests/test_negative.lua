@@ -323,7 +323,7 @@ T['T220 [target] (M11, D23) the winbar and indicator toggles work at runtime'] =
 	eq(child.lua('return require("cavediver").ui.is_hidden("indicators")'), false)
 end
 
-T['T221 [target] (M11) unregister_hook(name) removes that hook from its machine, and nothing else, without throwing'] = function()
+T['T221 [char] (M11) unregister_hook(name) removes that hook from its machine, and nothing else, without throwing'] = function()
 	local got = child.lua([[
 		local E = require('cavediver.engine')
 		local one = E:create('t221_one')

@@ -231,12 +231,7 @@ function M.bufferline.get_buffer_relationships(bufnr)
 		has_true = true
 	end
 
-	if is_primary then
-		if has_true then
-			error("A buffer cannot have more than one role")
-		end
-		has_true = true
-	end
+	-- the primary is mobile: it may be the buffer of any of the three slots
 
 	if is_secondary then
 		if has_true then

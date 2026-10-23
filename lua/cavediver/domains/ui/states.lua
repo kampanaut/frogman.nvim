@@ -16,7 +16,7 @@
 ---@field OFF "indicators_off" Buffer status indicators are hidden
 
 ---@class LoopStates
----@field UPDATING "updating" Continuous update loop state for UI refresh
+---@field SELF "self" Continuous update loop state for UI refresh
 
 local ui_states = {
     BUFFERLINE = {

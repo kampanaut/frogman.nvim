@@ -116,21 +116,21 @@ local function setup_keymaps(keymaps)
 		vim.keymap.set('n', keymaps.toggle_primary, function()
 			ledger.begin("keymap", keymaps.toggle_primary, vim.api.nvim_get_current_win())
 			M.toggle_primary()
-		end, { desc = "Toggle current buffer as primary" })
+		end, { desc = "Switch the primary on or off" })
 	end
 
 	if keymaps.close_buffer then
 		vim.keymap.set('n', keymaps.close_buffer, function()
 			ledger.begin("keymap", keymaps.close_buffer, vim.api.nvim_get_current_win())
 			M.delete_buffer()
-		end, { desc = "Toggle current buffer as primary" })
+		end, { desc = "Close the current buffer" })
 	end
 
 	if keymaps.open_primary_buffer_history then
 		vim.keymap.set('n', keymaps.open_primary_buffer_history, function()
 			ledger.begin("keymap", keymaps.open_primary_buffer_history, vim.api.nvim_get_current_win())
 			M.open_primary_buffer_history()
-		end, { desc = "Toggle current buffer as primary" })
+		end, { desc = "Open the primary queue" })
 	end
 
 	if keymaps.open_closed_lists then
@@ -510,7 +510,7 @@ M.set_cache_from_window_triquetra = ui.set_cache_from_window_triquetra
 -- Utility functions
 M.get_buffer_history = history.get_buffer_history
 M.get_window_triquetra = window.get_triquetra
-M.get_smart_basename = ui.get_smart_basename
+M.get_smart_basename = ui.routines.get_smart_basename
 M.get_all_triquetras = window.get_window_relationships
 
 M.bufferline = ui.bufferline

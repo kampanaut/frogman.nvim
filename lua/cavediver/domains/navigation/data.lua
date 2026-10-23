@@ -6,7 +6,7 @@ local states = require('cavediver.domains.navigation.states')
 ---@class NavigationState Navigation coordination state
 ---@field current_mode string Current navigation mode for coordination context
 ---@field state_transition_history string[] History of navigation transitions
----@field window_jump_history table<WinId, WinId> Per-tab, current window -> previous window mapping
+---@field window_jump_history table<WinId, WinId> Current window -> previous window mapping, one table across all tabs
 ---@field cycling_window WinId|nil The window a cycle runs in, while it runs
 
 -- Current coordination mode for other domains to reference

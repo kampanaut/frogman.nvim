@@ -15,7 +15,8 @@ local instances = {}
 ---Create a new state machine instance with the given name.
 ---
 ---Creates a fresh state machine instance using metatable inheritance from the StateMachine class.
----Each instance has its own independent state, transitions, hooks, and history.
+---Each instance has its own state, transitions, hooks and history; the transition modes are one table
+---shared by every machine.
 ---Instance names must be unique across the factory.
 ---
 ---@param name string Unique name for the state machine instance
