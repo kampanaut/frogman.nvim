@@ -262,7 +262,7 @@ end
 
 -- The file -----------------------------------------------------------------------
 
-T['T301 [target] (S2) the main file starts with the clear version header CDV1'] = function()
+T['T301 [char] (S2) the main file starts with the clear version header CDV1'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b' })
 	eq(Misc.save(child), { true })
@@ -272,7 +272,7 @@ T['T301 [target] (S2) the main file starts with the clear version header CDV1'] 
 end
 
 -- b is closed; a No Name text is open in the ternary.
-T['T302 [target] (S2) no session file is JSON or holds the directory, a file name or No Name text in clear'] = function()
+T['T302 [char] (S2) no session file is JSON or holds the directory, a file name or No Name text in clear'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.cmd('bdelete b.txt')
@@ -323,7 +323,7 @@ T['T303 [char] (S2) a save and a load run no shell command'] = function()
 	eq({ save = at_save, load = child.lua('return _G.CDV_SHELL') }, { save = 0, load = 0 })
 end
 
-T['T304 [target] (S2) every write is atomic: a new file is renamed over the old one, and nothing else is left'] = function()
+T['T304 [char] (S2) every write is atomic: a new file is renamed over the old one, and nothing else is left'] = function()
 	child.setup()
 	child.steps({ ':e a' })
 	eq(Misc.save(child), { true })
@@ -338,7 +338,7 @@ T['T304 [target] (S2) every write is atomic: a new file is renamed over the old 
 end
 
 -- A No Name text closed with <M-.>, another open, and an empty one shown.
-T['T305 [target] (S2) one scratch file per No Name text in <main>.d/, each in mode 0600'] = function()
+T['T305 [char] (S2) one scratch file per No Name text in <main>.d/, each in mode 0600'] = function()
 	child.setup()
 	S2.umask022(child)
 	child.steps({ ':e a' })
@@ -356,7 +356,7 @@ T['T305 [target] (S2) one scratch file per No Name text in <main>.d/, each in mo
 end
 
 -- The No Name text is open in the ternary, the window on b.
-T['T306 [target] (S2) scratch files are named per version, rewritten only when they change, and swept when unreferenced'] = function()
+T['T306 [char] (S2) scratch files are named per version, rewritten only when they change, and swept when unreferenced'] = function()
 	child.setup()
 	child.steps({ ':e a' })
 	local n = S2.noname(child, { 'v1 text' })
@@ -397,7 +397,7 @@ end
 
 -- The crash: v2's scratch written, the main file not replaced yet, nothing
 -- swept. Put together from the files of the two saves.
-T['T307 [target] (S2) the main file is the commit point: a crash before it lands leaves the old session whole'] = function()
+T['T307 [char] (S2) the main file is the commit point: a crash before it lands leaves the old session whole'] = function()
 	local s = S2.shared()
 	local v = two_versions(s)
 	S2.write(v.main, v.main1)
@@ -412,7 +412,7 @@ end
 
 -- The crash: the main file landed, the sweep didn't run, so v1's scratch is
 -- still there.
-T['T307 [target] (S2) the main file is the commit point: leftovers of a crash after it are swept by the next save'] = function()
+T['T307 [char] (S2) the main file is the commit point: leftovers of a crash after it are swept by the next save'] = function()
 	local s = S2.shared()
 	local v = two_versions(s)
 	S2.write(v.d .. v.v1, v.v1bytes)
@@ -425,7 +425,7 @@ end
 
 -- Two No Name texts made in a split, which is then closed: both stay open and
 -- hidden, and the first window keeps ⦉a⦊ [b].
-T['T308 [target] (S2) a damaged scratch file loses one scratch, not the session'] = function()
+T['T308 [char] (S2) a damaged scratch file loses one scratch, not the session'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b' })
@@ -448,8 +448,41 @@ T['T308 [target] (S2) a damaged scratch file loses one scratch, not the session'
 		{ slots = '⦉a⦊ [b] ⟦-⟧', texts_back = 1 })
 end
 
--- 150 more files in the project, each opened and closed. Holds today
--- already, and stays true under the decided file format.
+-- A No Name text closed with <M-.> is held unread after a load. The session's
+-- files are then removed, so the next save makes a new key and can't read the
+-- text: it's lost, and it leaves the closed stack in the file too, so the load
+-- after that doesn't stop on a closed No Name entry without its text.
+T['T341 [char] (S2) a closed No Name text that can\'t be read at a save leaves the closed stack, and the next load goes through'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	S2.noname(child, { 'closed text' })
+	child.steps({ '<M-.>' })
+	eq(child.closed():match('NONAME_') ~= nil, true)
+	eq(Misc.save(child), { true })
+
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq(child.closed():match('NONAME_') ~= nil, true)
+	for _, f in ipairs(Misc.files_in(s.session_dir)) do
+		vim.fn.delete(s.session_dir .. f)
+	end
+	vim.fn.delete(S2.scratch_dir(s.session_dir) or '', 'rf')
+	eq(Misc.save(child), { true })
+
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	child.messages()
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq({ errors = Misc.errors(child), noname_closed = child.closed():match('NONAME_') ~= nil },
+		{ errors = {}, noname_closed = false })
+end
+
+-- 150 more files in the project, each opened and closed. It held before the
+-- encrypted format and holds with it.
 T['T309 [char] (S2) no count limit: 150 closed files all come back'] = function()
 	local s = S2.shared()
 	for i = 1, 150 do vim.fn.writefile({ 'n' }, s.root .. '/n' .. i .. '.txt') end
@@ -479,7 +512,7 @@ end
 -- The file saved as `work` in one project is copied to the name the same
 -- session takes in a second project (its sha256(directory .. "\n" .. name) prefix
 -- changed, the rest of the name kept).
-T['T310 [target] (S2) a file only decrypts in its own directory'] = function()
+T['T310 [char] (S2) a file only decrypts in its own directory'] = function()
 	local s = S2.shared()
 	local two = Misc.make_project()
 	S2.start(child, s)
@@ -499,7 +532,7 @@ T['T310 [target] (S2) a file only decrypts in its own directory'] = function()
 		{ told = true, slots = '⦉-⦊ [b] ⟦-⟧', closed = '' })
 end
 
-T['T311 [target] (S2) a cut-off file gives the integrity notification and a fresh start'] = function()
+T['T311 [char] (S2) a cut-off file gives the integrity notification and a fresh start'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b' })
@@ -518,8 +551,9 @@ T['T311 [target] (S2) a cut-off file gives the integrity notification and a fres
 		{ told = true, slots = '⦉-⦊ [b] ⟦-⟧', closed = '' })
 end
 
--- The main file's bytes replaced by a file in today's format: plain JSON, no header.
-T['T312 [target] (S2) a file with no header points to the migration script'] = function()
+-- The main file's bytes replaced by a file in the format from before encryption:
+-- plain JSON, no header.
+T['T312 [char] (S2) a file with no header points to the migration script'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b' })
@@ -672,8 +706,8 @@ end
 
 -- Errors and drift ----------------------------------------------------------------
 
--- Two editors on one project and one session directory save in turn. Holds
--- today already, and stays true under the decided file format.
+-- Two editors on one project and one session directory save in turn. It held
+-- before the encrypted format and holds with it.
 T['T317 [char] (S2) with two editors on one project, the last writer wins'] = function()
 	local s = S2.shared()
 	S2.start(child, s)

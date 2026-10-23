@@ -152,7 +152,7 @@ T['T211 [char] (P20) restoring is only ever explicit: an empty ternary stays emp
 	eq(child.slots(), '⦉b⦊ [c] ⟦d⟧')
 end
 
-T['T212 [target] (P22, S2) the session file is written with mode 0600'] = function()
+T['T212 [char] (P22, S2) the session file is written with mode 0600'] = function()
 	child.steps({ ':e a', ':e b' })
 	-- The usual umask, so a file written with default permissions shows.
 	child.lua([[
@@ -801,7 +801,7 @@ T['T244 [char] (S2) a load into fewer windows matches by what they show and drop
 	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
 end
 
-T['T245 [target] (S2) a session file with a newer header says it was made by a newer cavediver and is left alone'] = function()
+T['T245 [char] (S2) a session file with a newer header says it was made by a newer cavediver and is left alone'] = function()
 	local s = shared()
 	start(s)
 	child.steps({ ':e a', ':e b' })
@@ -825,7 +825,7 @@ T['T245 [target] (S2) a session file with a newer header says it was made by a n
 	eq(bytes, 'CDV9\nfrom a later version\n')
 end
 
--- Holds today already, and stays true under the decided file format.
+-- It held before the encrypted format and holds with it.
 T['T246 [char] (S2) a No Name buffer closed with <M-.> stays on the closed stack across a save and a load'] = function()
 	local s = shared()
 	start(s)

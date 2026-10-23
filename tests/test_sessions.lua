@@ -30,8 +30,8 @@ local function start(s, root)
 	Misc.start(child, { root = root or s.root, session_dir = s.session_dir })
 end
 
--- The window entry's slots are hashes, and the paths behind them are in the
--- paths table, not in clear.
+-- Read the way the load reads it, decrypted: the window entry's slots are
+-- hashes, and the paths behind them are in the paths table.
 T['T134 [char] save_session writes paths, outsiders, buffers, windows, closed, noname_content; windows[i] = [c, s, p[], t, dtm, dsm, shows, on, history]'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
@@ -39,8 +39,7 @@ T['T134 [char] save_session writes paths, outsiders, buffers, windows, closed, n
 	eq(Misc.save(child), { true })
 	local got = child.lua([[
 		local H = require('cavediver.domains.history')
-		local f = vim.fn.glob(require('cavediver.configs').session_dir .. '*.json', true, true)
-		local data = vim.json.decode(table.concat(vim.fn.readfile(f[1]), '\n'))
+		local data = require('cavediver.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), vim.fn.getcwd())
 		local keys = vim.tbl_keys(data)
 		table.sort(keys)
 		local w = data.windows[1]
@@ -59,7 +58,7 @@ T['T134 [char] save_session writes paths, outsiders, buffers, windows, closed, n
 			shows = w[7] == hash('d.txt'),
 			on = w[8],
 			history = type(w[9]),
-			path = type(data.paths[hash('d.txt')]) == 'string' and data.paths[hash('d.txt')] ~= path('d.txt'),
+			path = data.paths[hash('d.txt')] == path('d.txt'),
 		}
 	]])
 	eq(got, {
@@ -203,7 +202,7 @@ end
 
 -- One byte in the middle of the saved file (the one regular file in the
 -- session directory) is flipped.
-T['T144 [target] a file that fails the integrity check gives the notification and a fresh start'] = function()
+T['T144 [char] a file that fails the integrity check gives the notification and a fresh start'] = function()
 	local s = shared()
 	start(s)
 	child.steps({ ':e a', ':e b' })

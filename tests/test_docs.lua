@@ -220,7 +220,7 @@ T['D25 [target] the loop state annotation is SELF "self"'] = function()
 	}, { true, false })
 end
 
-T['D29 [target] init.lua\'s header says encrypted session persistence, and the XOR docstrings are gone'] = function()
+T['D29 [char] init.lua\'s header says encrypted session persistence, and the XOR docstrings are gone'] = function()
 	local init = read('lua/cavediver/init.lua')
 	local storage = read('lua/cavediver/domains/storage/routines.lua')
 	eq({

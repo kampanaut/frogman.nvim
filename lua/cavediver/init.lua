@@ -1,7 +1,7 @@
 ---Cavediver - Sophisticated buffer and window management plugin
 ---
 ---A state machine-driven buffer management system with triquetra window relationships,
----hash-based buffer tracking, and XOR-obfuscated session persistence.
+---hash-based buffer tracking, and encrypted session persistence.
 ---
 ---@class Cavediver
 local M = {}
