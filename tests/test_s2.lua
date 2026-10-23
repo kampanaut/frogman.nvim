@@ -422,6 +422,7 @@ T['T309 [char] (S2) no count limit: 150 closed files all come back'] = function(
 	child.lua([[
 		for i = 1, 150 do
 			vim.cmd('edit n' .. i .. '.txt')
+			vim.wait(10) -- the visit settles before the close, as when it's typed
 			vim.cmd('bdelete n' .. i .. '.txt')
 		end
 	]])

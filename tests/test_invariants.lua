@@ -68,8 +68,8 @@ T['T131 [char] I12: no buffer with unsaved changes is wiped by cavediver'] = fun
 	walk('I12', join(ACTS, rep(2, { 'new file' }), { '<M-.>', '<M-S-w>' }), 4)
 end
 
--- I13. Routes: healing after a file goes missing switches or closes windows,
--- so several windows and files deleted (and written back) on disk.
+-- I13. Routes: files going missing while windows show them, so several
+-- windows and files deleted (and written back) on disk.
 T['T132 [char] I13: a slot action switches only the target window\'s buffer'] = function()
 	walk('I13', join(MWY, rep(2, { 'rm/mk' }), { '<M-;><M-x>' }), 5)
 end

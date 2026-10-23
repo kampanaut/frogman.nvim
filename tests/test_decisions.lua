@@ -45,7 +45,7 @@ end
 
 -- A BufEnter autocmd of the user's, made after setup(), runs inside the event:
 -- under the settle rule cavediver hasn't slotted the arrival yet.
-T['T250 [target] (P2, A1) the slotting happens after the event, not inside it'] = function()
+T['T250 [char] (P2, A1) the slotting happens after the event, not inside it'] = function()
 	child.steps({ ':e a' })
 	child.lua([[
 		_G.CDV_SEEN = {}
@@ -410,7 +410,7 @@ end
 -- Visiting (the desk's visiting rule, A2) ------------------------------------
 
 -- Help shown in a's own window: a visit.
-T['T268 [target] (A2) the winbar shows the visit, like "a.txt ← [help]"'] = function()
+T['T268 [char] (A2) the winbar shows the visit, like "a.txt ← [help]"'] = function()
 	child.steps({ ':e a' })
 	local aw = child.win()
 	child.cmd('help')
@@ -428,7 +428,7 @@ T['T268 [target] (A2) the winbar shows the visit, like "a.txt ← [help]"'] = fu
 	eq(text:match('%[%d+%] a%.txt ← %[help%]') ~= nil, true)
 end
 
-T['T269 [target] (A2, A6, A7) while visiting, <M-f> and <M-S-f> take the window back to its current slot first'] = function()
+T['T269 [char] (A2, A6, A7) while visiting, <M-f> and <M-S-f> take the window back to its current slot first'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 	for _, key in ipairs({ '<M-f>', '<M-S-f>' }) do
@@ -440,7 +440,7 @@ T['T269 [target] (A2, A6, A7) while visiting, <M-f> and <M-S-f> take the window 
 	end
 end
 
-T['T270 [target] (A2) while visiting, the current slot may hold a closed buffer'] = function()
+T['T270 [char] (A2) while visiting, the current slot may hold a closed buffer'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
 	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')
 	child.cmd('terminal')

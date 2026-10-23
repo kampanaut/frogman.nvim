@@ -24,6 +24,11 @@ M.crux = {}
 ---@type table<WinId, { deleted: Bufnr, pick: Bufnr|nil }>
 M.landing = {}
 
+---Each window's last arrival: the buffer, and its triquetra just before and just after, so the arrival
+---can be undone when that buffer turns into something we don't track.
+---@type table<WinId, { hash: Filehash, before: WindowTriquetra, after: WindowTriquetra|nil }>
+M.arrivals = {}
+
 local history = require('cavediver.domains.history')
 
 ---Create a new empty window buffer relationship.
@@ -56,6 +61,7 @@ function M.unregister_triquetra(winid)
 	end
 
 	M.crux[winid] = nil
+	M.arrivals[winid] = nil
 	history.routines.unregister_window(winid)
 	require("cavediver.domains.ui.data").clear_window_display_cache(winid)
 	M.last_valid_window = navigation.get_the_previous_window_traverse_chain(winid)
@@ -83,33 +89,10 @@ function M.get_window_triquetra(winid)
 		else
 			return nil
 		end
-	else
-		local wfilehash = history.get_hash_from_buffer(wbufnr)
-
-		-- debug print
-		-- if wfilehash ~= M.crux[winid].current_slot then
-		-- 	counter = counter + 1
-		-- 	print("Warning: Mismatch in current slot for window " .. (winid or "nil") .. ". Expected: " .. (M.crux[winid].current_slot or "nil") .. ", got: " .. (wfilehash or "nil") .. "counter: " .. counter .. "\n" .. debug.traceback())
-		-- end
-		--
-		-- this has no overlap with cleanup_triquetras(). That function handles healing triquetras with fallbacks. This one handles 
-		-- reliability of the stored triquetras, and synchronisation of our current model of the window list.
-		if
-			wfilehash ~= M.crux[winid].current_slot and
-			(
-				vim.bo[wbufnr].buftype ~= "" and
-				vim.bo[wbufnr].buftype ~= "acwrite" and
-				not history.routines.is_nowrite_file(wbufnr)
-			)
-		then
-			M.unregister_triquetra(winid)
-			return nil
-		end
-		-- this function gets tricked by other plugins thinking that the window is a regular window until it evolves to 
-		-- showing non regular buffer. 
-		--
-		-- so this is why i put this here, to ensure that the function returns up-to-date data.
     end
+	-- a window keeps its triquetra while it shows something we don't track (it's visiting), and its current
+	-- slot stays the file it was last on. a window born untracked (a :help or :copen split) never gets one:
+	-- it's only taken in once the editor settles, when it already shows what it was born with.
     return M.crux[winid]
 end
 

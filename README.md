@@ -329,7 +329,7 @@ local defaults = {
 
 ### Window Triquetras
 
-The cavediver plugin tracks windows showing regular file buffers. When a window switches to a non-regular buffer then it will clean the triquetra associated to that window. Each window has their own tiquetra. 
+The cavediver plugin tracks windows showing regular file buffers. When a window switches to a non-regular buffer then it will keep the triquetra associated to that window, and the current slot stays on the file you were on, so `<m-f>` brings you back to it. The winbar shows it like `main.lua ← [help]`. Each window has their own triquetra. 
 
 A window triquetra is a data structure that stores the window's triquetra slots: current buffer, ternary buffer, secondary buffer, and primary buffer. Each type of slot has their own means of updating themselves.
 

@@ -103,10 +103,28 @@ function M.init_autocmds(group)
 			-- print("BufEnter "..args.buf .. " - "..vim.api.nvim_buf_get_name(args.buf) .. " - buftype: [" .. vim.bo[args.buf].buftype .. "]")
 			-- neovim's pick for a window whose buffer got deleted isn't a visit, the window lands
 			-- by itself once the delete is over.
-			if require("cavediver.domains.window.routines").is_landing_pick(vim.api.nvim_get_current_win(), args.buf) then
+			local winid = vim.api.nvim_get_current_win()
+			if require("cavediver.domains.window.routines").is_landing_pick(winid, args.buf) then
 				return
 			end
-			historySM:to(historySM:state(), { buf = args.buf }, states.mode.UPDATE)
+			-- the settle rule: the arrival is slotted once the event is over, against the window it
+			-- happened in (not the focused one), and only if that window still shows the buffer then.
+			local cycling_step = historySM:state() == states.DETACHED
+			vim.schedule(function()
+				if
+					not vim.api.nvim_win_is_valid(winid) or
+					not vim.api.nvim_buf_is_valid(args.buf) or
+					vim.api.nvim_win_get_buf(winid) ~= args.buf
+				then
+					return -- the window moved on, so its own BufEnter has the arrival.
+				end
+				if cycling_step and historySM:state() ~= states.DETACHED then
+					return -- a cycle's step, and the cycle ended since: the pick or the cancel settled the window.
+				end
+				vim.api.nvim_win_call(winid, function()
+					historySM:to(historySM:state(), { buf = args.buf }, states.mode.UPDATE)
+				end)
+			end)
 		end,
 	})
 

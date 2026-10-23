@@ -90,7 +90,7 @@ T['D6 [target] README says a pop-up save keeps the good lines and reports the ba
 	eq(has(read(README), 'nothing is saved'), false)
 end
 
-T['D26 [target] README\'s triquetra sentence follows the visiting rule, and "tiquetra" is fixed'] = function()
+T['D26 [char] README\'s triquetra sentence follows the visiting rule, and "tiquetra" is fixed'] = function()
 	local r = flat(read(README))
 	local new = 'When a window switches to a non-regular buffer then it will keep the triquetra associated to that '
 		.. 'window, and the current slot stays on the file you were on, so `<m-f>` brings you back to it. '
