@@ -111,7 +111,7 @@ T['T100 [char] <C-c> saves, then closes the window'] = function()
 	eq(child.win(), w)
 end
 
-T['T101 [today] saving with the first row unchanged re-enables a disabled primary'] = function()
+T['T101 [char] saving with the first row unchanged leaves a disabled primary off'] = function()
 	local w = queue_ba()
 	child.steps({ '<M-;><M-x>' })
 	eq(child.primary(), '[b,a]off')
@@ -119,10 +119,10 @@ T['T101 [today] saving with the first row unchanged re-enables a disabled primar
 	child.popup_set({ 'b.txt' })
 	child.cmd('write')
 	child.settle()
-	eq(child.primary(w), '[b]on')
+	eq(child.primary(w), '[b]off')
 end
 
-T['T158 [target] a save switches the primary on only when the first row changed'] = function()
+T['T158 [char] a save switches the primary on only when the first row changed'] = function()
 	-- Each bullet starts from a fresh child.
 	local function bullet(switch_off, lines)
 		child.setup()
@@ -142,7 +142,43 @@ T['T158 [target] a save switches the primary on only when the first row changed'
 	eq(got, { reorder_off = '[a,b]on', drop_a_off = '[b]off', drop_a_on = '[b]on' })
 end
 
-T['T160 [target] with no picker, <M-e> gives a message and changes no line'] = function()
+-- The picker stubbed: it picks what _G.CDV_PICKED names, full paths.
+local function stub_picker()
+	child.lua([[require('cavediver').setup({ primary_picker = function(add) add(_G.CDV_PICKED) end })]])
+end
+local function pick(files, row)
+	child.lua('_G.CDV_PICKED = vim.tbl_map(function(f) return _G.CDV_TEST.root .. "/" .. f end, ...)', { files })
+	child.lua('vim.api.nvim_win_set_cursor(0, { ..., 0 })', { row })
+	child.steps({ '<M-e>' })
+end
+
+T['T159 [char] <M-e> adds the picked files to the pop-up, and only :w saves them'] = function()
+	stub_picker()
+	local w = queue_ba()
+	open()
+	child.popup_set({ 'b.txt', 'a.txt', '' })
+	pick({ 'c.txt' }, 3)
+	local empty_line = child.popup_lines()
+	child.popup_set({ 'b.txt', 'a.txt' })
+	pick({ 'c.txt' }, 1)
+	local after_line = child.popup_lines()
+	local unsaved = child.primary(w)
+	child.popup_set({ 'b.txt', 'a.txt' })
+	pick({ 'c.txt', 'd.txt' }, 1)
+	local two = child.popup_lines()
+	child.popup_set({ 'b.txt', 'c.txt', 'a.txt' })
+	child.cmd('write')
+	child.settle()
+	eq({ empty_line = empty_line, after_line = after_line, unsaved = unsaved, two = two, saved = child.primary(w) }, {
+		empty_line = { 'b.txt', 'a.txt', 'c.txt' },
+		after_line = { 'b.txt', 'c.txt', 'a.txt' },
+		unsaved = '[b,a]on',
+		two = { 'b.txt', 'c.txt', 'd.txt', 'a.txt' },
+		saved = '[b,c,a]on',
+	})
+end
+
+T['T160 [char] with no picker, <M-e> gives a message and changes no line'] = function()
 	queue_ba()
 	open()
 	eq(child.lua('return pcall(require, "telescope")'), false)
@@ -153,7 +189,7 @@ T['T160 [target] with no picker, <M-e> gives a message and changes no line'] = f
 	eq(child.popup_lines(), { 'b.txt', 'a.txt' })
 end
 
-T['T160 [target] <M-e> is not mapped outside the primary queue window'] = function()
+T['T160 [char] <M-e> is not mapped outside the primary queue window'] = function()
 	queue_ba()
 	open()
 	-- Mapped in the window...
@@ -169,6 +205,75 @@ T['T161 [char] q and <C-c> are described as "Save and close"'] = function()
 	open()
 	eq(child.lua('return vim.fn.maparg("q", "n", false, true).desc'), 'Save and close')
 	eq(child.lua('return vim.fn.maparg("<C-c>", "n", false, true).desc'), 'Save and close')
+end
+
+
+-- The virtual text drawn on each of the pop-up's lines, as one string per line.
+local DECORATION = [==[
+local ns = vim.api.nvim_create_namespace('cavediver_primary_popup')
+local buf = vim.api.nvim_get_current_buf()
+local out = {}
+for i = 1, vim.api.nvim_buf_line_count(buf) do out[i] = '' end
+for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })) do
+	for _, chunk in ipairs(m[4].virt_text or {}) do out[m[2] + 1] = out[m[2] + 1] .. chunk[1] end
+end
+return out
+]==]
+
+T['T452 [char] (A18, A27) the pop-up in the trail\'s language'] = function()
+	queue_ba()
+	child.cmd('bdelete ' .. 'a.txt')
+	child.settle(100)
+	child.lua([[
+		-- b.txt gone from disk after the start (each start writes the project's files again), tagged by hand
+		os.remove(_G.CDV_TEST.root .. '/b.txt')
+		local hash = require('cavediver.domains.history').get_hash_from_filepath(_G.CDV_TEST.root .. '/b.txt')
+		require('cavediver.domains.history').data.missing[hash] = 'feature'
+	]])
+	open()
+	local lines, on = child.popup_lines(), child.lua(DECORATION)
+	child.steps({ 'q' })
+	settle_close()
+	child.steps({ '<M-;><M-x>' })
+	open()
+	local off = child.lua(DECORATION)[1]
+	child.steps({ 'q' })
+	settle_close()
+	child.lua('require("cavediver").setup({ glyphs = { set = "ascii" } })')
+	open()
+	local ascii = table.concat(child.lua(DECORATION), '') .. table.concat(child.popup_lines(), '')
+	eq({ lines = lines, on = on[1]:find('primary · on', 1, true) ~= nil, tag = on[1]:find('⎇feature', 1, true) ~= nil,
+		closed = on[2]:find('↓', 1, true) ~= nil, off = off:find('primary · off', 1, true) ~= nil, ascii = ascii:find('[\128-\255]') == nil },
+		{ lines = { 'b.txt', 'a.txt' }, on = true, tag = true, closed = true, off = true, ascii = true })
+end
+
+T['T453 [char] (A18) the pop-up\'s keys are keymaps.views\''] = function()
+	child.lua('require("cavediver").setup({ keymaps = { views = { leave = "Q" } } })')
+	local w = queue_ba()
+	open()
+	child.popup_set({ 'b.txt', 'a.txt', 'c.txt' })
+	child.steps({ 'Q' })
+	settle_close()
+	local closed = child.popup() == nil
+	local saved = child.primary(w)
+	open()
+	child.lua('vim.api.nvim_win_set_cursor(0, { 2, 0 })')
+	child.steps({ 'gf' })
+	child.settle()
+	eq({ closed = closed, saved = saved, primary = child.primary(w), stays = child.popup() ~= nil, lines = child.popup_lines() },
+		{ closed = true, saved = '[b,a,c]on', primary = '[a,b,c]on', stays = true, lines = { 'a.txt', 'b.txt', 'c.txt' } })
+end
+
+
+T['T454 [char] (A18, P9) a save keeps a queue entry whose file is gone from disk'] = function()
+	local w = queue_ba()
+	child.lua('os.remove(_G.CDV_TEST.root .. "/b.txt")') -- after the start, which writes the project's files
+	open()
+	child.messages()
+	child.popup_set({ 'a.txt', 'b.txt' })
+	child.cmd('write')
+	child.settle()
+	eq({ primary = child.primary(w), errors = Extra.at_least(child.messages()) }, { primary = '[a,b]on', errors = {} })
 end
 
 return T

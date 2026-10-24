@@ -1,6 +1,6 @@
 # Test review sheet
 
-511 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+515 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -1857,7 +1857,7 @@ spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary
 spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary write the same notes: from `⦉c⦊ [d] ⟦b⟧`, either one gives `⦉c⦊ [b] ⟦d⟧` with the swap notes `dsm{d-swap>b}` and `dtm{d-swap>c}`, and no plain secondary note for d. T30 and T39 pin the same notes. Plain na…  
 `tests/test_navigation.lua:147`
 
-## tests/test_negative.lua (48 cases: 44 char, 4 target)
+## tests/test_negative.lua (48 cases: 47 char, 1 target)
 
 **T207 [char]** (P5) a nofile scratch entered in a tracked window is not registered  
 `:e a`, `:e b` → `eq(registered(), true)`  
@@ -1968,7 +1968,7 @@ note: :copen enters the new quickfix buffer before its buftype is set (DESK:2453
 spec: (I10, A1, A2) A buffer that turns into something untracked isn't left registered or in a slot. Two routes: a buffer entered as `buftype ""` and then set to `nofile`, as a plugin's scratch is, followed by `:e b`; and `:copen`, which enters its buffer before it's a quickfix buffer …  
 `tests/test_negative.lua:255`
 
-**T218 [target]** (I18) a repeated file in the primary queue window is refused with an error, and saved once  
+**T218 [char]** (I18) a repeated file in the primary queue window is refused with an error, and saved once  
 `:write` → `eq(errors >= 1, true)`  
 → `primary = '[a,b]on'`  
 note: Decided 2026-10-21: a repeated file is refused loudly, like a typo'd path (Q11's partial save).  
@@ -2119,7 +2119,7 @@ note: The help file is loaded, readable and untracked; NONAME_999 was never a No
 spec: (A18, Q11) The pop-up refuses what cavediver doesn't track and keeps the good lines: from `[b,a]on`, the lines `a`, a blank line, the path of a loaded help file, `NONAME_999` and `b` save `[a,b]on`, with one error naming the help file and `NONAME_999`; the blank line is dropped w…  
 `tests/test_negative.lua:571`
 
-**T235 [target]** (A18) a relative path in the primary queue window is resolved: ./b.txt becomes b, shown as b.txt ⚑ the save runs in pcall, since the hole makes the pop-up's redraw throw  
+**T235 [char]** (A18) a relative path in the primary queue window is resolved: ./b.txt becomes b, shown as b.txt ⚑ the save runs in pcall, since the hole makes the pop-up's redraw throw  
 → `eq(wrote, true)`  
 → `eq(Neg.queue_holes(child, w), 0)`  
 → `primary = '[b,a]on'`  
@@ -2128,7 +2128,7 @@ note: Decided 2026-10-21: a relative path is resolved against the current direct
 spec: (A18) A relative path in the primary queue window is resolved against the current directory, as `:e` does: the lines `./b.txt`, `a` save `[b,a]`, with no hole, and the pop-up redraws them as `b.txt`, `a.txt`. Today the line passes validation as typed, then its hash is looked up b…  
 `tests/test_negative.lua:593`
 
-**T236 [target]** (A5) closing another window first does not stop the pop-up's buffer going when the pop-up closes, and it opens again  
+**T236 [char]** (A5) closing another window first does not stop the pop-up's buffer going when the pop-up closes, and it opens again  
 `:e a`, `<M-;><M-c>`, `:vsplit`, `:close` → `eq(child.lua('return vim.bo.filetype'), 'cavediver-primary-buffer-history')`  
 `:close` → `eq(child.popup(), nil)`  
 → `eq(child.lua('return vim.api.nvim_buf_is_valid(...)', { buf }), false)`  
@@ -2187,7 +2187,7 @@ spec: (A26) The recorder never records raw keystrokes: text typed in insert mode
 → `slots = '⦉c⦊ [b] ⟦-⟧'`  
 → `eq(Extra.at_least(child.messages()), {})`  
 note: A bug found while porting: a tracked buffer wiped with noautocmd, here the window's current buffer. Decided 2026-10-21: the UI repairs it on the spot, within one refresh, as cleanup's re-point would (like navigation, Q18): the window shows b, so b is current and c the ternary.  
-spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't make the UI loop error: `:e a`, `:e b`, `:e c`, then `noautocmd bwipeout` of c give no hook failure over the next ticks. Without the repair, "Invalid buffer id" comes on every tick (`ui/routines.lua:1165`); w…  
+spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't make the UI loop error: `:e a`, `:e b`, `:e c`, then `noautocmd bwipeout` of c give no hook failure over the next ticks. Without the repair, "Invalid buffer id" comes on every tick (`ui/routines.lua:1267`); w…  
 `tests/test_negative.lua:723`
 
 **T243 [char]** (I23) the check runs at graduation: a stale secondary note naming the graduated buffer is dropped ⚑ state set by hand  
@@ -2398,7 +2398,7 @@ spec: The `toggle_primary` keymap's description no longer reads "Toggle current 
 spec: (A9, A10) `<M-;><M-x>` and `<M-;><M-c>` run no `redraw!`: they redraw the status lines and the tabline.  
 `tests/test_primary_keys.lua:43`
 
-## tests/test_primary_window.lua (12 cases: 8 char, 3 target, 1 today)
+## tests/test_primary_window.lua (16 cases: 16 char)
 
 **T95 [char]** with an empty queue no window opens  
 `:e a`, `<M-;>F` → `eq(child.floats(), {})`  
@@ -2450,38 +2450,59 @@ spec: `q` and `<C-c>` save, then close the window (Q12).
 spec: `q` and `<C-c>` save, then close the window (Q12).  
 `tests/test_primary_window.lua:103`
 
-**T101 [today]** saving with the first row unchanged re-enables a disabled primary  
+**T101 [char]** saving with the first row unchanged leaves a disabled primary off  
 `<M-;><M-x>` → `primary = '[b,a]off'`  
-`:write` → `primary = '[b]on'`  
-spec: Saving with the first row unchanged re-enables a disabled primary. Paired with T158 (Q10).  
+`:write` → `primary = '[b]off'`  
+spec: Saving with the first row unchanged leaves a disabled primary off: from `[b,a]off`, the line `b` alone saves `[b]off` (Q10). Paired with T158; before step 8 it pinned the re-enable, `[b]on`, as [today].  
 `tests/test_primary_window.lua:114`
 
-**T158 [target]** a save switches the primary on only when the first row changed  
+**T158 [char]** a save switches the primary on only when the first row changed  
 `<M-;><M-x>`, `:write` → `eq(got, { reorder_off = '[a,b]on', drop_a_off = '[b]off', drop_a_on = '[b]on' })`  
 note: Each bullet starts from a fresh child.  
 spec: A save switches the primary on only when the first row changed (Q10). Paired with T101.  
 `tests/test_primary_window.lua:125`
 
-**T160 [target]** with no picker, <M-e> gives a message and changes no line  
+**T159 [char]** <M-e> adds the picked files to the pop-up, and only :w saves them  
+`:write` → `eq({ empty_line = empty_line, after_line = after_line, unsaved = unsaved, two = two, saved = child.primary(w) }, {`  
+spec: `<M-e>` in the primary queue window, with the picker provider stubbed (Q11):  
+`tests/test_primary_window.lua:155`
+
+**T160 [char]** with no picker, <M-e> gives a message and changes no line  
 → `eq(child.lua('return pcall(require, "telescope")'), false)`  
 `<M-e>` → `eq({ ok, err }, { true, nil })`  
 → `eq(#child.messages() > 0, true)`  
 → `eq(child.popup_lines(), { 'b.txt', 'a.txt' })`  
 spec: With no picker available, `<M-e>` gives a message and changes no line. `<M-e>` isn't mapped outside the primary queue window (Q11).  
-`tests/test_primary_window.lua:145`
+`tests/test_primary_window.lua:181`
 
-**T160 [target]** <M-e> is not mapped outside the primary queue window  
+**T160 [char]** <M-e> is not mapped outside the primary queue window  
 → `eq(child.lua('return vim.fn.maparg("<M-e>", "n", false, true).buffer'), 1)`  
 `q` → `eq(child.lua('return vim.fn.maparg("<M-e>", "n")'), '')`  
 note: Mapped in the window... ...and nowhere else.  
 spec: With no picker available, `<M-e>` gives a message and changes no line. `<M-e>` isn't mapped outside the primary queue window (Q11).  
-`tests/test_primary_window.lua:156`
+`tests/test_primary_window.lua:192`
 
 **T161 [char]** q and <C-c> are described as "Save and close"  
 → `eq(child.lua('return vim.fn.maparg("q", "n", false, true).desc'), 'Save and close')`  
 → `eq(child.lua('return vim.fn.maparg("<C-c>", "n", false, true).desc'), 'Save and close')`  
 spec: The window's `q` and `<C-c>` mappings are described as "Save and close" (Q12).  
-`tests/test_primary_window.lua:167`
+`tests/test_primary_window.lua:203`
+
+**T452 [char]** (A18, A27) the pop-up in the trail's language  
+`:bdelete ' .. 'a.txt`, `q`, `<M-;><M-x>`, `q` → `eq({ lines = lines, on = on[1]:find('primary · on', 1, true) ~= nil, tag = on[1]:find('⎇feature', 1, true) ~= nil,`  
+note: b.txt gone from disk after the start (each start writes the project's files again), tagged by hand  
+spec: (A18, A27) The pop-up in the trail's language: from `[b,a]on` with a closed and b.txt gone from disk and tagged, the lines are `b.txt` and `a.txt` alone; the first line's virtual text holds `primary · on`, b's line its tag, and a's line the closed glyph; after `<M-;><M-x>` and op…  
+`tests/test_primary_window.lua:223`
+
+**T453 [char]** (A18) the pop-up's keys are keymaps.views'  
+`Q`, `gf` → `eq({ closed = closed, saved = saved, primary = child.primary(w), stays = child.popup() ~= nil, lines = child.popup_lines() },`  
+spec: (A18) The pop-up's keys are `keymaps.views`': with `keymaps.views.leave = "Q"`, `Q` saves and closes the pop-up, c.txt added there saved as `[b,a,c]on`; `gf` on a.txt's line, from `[b,a,c]on`, makes a the primary, `[a,b,c]on`, and the pop-up stays open, its lines `a.txt`, `b.txt`…  
+`tests/test_primary_window.lua:250`
+
+**T454 [char]** (A18, P9) a save keeps a queue entry whose file is gone from disk  
+`:write` → `eq({ primary = child.primary(w), errors = Extra.at_least(child.messages()) }, { primary = '[a,b]on', errors = {} })`  
+spec: (A18, P9) A save keeps a queue entry whose file is gone from disk: from `[b,a]on` with b.txt deleted, the lines `a.txt`, `b.txt` and `:w` save `[a,b]on` with no error; a new line naming no file is still refused (T99).  
+`tests/test_primary_window.lua:268`
 
 ## tests/test_restores.lua (10 cases: 10 char)
 

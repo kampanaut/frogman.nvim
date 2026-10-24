@@ -263,7 +263,7 @@ T['T217 [char] (I10, A2) a :copen quickfix buffer is not left registered, and it
 end
 
 -- Decided 2026-10-21: a repeated file is refused loudly, like a typo'd path (Q11's partial save).
-T['T218 [target] (I18) a repeated file in the primary queue window is refused with an error, and saved once'] = function()
+T['T218 [char] (I18) a repeated file in the primary queue window is refused with an error, and saved once'] = function()
 	local w = queue_ba()
 	open_popup()
 	child.messages()
@@ -590,7 +590,7 @@ T['T234 [char] (A18, Q11) the pop-up rejects an untracked buffer and an unknown 
 end
 
 -- Decided 2026-10-21: a relative path is resolved against the current directory, as :e does.
-T['T235 [target] (A18) a relative path in the primary queue window is resolved: ./b.txt becomes b, shown as b.txt'] = function()
+T['T235 [char] (A18) a relative path in the primary queue window is resolved: ./b.txt becomes b, shown as b.txt'] = function()
 	local w = queue_ba()
 	open_popup()
 	child.popup_set({ './b.txt', 'a.txt' })
@@ -603,7 +603,7 @@ T['T235 [target] (A18) a relative path in the primary queue window is resolved: 
 	eq(child.popup_lines(), { 'b.txt', 'a.txt' })
 end
 
-T['T236 [target] (A5) closing another window first does not stop the pop-up\'s buffer going when the pop-up closes, and it opens again'] = function()
+T['T236 [char] (A5) closing another window first does not stop the pop-up\'s buffer going when the pop-up closes, and it opens again'] = function()
 	child.steps({ ':e a', '<M-;><M-c>' })
 	child.cmd('vsplit')
 	child.settle()

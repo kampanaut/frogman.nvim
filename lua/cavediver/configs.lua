@@ -24,6 +24,9 @@
 ---@field fold string Fold or unfold a section
 ---@field previous_section string Go to the previous section
 ---@field next_section string Go to the next section
+---@field pick string The primary pop-up's: add files through the picker
+---@field search string The trail's: search every page for a name
+---@field search_word string The trail's: search for the name under the cursor
 
 ---@class CavediverGlyphs
 ---@field set "unicode"|"ascii" The glyph set; any glyph named here replaces the set's own
@@ -276,6 +279,7 @@ local defaults = {
 			fold = "za",
 			previous_section = "H",
 			next_section = "L",
+			pick = "<M-e>", -- the primary pop-up's: add files through the picker
 			search = "s", -- the trail's: search every page for a name
 			search_word = "*", -- the trail's: search for the name under the cursor
 		},
@@ -286,6 +290,8 @@ local defaults = {
 	},
 	-- label_provider: where you are, for tagging files that go missing: nil reads .git/HEAD, a
 	-- function returning a string gives the label, false turns labels off (the tag is then the time).
+	-- primary_picker: the primary pop-up's file picker, a function given a callback it calls with the
+	-- picked files' paths: nil uses telescope's find_files when telescope is installed.
 	-- marks_provider: the marked files, for the bufferline's marks: nil reads harpoon's list when it's
 	-- installed, a function returning their paths in order gives them, false marks nothing.
 	-- the winbar: `own`, whether cavediver writes it (otherwise `require('cavediver').winbar_segment()`
