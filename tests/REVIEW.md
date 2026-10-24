@@ -1,6 +1,6 @@
 # Test review sheet
 
-535 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+538 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -2675,7 +2675,7 @@ note: A hash that no buffer or path has.
 spec: An unknown hash in a map doesn't make a restore throw.  
 `tests/test_restores.lua:122`
 
-## tests/test_s2.lua (95 cases: 95 char)
+## tests/test_s2.lua (98 cases: 98 char)
 
 **T292 [char]** (S2) save_session() and load_session() take no directory: the file is named after getcwd(-1, -1) and a fresh process loads it  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
@@ -2851,6 +2851,37 @@ note: A No Name text closed with <M-.> is held unread after a load. The session'
 spec: (S2 The file, Checks; DESK:1548) A closed No Name text that can't be read at a save leaves the closed stack, and the next load goes through: a No Name text closed with `<M-.>` and saved, a fresh process loads it (it's held unread), the session's files are removed, and a save (a n…  
 `tests/test_s2.lua:458`
 
+**T472 [char]** (S2) an unchanged No Name text keeps its file in every editor  
+`:e a`, `:e b`, `<M-.>` → `eq(Misc.save(child), { true })`  
+→ `eq(#one, 1)`  
+→ `eq(Misc.load(child), { true })`  
+→ `eq(Misc.save(child), { true })`  
+→ `eq(S2.scratch_files(s.session_dir), one)`  
+note: A No Name text closed with <M-.> keeps its hash on the closed stack. Each fresh editor is a new process, encoding JSON in its own key order; the closed lists read the text, as drawing its first line does, and q leaves them unedited.  
+spec: (S2 The file; DESK:1547) An unchanged No Name text keeps its file in every editor: a No Name text closed with `<M-.>` is saved, then five fresh editors each load the session, draw the closed lists, which reads the text, and save with the text unchanged, and the session's one text…  
+`tests/test_s2.lua:491`
+
+**T473 [char]** (S2) a closed No Name text read from another session's file is kept when that file goes  
+`:e a`, `:e b`, `<M-.>` → `eq(S2.save(child, 'A'), { true })`  
+→ `eq(S2.load(child, 'A'), { true })`  
+→ `eq(S2.save(child, 'B'), { true })`  
+→ `eq(S2.save(child, 'B'), { true })`  
+→ `eq(S2.has(child.messages(), 'integrity check'), false)`  
+→ `eq(S2.load(child, 'B'), { true })`  
+`<M-S-w>` → `eq(S2.holding(child, 'carried text'), 1)`  
+note: A No Name text closed with <M-.> and saved under A is held unread in the next editor, which saves B. A's files then go, as another editor's save of A would sweep the text's file.  
+spec: (S2 The file, Contents; DESK:1548) A closed No Name text read from another session's file is kept when that file goes: a text closed with `<M-.>` and saved under A, held unread in a fresh editor that loads A and saves B, then A's files removed; B's next save says nothing of an in…  
+`tests/test_s2.lua:516`
+
+**T474 [char]** (S2) an open No Name text shown in another tab keeps its cursor  
+`:e a`, `:tabnew`, `:tabprevious` → `eq(Misc.save(child), { true })`  
+→ `eq(Misc.load(child), { true })`  
+→ `eq(b ~= nil, true)`  
+→ `eq(child.lua('return vim.api.nvim_win_get_cursor(0)'), { 3, 2 })`  
+note: The No Name text is in a second tab, its cursor on its third line; the save runs from the first tab.  
+spec: (S2 Save-as-closed) An open No Name text shown only in another tab keeps its cursor: a text of three lines in a second tab, its cursor on line 3, column 2, saved from the first tab; a fresh editor's load reopens it, and shown in a window it has its cursor there.  
+`tests/test_s2.lua:546`
+
 **T309 [char]** (S2) no count limit: 150 closed files all come back  
 `:e a` → `eq(closed(), 150)`  
 → `eq(Misc.save(child), { true })`  
@@ -2858,7 +2889,7 @@ spec: (S2 The file, Checks; DESK:1548) A closed No Name text that can't be read 
 → `eq(closed(), 150)`  
 note: 150 more files in the project, each opened and closed. It held before the encrypted format and holds with it.  
 spec: (S2 The file; DESK:1549) No count limit: 150 files closed with `:bdelete` are all on the closed stack after a save and a load in a fresh process. It held before the encrypted format and holds with it.  
-`tests/test_s2.lua:489`
+`tests/test_s2.lua:570`
 
 **T310 [char]** (S2) a file only decrypts in its own directory  
 `:e a`, `:e b` → `eq(S2.save(child, 'work'), { true })`  
@@ -2867,7 +2898,7 @@ spec: (S2 The file; DESK:1549) No count limit: 150 files closed with `:bdelete` 
 → `eq({ told = S2.has(child.messages(), 'integrity check'), slots = child.slots(), closed = child.closed() },`  
 note: The file saved as `work` in one project is copied to the name the same session takes in a second project (its sha256(directory .. "\n" .. name) prefix changed, the rest of the name kept).  
 spec: (S2 Checks; DESK:1541, DESK:1683, DESK:1685) A file only decrypts in its own directory: a file saved as `work` in one project, copied to the name `work` takes in a second project (`sha256(directory .. "\n" .. 'work')` with that project's directory), gives "failed its integrity ch…  
-`tests/test_s2.lua:518`
+`tests/test_s2.lua:599`
 
 **T311 [char]** (S2) a cut-off file gives the integrity notification and a fresh start  
 `:e a`, `:e b` → `eq(Misc.save(child), { true })`  
@@ -2875,7 +2906,7 @@ spec: (S2 Checks; DESK:1541, DESK:1683, DESK:1685) A file only decrypts in its o
 → `eq(Misc.load(child), { true })`  
 → `eq({ told = S2.has(child.messages(), 'integrity check'), slots = child.slots(), closed = child.closed() },`  
 spec: (S2 Checks; DESK:1683) A cut-off file, the saved file cut to half its length, gives the integrity notification and a fresh start, as T144's edited byte does.  
-`tests/test_s2.lua:538`
+`tests/test_s2.lua:619`
 
 **T312 [char]** (S2) a file with no header points to the migration script  
 `:e a`, `:e b` → `eq(Misc.save(child), { true })`  
@@ -2883,7 +2914,7 @@ spec: (S2 Checks; DESK:1683) A cut-off file, the saved file cut to half its leng
 → `eq(S2.has(child.messages(), 'migration script'), true)`  
 note: The main file's bytes replaced by a file in the format from before encryption: plain JSON, no header.  
 spec: (S2 Checks; DESK:1682) A file with no header, plain JSON in the format from before step 5 at the main file's name, gives a message naming the migration script at load. Matched on "migration script". The newer header is T245.  
-`tests/test_s2.lua:559`
+`tests/test_s2.lua:640`
 
 **T313 [char]** (S2) a reference that resolves to nothing is kept, says so when used, and works again when its file is back  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
@@ -2894,7 +2925,7 @@ spec: (S2 Checks; DESK:1682) A file with no header, plain JSON in the format fro
 `<M-f>` → `slots = '⦉c⦊ [b] ⟦d⟧'`  
 note: b.txt is deleted from disk after the save and isn't brought back. after the start: a child's setup writes the project's files again  
 spec: (S2 Checks; DESK:1689) A reference that resolves to nothing at load is kept, says so when it's used, and works again when its file comes back: saved at `⦉c⦊ [d] ⟦b⟧`, with b.txt deleted and not restored, the load keeps `⦉c⦊ [d] ⟦b⟧`; `<M-f>` gives a message, raises nothing and ch…  
-`tests/test_s2.lua:580`
+`tests/test_s2.lua:661`
 
 **T314 [char]** (S2) a restored buffer the file doesn't know waits for BufEnter  
 `:e a`, `:e b` → `eq(Misc.save(child), { true })`  
@@ -2902,7 +2933,7 @@ spec: (S2 Checks; DESK:1689) A reference that resolves to nothing at load is kep
 `:e x` → `eq({ at_load = at_load, entered = S2.registered(child, 'x') }, { at_load = false, entered = true })`  
 note: x is loaded and hidden when the load runs, and the saved file never knew it.  
 spec: (S2 Contents; DESK:1432, DESK:1436) A restored buffer the file doesn't know waits for `BufEnter`: x, loaded and hidden at the load but never saved, isn't registered by the load, and is once `:e x` enters it.  
-`tests/test_s2.lua:606`
+`tests/test_s2.lua:687`
 
 **T337 [char]** (S2) a reference whose buffer the manager doesn't restore is kept, and reopens when used  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
@@ -2912,7 +2943,7 @@ spec: (S2 Contents; DESK:1432, DESK:1436) A restored buffer the file doesn't kno
 `<M-f>` → `eq({ slots = child.slots(), shown = child.shown() }, { slots = '⦉c⦊ [b] ⟦d⟧', shown = 'b' })`  
 note: b.txt stays on disk, but the manager doesn't bring b back. A cleanup pass after the load leaves the reference alone.  
 spec: (S2 Contents; DESK:1943) A reference whose buffer the manager doesn't restore is kept, and reopens when used: saved at `⦉c⦊ [d] ⟦b⟧`, a fresh process that restores a, c and d but not b (b.txt stays on disk), loads and runs a `cleanup_system` pass has `⦉c⦊ [d] ⟦b⟧`, with b unregis…  
-`tests/test_s2.lua:623`
+`tests/test_s2.lua:704`
 
 **T315 [char]** (S2) windows on the same file keep their saved order, and a window that matches nothing starts fresh ⚑ state set by hand  
 `:e a`, `:e b`, `:vsplit`, `:e c`, `:e b` → `slots = '⦉c⦊ [b] ⟦-⟧'`  
@@ -2922,7 +2953,7 @@ spec: (S2 Contents; DESK:1943) A reference whose buffer the manager doesn't rest
 → `eq({ child.slots(wins[1]), child.slots(wins[2]), child.slots(wins[3]) },`  
 note: Saved: the split (listed first) ⦉c⦊ [b], the first window ⦉a⦊ [b]. The manager brings both back, behind a new first-listed window on e.  
 spec: (S2 Contents; DESK:1440) Windows on the same file keep their saved order, and a window that matches nothing starts fresh: saved as `⦉c⦊ [b] ⟦-⟧` (the split, listed first) and `⦉a⦊ [b] ⟦-⟧`, and restored behind a new first-listed window on e, the windows read `⦉-⦊ [e] ⟦-⟧`, `⦉c⦊ […  
-`tests/test_s2.lua:642`
+`tests/test_s2.lua:723`
 
 **T316 [char]** (S2) a No Name buffer reopened at load gets a fresh id, and every reference to the old one is renamed ⚑ state set by hand  
 `:e a`, `:e b` → `eq(type(old), 'string')`  
@@ -2933,7 +2964,7 @@ spec: (S2 Contents; DESK:1440) Windows on the same file keep their saved order, 
 → `eq(got, { fresh = true, in_ternary = true, stale = {} })`  
 note: The No Name text sits in the ternary at save.  
 spec: (S2 Save-as-closed; DESK:1634, DESK:2299) A No Name buffer reopened at load gets a fresh id, and every reference to its old hash is renamed: a No Name text in the ternary (`:e a`, `:enew` with text, `:e b`) comes back as the ternary under a hash that differs from the saved one, a…  
-`tests/test_s2.lua:666`
+`tests/test_s2.lua:747`
 
 **T338 [char]** (S2) the migration script converts an old file found through resession's session list, and a load reads it  
 → `eq({ code = first.code, converted = first.stdout:find('converted 1 session', 1, true) ~= nil },`  
@@ -2942,7 +2973,7 @@ spec: (S2 Save-as-closed; DESK:1634, DESK:2299) A No Name buffer reopened at loa
 → `eq({ slots = child.slots(), closed = child.closed() }, { slots = '⦉c⦊ [d] ⟦b⟧', closed = 'b' })`  
 → `eq({ code = second.code, already = second.stdout:find('1 already converted', 1, true) ~= nil },`  
 spec: (S2 The file; DESK:1543, DESK:1112-1114) The migration script converts an old file it finds through resession's session list, and a load reads it: an old file made by hand in the format from before encryption (paths XOR'd with the cwd and base64-encoded, raw hashes for open buffe…  
-`tests/test_s2.lua:754`
+`tests/test_s2.lua:835`
 
 **T342 [char]** (S2) the migration script reports a session saved fresh before it ran, and --replace converts over it  
 → `eq(Misc.load(child), { true })`  
@@ -2954,14 +2985,14 @@ spec: (S2 The file; DESK:1543, DESK:1112-1114) The migration script converts an 
 → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 note: The new code runs a session before the script: its load starts fresh and its save writes a file in the new format. The script doesn't take that for a conversion: it reports the conflict, and --replace converts over it.  
 spec: (S2 The file; DESK:1554) The migration script reports a session saved fresh before it ran, and `--replace` converts over it: T338's old file and resession session, then a process on the encrypted format loads (a fresh start, `⦉-⦊ [d] ⟦-⟧`) and saves; the script reports one sessio…  
-`tests/test_s2.lua:777`
+`tests/test_s2.lua:858`
 
 **T340 [char]** (S2) a load that finds only a file named the old way points to the migration script  
 → `eq(Misc.load(child), { true })`  
 → `eq({ told = S2.has(child.messages(), 'migration script'), slots = child.slots(), left = vim.fn.filereadable(old) },`  
 note: Only a file named the old way is there: the first 32 hex characters of sha256(cwd .. "\n"), plus .json, in the format from before encryption.  
 spec: (S2 Checks; DESK:1683) A load that finds only a file named the old way points to the migration script: with only `sha256(cwd .. "\n")`'s first 32 hex characters plus `.json` in `session_dir`, the load gives a message naming the migration script, starts fresh (`⦉-⦊ [a] ⟦-⟧`) and l…  
-`tests/test_s2.lua:803`
+`tests/test_s2.lua:884`
 
 **T317 [char]** (S2) with two editors on one project, the last writer wins  
 `:e a`, `:e b` → `eq(Misc.save(child), { true })`  
@@ -2970,12 +3001,12 @@ spec: (S2 Checks; DESK:1683) A load that finds only a file named the old way poi
 → `slots = '⦉c⦊ [d] ⟦-⟧'`  
 note: Two editors on one project and one session directory save in turn. It held before the encrypted format and holds with it.  
 spec: (S2 Errors and drift; DESK:1070) With two editors on one project, the last writer wins: both save in turn without an error, and a fresh process loads the second one's `⦉c⦊ [d] ⟦-⟧`. It held before the encrypted format and holds with it.  
-`tests/test_s2.lua:823`
+`tests/test_s2.lua:904`
 
 **T318 [char]** (S2) a tab session's file says its scope, and its load works on the current tab only  
 → `eq({ session_tab = child.slots(w2), first_tab = child.slots(w1) },`  
 spec: (S2 Tab sessions; DESK:949) A tab session's file says its scope, and its load works on the current tab only: a session saved with `{ tab = … }` from a tab at `⦉c⦊ [d] ⟦-⟧`, loaded by name alone into a second tab of a fresh process, gives that tab `⦉c⦊ [d] ⟦-⟧` and leaves the firs…  
-`tests/test_s2.lua:855`
+`tests/test_s2.lua:936`
 
 **T318 [char]** (S2) a tab session's load from idle works on the current tab only too  
 → `eq(S2.save_tab_session(child, s, 't'), { true })`  
@@ -2984,18 +3015,18 @@ spec: (S2 Tab sessions; DESK:949) A tab session's file says its scope, and its l
 → `eq({ session_tab = child.slots(w2), first_tab = child.slots(w1) },`  
 note: The same, from idle: a whole-editor save in that process first.  
 spec: (S2 Tab sessions; DESK:949) A tab session's file says its scope, and its load works on the current tab only: a session saved with `{ tab = … }` from a tab at `⦉c⦊ [d] ⟦-⟧`, loaded by name alone into a second tab of a fresh process, gives that tab `⦉c⦊ [d] ⟦-⟧` and leaves the firs…  
-`tests/test_s2.lua:863`
+`tests/test_s2.lua:944`
 
 **T319 [char]** (S2) closes go to the pool of the tab they happen in, and <M-S-w> reopens from the current tab's  
 `:tabprevious`, `:bdelete x.txt`, `:tabnext`, `:bdelete c.txt`, `:tabprevious`, `<M-S-w>`, `:tabnext`, `<M-S-w>` → `eq({ first_tab = first_tab, session_tab = child.shown(w2) }, { first_tab = 'x', session_tab = 'c' })`  
 spec: (S2 Tab sessions; DESK:952) Closes go to the pool of the tab they happen in, and `<M-S-w>` reopens from the current tab's: in T318's state, after `:bdelete x.txt` in the first tab and then `:bdelete c.txt` in the session's tab, `<M-S-w>` in the first tab reopens x and in the sess…  
-`tests/test_s2.lua:876`
+`tests/test_s2.lua:957`
 
 **T320 [char]** (S2) a tab session's tab ranks its own visits first, a buffer visited from both tabs included  
 `:tabprevious`, `:e a`, `:e b`, `:tabnext`, `:e a` → `eq(first, { 'a', 'c', 'd' })`  
 note: Only membership is checked: the spec doesn't fix the order inside the overlay.  
 spec: (S2 Tab sessions; DESK:951, DESK:954) The session's tab ranks its own visits first, and a buffer belongs to every tab that visited it: in T318's state, `:e a`, `:e b` in the first tab and `:e a` in the session's tab leave a, c and d as the first three in the session tab's bufferl…  
-`tests/test_s2.lua:894`
+`tests/test_s2.lua:975`
 
 **T321 [char]** (S2) saves are snapshots: a whole-editor save merges the pools by close time in the file only  
 `:tabprevious`, `:bdelete x.txt`, `:tabnext`, `:bdelete c.txt`, `:tabprevious`, `:e e`, `:e t`, `:bdelete e.txt` → `eq(S2.save(child), { true })`  
@@ -3003,13 +3034,13 @@ spec: (S2 Tab sessions; DESK:951, DESK:954) The session's tab ranks its own visi
 `<M-S-w>` → `eq({ saved = saved, live = live, after = child.shown() }, { saved = 'x,c,e', live = { 'e', 'x' }, after = 'c' })`  
 note: x closed in the first tab, c in the session's tab, then e in the first tab, a second apart so their close times differ whatever the clock's grain. The window goes back to t before e is closed: :bdelete of what the only window of a tab shows closes that tab. e and x are open again, and the file follo  
 spec: (S2 Tab sessions; DESK:955) Saves are snapshots: in T318's state, with x closed in the first tab, c in the session's tab and e in the first tab, a second apart, a whole-editor `save_session()` writes the lists into its file merged by close time, oldest first, x, c, e, and leaves …  
-`tests/test_s2.lua:911`
+`tests/test_s2.lua:992`
 
 **T322 [char]** (S2) a tab session's tab closed with nothing wired writes its records, and gives no notice ⚑ state set by hand  
 `:bdelete c.txt`, `:tabclose`, `<M-S-w>` → `eq({ notices = notices, got = got, reopened = child.shown() }, { notices = {}, got = { true }, reopened = 'c' })`  
 note: No TabClosedPre hook calls save_session here: cavediver writes the session's records itself as the tab closes (the author, 2026-10-23). The load afterwards brings d back and not c, as a manager would after c was closed.  
 spec: (S2 Tab sessions; DESK:956, the author's 2026-10-23 answer) A tab session's tab closed with nothing wired to save it writes the session's records itself, and nothing is kept without a tab: in T318's state, `:bdelete c.txt` in the session's tab, then `:tabclose` with no `TabClosed…  
-`tests/test_s2.lua:955`
+`tests/test_s2.lua:1036`
 
 **T323 [char]** (S2) a tab-session save refreshes the unnamed session's records and leaves its references  
 → `eq(S2.save_tab_session(child, s, 't'), { true })`  
@@ -3022,7 +3053,7 @@ spec: (S2 Tab sessions; DESK:956, the author's 2026-10-23 answer) A tab session'
 → `eq({ closed = child.closed(), slots = child.slots() }, { closed = 'x', slots = '⦉x⦊ [t] ⟦-⟧' })`  
 note: The whole editor is saved (the unnamed session) at ⦉x⦊ [t]; then t is loaded into a second tab, x is closed and e visited in the first tab, and t is saved. the whole editor's file, as the load reads it  
 spec: (S2 Tab sessions, Errors and drift; DESK:957, DESK:1068) A tab-session save refreshes the unnamed session's records and leaves its references: with the whole editor saved by `save_session()` at `⦉x⦊ [t] ⟦-⟧`, the tab session loaded into a second tab, x closed and e visited in the…  
-`tests/test_s2.lua:976`
+`tests/test_s2.lua:1057`
 
 **T332 [char]** (S2) a tab session's file holds the No Name texts its own tab owns, and not another tab's  
 `:e d`, `:tabprevious`, `:e t`, `:tabnext` → `eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
@@ -3030,25 +3061,25 @@ spec: (S2 Tab sessions, Errors and drift; DESK:957, DESK:1068) A tab-session sav
 → `eq({ session_text = S2.holding(child, 'session text'), first_text = S2.holding(child, 'first text') },`  
 note: In T318's state, a No Name text made in the session's tab and left there (the window goes back to d), and another made in the first tab and left there (back to t). Only the tab session is saved; a fresh process loads it into a second tab.  
 spec: (S2 Tab sessions; DESK:951, DESK:954, DESK:1640) A pool holds its own No Name texts: in T318's state, a No Name text left in the session's tab's history and another left in the first tab's, a save of the tab session alone, and a load of it into a second tab of a fresh process bri…  
-`tests/test_s2.lua:1009`
+`tests/test_s2.lua:1090`
 
 **T349 [char]** (S2) a close goes back on the pool of every tab that visited the file  
 `:e a`, `:e d`, `:tabprevious`, `:bdelete x.txt`, `:e a`, `:bdelete a.txt`, `:tabnext`, `<M-S-w>`, `<M-S-w>` → `eq({ first = first, second = child.shown(w2) }, { first = 'a', second = 'a' })`  
 note: a is visited in both tabs and closed in the first; x is visited and closed in the first tab only. The answer to Q15 (2026-10-23): "Both".  
 spec: (S2 Tab sessions, Q15) A close goes back on the pool of every tab that visited the file: in T318's state, `:e a` then `:e d` in the session's tab, then `:bdelete x.txt`, `:e a` and `:bdelete a.txt` in the first tab; `<M-S-w>` in the session's tab reopens a, and a second press the…  
-`tests/test_s2.lua:1031`
+`tests/test_s2.lua:1112`
 
 **T350 [char]** (S2) a file reopened from one pool goes back on the pools it came out of when it is closed again  
 `:vsplit`, `:e e`, `:close`, `:bdelete e.txt`, `:tabprevious`, `:bdelete x.txt`, `:e e`, `:bdelete e.txt`, `:tabnext`, `<M-S-w>`, `<M-S-w>` → `eq({ first = first, second = child.shown(w2) }, { first = 'e', second = 'e' })`  
 note: e is closed into the session's pool from a split that's gone by then, so no window of the session's tab has it in its history; reopened and closed in the first tab, it goes back on the pool it came out of.  
 spec: (S2 Tab sessions, Q15) A file reopened from one pool goes back on the pools it came out of when it's closed again: in T318's state, in the session's tab `:vsplit`, `:e e` there, `:close` (the split's history goes with it) and `:bdelete e.txt`, which closes e into the session's po…  
-`tests/test_s2.lua:1050`
+`tests/test_s2.lua:1131`
 
 **T351 [char]** (S2) a tab session's tab closed with its save wired gives no notice ⚑ state set by hand  
 `:bdelete c.txt`, `:tabclose`, `<M-S-w>` → `eq({ notices = notices, got = got, reopened = child.shown() }, { notices = {}, got = { true }, reopened = 'c' })`  
 note: The contract's TabClosedPre save is wired here. The load afterwards brings d back and not c, as a manager would after c was closed.  
 spec: (S2 Tab sessions; DESK:956) A tab session's tab closed with its save wired gives no notice: in T318's state, with a `TabClosedPre` autocmd that saves the tab session (`save_session('t', { tab = … })`), `:bdelete c.txt` in the session's tab, then `:tabclose`, gives no notification…  
-`tests/test_s2.lua:1071`
+`tests/test_s2.lua:1152`
 
 **T352 [char]** (S2) a tab session saved from a tab with a :tcd of its own is found at load in that tab ⚑ state set by hand  
 `:tabnew`, `:tcd sub`, `:e ../c.txt`, `:e ../d.txt` → `slots = '⦉c⦊ [d] ⟦-⟧'`  
@@ -3056,7 +3087,7 @@ spec: (S2 Tab sessions; DESK:956) A tab session's tab closed with its save wired
 → `eq({ got = got, slots = child.slots() }, { got = { true }, slots = '⦉c⦊ [d] ⟦-⟧' })`  
 note: The tab's own directory is sub, in the save and in the load, as the manager restores it.  
 spec: (S2 Contract and API, Tab sessions; DESK:949) A tab session saved from a tab with a `:tcd` of its own is found at load in that tab: saved as `t` from a tab with `:tcd sub` at `⦉c⦊ [d] ⟦-⟧`, and loaded by name into a new tab of a fresh process whose `:tcd` is `sub` too, as the man…  
-`tests/test_s2.lua:1097`
+`tests/test_s2.lua:1178`
 
 **T353 [char]** (S1) after a load from idle, closes and <M-S-w> use one closed stack  
 `:e b`, `:e c` → `eq(Misc.save(child), { true })`  
@@ -3064,7 +3095,7 @@ spec: (S2 Contract and API, Tab sessions; DESK:949) A tab session saved from a t
 `:e a`, `:bdelete c.txt`, `<M-S-w>` → `shown = 'c'`  
 note: One process: a save, then a load from idle, then a close and a reopen.  
 spec: (S1, I22) After a load from idle, closes and `<M-S-w>` use one closed stack: saved at `⦉b⦊ [c] ⟦-⟧`, loaded again in the same process, then `:e a`, `:bdelete c.txt` and `<M-S-w>` reopen c.  
-`tests/test_s2.lua:1123`
+`tests/test_s2.lua:1204`
 
 **T354 [char]** (S2) a tab session with no file, loaded with the hint, starts only its tab fresh ⚑ state set by hand  
 `:e a`, `:e x`, `:e t`, `:bdelete a.txt` → `eq(S2.save(child), { true })`  
@@ -3072,26 +3103,26 @@ spec: (S1, I22) After a load from idle, closes and `<M-S-w>` use one closed stac
 → `eq(state, { got = { true }, session_tab = '⦉-⦊ [d] ⟦-⟧', first_tab = '⦉x⦊ [t] ⟦-⟧', closed = 'a', notices = {} })`  
 note: The session u has no cavediver file; the hint says it's a tab session.  
 spec: (S2 Contract and API; the author's 2026-10-23 answer, "A hint in the call") A tab session with no cavediver file, loaded with the hint, starts only its tab fresh: in T318's first tab at `⦉x⦊ [t] ⟦-⟧`, after a whole-editor save in that process, a session `u` that has no file, load…  
-`tests/test_s2.lua:1138`
+`tests/test_s2.lua:1219`
 
 **T355 [char]** (S2) a file's scope wins over the hint  
 `:e c`, `:e d` → `eq(Misc.save(child), { true })`  
 → `eq({ got = got, slots = child.slots(),`  
 note: The hint is read (T354, T367); a usable file's scope wins over it.  
 spec: (S2 Contract and API) A file's scope wins over the hint: a whole-editor file loaded with `{ tab = … }` loads as a whole-editor session. The hint is read (T354, T367), and the file's scope wins over it.  
-`tests/test_s2.lua:1161`
+`tests/test_s2.lua:1242`
 
 **T356 [char]** (S2) a tab session's records that can't be written as its tab closes keep its list, with a warning  
 `:bdelete c.txt`, `:tabclose` → `eq({ warned = warned, kept = kept }, { warned = true, kept = 1 })`  
 note: The session directory is read-only, so the records can't be written: the failure path of T322's write.  
 spec: (S2 Tab sessions, Checks) When a tab session's records can't be written as its tab closes, its list is kept with no tab and a warning says so: T322's route with the session directory read-only. It's the failure path of T322's write; T322 tells it apart from 2bc6330's interim, und…  
-`tests/test_s2.lua:1177`
+`tests/test_s2.lua:1258`
 
 **T357 [char]** (S2) a session loaded into another tab while open takes its list along ⚑ state set by hand  
 `:e e`, `:e d`, `:bdelete e.txt`, `<M-S-w>` → `eq({ got = got, reopened = child.shown() }, { got = { true }, reopened = 'e' })`  
 note: t is open in a second tab, where e is visited and closed; e isn't in t's saved slots, so only t's list brings it back. A third tab loads t too.  
 spec: (S2 Tab sessions; DESK:954) A session loaded into another tab while it's open takes its list along, what's in memory and the file filling in under it: with `t` loaded in a second tab, e visited and closed there (e isn't in `t`'s saved slots), and `t` loaded into a third tab with …  
-`tests/test_s2.lua:1202`
+`tests/test_s2.lua:1283`
 
 **T358 [char]** (S2) quitting writes every known session's records  
 → `eq(S2.save_tab_session(child, s, 't'), { true })`  
@@ -3101,13 +3132,13 @@ spec: (S2 Tab sessions; DESK:954) A session loaded into another tab while it's o
 → `eq(S2.holding(child, 'note'), 1)`  
 note: The whole editor saved, then a tab session loaded (so resession would leave the whole editor's session unsaved at quit), its tab closed, and work in the first tab; then a quit with nothing saved.  
 spec: (S2 Errors and drift; the author's 2026-10-23 answer, "Yes, all three moments") Quitting writes every known session's records: the whole editor saved at `⦉x⦊ [t] ⟦-⟧`, the tab session loaded into a second tab and its tab closed, then in the first tab a No Name buffer holding `not…  
-`tests/test_s2.lua:1221`
+`tests/test_s2.lua:1302`
 
 **T358 [char]** (S2) a quit in the same batch as a tab close writes that tab session's records ⚑ state set by hand  
 `:e e`, `:e d`, `<M-S-w>` → `eq({ got = got, reopened = child.shown() }, { got = { true }, reopened = 'e' })`  
 note: e is visited in t's tab; then e is closed, the tab closes, the quit's VimLeavePre runs and the process is killed, all in one call, so no write gets its tick, as at a real quit. e isn't in t's saved slots, so only t's list brings it back; the load afterwards brings d back and not e.  
 spec: (S2 Errors and drift; the author's 2026-10-23 answer, "Yes, all three moments") Quitting writes every known session's records: the whole editor saved at `⦉x⦊ [t] ⟦-⟧`, the tab session loaded into a second tab and its tab closed, then in the first tab a No Name buffer holding `not…  
-`tests/test_s2.lua:1244`
+`tests/test_s2.lua:1325`
 
 **T359 [char]** (S2) a crash loses no close  
 `:e a`, `:e b`, `:e c` → `eq(Misc.save(child), { true })`  
@@ -3115,27 +3146,27 @@ spec: (S2 Errors and drift; the author's 2026-10-23 answer, "Yes, all three mome
 → `closed = 'a'`  
 note: a is closed after the save and sits in no slot, so only a write after the close can bring it back; the process is then killed, with no VimLeavePre.  
 spec: (S2 Errors and drift; the author's 2026-10-23 answer, "On every change") A crash loses no close: after a whole-editor save, `:bdelete b.txt`, a second's wait, and the process killed (no `VimLeavePre`), a fresh process's load has b on its closed list.  
-`tests/test_s2.lua:1267`
+`tests/test_s2.lua:1348`
 
 **T360 [char]** (S2) a load cancels a write still pending, so the teardown's closes stay out of the old file  
 `:e a`, `:e b`, `:e c` → `eq(S2.save(child, 'one'), { true })`  
 `:bdelete a.txt` → `eq(closed, 'a')`  
 note: a is closed, and its write lands; then, in one go, the manager's teardown closes b and c with events on, and the load of another session follows.  
 spec: (S2 Errors and drift) A load cancels a write still pending: a close, then at once a load from idle of another session (the manager's teardown closing the outgoing buffers), and the outgoing session's file has the close and none of the teardown's.  
-`tests/test_s2.lua:1284`
+`tests/test_s2.lua:1365`
 
 **T361 [char]** (S2) records never make a file  
 `:e a`, `:e b`, `:bdelete a.txt` → `eq(Misc.files_in(s.session_dir), {})`  
 note: Closes are written on every change; the write never makes a file.  
 spec: (S2 Errors and drift) Records never make a file: closes in a session that was never saved leave `session_dir` without a session file. Records are written on every change (T359), and the write never makes a file.  
-`tests/test_s2.lua:1311`
+`tests/test_s2.lua:1392`
 
 **T362 [char]** (S2) records aren't written into a session the editor has moved away from  
 `:e a`, `:e b`, `:e c` → `eq(S2.save(child), { true })`  
 `:bdelete a.txt` → `eq(S2.read(s.session_dir .. file) == before, true)`  
 note: The global directory moves to another project with no load, as a switch with post_load unwired leaves it.  
 spec: (S2 Errors and drift) Records aren't written into a session the editor has moved away from: after a save in one project, the global directory changed to another with no load, a close there leaves the first project's file as it was. It's the records writing's `still_there` guard.  
-`tests/test_s2.lua:1322`
+`tests/test_s2.lua:1403`
 
 **T363 [char]** (S2) a session's key is kept by its directory and salt  
 `:e a`, `:e b`, `:e c` → `eq(S2.save(child), { true })`  
@@ -3144,14 +3175,14 @@ spec: (S2 Errors and drift) Records aren't written into a session the editor has
 → `eq({ integrity = S2.has(child.messages(), 'integrity'), closed = child.closed() }, { integrity = false, closed = 'a' })`  
 note: The other editor saves after the file was removed, so with a new salt; this editor then closes a, and its write has to use the new salt's key.  
 spec: (S2 The file) A session's key is kept by its directory and salt: another process saves the session again (a new salt after a fresh start), then this process closes a file; the next load in a fresh process goes through, with that close.  
-`tests/test_s2.lua:1337`
+`tests/test_s2.lua:1418`
 
 **T364 [char]** (S2) disable() stops the writes  
 `:e a`, `:e b`, `:e c` → `eq(S2.save(child), { true })`  
 → `eq(S2.read(file) == before, true)`  
 note: A close, then disable() at once: the write it set off never lands.  
 spec: (S2 Errors and drift, A25) `disable()` stops the writes: after `disable()`, a close leaves the session's file as it was: the write the close set off never lands.  
-`tests/test_s2.lua:1360`
+`tests/test_s2.lua:1441`
 
 **T365 [char]** (S2) a whole-editor switch keeps the manager's teardown out of an open tab session's file  
 `:e a`, `:e b` → `eq(S2.save(child, 'main'), { true })`  
@@ -3159,7 +3190,7 @@ spec: (S2 Errors and drift, A25) `disable()` stops the writes: after `disable()`
 `:tabprevious` → `eq(closed, '')`  
 note: The whole editor is saved at ⦉a⦊ [b], and t from a second tab at ⦉c⦊ [d], in one process, so c's buffer comes before d's. Back in the first tab, in one go, as resession switches: a scratch buffer in the window, every listed buffer deleted with events on, in buffer order (c goes on t's list, then del  
 spec: (S2 Errors and drift, Tab sessions) A whole-editor switch keeps the manager's teardown out of an open tab session's file: with `t` open in a second tab, the manager's switch, all in one go (every buffer deleted with events on, the other tabs closed, then a load of another session…  
-`tests/test_s2.lua:1381`
+`tests/test_s2.lua:1462`
 
 **T366 [char]** (S2) a tab saved as another session writes the one it leaves, and carries the closed files its slots hold ⚑ state set by hand  
 `:bdelete c.txt` → `slots = '⦉c⦊ [d] ⟦-⟧'`  
@@ -3167,7 +3198,7 @@ spec: (S2 Errors and drift, Tab sessions) A whole-editor switch keeps the manage
 `<M-S-w>` → `eq(state, { pool = 'u', u = 'c', tabless = 0, slots = '⦉c⦊ [d] ⟦-⟧', got = { true }, reopened = 'c' })`  
 note: In T318's state, c is closed in the session's tab and stays in its ternary; that tab is then saved as u ("save as"), so t has no tab left. The load of t afterwards brings d back and not c, as a manager would after c was closed.  
 spec: (S2 Tab sessions; the author's 2026-10-23 answer, "Carry slot entries") A tab saved as another session writes the session it leaves, lets its list go when no tab is left in it, and carries the closed files its slots hold: in T318's state, `:bdelete c.txt` in the session's tab (`⦉…  
-`tests/test_s2.lua:1418`
+`tests/test_s2.lua:1499`
 
 **T368 [char]** (S2) a tab saved as a session for the first time carries the closed files its slots hold  
 `:e a`, `:e b`, `:e c`, `:bdelete b.txt` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -3175,7 +3206,7 @@ spec: (S2 Tab sessions; the author's 2026-10-23 answer, "Carry slot entries") A 
 `<M-S-w>` → `eq({ lists = lists, reopened = child.shown() }, { lists = 'editor,notes', reopened = 'b' })`  
 note: Case A: the first tab is in no session, so b is closed on the editor's list; the tab is then saved as notes.  
 spec: (S2 Tab sessions; the author's 2026-10-23 answers, "Carry a copy" twice) A tab saved under a session it wasn't in carries the closed files its slots hold onto that session's list, and the list it leaves keeps its copy while a tab is still in it. Case A, a tab in no session saved …  
-`tests/test_s2.lua:1472`
+`tests/test_s2.lua:1553`
 
 **T368 [char]** (S2) a tab whose session another tab took, saved as a new session, carries the closed files its slots hold  
 → `eq(S2.load_tab_session(child, 't'), { true })`  
@@ -3183,25 +3214,25 @@ spec: (S2 Tab sessions; the author's 2026-10-23 answers, "Carry a copy" twice) A
 `<M-S-w>` → `eq({ lists = lists, reopened = child.shown() }, { lists = 't,t_DETACHED (no tab),u', reopened = 'c' })`  
 note: Case B: t is open in the second tab and, loaded again, into a third, which takes it (T369), so the second holds t_DETACHED; c is closed in the second, which is then saved as u. No whole-editor save ran, so the detached list, left with no tab, stays in memory (T382).  
 spec: (S2 Tab sessions; the author's 2026-10-23 answers, "Carry a copy" twice) A tab saved under a session it wasn't in carries the closed files its slots hold onto that session's list, and the list it leaves keeps its copy while a tab is still in it. Case A, a tab in no session saved …  
-`tests/test_s2.lua:1491`
+`tests/test_s2.lua:1572`
 
 **T369 [char]** (S2) a tab session is in one tab at a time, and the tab it leaves keeps a detached list ⚑ state set by hand  
 `:e x`, `:e c`, `:e d`, `:bdelete x.txt`, `:bdelete c.txt` → `slots = '⦉c⦊ [d] ⟦-⟧'`  
 → `eq({ got = got, lists = lists }, { got = { true }, lists = { second = 't_DETACHED:x,c', third = 't:x,c' } })`  
 note: In t's tab, x is closed after it has left the slots, and c from the ternary; then t is loaded into a third tab, with d restored and not c.  
 spec: (S2 Tab sessions; the author's 2026-10-23 answers, "One tab, with carry" and "A DETACHED list") A tab session is in one tab at a time, and the tab it leaves keeps a detached list of its own: in T318's state, `:e x`, `:e c`, `:e d` and then `:bdelete x.txt` and `:bdelete c.txt` in…  
-`tests/test_s2.lua:1508`
+`tests/test_s2.lua:1589`
 
 **T378 [char]** (S2) a save of a tab as a session open in another tab takes it from that tab  
 `:bdelete c.txt` → `eq({ got = got, second = child.lua(LIST_OF, { w2 }), third = child.lua(LIST_OF, { w3 }):match('^[^:]*') },`  
 note: t is open in the second tab, c closed there; a third tab, opened on d, is saved as t.  
 spec: (S2 Tab sessions; the one-tab rule, as resession's `save_tab` does) A save of a tab as a session that's open in another tab takes it from that tab: in T318's state, a third tab saved as `t` (`save_session('t', { tab = … })`) leaves the second tab's list `t_DETACHED`, holding what…  
-`tests/test_s2.lua:1586`
+`tests/test_s2.lua:1667`
 
 **T379 [char]** (S2) a detached tab's closes and <M-S-w> use its own list  
 `:e e`, `:e d`, `:bdelete e.txt`, `<M-S-w>` → `eq({ lists = lists, reopened = child.shown(w2) },`  
 spec: (S2 Tab sessions) A detached tab is a tab like a session's: in T369's state, `:e e`, `:e d` and `:bdelete e.txt` in the second tab put e on `t_DETACHED` and not on t's list, and `<M-S-w>` there reopens e.  
-`tests/test_s2.lua:1602`
+`tests/test_s2.lua:1683`
 
 **T380 [char]** (S2) a whole-editor save writes a detached list apart, and a whole-editor load brings it back to its tab  
 `:e e`, `:e d`, `:bdelete e.txt` → `eq(S2.save(child), { true })`  
@@ -3209,7 +3240,7 @@ spec: (S2 Tab sessions) A detached tab is a tab like a session's: in T369's stat
 `:tabnext 2`, `<M-S-w>` → `eq({ e_in_closed = file.closed:find('e') ~= nil, detached = file.detached.t_DETACHED and file.detached.t_DETACHED.closed,`  
 note: A fresh process restores the three tabs as they were (e not restored) and loads the whole editor.  
 spec: (S2 Tab sessions, S1 Save and Load; the author: "it will be saved on editor's cavediver file", "It is matched by the tab resession file as well") A whole-editor save writes a detached list apart from the closed list, and a whole-editor load brings it back to its tab: in T379's st…  
-`tests/test_s2.lua:1617`
+`tests/test_s2.lua:1698`
 
 **T381 [char]** (S2) a detached list left with no tab goes into the whole editor's file and stays there  
 → `eq(S2.save(child), { true })`  
@@ -3218,66 +3249,66 @@ spec: (S2 Tab sessions, S1 Save and Load; the author: "it will be saved on edito
 → `eq({ in_memory = in_memory, file = file.detached.t_DETACHED, path = path, again = again.detached.t_DETACHED },`  
 note: The whole editor is saved right after T318's load, so it has a file.  
 spec: (S2 Tab sessions; the author: "File only, piling up") A detached list left with no tab goes into the whole editor's file and leaves memory, and stays there: in T379's state with e closed again and a whole-editor save before it, `:tabclose` of the second tab leaves no `t_DETACHED`…  
-`tests/test_s2.lua:1641`
+`tests/test_s2.lua:1722`
 
 **T382 [char]** (S2) with no whole-editor file, a detached list left with no tab stays in memory, with a warning  
 `:tabclose` → `eq({ kept = kept, warned = #S2.notices(child.messages()) > 0 }, { kept = true, warned = true })`  
 spec: (S2 Tab sessions) With no whole-editor file, a detached list left with no tab stays in memory with no tab, and a warning says so: T379's state, where no whole-editor save ran, and `:tabclose` of the second tab.  
-`tests/test_s2.lua:1674`
+`tests/test_s2.lua:1755`
 
 **T383 [char]** (S2) a second detach of a session is numbered ⚑ state set by hand  
 → `eq({ second = child.lua(LIST_OF, { w2 }):match('^[^:]*'), third = child.lua(LIST_OF, { w3 }):match('^[^:]*') },`  
 spec: (S2 Tab sessions) A second detach of a session is numbered: in T369's state, `t` loaded into a fourth tab leaves the third tab's list `t_DETACHED_2`.  
-`tests/test_s2.lua:1690`
+`tests/test_s2.lua:1771`
 
 **T384 [char]** (S2) t loaded back into its detached tab opens the closed lists, on t_DETACHED, and pushes the other tab out  
 → `eq({ open = lists ~= vim.NIL, cursor = lists ~= vim.NIL and lists.cursor_line or nil,`  
 spec: (S2 Tab sessions, Closed-stack picker; the author's case 8: "Only its t_DETACHED tab", "Every list", "Pushed out, as the rules say") t loaded back into the tab that holds `t_DETACHED` opens the closed lists at once: in T369's state, `t` loaded into the second tab opens them once …  
-`tests/test_s2.lua:1761`
+`tests/test_s2.lua:1842`
 
 **T385 [char]** (S2) merging t_DETACHED in case 8's picker ends it  
 → `eq(p ~= vim.NIL, true)`  
 → `eq({ in_memory = child.lua(IN_MEMORY, { 't_DETACHED' }), in_file = child.lua(EDITOR_FILE).detached.t_DETACHED ~= nil },`  
 note: t_DETACHED's entry lines go under t's header.  
 spec: (S2 Tab sessions, Closed-stack picker) Merging in case 8's picker ends the detached list: from T384's picker, with a whole-editor save before the load, `t_DETACHED`'s lines moved under `≡t`, `:w` and `q` leave no `t_DETACHED` in memory or in the whole editor's file.  
-`tests/test_s2.lua:1771`
+`tests/test_s2.lua:1852`
 
 **T386 [char]** (S2) leaving case 8's picker with t_DETACHED as it was sends it into the whole editor's file  
 → `eq(p ~= vim.NIL, true)`  
 → `eq({ in_memory = child.lua(IN_MEMORY, { 't_DETACHED' }), in_file = file and file.closed },`  
 spec: (S2 Tab sessions, Closed-stack picker; the author: "File only, piling up") Leaving case 8's picker with `t_DETACHED` as it was sends it into the whole editor's file: T385's route without the merge, `q` at once, and `t_DETACHED` is out of memory and in the file.  
-`tests/test_s2.lua:1799`
+`tests/test_s2.lua:1880`
 
 **T387 [char]** (S2) t loaded into a tab other than its detached one opens no closed lists ⚑ state set by hand  
 → `eq(child.lua(OPEN_LISTS), vim.NIL)`  
 spec: (S2 Tab sessions; the author: "Only its t_DETACHED tab") t loaded into any other tab opens nothing: in T369's state, `t` loaded into a fourth tab opens no closed lists. It holds before case 8's picker is built too; it's the guard that the picker opens for the detached tab alone.  
-`tests/test_s2.lua:1811`
+`tests/test_s2.lua:1892`
 
 **T388 [char]** (S2) a list in the whole editor's file alone shows in the picker, marked in the file, and is edited there  
 → `eq({ header = header ~= nil, e = e ~= nil }, { header = true, e = true })`  
 → `eq({ marked = marked, in_file = child.lua(EDITOR_FILE).detached.t_DETACHED ~= nil }, { marked = true, in_file = false })`  
 spec: (S2 Closed-stack picker; the author: "File only, piling up", "the picker reaches them") A list in the whole editor's file alone shows in the picker, its header marked "in the file", and is edited there: in T381's state, the picker shows `≡t_DETACHED` with e's line and "in the fil…  
-`tests/test_s2.lua:1850`
+`tests/test_s2.lua:1931`
 
 **T389 [char]** (S2) a line moved out of a list in the file alone lands on the list it's moved under  
 → `eq(e ~= nil, true)`  
 `<M-S-w>` → `eq({ in_file = child.lua(EDITOR_FILE).detached.t_DETACHED ~= nil, reopened = child.shown(w1) }, { in_file = false, reopened = 'e' })`  
 spec: (S2 Closed-stack picker) A line moved out of a list in the file alone lands on the list it's moved under: in T381's state, e's line moved under `≡editor` and `:w` leave the file with no `t_DETACHED`, and `<M-S-w>` in the first tab reopens e.  
-`tests/test_s2.lua:1865`
+`tests/test_s2.lua:1946`
 
 **T390 [char]** (S2) an edit to a list in the file alone survives <CR> on another of its entries  
 → `eq(b ~= nil and e ~= nil, true)`  
 `<CR> (via type_into)` → `eq({ in_file = child.lua(EDITOR_FILE).detached.t_DETACHED, reopened = child.shown(w1) }, { in_file = nil, reopened = 'e' })`  
 note: b's line is deleted, unsaved; then <CR> on e's line, both under t_DETACHED.  
 spec: (S2 Closed-stack picker) An edit to a list in the file alone survives `<CR>` on another of its entries: with `t_DETACHED` in the file alone holding e and b, b's line deleted and `<CR>` on e's line, unsaved, write the edit first, reopen e and leave the file with no `t_DETACHED`: b…  
-`tests/test_s2.lua:1901`
+`tests/test_s2.lua:1982`
 
 **T391 [char]** (S2) an edit to a list in the file alone that can't be written says so and stays on screen  
 → `eq(e ~= nil, true)`  
 → `eq(got, { warned = true, modified = true })`  
 note: The session directory is made read-only after the picker draws.  
 spec: (S2 Closed-stack picker, Errors and drift) An edit to a list in the file alone that can't be written says so and stays on screen: in T381's state with the session directory read-only, e's line deleted and `:w` give a warning, and the closed lists' buffer stays modified.  
-`tests/test_s2.lua:1922`
+`tests/test_s2.lua:2003`
 
 **T367 [char]** (S2) the hint's tab is the tab the load works on, wherever the focus is ⚑ state set by hand  
 → `eq(S2.save_tab_session(child, s, 't'), { true })`  
@@ -3285,7 +3316,7 @@ spec: (S2 Closed-stack picker, Errors and drift) An edit to a list in the file a
 → `eq({ u = u.ok, t = t.ok, u_tab = child.slots(u.win), t_tab = child.slots(t.win), first_tab = child.slots(w1), closed = child.closed() },`  
 note: From the first tab, the hint names another tab: u has no file, so the tab it names starts fresh; t's file loads into the tab it names.  
 spec: (S2 Contract and API) The hint's tab is the tab the load works on, wherever the focus is: from the first tab at `⦉x⦊ [t] ⟦-⟧`, after a whole-editor save, `load_session('u', { tab = <a second tab> })` with no file starts that tab fresh, `⦉-⦊ [d] ⟦-⟧`, and `load_session('t', { tab …  
-`tests/test_s2.lua:1941`
+`tests/test_s2.lua:2022`
 
 **T324 [char]** (S2) an oil window comes back as oil, with oil_original_buffer set from its current slot  
 `:e a`, `:e b` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
@@ -3293,98 +3324,98 @@ spec: (S2 Contract and API) The hint's tab is the tab the load works on, whereve
 → `eq(Misc.load(child), { true })`  
 → `eq({ got = got, slots = child.slots() },`  
 spec: (S2 Oil; DESK:2087, DESK:2093) An oil window comes back as oil, with `vim.w.oil_original_buffer` set from its current slot: a window at `⦉a⦊ [b] ⟦-⟧` showing an oil listing at save, restored on the listing, still shows it after the load, keeps `⦉a⦊ [b] ⟦-⟧`, and has `oil_original…  
-`tests/test_s2.lua:1983`
+`tests/test_s2.lua:2064`
 
 **T325 [char]** (S2) :CavediverClosed opens an editable buffer listing the closed entries, newest first, and no open buffer  
 → `eq({`  
 spec: (S2 Closed-stack picker; DESK:2367, DESK:2371, DESK:2374) `:CavediverClosed` opens an editable buffer that lists the closed entries, newest first, and no open buffer: with b and then c closed, the buffer is modifiable, a line naming c.txt sits above one naming b.txt, and no line …  
-`tests/test_s2.lua:2030`
+`tests/test_s2.lua:2111`
 
 **T326 [char]** (S2) a No Name entry shows its first line in quotes, its filetype and its close time  
 `:e a`, `<M-.>` → `shown = 'a'`  
 → `eq({ listed = i ~= nil, quoted = line:find('"TODO: fix the', 1, true) ~= nil,`  
 note: The format is given as an example (`[No Name] "TODO: fix the…"  lua`), so the pieces are matched on their own; a digit stands for the close time. The line is read as it shows, virtual text included (the decoration is virtual text).  
 spec: (S2 Closed-stack picker; DESK:2368) A No Name entry shows its first line in quotes, its filetype and its close time: a No Name buffer holding `TODO: fix the thing` with filetype lua, closed with `<M-.>`, is listed on a line holding `[No Name]`, `"TODO: fix the`, `lua` and a digit…  
-`tests/test_s2.lua:2045`
+`tests/test_s2.lua:2126`
 
 **T327 [char]** (S2) reordering the picker's lines and :w reorders the stack  
 → `eq(c ~= nil and b ~= nil, true)`  
 `<M-S-w>` → `shown = 'b'`  
 spec: (S2 Closed-stack picker; DESK:2371) Reordering the picker's lines reorders the stack: with c on top of b, swapping their lines and `:w` make `<M-S-w>` in the window you came from reopen b.  
-`tests/test_s2.lua:2059`
+`tests/test_s2.lua:2140`
 
 **T328 [char]** (S2) <CR> in the picker reopens the entry under the cursor in the window you came from  
 → `eq(b ~= nil, true)`  
 `<CR> (via vim.keycode)` → `eq({ shown = child.shown(p.came_from), closed = child.closed() }, { shown = 'b', closed = 'c' })`  
 note: <CR> is typed into the picker, since its own mapping isn't known in advance.  
 spec: (S2 Closed-stack picker; DESK:2372) `<CR>` reopens the entry under the cursor in the window you came from: on b's line it puts b in that window and leaves c alone on the stack. `<CR>` is typed with `feedkeys`, since the picker's mapping isn't known in advance.  
-`tests/test_s2.lua:2074`
+`tests/test_s2.lua:2155`
 
 **T329 [char]** (S2) deleting a file's line in the picker and :w discards it  
 → `eq(c ~= nil, true)`  
 → `closed = 'b'`  
 spec: (S2 Closed-stack picker; DESK:2370) Deleting a file's line and `:w` discard it: with b and c closed, deleting c's line leaves b alone on the stack.  
-`tests/test_s2.lua:2088`
+`tests/test_s2.lua:2169`
 
 **T330 [char]** (S2) the picker shows each pool as a header with its closed entries under it  
 → `eq(x ~= nil and c ~= nil, true)`  
 → `eq({ first_line_is_header = header(1), header_between_pools = between },`  
 note: A header is a line that isn't empty and names neither entry.  
 spec: (S2 Closed-stack picker, Tab sessions; DESK:2367) Each pool is a header with its closed entries under it: in T318's state, with x closed in the first tab and c in the session's tab, the picker's first line is a header, and a header sits between the lines naming x and c. A header …  
-`tests/test_s2.lua:2113`
+`tests/test_s2.lua:2194`
 
 **T331 [char]** (S2) pools merge by moving a line under another pool's header  
 → `eq(c ~= nil and S2.line_of(p.lines, 'x.txt') ~= nil, true)`  
 `<M-S-w>`, `:tabnext`, `<M-S-w>` → `eq({ first_tab = first_tab, session_tab = child.shown(w2) }, { first_tab = { 'x', 'c' }, session_tab = 'd' })`  
 note: c's line is cut from the session's pool and pasted right under x's line.  
 spec: (S2 Closed-stack picker, Tab sessions; DESK:2369) Pools merge by moving lines: in T330's state, c's line moved under x's and `:w` make `<M-S-w>` in the first tab reopen x and then c, and leave nothing for `<M-S-w>` in the session's tab.  
-`tests/test_s2.lua:2132`
+`tests/test_s2.lua:2213`
 
 **T370 [char]** (S2) the picker's keys: gf acts and stays, za folds, H and L go between lists, q writes and leaves  
 → `eq(x ~= nil and c ~= nil, true)`  
 → `eq(got, { next = true, previous = true, folded = true, reopened = true, stays = true, c_listed = true, left = true, c_closed = '' })`  
 note: q writes, then leaves: c's line deleted first  
 spec: (S2 Closed-stack picker; the author's 2026-10-23 key grammar) The picker's keys: with b and c closed, `gf` on b's line reopens b in the window you came from and leaves the picker open, with c still listed; `za` on a header folds its list; `L` and `H` go to the next and the previo…  
-`tests/test_s2.lua:2198`
+`tests/test_s2.lua:2279`
 
 **T371 [char]** (S2) the picker's merge keeps one copy of a file, the newer  
 → `eq(#xs, 2)`  
 → `eq({ editor = after[''], session = after.t }, { editor = 'x@' .. newer, session = 'c@' .. before.t:match('c@([%d%.]+)') })`  
 note: The session's x line is moved under the first tab's header, beside its own.  
 spec: (S2 Closed-stack picker, I22; T162's pool half) The picker's merge keeps one copy, the newer: in T330's state, with x also on the session's list, its close time there set by hand a minute after the first tab's, the session's x line moved under the first tab's header, beside that …  
-`tests/test_s2.lua:2231`
+`tests/test_s2.lua:2312`
 
 **T372 [char]** (S2) a :w in the picker with no edits changes nothing  
 → `eq(child.lua(LISTS_STATE), before)`  
 spec: (S2 Closed-stack picker, I22) A `:w` with no edits changes nothing: in T330's state, with x on both lists at different close times (set by hand), `:w` with the lines as drawn leaves every list's entries and close times as they were.  
-`tests/test_s2.lua:2250`
+`tests/test_s2.lua:2331`
 
 **T373 [char]** (S2) the picker shows a missing file's tag  
 `:e a`, `:e b`, `:e c`, `:bdelete b.txt` → `eq(b ~= nil and S2.shown_line(child, p.buf, b):find('⎇feature', 1, true) ~= nil, true)`  
 note: b is deleted on disk, so no check clears its tag, and tagged by hand.  
 spec: (S2 Closed-stack picker, M14) The picker shows a missing file's tag: b closed and tagged `feature` (`history.data.missing`, set by hand), b's line shows `⎇feature`.  
-`tests/test_s2.lua:2260`
+`tests/test_s2.lua:2341`
 
 **T374 [char]** (S2) with the ASCII glyph set the picker draws nothing outside ASCII  
 → `eq({ lines = #p.lines > 0, ascii = ascii }, { lines = true, ascii = true })`  
 spec: (S2 Closed-stack picker; the author's "Glyphs, with an ASCII set") With `glyphs = { set = "ascii" }` in the config, the picker draws no glyph outside ASCII: its lines and its virtual text are ASCII alone.  
-`tests/test_s2.lua:2275`
+`tests/test_s2.lua:2356`
 
 **T375 [char]** (S2) <M-;>W opens the picker, named keymaps.open_closed_lists  
 `<M-;>W` → `eq({ moved = got.moved, modifiable = got.modifiable, c = got.lines:find('c.txt', 1, true) ~= nil, named = got.named },`  
 spec: (S2 Closed-stack picker; DESK:2374) The keymap: `<M-;>W` opens the picker, as `:CavediverClosed` does, and `keymaps.open_closed_lists` names it.  
-`tests/test_s2.lua:2287`
+`tests/test_s2.lua:2368`
 
 **T376 [char]** (S2) discarding a No Name entry in the picker asks first  
 `:e a`, `<M-.>` → `eq({ kept = kept, discarded = not noname_listed() }, { kept = true, discarded = true })`  
 note: vim.fn.confirm is answered by hand: the choice named Keep, then Discard.  
 spec: (S2 Closed-stack picker; DESK:2370) Discarding a No Name entry asks first: a No Name text closed with `<M-.>`, its line deleted and `:w` with the question answered "Keep" leaves it on the list; answered "Discard", it's gone, text and all.  
-`tests/test_s2.lua:2306`
+`tests/test_s2.lua:2387`
 
 **T377 [char]** (S2) a typed header that names no list refuses the write  
 → `eq({ named = S2.has(child.messages(), 'nowhere'), closed = child.closed() }, { named = true, closed = 'b,c' })`  
 spec: (S2 Closed-stack picker; DESK:2373) A typed header that names no list refuses the write: with b and c closed, a line `≡nowhere` added and `:w` give an error naming it, and every list stays as it was.  
-`tests/test_s2.lua:2350`
+`tests/test_s2.lua:2431`
 
 ## tests/test_secondary_key.lua (11 cases: 11 char)
 
