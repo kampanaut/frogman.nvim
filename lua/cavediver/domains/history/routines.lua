@@ -1500,7 +1500,7 @@ function M.delete_buffer(winid)
 
 	-- Check if it's the only buffer left
 	local total_buffers = 0
-	for _ in pairs(data.crux) do
+	for _ in ipairs(data.ordered.crux) do -- the open ones: a closed file keeps its history in the view
 		total_buffers = total_buffers + 1
 	end
 
@@ -1660,6 +1660,7 @@ local function find_buffer_by_filepath(filepath)
 	end
 	return nil
 end
+M.find_buffer_by_filepath = find_buffer_by_filepath
 
 ---Comprehensive system cleanup and validation.
 ---

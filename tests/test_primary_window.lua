@@ -276,4 +276,37 @@ T['T454 [char] (A18, P9) a save keeps a queue entry whose file is gone from disk
 	eq({ primary = child.primary(w), errors = Extra.at_least(child.messages()) }, { primary = '[a,b]on', errors = {} })
 end
 
+-- idx.json is open and idx.js is only on disk: by pattern, idx.js names
+-- idx.json's buffer too.
+T['T495 [char] (A18) a path that a longer open buffer\'s name begins with is its own file in the pop-up'] = function()
+	child.lua('for _, f in ipairs({ "idx.json", "idx.js" }) do vim.fn.writefile({ f }, _G.CDV_TEST.root .. "/" .. f) end')
+	child.cmd('edit idx.json')
+	child.settle()
+	local w = queue_ba()
+	open()
+	child.messages()
+	child.popup_set({ 'idx.js', 'b.txt', 'a.txt' })
+	child.cmd('write')
+	child.settle()
+	local first = child.lua([[
+		local t = require('cavediver.domains.window').data.crux[...]
+		return vim.fs.basename(require('cavediver.domains.history').get_filepath_from_hash(t.primary_buffer[1]) or '')
+	]], { w })
+	eq({ primary = child.primary(w), first = first, errors = Extra.at_least(child.messages()) },
+		{ primary = '[idx,b,a]on', first = 'idx.js', errors = {} })
+end
+
+-- a, in the queue, is closed with <M-.>: its buffer stays, unloaded, unlisted
+-- and unregistered, as :bdelete leaves it.
+T['T496 [char] (A18, I4) a queue entry closed with <M-.> survives the pop-up\'s save'] = function()
+	local w = queue_ba()
+	child.steps({ ':e a', '<M-.>' })
+	open()
+	child.messages()
+	child.popup_set({ 'a.txt', 'b.txt' })
+	child.cmd('write')
+	child.settle()
+	eq({ primary = child.primary(w), errors = Extra.at_least(child.messages()) }, { primary = '[a,b]on', errors = {} })
+end
+
 return T
