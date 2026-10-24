@@ -52,7 +52,13 @@ local libcrypto
 ---@return ffi.namespace* lib The loaded libcrypto
 local function crypto()
 	if libcrypto == nil then
-		for _, name in ipairs({ "crypto", "libcrypto.so.3", "libcrypto.3.dylib" }) do
+		-- the versioned names first: on macOS the bare name loads the system's own libcrypto, which
+		-- stops any program that isn't Apple's own, so it's tried only elsewhere
+		local names = { "libcrypto.so.3", "libcrypto.3.dylib" }
+		if ffi.os ~= "OSX" then
+			table.insert(names, "crypto")
+		end
+		for _, name in ipairs(names) do
 			local ok, lib = pcall(ffi.load, name)
 			if ok then
 				libcrypto = lib

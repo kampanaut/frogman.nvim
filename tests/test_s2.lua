@@ -325,6 +325,24 @@ T['T303 [char] (S2) a save and a load run no shell command'] = function()
 	eq({ save = at_save, load = child.lua('return _G.CDV_SHELL') }, { save = 0, load = 0 })
 end
 
+-- Every name the loader tries is recorded, the real loader still doing the
+-- loading. On macOS the bare name would load the system's own libcrypto.
+T['T480 [char] (S2) libcrypto is loaded by its versioned name first'] = function()
+	child.setup()
+	child.steps({ ':e a' })
+	child.lua([[
+		local ffi = require('ffi')
+		local real = ffi.load
+		_G.CDV_TRIED = {}
+		ffi.load = function(name, ...)
+			table.insert(_G.CDV_TRIED, tostring(name))
+			return real(name, ...)
+		end
+	]])
+	eq(Misc.save(child), { true })
+	eq(child.lua('return _G.CDV_TRIED[1]'), 'libcrypto.so.3')
+end
+
 T['T304 [char] (S2) every write is atomic: a new file is renamed over the old one, and nothing else is left'] = function()
 	child.setup()
 	child.steps({ ':e a' })
