@@ -69,13 +69,15 @@ function M.init_autocmds(group)
 			end
 			local line = vim.fn.getcmdline()
 			if line ~= "" then
+				local typed = line
 				-- a path typed in it is kept as its last part, as every other trigger names files
 				line = line:gsub("%S+", function(word)
 					if word:match("^[/~.]") or vim.fn.filereadable(word) == 1 or vim.fn.isdirectory(word) == 1 then
 						return vim.fs.basename(word)
 					end
 				end)
-				routines.begin("command", ":" .. line, vim.api.nvim_get_current_win())
+				local step = routines.begin("command", ":" .. line, vim.api.nvim_get_current_win())
+				step.cut = line ~= typed or nil -- a replay can't run a line it no longer has whole
 			end
 		end,
 	})

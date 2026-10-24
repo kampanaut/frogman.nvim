@@ -80,6 +80,18 @@ local function enabled()
 	return (require('cavediver.configs').ledger or {}).dump ~= false
 end
 
+-- what fired during a replay, which writes no dump of its own: it reports them instead
+local replay_fired = {}
+
+---Get what fired during a replay, and start the list again.
+---
+---@return string[] fired What fired, as a dump's heading would name it
+function M.replay_fired()
+	local fired = replay_fired
+	replay_fired = {}
+	return fired
+end
+
 ---Take a snapshot of the state a replay starts from.
 ---
 ---Copies the triquetra and history of every valid window, the global history, every list's
@@ -96,6 +108,8 @@ local function snapshot()
 		if vim.api.nvim_win_is_valid(winid) then
 			table.insert(windows, {
 				win = winid,
+				number = vim.api.nvim_win_get_number(winid),
+				tab = vim.api.nvim_tabpage_get_number(vim.api.nvim_win_get_tabpage(winid)),
 				shows = history.get_hash_from_buffer(vim.api.nvim_win_get_buf(winid)),
 				c = t.current_slot, s = t.secondary_slot, t = t.ternary_slot,
 				p = vim.deepcopy(t.primary_buffer or {}), on = t.primary_enabled == true,
@@ -118,7 +132,12 @@ local function snapshot()
 		navigation = require('cavediver.domains.navigation').sm:state(),
 		history_state = history.sm:state(),
 		cycle = require('cavediver.domains.navigation').data.cycling_window,
+		cycle_number = (function(w) return w and vim.api.nvim_win_is_valid(w) and vim.api.nvim_win_get_number(w) or nil end)(
+			require('cavediver.domains.navigation').data.cycling_window),
 		history_view = require('cavediver.configs').bufferline.history_view,
+		-- where a split puts its new window, which numbers the windows after it
+		splitright = vim.o.splitright,
+		splitbelow = vim.o.splitbelow,
 	}
 end
 
@@ -134,7 +153,10 @@ function M.began(step)
 	if not enabled() then
 		return
 	end
-	if #checkpoints == 0 or kept_since >= EVERY then
+	-- under half the ring when it's shorter, so the older snapshot's steps are still in the ring
+	local ring = (require('cavediver.configs').ledger or {}).ring or 1000
+	local every = math.max(1, math.min(EVERY, math.floor((ring - 1) / 2)))
+	if #checkpoints == 0 or kept_since >= every then
 		local ok, snap = pcall(snapshot)
 		if ok then
 			kept_since = 0
@@ -275,12 +297,13 @@ local function compose(what, failing)
 	local replay_steps = {}
 	for _, step in ipairs(steps) do
 		local after = step == failing and ledger.row_of(step.win, step.names) or step.row_after
-		local n = number(step.win)
+		local n = step.win_nr or number(step.win)
 		table.insert(rows, string.format("%s  %-7s %-16s %-6s %s → %s  %s%s", os.date("%H:%M:%S", math.floor(step.time)),
 			step.cause, step.trigger or "", n and ("win " .. n) or "win -", row(step.row_before), row(after), notes(after),
 			step == failing and "   ← fired here" or ""))
 		table.insert(replay_steps, {
-			seq = step.seq, cause = step.cause, trigger = step.trigger, window = n, winid = step.win, tab = tab_number(step.win),
+			seq = step.seq, cause = step.cause, trigger = step.trigger, cut = step.cut, window = n, winid = step.win,
+			tab = step.tab_nr or tab_number(step.win),
 			before = slots(step.row_before), after = slots(after), events = step.events or {},
 		})
 	end
@@ -292,7 +315,8 @@ local function compose(what, failing)
 		for _, w in ipairs(snap.windows) do
 			local history_ = {}
 			for k, v in pairs(w.history) do history_[file(k)] = v end
-			table.insert(windows, { window = number(w.win), winid = w.win, tab = tab_number(w.win), shows = file(w.shows), c = file(w.c), s = file(w.s),
+			table.insert(windows, { window = w.number or number(w.win), winid = w.win, tab = w.tab or tab_number(w.win),
+				shows = file(w.shows), c = file(w.c), s = file(w.s),
 				t = file(w.t), p = vim.tbl_map(file, w.p), on = w.on, dtm = map(w.dtm), dsm = map(w.dsm), history = history_ })
 		end
 		local global, missing, lists = {}, {}, {}
@@ -305,8 +329,8 @@ local function compose(what, failing)
 				closed = vim.tbl_map(file, l.closed), times = times })
 		end
 		replay.snapshot = { windows = windows, global = global, history_index = snap.history_index, lists = lists,
-			missing = missing, navigation = snap.navigation, history = snap.history_state, cycle = number(snap.cycle),
-			cycle_winid = snap.cycle, history_view = snap.history_view }
+			missing = missing, navigation = snap.navigation, history = snap.history_state, cycle = snap.cycle_number or number(snap.cycle),
+			cycle_winid = snap.cycle, history_view = snap.history_view, splitright = snap.splitright, splitbelow = snap.splitbelow }
 	end
 	local head = {
 		"cavediver: something that shouldn't happen did",
@@ -402,6 +426,10 @@ function M.fire(key, what, failing)
 	dumped[key] = true
 	if failing then
 		failing.dumped = true
+	end
+	if require('cavediver.domains.storage').data.replayed then
+		table.insert(replay_fired, what) -- a replay reports what it reproduces, and writes no dump
+		return
 	end
 	local made, text = pcall(function()
 		local rows, replay = compose(what, failing)
