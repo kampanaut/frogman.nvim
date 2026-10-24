@@ -215,7 +215,7 @@ if vim.fn.isdirectory(resession_dir) == 0 then
 	os.exit(1)
 end
 
-local report = { converted = 0, already = 0, conflict = 0, no_file = 0, unnamed = 0, dropped = 0 }
+local report = { converted = 0, already = 0, conflict = 0, no_file = 0, unnamed = 0, dropped = 0, unreadable = 0, failed = 0 }
 local used = {}
 for _, entry in ipairs(vim.fn.readdir(resession_dir)) do
 	local stem = entry:match("^(.+)%.json$")
@@ -231,8 +231,9 @@ for _, entry in ipairs(vim.fn.readdir(resession_dir)) do
 				name = candidate
 			end
 		end
+		-- the old wiring named the file after the cwd it was saved from: a tab session's is its tab's
 		local old_path, migrated
-		for _, cwd in ipairs({ session.global.cwd, directory }) do
+		for _, cwd in ipairs(session.tab_scoped and { directory } or { session.global.cwd }) do
 			local path = options.session_dir .. vim.fn.sha256(cwd .. "\n"):sub(1, 32) .. ".json"
 			if old_path == nil and vim.fn.filereadable(path) == 1 then
 				old_path = { path = path, cwd = cwd }
@@ -265,19 +266,32 @@ for _, entry in ipairs(vim.fn.readdir(resession_dir)) do
 					end
 				end
 				local data, texts, dropped = convert(old, old_path.cwd, known)
+				data.scope = session.tab_scoped and "tab" or "editor"
 				report.dropped = report.dropped + dropped
+				local ok, err = true, nil
 				if not options.dry_run then
-					if options.replace and vim.uv.fs_stat(new_path) then
-						-- the fresh file's own texts go with it
-						os.remove(new_path)
-						vim.fn.delete(new_path .. ".d", "rf")
+					-- over a fresh file with --replace too: the commit sweeps that file's own texts, and a write
+					-- that fails leaves it as it was
+					ok, err = pcall(storage.write_session, directory, name, data, texts)
+					if ok then
+						-- kept under a new name, the script's record of what it has converted
+						local renamed, why = os.rename(old_path.path, old_path.path .. ".migrated")
+						if not renamed then
+							io.stdout:write(entry .. "'s old file couldn't be marked converted (" .. tostring(why) .. ")\n")
+						end
 					end
-					storage.write_session(directory, name, data, texts)
-					-- kept under a new name, the script's record of what it has converted
-					os.rename(old_path.path, old_path.path .. ".migrated")
 				end
-				report.converted = report.converted + 1
+				if ok then
+					report.converted = report.converted + 1
+				else
+					report.failed = report.failed + 1
+					io.stdout:write(entry .. "'s new file couldn't be written (" .. tostring(err) .. "); its old file is left as it is\n")
+				end
 				used[old_path.path] = true
+			else
+				report.unreadable = report.unreadable + 1
+				used[old_path.path] = true
+				io.stdout:write(entry .. "'s old cavediver file can't be read; left as it is\n")
 			end
 		end
 	end
@@ -291,7 +305,8 @@ for _, entry in ipairs(vim.fn.isdirectory(options.session_dir) == 1 and vim.fn.r
 end
 
 io.stdout:write(string.format(
-	"%s %d session(s); %d already converted; %d with a file in the new format already (--replace converts over them); %d with no cavediver file; %d with a name that can't be told; %d old file(s) no resession session points to; %d reference(s) with no known path dropped\n",
+	"%s %d session(s); %d already converted; %d with a file in the new format already (--replace converts over them); %d with no cavediver file; %d with a name that can't be told; %d old file(s) no resession session points to; %d reference(s) with no known path dropped; %d old file(s) that can't be read; %d that couldn't be written\n",
 	options.dry_run and "would convert" or "converted",
-	report.converted, report.already, report.conflict, report.no_file, report.unnamed, leftover, report.dropped
+	report.converted, report.already, report.conflict, report.no_file, report.unnamed, leftover, report.dropped,
+	report.unreadable, report.failed
 ))

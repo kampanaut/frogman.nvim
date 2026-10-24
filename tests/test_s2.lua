@@ -945,6 +945,63 @@ T['T342 [char] (S2) the migration script reports a session saved fresh before it
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 end
 
+-- A tab session saved from a tab whose directory is aaa/: the old wiring named
+-- its cavediver file after that cwd. The project's own old file, under the
+-- global cwd, belongs to another session, so the script mustn't take it.
+T['T478 [char] (S2) the migration script finds a tab session\'s old file under its tab\'s directory, and writes it as a tab session'] = function()
+	local s = S2.shared()
+	local _, migrate = old_session(s)
+	local root = S2.cwd(child)
+	local tab = root .. '/aaa'
+	vim.fn.mkdir(tab, 'p')
+	local function xor(text, key)
+		local out = {}
+		for n = 1, #text do
+			out[n] = string.char(bit.bxor(text:byte(n), key:byte(((n - 1) % #key) + 1)))
+		end
+		return vim.base64.encode(table.concat(out))
+	end
+	local function hash(path) return vim.fn.sha256(path .. '\n'):sub(1, 16) end
+	local old = {
+		buffers = { window = {}, global = { [hash(root .. '/d.txt')] = 4 } },
+		windows = { { hash(root .. '/d.txt'), vim.NIL, {}, vim.NIL, {}, {} } },
+		closed = { xor(root .. '/e.txt', tab) },
+		noname_content = {},
+	}
+	vim.fn.writefile({ vim.json.encode(old) }, s.session_dir .. vim.fn.sha256(tab .. '\n'):sub(1, 32) .. '.json')
+	local resession_dir = vim.fn.stdpath('data') .. '/cavediver_test_sessions/'
+	vim.fn.delete(resession_dir, 'rf')
+	vim.fn.mkdir(resession_dir, 'p')
+	local session = {
+		global = { cwd = root },
+		buffers = { { name = root .. '/d.txt' } },
+		tab_scoped = true,
+		tabs = { { cwd = tab } },
+	}
+	vim.fn.writefile({ vim.json.encode(session) }, resession_dir .. tab:gsub('/', '_'):gsub(':', '_') .. '.json')
+
+	local run = migrate()
+	eq({ code = run.code, converted = run.stdout:find('converted 1 session', 1, true) ~= nil }, { code = 0, converted = true })
+	local project_old = s.session_dir .. vim.fn.sha256(root .. '\n'):sub(1, 32) .. '.json'
+	eq({ left = vim.fn.filereadable(project_old), marked = vim.fn.filereadable(project_old .. '.migrated') }, { left = 1, marked = 0 })
+	local got = child.lua([[
+		local tab, e, b = ...
+		local data = require('cavediver.domains.storage.routines').read_session(tab, tab)
+		return { scope = data and data.scope, e = data ~= nil and vim.tbl_contains(data.closed, e), b = data ~= nil and vim.tbl_contains(data.closed, b) }
+	]], { tab, hash(root .. '/e.txt'), hash(root .. '/b.txt') })
+	eq(got, { scope = 'tab', e = true, b = false })
+end
+
+-- The old file found through resession's session list isn't JSON.
+T['T479 [char] (S2) the migration script names an old file it can\'t read, and leaves it'] = function()
+	local s = S2.shared()
+	local old_path, migrate = old_session(s)
+	vim.fn.writefile({ 'not json' }, old_path)
+	local run = migrate()
+	eq({ code = run.code, named = run.stdout:find("can't be read", 1, true) ~= nil, left = vim.fn.filereadable(old_path) },
+		{ code = 0, named = true, left = 1 })
+end
+
 -- Only a file named the old way is there: the first 32 hex characters of
 -- sha256(cwd .. "\n"), plus .json, in the format from before encryption.
 T['T340 [char] (S2) a load that finds only a file named the old way points to the migration script'] = function()
