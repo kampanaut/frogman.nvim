@@ -17,6 +17,72 @@ local update_timer = vim.loop:new_timer()
 
 local M = {}
 
+-- the primary pop-up's decoration: the switch, a closed entry's glyph, a missing file's tag
+local primary_ns = vim.api.nvim_create_namespace("cavediver_primary_popup")
+
+---The picker the primary pop-up adds files through: config's `primary_picker`, a function given a
+---callback that it calls with the picked files' paths; with none set, telescope's find_files when
+---telescope is installed, its selection or the entry under the cursor.
+---@return fun(add: fun(paths: string[]))|nil
+local function primary_picker()
+	local configured = require('cavediver.configs').primary_picker
+	if type(configured) == "function" then
+		return configured
+	end
+	local ok, builtin = pcall(require, "telescope.builtin")
+	if not ok then
+		return nil
+	end
+	return function(add)
+		builtin.find_files({
+			attach_mappings = function(prompt_bufnr)
+				local actions = require("telescope.actions")
+				local state = require("telescope.actions.state")
+				actions.select_default:replace(function()
+					local picked = {}
+					for _, entry in ipairs(state.get_current_picker(prompt_bufnr):get_multi_selection()) do
+						table.insert(picked, entry.path or entry.filename or entry[1])
+					end
+					if #picked == 0 then
+						local entry = state.get_selected_entry()
+						if entry then
+							table.insert(picked, entry.path or entry.filename or entry[1])
+						end
+					end
+					actions.close(prompt_bufnr)
+					add(picked)
+				end)
+				return true
+			end,
+		})
+	end
+end
+
+---Add files to the primary pop-up through the picker: on the cursor's line when it's empty, otherwise
+---after it. Nothing is saved until `:w`.
+---@param dbuf Bufnr The pop-up's buffer
+function M.pick_into_primary_popup(dbuf)
+	local picker = primary_picker()
+	if not picker then
+		vim.notify("cavediver: no file picker: install telescope.nvim, or set primary_picker in the config.", vim.log.levels.WARN)
+		return
+	end
+	local dwin = vim.b[dbuf].display_window
+	local row = vim.api.nvim_win_get_cursor(dwin)[1]
+	picker(function(paths)
+		if not vim.api.nvim_buf_is_valid(dbuf) or #paths == 0 then
+			return
+		end
+		local lines = vim.tbl_map(function(path) return vim.fn.fnamemodify(path, ":.") end, paths)
+		local current = vim.api.nvim_buf_get_lines(dbuf, row - 1, row, false)[1] or ""
+		if vim.trim(current) == "" then
+			vim.api.nvim_buf_set_lines(dbuf, row - 1, row, false, lines)
+		else
+			vim.api.nvim_buf_set_lines(dbuf, row, row, false, lines)
+		end
+	end)
+end
+
 ---Display primary buffer history managgement floating window.
 function M.show_primary_buffer_history()
 	local cwin = vim.api.nvim_get_current_win()
@@ -63,9 +129,44 @@ function M.show_primary_buffer_history()
 		return basename
 	end
 
+	-- the trail's language, as virtual text: the lines you edit stay the entries' names alone
+	local function decorate()
+		if not vim.api.nvim_buf_is_valid(dbuf) then
+			return
+		end
+		local glyphs = M.glyphs()
+		vim.api.nvim_buf_clear_namespace(dbuf, primary_ns, 0, -1)
+		for i, line in ipairs(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) do
+			local text = vim.trim(line)
+			local filepath = basename_filepath_mapping[text] or (text ~= "" and vim.fn.fnamemodify(text, ":p")) or nil
+			local filehash = filepath and history.get_hash_from_filepath(filepath)
+			if filehash and history.routines.is_filehash_closed(filehash) then
+				vim.api.nvim_buf_set_extmark(dbuf, primary_ns, i - 1, 0, {
+					virt_text = { { glyphs.closed .. " ", "CavediverTrailClosed" } }, virt_text_pos = "inline",
+				})
+			end
+			local after = {}
+			if i == 1 then
+				table.insert(after, { "  primary" .. glyphs.dot .. (triquetra.primary_enabled and "on" or "off"), "CavediverTrailDim" })
+			end
+			if filehash and history.data.missing[filehash] then
+				table.insert(after, { "  " .. glyphs.tag .. history.data.missing[filehash], "CavediverTrailTag" })
+			end
+			if #after > 0 then
+				vim.api.nvim_buf_set_extmark(dbuf, primary_ns, i - 1, 0, { virt_text = after, virt_text_pos = "eol" })
+			end
+		end
+	end
+
 	vim.api.nvim_buf_set_name(dbuf, "cavediver://primary-buffer-queue-history")
 	vim.api.nvim_buf_set_lines(dbuf, 0, -1, false, vim.tbl_map(to_display, triquetra.primary_buffer))
 	vim.bo[dbuf].modified = false
+	decorate()
+	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+		buffer = dbuf,
+		callback = decorate,
+		desc = "Draw the primary queue's decoration again",
+	})
 
 	vim.api.nvim_create_autocmd("BufDelete", {
 		buffer = dbuf,
@@ -95,6 +196,7 @@ function M.show_primary_buffer_history()
 			vim.api.nvim_buf_set_lines(dbuf, 0, -1, false,
 				vim.tbl_map(to_display, triquetra.primary_buffer))
 			vim.bo[dbuf].modified = false
+			decorate()
 			vim.cmd("redraw")
 		end,
 		desc = "Save primary buffer queue changes"

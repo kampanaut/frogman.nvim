@@ -109,7 +109,7 @@ function M.init_autocmds(group)
 				end, 100)
 			end
 
-			local function promote_to_primary_and_quit()
+			local function promote_to_primary_and_quit(stay)
 				local dwin = vim.b[args.buf].display_window
 				local dbuf = args.buf
 				local cursor_line = vim.api.nvim_win_get_cursor(dwin)[1]
@@ -129,19 +129,30 @@ function M.init_autocmds(group)
 
 				vim.api.nvim_buf_set_lines(dbuf, 0, -1, false, lines)
 
-				close_window()
+				if stay then
+					vim.cmd("write!")
+					vim.api.nvim_win_set_cursor(dwin, { 1, 0 })
+				else
+					close_window()
+				end
 			end
+
+			local keys = require('cavediver.configs').keymaps.views or {}
 
 
 			-- Quick save
 			vim.keymap.set("n", "<C-s>", "<cmd>write<cr>", { buffer = args.buf, desc = "Save queue" })
 
 			-- Save and close
-			vim.keymap.set("n", "<C-c>", close_window, { buffer = args.buf, desc = "Save and close" })
+			vim.keymap.set("n", keys.leave_too or "<C-c>", close_window, { buffer = args.buf, desc = "Save and close" })
 
-			vim.keymap.set("n", "q", close_window, { buffer = args.buf, desc = "Save and close" })
+			vim.keymap.set("n", keys.leave or "q", close_window, { buffer = args.buf, desc = "Save and close" })
 
-			vim.keymap.set("n", "<cr>", promote_to_primary_and_quit, { buffer = args.buf, desc = "Promote file under cursor and quit floating window"})
+			vim.keymap.set("n", keys.act or "<cr>", function() promote_to_primary_and_quit(false) end, { buffer = args.buf, desc = "Promote file under cursor and quit floating window"})
+
+			vim.keymap.set("n", keys.act_and_stay or "gf", function() promote_to_primary_and_quit(true) end, { buffer = args.buf, desc = "Promote file under cursor and stay" })
+
+			vim.keymap.set("n", keys.pick or "<M-e>", function() routines.pick_into_primary_popup(args.buf) end, { buffer = args.buf, desc = "Add files through the picker" })
 		end
 	})
 
@@ -174,10 +185,9 @@ function M.init_autocmds(group)
 		end
 	})
 
-	-- WinClosed - only happens once, should be removed
+	-- WinClosed: the primary pop-up's buffer goes with its window, however it closes
 	vim.api.nvim_create_autocmd("WinClosed", {
 		group = group,
-		once = true, -- Automatically removes after first execution
 		callback = function(args)
 			if not args.file then
 				return

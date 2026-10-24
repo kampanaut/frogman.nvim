@@ -471,7 +471,7 @@ local function day_lines(glyphs, winwidth)
 end
 
 ---A search's results: every move about the name, on every page, oldest first (the approved mock's
----order; a question on it still open), each with the name's state after it.
+---order, as decided), each with the name's state after it.
 ---@param name string
 ---@param subject string|nil A file's hash: its moves alone, not every file of that name
 ---@return table[]
