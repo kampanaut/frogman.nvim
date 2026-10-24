@@ -2506,6 +2506,85 @@ T['T374 [char] (S2) with the ASCII glyph set the picker draws nothing outside AS
 	eq({ lines = #p.lines > 0, ascii = ascii }, { lines = true, ascii = true })
 end
 
+-- Each list's closed files, by basename, keyed by its directory's last two parts.
+local function lists_by_dir()
+	return child.lua([[
+		local H = require('cavediver.domains.history')
+		local out = {}
+		for _, pool in pairs(H.routines.pools()) do
+			if pool.directory then
+				local names = {}
+				for _, h in ipairs(pool.closed) do table.insert(names, vim.fs.basename(H.get_filepath_from_hash(h) or h)) end
+				out[vim.fn.fnamemodify(pool.directory, ':h:t') .. '/' .. vim.fn.fnamemodify(pool.directory, ':t')] = table.concat(names, ',')
+			end
+		end
+		return out
+	]])
+end
+
+-- Two nameless tab sessions, in w/app and p/app: one name, one last part.
+T['T504 [char] (S2) two lists of one name and one last part get headers of their own'] = function()
+	child.setup()
+	child.lua('for _, d in ipairs({ "w/app", "p/app" }) do vim.fn.mkdir(_G.CDV_TEST.root .. "/" .. d, "p") end')
+	child.steps({ ':e a' })
+	child.cmd('tcd w/app')
+	child.cmd('edit ../../b.txt')
+	child.cmd('edit ../../c.txt')
+	child.settle()
+	eq(child.lua('return { pcall(require("cavediver").save_session, nil, { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/b.txt")'))
+	child.cmd('tabnew')
+	child.cmd('tcd ' .. child.lua('return _G.CDV_TEST.root') .. '/p/app')
+	child.cmd('edit ../../d.txt')
+	child.cmd('edit ../../e.txt')
+	child.settle()
+	eq(child.lua('return { pcall(require("cavediver").save_session, nil, { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/d.txt")'))
+	child.settle()
+	local before = lists_by_dir()
+	local p = S2.picker(child)
+	local headers = vim.tbl_filter(function(l) return l:match('^\226\137\161app') ~= nil end, p.lines)
+	child.cmd('write')
+	child.settle()
+	eq({ distinct = #headers == 2 and headers[1] ~= headers[2], lists = lists_by_dir() }, { distinct = true, lists = before })
+end
+
+T['T505 [char] (S2) opening the closed lists again keeps an edit not written yet'] = function()
+	two_closed()
+	local p = S2.picker(child)
+	local b = S2.line_of(p.lines, 'b.txt')
+	child.lua('vim.api.nvim_buf_set_lines(..., ' .. (b - 1) .. ', ' .. b .. ', false, {})', { p.buf })
+	child.messages()
+	child.cmd('CavediverClosed')
+	child.settle()
+	local got = child.lua([[
+		local buf = vim.fn.bufnr('cavediver://closed-lists')
+		return { modified = buf ~= -1 and vim.bo[buf].modified, b = buf ~= -1 and table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n'):find('b.txt', 1, true) ~= nil }
+	]])
+	eq({ got = got, closed = child.closed(), told = S2.has(child.messages(), 'not written') }, { got = { modified = true, b = false }, closed = 'b,c', told = true })
+end
+
+-- <CR> on c reopens it in the window the lists were opened from.
+T['T506 [char] (S2, A27) a closed lists key\'s step is about the window it acts on'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b', ':e c' })
+	child.cmd('bdelete c.txt')
+	child.settle()
+	local source = child.lua('return vim.api.nvim_get_current_win()')
+	local p = S2.picker(child)
+	child.lua('vim.api.nvim_win_set_cursor(0, { ' .. S2.line_of(p.lines, 'c.txt') .. ', 0 })')
+	child.type_keys('<CR>')
+	child.settle(300)
+	local step = child.lua([[
+		local steps = require('cavediver').ledger.steps()
+		for i = #steps, 1, -1 do
+			if steps[i].trigger == '<CR>' then return { win = steps[i].win, after = steps[i].row_after ~= nil } end
+		end
+		return vim.NIL
+	]])
+	eq(step, { win = source, after = true })
+end
+
 T['T503 [char] (S2) a closed_entry formatter that gives nothing leaves cavediver\'s own text'] = function()
 	local s = S2.shared()
 	two_pools(s)
