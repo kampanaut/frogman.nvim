@@ -119,6 +119,19 @@ T['T82 [char] <M-.> refuses the only entry'] = function()
 	eq(snapshot(), before)
 end
 
+-- b is closed first, so a is the only open file; a split and its close then
+-- rebuild the history view, which keeps b's history (a closed file stays known).
+T['T497 [char] (A15) <M-.> refuses the last open buffer after a window switch'] = function()
+	child.steps({ ':e a', ':e b', '<M-.>' })
+	child.cmd('split')
+	child.cmd('close')
+	child.settle()
+	child.messages()
+	child.steps({ '<M-.>' })
+	eq({ refused = Extra.has(child.messages(), "Can't delete buffer because it's the only one left"), shown = child.shown() },
+		{ refused = true, shown = 'a' })
+end
+
 -- delete_buffer keeps the cursor before it switches the window away (history/routines.lua:709),
 -- so the cache doesn't fall back to {1,0}.
 T['T83 [char] <M-.> on a modified No Name buffer closes it and caches its lines, filetype and cursor'] = function()

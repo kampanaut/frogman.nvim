@@ -1,6 +1,6 @@
 # Test review sheet
 
-557 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+560 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -9,7 +9,7 @@
 
 ## Look at these first
 
-**State set by hand** (69): T184 (keep_older), T192 (keep_older), T107 (cleanup), T483 (cleanup), T484 (cleanup), T108 (cleanup), T113 (cleanup), T163 (cleanup), T91 (closing), T203 (cycling), T204 (cycling), T205 (cycling), T490 (cycling), T491 (cycling), T251 (decisions), T257 (decisions), T263 (decisions), T263 (decisions), T264 (decisions), T265 (decisions), T267 (decisions), T271 (decisions), T271 (decisions), T273 (decisions), T275 (decisions), T276 (decisions), T280 (decisions), T285 (decisions), T287 (decisions), T20 (history), T12 (identity), T157 (invariants), T398 (ledger), T403 (ledger), T406 (ledger), T25 (lifecycle), T34 (navigation), T35 (navigation), T219 (negative), T241 (negative), T242 (negative), T243 (negative), T243 (negative), T243 (negative), T247 (negative), T66 (restores), T68 (restores), T296 (s2), T298 (s2), T299 (s2), T315 (s2), T316 (s2), T322 (s2), T351 (s2), T352 (s2), T354 (s2), T357 (s2), T358 (s2), T366 (s2), T369 (s2), T383 (s2), T387 (s2), T367 (s2), T138 (sessions), T146 (sessions), T147 (sessions), T148 (sessions), T425 (trail), T445 (trail)
+**State set by hand** (70): T184 (keep_older), T192 (keep_older), T107 (cleanup), T483 (cleanup), T484 (cleanup), T108 (cleanup), T113 (cleanup), T163 (cleanup), T91 (closing), T203 (cycling), T204 (cycling), T205 (cycling), T490 (cycling), T491 (cycling), T251 (decisions), T257 (decisions), T263 (decisions), T263 (decisions), T264 (decisions), T265 (decisions), T267 (decisions), T271 (decisions), T271 (decisions), T273 (decisions), T275 (decisions), T276 (decisions), T280 (decisions), T285 (decisions), T287 (decisions), T20 (history), T12 (identity), T157 (invariants), T398 (ledger), T403 (ledger), T406 (ledger), T25 (lifecycle), T34 (navigation), T35 (navigation), T219 (negative), T241 (negative), T242 (negative), T243 (negative), T243 (negative), T243 (negative), T247 (negative), T495 (primary_window), T66 (restores), T68 (restores), T296 (s2), T298 (s2), T299 (s2), T315 (s2), T316 (s2), T322 (s2), T351 (s2), T352 (s2), T354 (s2), T357 (s2), T358 (s2), T366 (s2), T369 (s2), T383 (s2), T387 (s2), T367 (s2), T138 (sessions), T146 (sessions), T147 (sessions), T148 (sessions), T425 (trail), T445 (trail)
 
 **Random walk** (24): T190 (keep_older), T190 (keep_older), T190 (keep_older), T190 (keep_older), T335 (keep_older), T335 (keep_older), T171 (cycling), T279 (decisions), T281 (decisions), T282 (decisions), T283 (decisions), T149 (history), T149 (history), T128 (invariants), T129 (invariants), T130 (invariants), T131 (invariants), T132 (invariants), T133 (invariants), T334 (invariants), T154 (invariants), T249 (negative), T249 (negative), T299 (s2)
 
@@ -346,7 +346,7 @@ note: {c=A s=S t=T} is {c=a s=b t=c}; X is d, outside the slots. The window is p
 spec: When cleanup re-points a window's current slot to the registered buffer X the window shows (A21 step 1), with X outside the slots, `{c=A s=S t=T}` becomes `{c=X s=S t=A}`, as plain navigation would. Set it up by showing X without a `BufEnter` (`noautocmd`) after A's buffer is gon…  
 `tests/test_cleanup.lua:316`
 
-## tests/test_closing.lua (21 cases: 21 char)
+## tests/test_closing.lua (22 cases: 22 char)
 
 **T80 [char]** <M-.> on the newest lands on the next, closes it, and keeps it in the ternary  
 `:e d`, `:e e`, `:e f` → `ordered = 'f,e,d'`  
@@ -400,6 +400,12 @@ spec: It refuses with a modified named buffer, a buffer shown in two windows, or
 spec: It refuses with a modified named buffer, a buffer shown in two windows, or a single entry, each with its warning and nothing changed.  
 `tests/test_closing.lua:113`
 
+**T497 [char]** (A15) <M-.> refuses the last open buffer after a window switch  
+`:e a`, `:e b`, `<M-.>`, `:split`, `:close`, `<M-.>` → `eq({ refused = Extra.has(child.messages(), "Can't delete buffer because it's the only one left"), shown = child.shown() },`  
+note: b is closed first, so a is the only open file; a split and its close then rebuild the history view, which keeps b's history (a closed file stays known).  
+spec: (A15) `<M-.>` refuses the last open buffer after a window switch: `:e a`, `:e b`, `<M-.>`, then `:split` and `:close`, which rebuild the history view with b's history, and `<M-.>` says "Can't delete buffer because it's the only one left" and a stays shown.  
+`tests/test_closing.lua:124`
+
 **T83 [char]** <M-.> on a modified No Name buffer closes it and caches its lines, filetype and cursor  
 `:e a` → `eq(type(h), 'string')`  
 → `eq(child.lua('return vim.bo.modified'), true)`  
@@ -409,14 +415,14 @@ spec: It refuses with a modified named buffer, a buffer shown in two windows, or
 → `eq(`  
 note: delete_buffer keeps the cursor before it switches the window away (history/routines.lua:709), so the cache doesn't fall back to {1,0}.  
 spec: On a modified No Name buffer it closes it and caches its lines, filetype and cursor. `delete_buffer` switches the window away before the wipe, so it keeps the cursor on the buffer first (`vim.b[bufnr].cavediver_cursor`), and the cursor doesn't come back as `{1,0}` (bug, found 202…  
-`tests/test_closing.lua:124`
+`tests/test_closing.lua:137`
 
 **T84 [char]** <M-.> in :help does not throw  
 `:e a`, `:e b`, `:help` → `eq(child.lua('return vim.bo.buftype'), 'help')`  
 `<M-.>` → `eq({ ok, err }, { true, nil })`  
 → `eq(Extra.at_least(child.messages()), {})`  
 spec: In `:help` it doesn't throw. What it does instead is T164–T167 (Q17).  
-`tests/test_closing.lua:141`
+`tests/test_closing.lua:154`
 
 **T85 [char]** <M-.> on a file keeps its marks for when it is reopened  
 `:e a`, `:e b` → `eq(child.lua('return vim.api.nvim_buf_get_mark(0, "k")'), { 1, 0 })`  
@@ -424,7 +430,7 @@ spec: In `:help` it doesn't throw. What it does instead is T164–T167 (Q17).
 `<M-S-w>` → `shown = 'b'`  
 → `eq(child.lua('return vim.api.nvim_buf_get_mark(0, "k")'), { 1, 0 })`  
 spec: `<M-.>` on a file keeps the buffer's marks for when it's reopened (`:bdelete`).  
-`tests/test_closing.lua:152`
+`tests/test_closing.lua:165`
 
 **T86 [char]** <M-S-w> reopens the newest closed buffer as current, the old current in the ternary  
 `:e d`, `:e e`, `:e f`, `<M-.>` → `shown = 'e'`  
@@ -433,14 +439,14 @@ spec: `<M-.>` on a file keeps the buffer's marks for when it's reopened (`:bdele
 → `slots = '⦉e⦊ [f] ⟦-⟧'`  
 → `closed = ''`  
 spec: `<M-S-w>` reopens the newest closed buffer, and it becomes current with the old current in the ternary.  
-`tests/test_closing.lua:163`
+`tests/test_closing.lua:176`
 
 **T87 [char]** <M-S-w> with an empty closed stack warns  
 `:e a`, `<M-S-w>` → `eq(Extra.has(msgs, 'No closed buffers to reopen.'), true)`  
 → `eq(Extra.at_least(msgs, vim.log.levels.WARN), { 'No closed buffers to reopen.' })`  
 → `shown = 'a'`  
 spec: `<M-S-w>` with an empty stack warns "No closed buffers to reopen."  
-`tests/test_closing.lua:173`
+`tests/test_closing.lua:186`
 
 **T88 [char]** a No Name buffer closed with text comes back with the same lines and filetype  
 `:e a`, `<M-.>` → `shown = 'a'`  
@@ -448,7 +454,7 @@ spec: `<M-S-w>` with an empty stack warns "No closed buffers to reopen."
 → `eq(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), { 'first line', 'second line' })`  
 → `eq(child.lua('return vim.bo.filetype'), 'markdown')`  
 spec: A No Name buffer closed with text comes back with the same lines and filetype.  
-`tests/test_closing.lua:183`
+`tests/test_closing.lua:196`
 
 **T89 [char]** <M-S-w> on a missing file says so and leaves the entry on the stack  
 `:e d`, `:e e`, `:e f`, `<M-.>` → `closed = 'f'`  
@@ -456,7 +462,7 @@ spec: A No Name buffer closed with text comes back with the same lines and filet
 → `eq(said, true)`  
 → `closed = 'f'`  
 spec: `<M-S-w>` on a missing file says so and leaves the entry on the stack.  
-`tests/test_closing.lua:194`
+`tests/test_closing.lua:207`
 
 **T90 [char]** a reopened No Name buffer gets its cursor in its own window  
 `:e a`, `<M-.>` → `shown = 'a'`  
@@ -466,7 +472,7 @@ spec: `<M-S-w>` on a missing file says so and leaves the entry on the stack.
 → `eq(child.lua('return vim.api.nvim_win_get_cursor(0)'), { 3, 2 })`  
 note: Cursor on line 3; a.txt, where <M-.> lands, has one line.  
 spec: A reopened No Name buffer gets its cursor in its own window, with no "Invalid cursor line".  
-`tests/test_closing.lua:209`
+`tests/test_closing.lua:222`
 
 **T91 [char]** after a No Name buffer is reopened, its old hash is renamed everywhere ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-.>` → `shown = 'c'`  
@@ -478,13 +484,13 @@ spec: A reopened No Name buffer gets its cursor in its own window, with no "Inva
 → `eq(child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()].displacement_ternary_map[...]', { child.hash_of('b'`  
 note: b is left while the No Name buffer is its ternary, so dtm[b] names it; then the No Name buffer is closed from c, where it lands in the ternary.  
 spec: After a No Name buffer is reopened, every slot and map entry that held its old hash holds the new one.  
-`tests/test_closing.lua:223`
+`tests/test_closing.lua:236`
 
 **T162 [char]** pushing a hash already on the closed stack keeps one copy, as the newest  
 `:e a` → `eq(got, true)`  
 → `closed = 't,x'`  
 spec: (Q15) I22: pushing a hash that's already on the closed stack (for example, `track_closing_filehash_force` on x, t, then x again) leaves it on the stack once, as the newest entry: `t,x`. With pools: closing `notes.md` in two tabs' pools and merging both entries leaves one, the new…  
-`tests/test_closing.lua:245`
+`tests/test_closing.lua:258`
 
 **T164 [char]** <M-.> in a window visiting an untracked buffer closes it and lands on the current slot  
 `:e b`, `:e a`, `<M-f>` → `slots = '⦉-⦊ [a] ⟦b⟧'`  
@@ -496,7 +502,7 @@ spec: (Q15) I22: pushing a hash that's already on the closed stack (for example,
 → `slots = '⦉-⦊ [a] ⟦b⟧'`  
 note: Visit a nofile scratch in the same window.  
 spec: Q17, a visiting window: in a window with `{c=a s=b}` that's visiting an untracked buffer (a `nofile` scratch, or help shown with `:buffer`), `<M-.>` closes the visited buffer, and the window shows a with `{c=a s=b}` intact (A2, A15, T27).  
-`tests/test_closing.lua:263`
+`tests/test_closing.lua:276`
 
 **T165 [char]** <M-.> in a help window closes the help buffer and leaves a alone  
 `:e a`, `:help` → `eq(child.lua('return vim.bo.buftype'), 'help')`  
@@ -507,7 +513,7 @@ spec: Q17, a visiting window: in a window with `{c=a s=b}` that's visiting an un
 → `shown = 'a'`  
 → `slots = '⦉-⦊ [a] ⟦-⟧'`  
 spec: Q17, a window born untracked: `:e a`, `:help`, then `<M-.>` in the help window. The help buffer is closed, Neovim closes the help window, nothing throws, and a's window and triquetra are unchanged.  
-`tests/test_closing.lua:283`
+`tests/test_closing.lua:296`
 
 **T166 [char]** <M-.> on help in the only window closes the help buffer  
 `:help`, `:only` → `eq(child.lua('return vim.bo.buftype'), 'help')`  
@@ -516,7 +522,7 @@ spec: Q17, a window born untracked: `:e a`, `:help`, then `<M-.>` in the help wi
 → `eq(#child.lua('return vim.api.nvim_list_wins()'), 1)`  
 → `eq(Extra.at_least(child.messages()), {})`  
 spec: Q17, the only window: `:help`, `:only`, `<M-.>`. The help buffer is closed, nothing throws, and the window shows what Neovim picks.  
-`tests/test_closing.lua:300`
+`tests/test_closing.lua:313`
 
 **T167 [char]** <M-.> on a running terminal refuses with a message  
 `:e a`, `:e b`, `:terminal sleep 1000` → `eq(child.lua('return vim.bo.buftype'), 'terminal')`  
@@ -525,7 +531,7 @@ spec: Q17, the only window: `:help`, `:only`, `<M-.>`. The help buffer is closed
 → `eq(#Extra.at_least(child.messages(), vim.log.levels.WARN) > 0, true)`  
 → `eq(child.lua('return vim.api.nvim_buf_is_valid(...) and vim.api.nvim_get_current_buf() == ...', { term }), true)`  
 spec: Q17, a running terminal: `<M-.>` on a `:terminal` whose job is still running refuses with a message, and the terminal stays.  
-`tests/test_closing.lua:314`
+`tests/test_closing.lua:327`
 
 ## tests/test_cycling.lua (51 cases: 51 char)
 
@@ -2568,7 +2574,7 @@ spec: The `toggle_primary` keymap's description no longer reads "Toggle current 
 spec: (A9, A10) `<M-;><M-x>` and `<M-;><M-c>` run no `redraw!`: they redraw the status lines and the tabline.  
 `tests/test_primary_keys.lua:43`
 
-## tests/test_primary_window.lua (16 cases: 16 char)
+## tests/test_primary_window.lua (18 cases: 18 char)
 
 **T95 [char]** with an empty queue no window opens  
 `:e a`, `<M-;>F` → `eq(child.floats(), {})`  
@@ -2673,6 +2679,18 @@ spec: (A18) The pop-up's keys are `keymaps.views`': with `keymaps.views.leave = 
 `:write` → `eq({ primary = child.primary(w), errors = Extra.at_least(child.messages()) }, { primary = '[a,b]on', errors = {} })`  
 spec: (A18, P9) A save keeps a queue entry whose file is gone from disk: from `[b,a]on` with b.txt deleted, the lines `a.txt`, `b.txt` and `:w` save `[a,b]on` with no error; a new line naming no file is still refused (T99).  
 `tests/test_primary_window.lua:268`
+
+**T495 [char]** (A18) a path that a longer open buffer's name begins with is its own file in the pop-up ⚑ state set by hand  
+`:edit idx.json`, `:write` → `eq({ primary = child.primary(w), first = first, errors = Extra.at_least(child.messages()) },`  
+note: idx.json is open and idx.js is only on disk: by pattern, idx.js names idx.json's buffer too.  
+spec: (A18) A path that a longer open buffer's name begins with is its own file in the pop-up: with `idx.json` open and `idx.js` on disk only, the lines `idx.js`, `b.txt`, `a.txt` save `[idx,b,a]on` with no error, its first entry `idx.js`'s own path.  
+`tests/test_primary_window.lua:281`
+
+**T496 [char]** (A18, I4) a queue entry closed with <M-.> survives the pop-up's save  
+`:e a`, `<M-.>`, `:write` → `eq({ primary = child.primary(w), errors = Extra.at_least(child.messages()) }, { primary = '[a,b]on', errors = {} })`  
+note: a, in the queue, is closed with <M-.>: its buffer stays, unloaded, unlisted and unregistered, as :bdelete leaves it.  
+spec: (A18, I4) A queue entry closed with `<M-.>` survives the pop-up's save: from `[b,a]on`, a closed with `<M-.>`, the lines `a.txt`, `b.txt` save `[a,b]on` with no error.  
+`tests/test_primary_window.lua:301`
 
 ## tests/test_restores.lua (10 cases: 10 char)
 

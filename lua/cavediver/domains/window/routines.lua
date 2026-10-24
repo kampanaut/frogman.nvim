@@ -227,7 +227,7 @@ function M.update_primary_buffer(primary_filepaths, winid)
 		if not filepath:match("^NONAME_") and vim.trim(filepath) ~= "" then
 			filepath = vim.fn.fnamemodify(filepath, ":p") -- a relative path, as :e takes it
 		end
-		local fbufnr = vim.fn.bufnr(filepath)
+		local fbufnr = history.routines.find_buffer_by_filepath(filepath) or -1 -- by its exact name, not a pattern
 		if vim.trim(filepath) == "" then
 			goto continue
 		elseif seen[filepath] then -- the queue holds a file once
@@ -236,13 +236,13 @@ function M.update_primary_buffer(primary_filepaths, winid)
 		elseif (vim.fn.filereadable(filepath) == 0) and (not filepath:match("^NONAME_")) and not queued[history.get_hash_from_filepath(filepath)] then -- If it's a file that doesn't exist in the filesystem.
 			table.insert(error_lines, "- File does not exist: " .. typed)
 			goto continue
-		elseif fbufnr ~= -1 and history.get_hash_from_buffer(fbufnr) == nil then -- THE USER CANNOT REGISTER A BUFFER EXPLICITLY. IT IS DONE AUTOMATICALLY. SO we throw error instead of automatically registering it.
+		elseif fbufnr ~= -1 and vim.api.nvim_buf_is_loaded(fbufnr) and history.get_hash_from_buffer(fbufnr) == nil then -- THE USER CANNOT REGISTER A BUFFER EXPLICITLY. IT IS DONE AUTOMATICALLY. SO we throw error instead of automatically registering it.
 			-- history.register_buffer(fbufnr)
 			table.insert(error_lines,
 				"- You cannot set the file buffer [" ..
 				typed .. "] that isn't tracked by cavediver to be a primary buffer.")
 			goto continue
-		elseif fbufnr == -1 and history.get_hash_from_filepath(filepath) == nil then -- If the filepath is not loaded by neovim and is not registered then register it.
+		elseif (fbufnr == -1 or not vim.api.nvim_buf_is_loaded(fbufnr)) and history.get_hash_from_filepath(filepath) == nil then -- If the filepath is not loaded by neovim and is not registered then register it.
 			if filepath:match("^NONAME_") then                                 -- If the buffer_from_filepath query turned out to be nil and the filepath was just for NO NAME buffer then that means this NO_NAME buffer you have never existed, since the registry says so.
 				table.insert(error_lines,
 					" - [" ..
