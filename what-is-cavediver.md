@@ -729,7 +729,7 @@ A `BufEnter` usually follows when the window shows a different buffer. A1 then r
 
 **Today:**
 - The window's history entry is dropped (`history/hooks.lua:296-305`).
-- Its triquetra is dropped (`window/data.lua:57-79`): the UI cache is cleared, `last_valid_window` is moved to the previous window in the jump chain whose buffer is registered, the history view is rebuilt for that window, and the winbar is cleared.
+- Its triquetra is dropped (`window/data.lua:57-79`): the UI cache is cleared, `last_valid_window` is moved to the focused window when that one has a triquetra, and otherwise to the previous window in the jump chain whose buffer is registered, the history view is rebuilt for that window, and the winbar is cleared (M6, T513).
 - Entries in the window-jump history that point at the closed window stay (M10). **[run s07]** shows the closed window's data gone.
 - The popup's `WinClosed` handler deletes the pop-up's buffer when its window closes, whichever window closed before (`ui/hooks.lua:197-216`, A18, T236). DESK:2479 recorded it as `once`, used up by the first window closed after `setup()`, before step 8.
 
