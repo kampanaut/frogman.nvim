@@ -67,6 +67,8 @@ local function row_of(winid, names)
 		on = triquetra.primary_enabled and true or false,
 		dtm = vim.deepcopy(triquetra.displacement_ternary_map or {}),
 		dsm = vim.deepcopy(triquetra.displacement_secondary_map or {}),
+		shows = vim.api.nvim_win_is_valid(winid)
+			and require('cavediver.domains.history').get_hash_from_buffer(vim.api.nvim_win_get_buf(winid)) or nil,
 	}
 	local function keep(filehash)
 		if filehash then
@@ -77,6 +79,7 @@ local function row_of(winid, names)
 	keep(row.c)
 	keep(row.s)
 	keep(row.t)
+	keep(row.shows)
 	for _, filehash in ipairs(row.p) do
 		keep(filehash)
 	end
@@ -115,12 +118,25 @@ function M.window_name(winid)
 	return "win " .. (vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_number(winid) or winid)
 end
 
+---Check if two rows hold the same slots, queue and notes.
+---
+---What the window shows is left out, so a visit alone doesn't keep a step.
+---
 ---@param a CavediverLedgerRow|nil
 ---@param b CavediverLedgerRow|nil
----@return boolean
+---@return boolean same True if only what the windows show differs, if anything
 local function same_row(a, b)
-	return vim.deep_equal(a, b)
+	local function bare(row)
+		if row == nil then
+			return nil
+		end
+		local copy = vim.deepcopy(row)
+		copy.shows = nil
+		return copy
+	end
+	return vim.deep_equal(bare(a), bare(b))
 end
+M.same_row = same_row
 
 ---@param cause string
 ---@param trigger string

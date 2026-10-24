@@ -60,6 +60,11 @@ M.loading_batch = false
 ---@type {name: string|nil, tab: boolean}|nil
 M.last_loaded = nil
 
+---Whether this editor replayed a flight recorder's dump: its state is then no session's, and
+---isn't saved
+---@type boolean
+M.replayed = false
+
 ---The last whole-editor session loaded or saved, and the unnamed session: the whole-editor session
 ---in effect when tab sessions started, whose records each tab-session save refreshes in its file.
 ---@type {name: string|nil, directory: string}|nil
