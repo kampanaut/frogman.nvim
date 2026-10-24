@@ -64,7 +64,12 @@ function M.unregister_triquetra(winid)
 	M.arrivals[winid] = nil
 	history.routines.unregister_window(winid)
 	require("cavediver.domains.ui.data").clear_window_display_cache(winid)
-	M.last_valid_window = navigation.get_the_previous_window_traverse_chain(winid)
+	local current = vim.api.nvim_get_current_win()
+	if current ~= winid and M.crux[current] then
+		M.last_valid_window = current -- the window you're in, whose view the bufferline and the fill read
+	else
+		M.last_valid_window = navigation.get_the_previous_window_traverse_chain(winid)
+	end
 	if M.last_valid_window then
 		history.routines.construct_crux(M.last_valid_window)
 	end

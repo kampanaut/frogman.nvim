@@ -15,7 +15,6 @@ local hooks = require('cavediver.domains.window.hooks')
 -- This is because window buffer relationships are tightly coupled to history attach/detach cycles
 
 local M = {
-    states = states,
     data = data,
     routines = routines,
 }
