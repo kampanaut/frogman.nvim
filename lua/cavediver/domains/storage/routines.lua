@@ -93,6 +93,7 @@ local function write_atomic(path, bytes)
 		error("Failed to write session data to file: " .. path .. " (" .. tostring(rename_err) .. ")")
 	end
 end
+M.write_atomic = write_atomic
 
 ---A No Name text's file name. It changes with the text, so an unchanged text keeps its file, and
 ---through the key it gives nothing of the text away.
@@ -445,7 +446,7 @@ local function serialise_window_relationships(outsiders, tabpage)
 			local tdisplacement_map = {}
 
 			if not triquetra then
-				error("This is impossible. The window triquetra must exist.")
+				require('cavediver.domains.ledger').never("This is impossible. The window triquetra must exist.")
 			end
 
 			-- Current buffer (window's active buffer)
@@ -779,7 +780,7 @@ local function load_closed_buffers(closed_buffers, noname_content, key, scratch_
 	for _, filehash in ipairs(closed_buffers) do
 		local filepath = history.get_filepath_from_hash(filehash) -- return: either closed filepath or NONAME_<x>
 		if not filepath then
-			error("What the fuck. This is impossible.")
+			require('cavediver.domains.ledger').never("What the fuck. This is impossible.")
 		end
 		if history.get_buffer_from_hash(filehash) then
 			goto continue -- the session manager brought it back
@@ -791,7 +792,7 @@ local function load_closed_buffers(closed_buffers, noname_content, key, scratch_
 			if history.data.noname_content[filehash] == nil or (load_pool.id ~= "" and not merge) then
 				local content = noname_content[filehash]
 				if content == nil then
-					error("This is impossible. Noname content must be created for this closed No Name buffer.")
+					require('cavediver.domains.ledger').never("This is impossible. Noname content must be created for this closed No Name buffer.")
 				end
 				local source = scratch_dir .. content.scratch
 				history.data.noname_content[filehash] = {
@@ -801,7 +802,7 @@ local function load_closed_buffers(closed_buffers, noname_content, key, scratch_
 					read = scratch_reader(source, key, filehash),
 				}
 			elseif not merge then -- merged into an open pool, its text is cached already
-				error("This is impossible. The closed buffer must not already exist in noname_content.")
+				require('cavediver.domains.ledger').never("This is impossible. The closed buffer must not already exist in noname_content.")
 			end
 		end
 		if merge then
@@ -822,7 +823,7 @@ end
 ---@return string project_filepath
 local function get_session_filepath(directory, name)
 	if not directory then
-		error("No directory provided to get_session_filepath")
+		require('cavediver.domains.ledger').never("No directory provided to get_session_filepath")
 	end
 
 	-- the separator keeps a session "a" in /proj apart from a nameless save in /proja

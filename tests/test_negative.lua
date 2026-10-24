@@ -686,7 +686,7 @@ end
 -- Text typed in insert mode, then the restore assertion (c's secondary note set
 -- to name the secondary by hand, as T200 does). Whatever the dump looks like,
 -- the typed keys aren't steps in it.
-T['T241 [target] (A26) the flight recorder records keymap actions and events, never raw keystrokes'] = function()
+T['T241 [char] (A26) the flight recorder records keymap actions and events, never raw keystrokes'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
 	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')
 	child.lua([[vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('iQZQZQZ<Esc>', true, false, true), 'xt', false)]])
@@ -703,7 +703,7 @@ T['T241 [target] (A26) the flight recorder records keymap actions and events, ne
 	child.settle(200)
 	local texts = {}
 	for _, f in ipairs(Extra.new_files(files_before, child.dumps())) do
-		table.insert(texts, table.concat(child.lua('return vim.fn.readfile(...)', { f }), '\n'))
+		table.insert(texts, child.lua('return require("cavediver.domains.ledger.dump").read(...) or ""', { f }))
 	end
 	local seen = {}
 	for _, b in ipairs(bufs_before) do seen[b] = true end

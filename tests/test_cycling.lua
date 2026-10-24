@@ -407,8 +407,7 @@ T['T155 [char] a pick of an outside buffer notes the start, and <M-;><M-r> bring
 	eq(child.note('dtm', 'b'), 'd')
 end
 
--- The flight recorder (A26). It isn't built; its dumps go under
--- stdpath('state')/cavediver/.
+-- The flight recorder (A26). Its dumps go under stdpath('state')/cavediver/.
 
 -- Buffers open now.
 local function bufs()
@@ -422,8 +421,9 @@ local function new_items(before, after)
 	return out
 end
 
+-- A dump's text, decrypted as :CavediverDump reads it: the file is sealed.
 local function read_file(path)
-	return child.lua('return vim.fn.readfile(...)', { path })
+	return child.lua('return vim.split(require("cavediver.domains.ledger.dump").read(...) or "", "\\n", { plain = true })', { path })
 end
 
 -- Make the current buffer's secondary note name the window's secondary, so
@@ -461,7 +461,7 @@ T['T199 [char] with no assertion, the recorder writes no file and opens no buffe
 	}, { files = {}, bufs = {}, ring = 5 })
 end
 
-T['T200 [target] the restore assertion dumps the last steps to a file and a scratch buffer'] = function()
+T['T200 [char] the restore assertion dumps the last steps to a file and a scratch buffer'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
 	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')
 	stale_secondary_note(child)
@@ -497,7 +497,7 @@ end
 -- A planted stale note, not a real route: every real route into a rule break is one
 -- the decided fixes remove, so the recorder is tested on its own. The note is planted
 -- in the other window, so the step taken in this window can't repair it first.
-T['T203 [target] a planted rule break dumps at the next step'] = function()
+T['T203 [char] a planted rule break dumps at the next step'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	local win1 = child.win()
 	eq(child.slots(win1), '⦉b⦊ [c] ⟦-⟧')
@@ -512,7 +512,7 @@ T['T203 [target] a planted rule break dumps at the next step'] = function()
 	eq(#Extra.new_files(before, child.dumps()), 1)
 end
 
-T['T204 [target] a session load and a cleanup re-point appear in the dump, tagged load and timer'] = function()
+T['T204 [char] a session load and a cleanup re-point appear in the dump, tagged load and timer'] = function()
 	-- Save a session from this child...
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
 	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')
@@ -525,6 +525,7 @@ T['T204 [target] a session load and a cleanup re-point appear in the dump, tagge
 	other.lua([[
 		local root = ...
 		require('cavediver.configs').session_dir = root .. '/state/sessions/'
+		vim.cmd.cd(root) -- the session's directory keys its file
 		for _, s in ipairs({ 'a', 'b', 'c' }) do
 			local b = vim.fn.bufadd(root .. '/' .. s .. '.txt')
 			vim.fn.bufload(b)
@@ -568,13 +569,13 @@ T['T204 [target] a session load and a cleanup re-point appear in the dump, tagge
 
 	local tagged = false
 	for _, f in ipairs(Extra.new_files(before, other.dumps())) do
-		local text = table.concat(other.lua('return vim.fn.readfile(...)', { f }), '\n')
+		local text = other.lua('return require("cavediver.domains.ledger.dump").read(...) or ""', { f })
 		if text:find('%f[%w]load%f[%W]') and text:find('%f[%w]timer%f[%W]') then tagged = true end
 	end
 	eq(tagged, true)
 end
 
-T['T205 [target] a failure that repeats gives one dump, and the dump window is nofile, unlisted, untracked and unrecorded'] = function()
+T['T205 [char] a failure that repeats gives one dump, and the dump window is nofile, unlisted, untracked and unrecorded'] = function()
 	-- Nothing tracked yet, so the bufferline's colour callback throws on every
 	-- call, as it would on every redraw.
 	local files_before, bufs_before = child.dumps(), bufs()
@@ -636,9 +637,9 @@ T['T205 [target] a failure that repeats gives one dump, and the dump window is n
 end
 
 -- T200's route. The scratch buffer isn't opened inside the failing call, only
--- once the editor settles; and files are named by alias and basename, never by
--- their full path, in the file and in the scratch buffer alike.
-T['T333 [target] a dump opens after the editor settles, and names files by alias and basename, never by full path'] = function()
+-- once the editor settles; and files are named by their full path and hash, in
+-- the file and in the scratch buffer alike: the file is sealed.
+T['T333 [char] a dump opens after the editor settles, and names files by their paths'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
 	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')
 	stale_secondary_note(child)
@@ -661,10 +662,73 @@ T['T333 [target] a dump opens after the editor settles, and names files by alias
 	for _, b in ipairs(scratch) do
 		table.insert(texts, table.concat(child.lua('return vim.api.nvim_buf_get_lines(..., 0, -1, false)', { b }), '\n'))
 	end
+	local c = child.hash_of('c')
 	for _, text in ipairs(texts) do
-		eq(text:find(root, 1, true) == nil, true)
-		eq(text:find('c.txt', 1, true) ~= nil, true)
+		eq({ path = text:find(root .. '/c.txt', 1, true) ~= nil, hash = text:find(c, 1, true) ~= nil }, { path = true, hash = true })
 	end
+end
+
+
+T['T333 [char] a hook failure\'s dump, with a list named by the cwd, holds the hook and the session'] = function()
+	child.steps({ ':e a', ':e b' })
+	local root = child.lua('return _G.CDV_TEST.root')
+	child.lua('require("cavediver").save_session(..., { tab = vim.api.nvim_get_current_tabpage() })', { root })
+	child.lua([[
+		require('cavediver.domains.history').sm:on('attached', 'attached', 't333_breaks', function() error('planted') end, 5, true)
+	]])
+	local files_before, bufs_before = child.dumps(), bufs()
+	child.steps({ ':e c' })
+	child.settle(300)
+	local texts = {}
+	for _, f in ipairs(Extra.new_files(files_before, child.dumps())) do table.insert(texts, table.concat(read_file(f), '\n')) end
+	for _, b in ipairs(new_items(bufs_before, bufs())) do
+		if child.lua('return vim.bo[...].buftype', { b }) == 'nofile' then -- the dump's, not c.txt's
+			table.insert(texts, table.concat(child.lua('return vim.api.nvim_buf_get_lines(..., 0, -1, false)', { b }), '\n'))
+		end
+	end
+	eq(#texts >= 2, true)
+	for _, text in ipairs(texts) do
+		eq({ session = text:find(root, 1, true) ~= nil, hook = text:find('t333_breaks', 1, true) ~= nil },
+			{ session = true, hook = true })
+	end
+end
+
+-- T200's route. The file on disk is sealed, and :CavediverDump opens it from the
+-- directory it was written in only.
+T['T460 [char] a dump is sealed, and :CavediverDump opens it from the directory it was written in'] = function()
+	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
+	stale_secondary_note(child)
+	local files_before = child.dumps()
+	eq(child.step('<M-;><M-t>'), false)
+	child.settle(300)
+	local files = Extra.new_files(files_before, child.dumps())
+	eq(#files, 1)
+	eq(child.lua([[
+		local f = io.open(..., "rb")
+		local bytes = f:read("*a")
+		f:close()
+		return {
+			head = bytes:sub(1, 4),
+			clear = bytes:find("c.txt", 1, true) ~= nil or bytes:find("<M-;><M-t>", 1, true) ~= nil
+				or bytes:find("cavediver:", 1, true) ~= nil,
+		}
+	]], { files[1] }), { head = 'CDV1', clear = false })
+
+	child.cmd('CavediverDump ' .. vim.fn.fnameescape(files[1]))
+	child.settle(200)
+	local lines = child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)')
+	eq(last_row(lines):find('<M-;><M-t>', 1, true) ~= nil, true)
+	eq(vim.tbl_contains(lines, 'replay:'), true)
+	child.type_keys('q')
+	child.settle()
+
+	child.lua('vim.fn.mkdir(_G.CDV_TEST.root .. "/sub", "p"); vim.cmd.cd(_G.CDV_TEST.root .. "/sub")')
+	local bufs_before = bufs()
+	child.messages()
+	child.cmd('CavediverDump ' .. vim.fn.fnameescape(files[1]))
+	child.settle(200)
+	eq(new_items(bufs_before, bufs()), {})
+	eq(Extra.has(child.messages(), "doesn't open here"), true)
 end
 
 return T

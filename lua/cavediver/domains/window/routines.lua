@@ -293,10 +293,10 @@ end
 function M.reconcile_triquetra(winid, new_bufnr, is_pick)
 	local new_filehash = history.get_hash_from_buffer(new_bufnr)
 
-	if not new_bufnr then error("Bufnr must be provided.") end
+	if not new_bufnr then require('cavediver.domains.ledger').never("Bufnr must be provided.") end
 
 	if not new_filehash then
-		error("What the fuck.")
+		require('cavediver.domains.ledger').never("What the fuck.")
 	end -- Skip unregistered buffers
 
 	local triquetra = data.crux[winid]
@@ -319,7 +319,7 @@ function M.reconcile_triquetra(winid, new_bufnr, is_pick)
 		end
 		if triquetra.secondary_slot == new_filehash then
 			if proc then
-				error("Duplicates detected in triquetra slots")
+				require('cavediver.domains.ledger').never("Duplicates detected in triquetra slots")
 			end
 			-- the guard runs before the swap, so the ternary's memory gets the buffer being left.
 			if triquetra.displacement_ternary_map[triquetra.ternary_slot] == new_filehash then
@@ -627,7 +627,7 @@ function M.cleanup_triquetras(bufnr_ondelete)
 						if candidate_hash then
 							triquetra.current_slot = candidate_hash
 						else
-							error(
+							require('cavediver.domains.ledger').never(
 								"This is impossible. Ordered history buffers should always have a hash associated with it.")
 						end
 					else
@@ -822,7 +822,7 @@ function M.swap_with_secondary(winid)
 		elseif #history.data.ordered.crux >= 2 then
 			-- the ordered list's first entry is the window's current buffer, or the second one could be it too.
 			if history.get_hash_from_buffer(history.data.ordered.crux[1].buf) ~= triquetra.current_slot then
-				error("This is impossible. The most recent buffer in the history must be the window's current buffer.")
+				require('cavediver.domains.ledger').never("This is impossible. The most recent buffer in the history must be the window's current buffer.")
 			end
 			triquetra.secondary_slot = history.get_hash_from_buffer(history.data.ordered.crux[2].buf)
 			M.check_notes_under_current(triquetra)
@@ -838,7 +838,7 @@ function M.swap_with_secondary(winid)
 		if triquetra.current_slot then
 			M.write_secondary_swap_notes(triquetra)
 		else
-			error("It's not okay to have a secondary slot without a current slot.")
+			require('cavediver.domains.ledger').never("It's not okay to have a secondary slot without a current slot.")
 		end
 		cbufnr = history.get_buffer_from_hash(triquetra.secondary_slot)
 		if cbufnr == nil then
@@ -860,7 +860,7 @@ function M.swap_with_secondary(winid)
 		end
 		local cfilehash = history.get_hash_from_buffer(cbufnr)
 		if not cfilehash then
-			error("This is impossible. Ternary slot should always have a buffer associated with it.")
+			require('cavediver.domains.ledger').never("This is impossible. Ternary slot should always have a buffer associated with it.")
 		end
 
 		local filepath = history.get_filepath_from_hash(cfilehash)
@@ -941,7 +941,7 @@ function M.swap_with_ternary(winid)
 	if cfilehash then
 		data.rename_hash_in_triquetras(triquetra.ternary_slot, cfilehash)
 	else
-		error("This is impossible. Ternary slot should always have a buffer associated with it.")
+		require('cavediver.domains.ledger').never("This is impossible. Ternary slot should always have a buffer associated with it.")
 	end
 	M.reconcile_triquetra(winid, cbufnr)
 
@@ -966,13 +966,13 @@ function M.jump_to_primary(winid)
 		local ui_get_basename = require('cavediver.domains.ui').routines.get_smart_basename
 
 		if not cycling_origins then
-			error("This should not happen. Cycling origins not found for window: " .. winid)
+			require('cavediver.domains.ledger').never("This should not happen. Cycling origins not found for window: " .. winid)
 		end
 
 		local origin_bufnr = history.get_buffer_from_hash(cycling_origins.current_slot)
 
 		if not origin_bufnr then
-			error("This should not happen. Origin buffer not found for current slot: " .. cycling_origins.current_slot)
+			require('cavediver.domains.ledger').never("This should not happen. Origin buffer not found for current slot: " .. cycling_origins.current_slot)
 		end
 
 		vim.api.nvim_set_current_buf(origin_bufnr)
@@ -1123,7 +1123,7 @@ local function restore_from_displacement_map(type, triquetra)
 		local ui_get_basename = require('cavediver.domains.ui').routines.get_smart_basename
 		vim.notify("Remembered " .. type .. " isn't on disk right now: " .. ui_get_basename(remembered_relationship) .. ". Nothing changed.", vim.log.levels.WARN)
 	elseif remembered_relationship == current_relationship then
-		error("This is impossible. Remembered " ..
+		require('cavediver.domains.ledger').never("This is impossible. Remembered " ..
 			type .. " is the same as current " .. type .. ". It should be different for flip flop.")
 	else
 		local ui_get_basename = require('cavediver.domains.ui').routines.get_smart_basename

@@ -77,7 +77,7 @@ end
 function M.register_buffer(bufnr)
 	local filepath = vim.api.nvim_buf_get_name(bufnr)
 	if vim.bo[bufnr].buftype ~= "" and not M.is_nowrite_file(bufnr) then
-		error("I don't want to track non-file buffers.")
+		require('cavediver.domains.ledger').never("I don't want to track non-file buffers.")
 	end
 	if filepath == "" then
 		filepath = M.noname_name(bufnr)
@@ -113,7 +113,7 @@ end
 ---@return nil
 function M.register_filepath(filepath)
 	if filepath == "" then
-		error("Cannot register an empty filepath.")
+		require('cavediver.domains.ledger').never("Cannot register an empty filepath.")
 	end
 
 	local filehash = M.get_filehash(filepath)
@@ -1057,7 +1057,7 @@ function M.snapshot_origin(winid)
 	local sslot_display_string
 
 	if current_slot == nil then
-		error("This is impossible: current buffer is not registered.")
+		require('cavediver.domains.ledger').never("This is impossible: current buffer is not registered.")
 	end
 
 	if secondary_slot == nil then
@@ -1228,10 +1228,10 @@ function M.track_closing_filehash(filehash)
 	local bufnr = data.hash_buffer_registry.buffers[filehash]
 
 	if filepath == nil then
-		error("This must not happen: Closing filehash is not registered at all.")
+		require('cavediver.domains.ledger').never("This must not happen: Closing filehash is not registered at all.")
 	end
 	if bufnr == nil then
-		error("The closing filehash must be registered in the hash_buffer_registry.")
+		require('cavediver.domains.ledger').never("The closing filehash must be registered in the hash_buffer_registry.")
 	end
 
 	if filepath:match("^NONAME_") then
@@ -1268,7 +1268,7 @@ end
 ---    - This is not designed for NONAME_ buffers as well!
 function M.track_closing_filehash_force(filehash)
 	if filehash == nil then
-		error("This must not happen: Closing filehash is not registered at all.")
+		require('cavediver.domains.ledger').never("This must not happen: Closing filehash is not registered at all.")
 	end
 
 	push_closed(M.current_pool(), filehash)
@@ -1407,7 +1407,7 @@ function M.delete_buffer(winid)
 			next_bufnr = ordered_buffers[((current_index) % #ordered_buffers) + 1].buf
 		end
 	else
-		error("This is impossible: Current buffer not found in ordered history.")
+		require('cavediver.domains.ledger').never("This is impossible: Current buffer not found in ordered history.")
 	end
 
 	-- Switch to next buffer before deletion

@@ -46,7 +46,7 @@ end, 1.8, true)
 
 history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_mangement", function(context, _, _)
 	if context.history_modified == nil then
-		error("history_modified is nil in displacement_mangement hook")
+		require('cavediver.domains.ledger').never("history_modified is nil in displacement_mangement hook")
 	elseif context.history_modified == false then
 		return -- skip if history didn't update anything.
 	end
@@ -87,7 +87,7 @@ history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_ma
 				triquetra.ternary_slot and
 				triquetra.secondary_slot == triquetra.ternary_slot
 			then
-				error("Duplicates detected in current triquetra")
+				require('cavediver.domains.ledger').never("Duplicates detected in current triquetra")
 			end
 			if triquetra.ternary_slot and new_filehash ~= triquetra.ternary_slot then
 				triquetra.displacement_ternary_map[triquetra.current_slot.."-swap"] = nil
@@ -127,12 +127,12 @@ end, 2, true, history.states.mode.UPDATE)
 
 history.sm:on(history.states.DETACHED, history.states.ATTACHED, "reconcile_triquetra", function(context, _, _)
 	if context.history_modified == nil then
-		error("history_modified is nil in reconcile_triquetra hook")
+		require('cavediver.domains.ledger').never("history_modified is nil in reconcile_triquetra hook")
 	elseif context.history_modified == false then
 		return -- skip if history didn't update anything.
 	end
 	if context.buf == nil then
-		error("context.buf is nil in reconcile_triquetra hook")
+		require('cavediver.domains.ledger').never("context.buf is nil in reconcile_triquetra hook")
 	end
 	routines.reconcile_triquetra(vim.api.nvim_get_current_win(), context.buf, context.pick)
 end, 2, true, history.states.mode.UPDATE)

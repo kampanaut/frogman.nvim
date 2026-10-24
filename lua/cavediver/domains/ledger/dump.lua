@@ -1,0 +1,543 @@
+---Ledger domain dumps for the failures that shouldn't happen.
+---
+---When something that shouldn't happen fires, this module writes the steps that led
+---there into a file under stdpath("state")/cavediver/ and shows them in a window.
+---The file is sealed, as a session's is, since it's usage data, so it holds things as they
+---are: files by their hashes and paths, lists by their sessions, windows by number and id.
+
+local data = require('cavediver.domains.ledger.data')
+
+local M = {}
+
+---Steps kept between two snapshots (the last two are kept, so a dump starts 50 to 100 steps back)
+---@type integer
+local EVERY = 50
+
+---Steps the ring kept since the last snapshot. A timer's tick that did nothing isn't counted, so
+---an idle editor doesn't push the steps worth seeing out of the dump
+---@type integer
+local kept_since = 0
+
+---Snapshots kept for the dumps, oldest first
+---@type { seq: integer, snapshot: table }[]
+local checkpoints = {}
+
+---Failures already dumped, by key (one dump each)
+---@type table<string, boolean>
+local dumped = {}
+
+---Messages `never` dumped, so a hook failure carrying one isn't dumped again
+---@type table<string, boolean>
+local nevers = {}
+
+---Dumps written by this editor, for numbering their names
+---@type integer
+local count = 0
+
+---The header a dump starts with, as a session's file does
+---@type string
+local HEADER = "CDV1"
+
+---The salt this editor's dumps are sealed with, made with its first dump
+---@type string|nil
+local salt
+
+---Keys for the dumps, by directory and salt, each stretched once
+---@type table<string, string>
+local keys = {}
+
+---Get the key for a directory and a salt.
+---
+---Stretches it the first time and keeps it, so only an editor's first dump pays for it.
+---
+---@param directory string The directory the key is stretched from
+---@param with_salt string The salt
+---@return string key
+local function key_for(directory, with_salt)
+	local id = directory .. "\0" .. with_salt
+	keys[id] = keys[id] or require('cavediver.domains.storage.crypto').derive_key(directory, with_salt)
+	return keys[id]
+end
+
+---Get what a dump's seal covers besides its text.
+---
+---The header, the salt and the word `dump`, so a dump can't pass for a session's file.
+---
+---@param with_salt string The dump's salt
+---@return string aad
+local function aad(with_salt)
+	return HEADER .. with_salt .. "\ndump"
+end
+
+---Check if dumps are turned on.
+---
+---Reads `ledger.dump` from the config. Anything but false counts as on.
+---
+---@return boolean enabled True if a failure gets dumped
+local function enabled()
+	return (require('cavediver.configs').ledger or {}).dump ~= false
+end
+
+---Take a snapshot of the state a replay starts from.
+---
+---Copies every triquetra, the global and per-window histories, every list's closed
+---files, the missing tags and the machines' states, all by hash, as the dump writes them.
+---
+---@return table snapshot The state as it is now
+local function snapshot()
+	local history = require('cavediver.domains.history')
+	local window = require('cavediver.domains.window')
+	local hdata = history.data
+	local windows = {}
+	for winid, t in pairs(window.data.crux) do
+		if vim.api.nvim_win_is_valid(winid) then
+			table.insert(windows, {
+				win = winid,
+				shows = history.get_hash_from_buffer(vim.api.nvim_win_get_buf(winid)),
+				c = t.current_slot, s = t.secondary_slot, t = t.ternary_slot,
+				p = vim.deepcopy(t.primary_buffer or {}), on = t.primary_enabled == true,
+				dtm = vim.deepcopy(t.displacement_ternary_map or {}), dsm = vim.deepcopy(t.displacement_secondary_map or {}),
+				history = vim.deepcopy(hdata.crux_internals.window[winid] or {}),
+			})
+		end
+	end
+	local lists = {}
+	for _, pool in pairs(history.routines.pools()) do
+		table.insert(lists, { id = pool.id, name = pool.name, directory = pool.directory, closed = vim.deepcopy(pool.closed),
+			times = vim.deepcopy(pool.times or {}) })
+	end
+	return {
+		windows = windows,
+		global = vim.deepcopy(hdata.crux_internals.global or {}),
+		history_index = hdata.history_index,
+		lists = lists,
+		missing = vim.deepcopy(hdata.missing or {}),
+		navigation = require('cavediver.domains.navigation').sm:state(),
+		history_state = history.sm:state(),
+		cycle = require('cavediver.domains.navigation').data.cycling_window,
+		history_view = require('cavediver.configs').bufferline.history_view,
+	}
+end
+
+---Record a step's start for the snapshots.
+---
+---Takes a snapshot once the ring has kept 50 steps since the last one, and keeps the last
+---two, so a dump starts 50 to 100 steps back.
+---
+---@param step CavediverLedgerStep The step that just began
+---@return nil
+function M.began(step)
+	if not enabled() then
+		return
+	end
+	if #checkpoints == 0 or kept_since >= EVERY then
+		local ok, snap = pcall(snapshot)
+		if ok then
+			kept_since = 0
+			table.insert(checkpoints, { seq = step.seq, snapshot = snap })
+			while #checkpoints > 2 do
+				table.remove(checkpoints, 1)
+			end
+		end
+	end
+end
+
+---Count a step the ring kept, for the snapshots.
+---
+---@return nil
+function M.kept()
+	kept_since = kept_since + 1
+end
+
+---Find every triquetra that breaks the slot rules.
+---
+---Checks each window for a file in two of its slots (I1), and for a note a restore
+---would read that names the slot's own occupant (I23).
+---
+---@return table<string, table> breaks Each break by its key, with its rule, window and what broke
+function M.breaks()
+	local window = require('cavediver.domains.window')
+	local found = {}
+	for winid, t in pairs(window.data.crux) do
+		if vim.api.nvim_win_is_valid(winid) then
+			local c, s, r = t.current_slot, t.secondary_slot, t.ternary_slot
+			if (c and (c == s or c == r)) or (s and s == r) then
+				found["I1:" .. winid] = { rule = "I1", win = winid, what = "a file is in two of its slots" }
+			end
+			for _, m in ipairs({ { "dtm", r, "ternary" }, { "dsm", s, "secondary" } }) do
+				local map = t[m[1] == "dtm" and "displacement_ternary_map" or "displacement_secondary_map"] or {}
+				local swap = c and map[c .. "-swap"]
+				local note = (swap ~= nil and swap ~= m[2]) and swap or (c and map[c])
+				if note ~= nil and note == m[2] then
+					found["I23:" .. winid .. ":" .. m[1] .. ":" .. c] = { rule = "I23", win = winid, file = c,
+						what = "the current file's " .. m[3] .. " note names the " .. m[3] }
+				end
+			end
+		end
+	end
+	return found
+end
+
+---Compose a dump's text.
+---
+---Builds the rows from the older snapshot up to the step the failure fired in. Returns
+---the heading with one row per step, and the replay part as JSON. The file is sealed, so
+---everything is written as it is: files by hash and path, lists by their sessions, windows
+---by number and id.
+---
+---@param what string What fired, in words
+---@param failing CavediverLedgerStep|nil The step it fired in
+---@return string[] rows, string replay
+local function compose(what, failing)
+	local history = require('cavediver.domains.history')
+	local ledger = require('cavediver.domains.ledger.routines')
+	local files, seen = {}, {}
+	-- Each file the dump names, listed once with its path
+	local function file(hash)
+		if hash == nil or hash == vim.NIL then
+			return nil
+		end
+		hash = tostring(hash)
+		local base = hash:gsub("%-swap$", "")
+		if not seen[base] then
+			seen[base] = true
+			local path = history.data.hash_filepath_registry.filepaths[base]
+			table.insert(files, { hash = base, path = path,
+				exists = path ~= nil and not path:match("^NONAME_") and vim.fn.filereadable(path) == 1 })
+		end
+		return hash
+	end
+	local function number(winid)
+		return winid and vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_number(winid) or nil
+	end
+	local function map(m)
+		local out = {}
+		for k, v in pairs(m or {}) do
+			out[file(k)] = file(v)
+		end
+		return out
+	end
+	local function slots(r)
+		return r and { c = file(r.c), s = file(r.s), t = file(r.t), p = vim.tbl_map(file, r.p or {}), on = r.on,
+			dtm = map(r.dtm), dsm = map(r.dsm) }
+	end
+	local function stem(hash)
+		if hash == nil then
+			return "-"
+		end
+		local name = ledger.name_of(hash) or "?"
+		return name:match("^%[") and name or vim.fn.fnamemodify(name, ":r")
+	end
+	local function row(r)
+		r = r or {}
+		return "⦉" .. stem(r.t) .. "⦊ [" .. stem(r.c) .. "] ⟦" .. stem(r.s) .. "⟧"
+	end
+	local function notes(r)
+		if not r or not r.c then
+			return ""
+		end
+		local out = {}
+		for _, m in ipairs({ { "dtm", r.dtm }, { "dsm", r.dsm } }) do
+			local parts = {}
+			for _, key in ipairs({ r.c, r.c .. "-swap" }) do
+				local v = (m[2] or {})[key]
+				if v then
+					table.insert(parts, stem(r.c) .. (key:match("%-swap$") and "-swap" or "") .. ">" .. stem(v))
+				end
+			end
+			if #parts > 0 then
+				table.insert(out, m[1] .. "{" .. table.concat(parts, " ") .. "}")
+			end
+		end
+		return table.concat(out, " ")
+	end
+
+	-- The steps since the older snapshot, and the one the failure fired in
+	local from = checkpoints[1]
+	local steps = {}
+	for _, step in ipairs(data.ring) do
+		if not from or step.seq >= from.seq then
+			table.insert(steps, step)
+		end
+	end
+	if failing and steps[#steps] ~= failing then
+		table.insert(steps, failing)
+	end
+
+	local rows = {}
+	local replay_steps = {}
+	for _, step in ipairs(steps) do
+		local after = step == failing and ledger.row_of(step.win, step.names) or step.row_after
+		local n = number(step.win)
+		table.insert(rows, string.format("%s  %-7s %-16s %-6s %s → %s  %s%s", os.date("%H:%M:%S", math.floor(step.time)),
+			step.cause, step.trigger or "", n and ("win " .. n) or "win -", row(step.row_before), row(after), notes(after),
+			step == failing and "   ← fired here" or ""))
+		table.insert(replay_steps, {
+			seq = step.seq, cause = step.cause, trigger = step.trigger, window = n, winid = step.win,
+			before = slots(step.row_before), after = slots(after), events = step.events or {},
+		})
+	end
+
+	local snap = from and from.snapshot
+	local replay = { version = 1, fired = what, steps = replay_steps }
+	if snap then
+		local windows = {}
+		for _, w in ipairs(snap.windows) do
+			local history_ = {}
+			for k, v in pairs(w.history) do history_[file(k)] = v end
+			table.insert(windows, { window = number(w.win), winid = w.win, shows = file(w.shows), c = file(w.c), s = file(w.s),
+				t = file(w.t), p = vim.tbl_map(file, w.p), on = w.on, dtm = map(w.dtm), dsm = map(w.dsm), history = history_ })
+		end
+		local global, missing, lists = {}, {}, {}
+		for k, v in pairs(snap.global) do global[file(k)] = v end
+		for k, v in pairs(snap.missing) do missing[file(k)] = v end
+		for _, l in ipairs(snap.lists) do
+			local times = {}
+			for k, v in pairs(l.times) do times[file(k)] = v end
+			table.insert(lists, { name = l.id == "" and "editor" or l.name, directory = l.directory,
+				closed = vim.tbl_map(file, l.closed), times = times })
+		end
+		replay.snapshot = { windows = windows, global = global, history_index = snap.history_index, lists = lists,
+			missing = missing, navigation = snap.navigation, history = snap.history_state, cycle = number(snap.cycle),
+			cycle_winid = snap.cycle, history_view = snap.history_view }
+	end
+	local head = {
+		"cavediver: something that shouldn't happen did",
+		what,
+		os.date("%Y-%m-%d %H:%M:%S"),
+		"",
+		"files:",
+	}
+	replay.files = {}
+	for _, f in ipairs(files) do
+		table.insert(head, "  " .. f.hash .. "  " .. (f.path or "?"))
+		replay.files[f.hash] = { path = f.path, exists = f.exists }
+	end
+	table.insert(head, "")
+	return vim.list_extend(head, rows), vim.json.encode(replay)
+end
+
+---Open the dump's window once the editor settles.
+---
+---The window is a float, on a scratch buffer the ledger records no step about. It isn't
+---entered when a dump fires, and is when `:CavediverDump` opens one. `q` closes it.
+---
+---@param name string The dump's name
+---@param lines string[] The rows to show
+---@param enter boolean|nil True to enter the window
+---@return nil
+local function show(name, lines, enter)
+	vim.schedule(function()
+		local buf = vim.api.nvim_create_buf(false, true) -- Unlisted scratch buffer, so cavediver doesn't track it
+		vim.b[buf].cavediver_dump = true -- Marked first, so the ledger begins no step about it
+		vim.bo[buf].buftype = "nofile"
+		vim.bo[buf].bufhidden = "wipe"
+		vim.bo[buf].swapfile = false
+		pcall(vim.api.nvim_buf_set_name, buf, "cavediver://" .. name)
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+		vim.bo[buf].modifiable = false
+		local width = math.max(20, math.min(vim.o.columns - 4, math.floor(vim.o.columns * 0.8)))
+		local height = math.max(3, math.min(#lines, math.floor(vim.o.lines * 0.4)))
+		local win = vim.api.nvim_open_win(buf, enter == true, {
+			relative = "editor", width = width, height = height, style = "minimal", border = "rounded",
+			row = math.max(0, vim.o.lines - height - 4), col = math.max(0, vim.o.columns - width - 2),
+			title = " cavediver: something that shouldn't happen did ", title_pos = "center",
+		})
+		vim.wo[win].wrap = false
+		vim.keymap.set("n", "q", function()
+			if vim.api.nvim_win_is_valid(win) then
+				vim.api.nvim_win_close(win, true)
+			end
+		end, { buffer = buf, nowait = true, desc = "Close the dump" })
+	end)
+end
+
+---Write a sealed file, the way a session's is written.
+---
+---Seals the text with the key stretched from the global directory and this editor's salt,
+---made with its first dump, and writes it atomically.
+---
+---@param path string Where the dump goes
+---@param text string The dump's text
+---@return nil
+local function write(path, text)
+	local crypto = require('cavediver.domains.storage.crypto')
+	local dir = vim.fs.dirname(path)
+	if not vim.uv.fs_stat(dir) then
+		vim.fn.mkdir(dir, "p", tonumber("700", 8))
+	end
+	salt = salt or crypto.random_bytes(crypto.salt_length)
+	local sealed = crypto.seal(key_for(vim.fn.getcwd(-1, -1), salt), text, aad(salt))
+	require('cavediver.domains.storage.routines').write_atomic(path, HEADER .. salt .. sealed)
+end
+
+---Write a dump, once per failure.
+---
+---Writes the sealed file right away, then opens the window and says where the file is
+---once the editor settles. When the file can't be written, the window still shows the
+---rows. A failure that was already dumped is skipped.
+---
+---@param key string What makes this failure distinct
+---@param what string What fired, in words
+---@param failing CavediverLedgerStep|nil The step it fired in
+---@return nil
+function M.fire(key, what, failing)
+	if not enabled() or dumped[key] then
+		return
+	end
+	dumped[key] = true
+	if failing then
+		failing.dumped = true
+	end
+	local made, text = pcall(function()
+		local rows, replay = compose(what, failing)
+		return table.concat(rows, "\n") .. "\n\nreplay:\n" .. replay .. "\n"
+	end)
+	if not made then
+		vim.schedule(function()
+			vim.notify("cavediver: a dump couldn't be made (" .. tostring(text) .. ").", vim.log.levels.WARN)
+		end)
+		return
+	end
+	-- Another editor may have written a dump this second, so the number goes past its files
+	local dir = vim.fn.stdpath("state") .. "/cavediver"
+	local name, path
+	repeat
+		count = count + 1
+		name = "dump-" .. os.date("%Y%m%d-%H%M%S") .. "-" .. count
+		path = dir .. "/" .. name .. ".txt"
+	until not vim.uv.fs_stat(path)
+	local written, err = pcall(write, path, text)
+	local lines = vim.split(text, "\n", { plain = true })
+	local cut = #lines
+	for i, line in ipairs(lines) do
+		if line == "replay:" then
+			cut = i - 2
+			break
+		end
+	end
+	show(name, vim.list_slice(lines, 1, cut))
+	local said = what:match("[^\n]*")
+	vim.schedule(function()
+		if written then
+			vim.notify("cavediver: something that shouldn't happen did (" .. said .. "); its last steps are in " .. path .. ".",
+				vim.log.levels.WARN)
+		else
+			vim.notify("cavediver: something that shouldn't happen did (" .. said .. "); its last steps are in the window, "
+				.. "since the file couldn't be written (" .. tostring(err) .. ").", vim.log.levels.WARN)
+		end
+	end)
+end
+
+---Read a dump back, decrypted.
+---
+---Opens only from the directory the dump was written in, since its key is stretched from
+---it. `:CavediverDump` reads dumps through here, and so will the replay.
+---
+---@param path string The dump's file
+---@return string|nil text The dump's text, or nil when it can't be read here
+---@return string|nil problem "missing", "not a dump" or "not here" (another directory, or edited)
+function M.read(path)
+	local crypto = require('cavediver.domains.storage.crypto')
+	local file = io.open(path, "rb")
+	if not file then
+		return nil, "missing"
+	end
+	local bytes = file:read("*a")
+	file:close()
+	if bytes:sub(1, #HEADER) ~= HEADER or #bytes <= #HEADER + crypto.salt_length then
+		return nil, "not a dump"
+	end
+	local with_salt = bytes:sub(#HEADER + 1, #HEADER + crypto.salt_length)
+	local opened, text = pcall(crypto.open, key_for(vim.fn.getcwd(-1, -1), with_salt),
+		bytes:sub(#HEADER + crypto.salt_length + 1), aad(with_salt))
+	if not opened or text == nil then
+		return nil, "not here"
+	end
+	return text
+end
+
+---Open a dump in a window to read it, decrypted, its replay part included.
+---
+---Says why when it can't: no such file, not a dump, or a dump that opens only from the
+---directory it was written in.
+---
+---@param path string The dump's file, as typed
+---@return nil
+function M.open(path)
+	path = vim.fn.fnamemodify(vim.fn.expand(path), ":p")
+	local text, problem = M.read(path)
+	if not text then
+		local why = problem == "missing" and "there's no such file"
+			or problem == "not a dump" and "it isn't a dump"
+			or "it doesn't open here: a dump opens only from the directory it was written in, unedited"
+		vim.notify("cavediver: " .. vim.fn.fnamemodify(path, ":t") .. " can't be opened, since " .. why .. ".", vim.log.levels.WARN)
+		return
+	end
+	show(vim.fn.fnamemodify(path, ":t:r"), vim.split(text, "\n", { plain = true }), true)
+end
+
+---Dump a message that `never` is about to raise.
+---
+---Marks the message too, so the hook failure carrying it isn't dumped a second time.
+---
+---@param message string The message being raised
+---@return nil
+function M.never(message)
+	nevers[message] = true
+	M.fire("never:" .. message, message, data.open)
+end
+
+---Dump a failed hook that isn't critical.
+---
+---Dumps once per hook and error, unless the error carries a message `never` already
+---dumped.
+---
+---@param name string The hook's name
+---@param err string The hook's error, with its traceback
+---@return nil
+function M.hook_failed(name, err)
+	local text = tostring(err)
+	for message, _ in pairs(nevers) do
+		if text:find(message, 1, true) then
+			return
+		end
+	end
+	local first = text:match("[^\n]*"):gsub("^[^:]*:%d+: ", "")
+	M.fire("hook:" .. name .. ":" .. first, "Hook '" .. name .. "' failed: " .. text, data.open)
+end
+
+---Check the slot rules once a step has been held open its full time.
+---
+---Dumps a break only when it's still there after the editor settles, so a break the
+---next event repairs isn't dumped. A step that dumped already marks the breaks it left as
+---dumped, since its own dump shows them.
+---
+---@param step CavediverLedgerStep The step that closed
+---@return nil
+function M.closed(step)
+	if not enabled() then
+		return
+	end
+	local first = M.breaks()
+	if step.dumped then
+		for key, _ in pairs(first) do
+			dumped["rule:" .. key] = true
+		end
+		return
+	end
+	if next(first) == nil then
+		return
+	end
+	vim.schedule(function()
+		local still = M.breaks()
+		for key, b in pairs(first) do
+			if still[key] and not dumped["rule:" .. key] then
+				local n = vim.api.nvim_win_is_valid(b.win) and vim.api.nvim_win_get_number(b.win) or "?"
+				M.fire("rule:" .. key, b.rule .. " broke in win " .. n .. ": " .. b.what, step)
+			end
+		end
+	end)
+end
+
+return M

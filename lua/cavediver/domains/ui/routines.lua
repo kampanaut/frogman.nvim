@@ -975,14 +975,14 @@ local function derive_cache_from_window_triquetra(winid, again)
 						window.routines.cleanup_triquetras() -- I know it's really good to do this, but we need to clean up the triquetra.
 						return nil, nil, false, false, false
 					else
-						error("This is unexpected: file " .. display_name .. " has no buffer or closed state. " .. winid .. "\n" .. debug.traceback())
+						require('cavediver.domains.ledger').never("This is unexpected: file " .. display_name .. " has no buffer or closed state. " .. winid .. "\n" .. debug.traceback())
 					end
 				elseif vim.fn.filereadable(filepath) == 1 then -- ignore if the file is already deleted.
 					if not derive_cache_lock[winid] then
 						window.routines.cleanup_triquetras() -- I know it's really good to do this, but we need to clean up the triquetra.
 						return nil, nil, false, false, false
 					else
-						error("This is unexpected: file " .. display_name .. " This thing happens? " .. winid .. "\n" .. debug.traceback())
+						require('cavediver.domains.ledger').never("This is unexpected: file " .. display_name .. " This thing happens? " .. winid .. "\n" .. debug.traceback())
 					end
 				end
 				return nil, nil, false, false, false
@@ -1025,7 +1025,7 @@ local function derive_cache_from_window_triquetra(winid, again)
 			window.routines.cleanup_triquetras() -- I know it's really good to do this, but we need to clean up the triquetra.
 			return derive_cache_from_window_triquetra(winid, true) -- We redo it again.
 		else
-			error("Impossible state: current_bufnr is nil in derive_cache_from_window_triquetra() for winid " .. winid .. " , even cleanup_triquetras() couldn't fix it. So what the fuck right?")
+			require('cavediver.domains.ledger').never("Impossible state: current_bufnr is nil in derive_cache_from_window_triquetra() for winid " .. winid .. " , even cleanup_triquetras() couldn't fix it. So what the fuck right?")
 		end
 	end
 
@@ -1150,7 +1150,7 @@ local function construct_winbar_string(winid, theme)
 	local triquetra = data.get_or_create_window_display_cache(winid)
 
 	if triquetra == nil then
-		error("This should never happen, current_window_triquetra is nil")
+		require('cavediver.domains.ledger').never("This should never happen, current_window_triquetra is nil")
 	end
 
 	local fmt_sbufnr, fmt_cbufnr
