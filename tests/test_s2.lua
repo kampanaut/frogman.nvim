@@ -2506,6 +2506,19 @@ T['T374 [char] (S2) with the ASCII glyph set the picker draws nothing outside AS
 	eq({ lines = #p.lines > 0, ascii = ascii }, { lines = true, ascii = true })
 end
 
+T['T503 [char] (S2) a closed_entry formatter that gives nothing leaves cavediver\'s own text'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	child.lua([[require('cavediver').setup({ session_dir = require('cavediver.configs').session_dir,
+		formatters = { closed_entry = function() return nil end } })]])
+	local p = S2.picker(child)
+	local timed = false
+	for i = 1, #p.lines do
+		if not p.lines[i]:match('^\226\137\161') and S2.shown_line(child, p.buf, i):find('%d%d:%d%d') then timed = true end
+	end
+	eq(timed, true)
+end
+
 T['T375 [char] (S2) <M-;>W opens the picker, named keymaps.open_closed_lists'] = function()
 	two_closed()
 	local came_from = child.lua('return vim.api.nvim_get_current_win()')

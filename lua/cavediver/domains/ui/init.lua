@@ -419,7 +419,7 @@ function M.bufferline.cokeline.create_buffer_components()
 			text = function(buffer)
 				local filehash = history.get_hash_from_buffer(buffer.number)
 				local tag = filehash and history.data.missing[filehash]
-				return tag and ('⎇' .. tag .. ' ') or ''
+				return tag and ('⎇' .. tag:gsub("%%", "%%%%") .. ' ') or '' -- the tabline's own `%`, doubled
 			end,
 			fg = comment,
 			truncation = { priority = 1 }
