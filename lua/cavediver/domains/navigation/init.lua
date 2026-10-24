@@ -35,11 +35,11 @@ function M.is_cycling()
     return NavigationSM:state() == states.CYCLING
 end
 
----End a cycle running in another window, now rather than once the window jump settles.
+---End a cycle still running in another window that no window jump queued a cancel for.
 ---
----Keys that arrive in one batch, from a macro or a mapping, can reach another window
----before the jump's cancel has run. Each of cavediver's keys calls this first, so it acts
----as if the editor had settled between the two.
+---A window jump queues the cycle's cancel as settle work, which a key runs first. This is
+---the fallback for a jump that queued nothing, as `noautocmd wincmd w` leaves one. Each of
+---cavediver's keys calls it after the settle queue has run.
 ---
 ---@return nil
 function M.cancel_cycle_elsewhere()

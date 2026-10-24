@@ -380,7 +380,7 @@ end
 function M.land_after_delete(winid, deleted_bufnr)
 	local landing = { deleted = deleted_bufnr, pick = nil }
 	data.landing[winid] = landing
-	vim.schedule(function()
+	require('cavediver.settle').later("landing", function()
 		if data.landing[winid] == landing then
 			data.landing[winid] = nil
 		end

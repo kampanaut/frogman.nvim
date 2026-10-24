@@ -101,10 +101,15 @@ Dec.walks = function(child, opts)
 		child.setup(opts.setup)
 		child.lua(WALKER .. '\n' .. EXTRA_CHECKS)
 		local seed = opts.seed * 1000 + w
+		local dumps = child.dump_files()
 		local broke = child.lua('return _G.CDV_WALK(...)', { seed, opts.steps, opts.actions, opts.check })
 		if broke ~= vim.NIL and broke ~= nil then
 			return string.format('%s broke in walk %d (seed %d), step %d: %s\n  route: %s',
 				opts.check, w, seed, broke.step, broke.detail, broke.trail)
+		end
+		local fired = child.dumped_since(dumps)
+		if fired then
+			return string.format('walk %d (seed %d) dumped: %s', w, seed, fired)
 		end
 	end
 	return nil

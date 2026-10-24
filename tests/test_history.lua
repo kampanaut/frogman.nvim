@@ -114,6 +114,7 @@ local function walk(view, seed)
 	local rnd = X.rng(seed)
 	local keys = { ':e a' }
 	child.steps({ ':e a' })
+	local dumps = child.dump_files()
 	for _ = 1, STEPS do
 		local wins = child.lua('return #vim.api.nvim_tabpage_list_wins(0)')
 		local pick = rnd(8)
@@ -137,6 +138,10 @@ local function walk(view, seed)
 				return string.format('seed %d, step %d: %s after %s', seed, #keys, why, table.concat(keys, ', '))
 			end
 		end
+	end
+	local fired = child.dumped_since(dumps)
+	if fired then
+		return string.format('seed %d dumped: %s after %s', seed, fired, table.concat(keys, ', '))
 	end
 	return nil
 end
