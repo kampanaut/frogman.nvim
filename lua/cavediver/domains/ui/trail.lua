@@ -711,7 +711,8 @@ function M.search_word()
 	end
 	local name = target and (target.name or target.value)
 	if type(name) == "string" then
-		M.search(name, target.kind == "file" and target.value or nil)
+		-- a file follows its hash and a window its id; anything else is its name
+		M.search(name, (target.kind == "file" or target.kind == "window") and tostring(target.value) or nil)
 	end
 end
 
@@ -839,7 +840,18 @@ function M.open(query)
 	vim.bo[buf].filetype = "cavediver-trail"
 	draw()
 	if query and query ~= "" then
-		M.search(query)
+		-- `win <N>`, or `win` alone, is a window of the tab the trail is opened from, followed by its id
+		local number = query:match("^win%s*(%d*)$")
+		if number then
+			local winid = number == "" and from or vim.fn.win_getid(tonumber(number), vim.api.nvim_tabpage_get_number(vim.api.nvim_win_get_tabpage(from)))
+			if winid == 0 then
+				vim.notify("cavediver: there's no window " .. number .. " in this tab.", vim.log.levels.WARN)
+				return
+			end
+			M.search("win " .. vim.api.nvim_win_get_number(winid), tostring(winid))
+		else
+			M.search(query)
+		end
 	end
 end
 

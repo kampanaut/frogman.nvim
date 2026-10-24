@@ -34,6 +34,8 @@ function M.init_winbar_highlights()
 	-- This is where we completely define the winbar highlight groups.
 	vim.api.nvim_set_hl(0, "WinbarBase", { fg = configs.colors.base.focused.fg, bg = configs.colors.base.focused.bg, bold = true })
 	vim.api.nvim_set_hl(0, "WinbarBaseNC", { fg = configs.colors.base.unfocused.fg, bg = configs.colors.base.unfocused.bg })
+	vim.api.nvim_set_hl(0, "WinbarVisit", { fg = configs.colors.visit_bar.focused, bg = configs.colors.base.focused.bg, bold = true })
+	vim.api.nvim_set_hl(0, "WinbarVisitNC", { fg = configs.colors.visit_bar.unfocused, bg = configs.colors.base.unfocused.bg })
 	vim.api.nvim_set_hl(0, "WinbarFilenameCurrent", { fg = configs.colors.current.focused.filename, bg = configs.colors.base.focused.bg, bold = true, underline = true })      -- Green filename
 	vim.api.nvim_set_hl(0, "WinbarFilenameSecondary", { fg = configs.colors.secondary.focused.filename, bg = configs.colors.base.focused.bg, bold = true })      -- Green filename
 	vim.api.nvim_set_hl(0, "WinbarFilenameTernary", { fg = configs.colors.ternary.focused.filename, bg = configs.colors.base.focused.bg, bold = true })      -- Green filename
@@ -146,18 +148,34 @@ function M.show_winbar()
 	ui_machines.winbar:to(states.WINBAR.ACTIVE)
 end
 
+-- the indicators, by kind: the role marks, and a marked buffer's mark and label
+local hidden_indicators = { roles = false, harpoon = false }
+
+---Switch some indicators, one kind or every kind; the machine is off once every kind is hidden.
+local function set_indicators(kind, hidden)
+	for name, _ in pairs(hidden_indicators) do
+		if kind == nil or kind == name then
+			hidden_indicators[name] = hidden
+		end
+	end
+	local all = hidden_indicators.roles and hidden_indicators.harpoon
+	ui_machines.indicators:to(all and states.INDICATORS.OFF or states.INDICATORS.ON)
+end
+
 ---Turn off indicators.
 ---
+---@param kind "roles"|"harpoon"|nil One kind; every kind when nil
 ---@return nil
-function M.hide_indicators()
-	ui_machines.indicators:to(states.INDICATORS.OFF)
+function M.hide_indicators(kind)
+	set_indicators(kind, true)
 end
 
 ---Turn on indicators.
 ---
+---@param kind "roles"|"harpoon"|nil One kind; every kind when nil
 ---@return nil
-function M.show_indicators()
-	ui_machines.indicators:to(states.INDICATORS.ON)
+function M.show_indicators(kind)
+	set_indicators(kind, false)
 end
 
 ---Trigger UI update loop.
@@ -170,13 +188,17 @@ end
 ---Check if a UI component is currently hidden.
 ---
 ---@param component string Component name ("bufferline", "winbar", "indicators")
+---@param kind "roles"|"harpoon"|nil For the indicators, one kind; every kind when nil
 ---@return boolean hidden True if component is hidden
-function M.is_hidden(component)
+function M.is_hidden(component, kind)
 	if component == "bufferline" then
 		return ui_machines.bufferline:state() == states.BUFFERLINE.HIDDEN
 	elseif component == "winbar" then
 		return ui_machines.winbar:state() == states.WINBAR.MINIMAL
 	elseif component == "indicators" then
+		if kind then
+			return hidden_indicators[kind] == true
+		end
 		return ui_machines.indicators:state() == states.INDICATORS.OFF
 	end
 	return false
@@ -421,10 +443,11 @@ function M.bufferline.cokeline.create_buffer_components()
 			text = function(buffer)
 				local ctriquetra = bufferline_state.current_window_triquetra
 				if not ctriquetra then return ' ' end -- Graceful fallback
-				if M.is_hidden("indicators") then return ' ' end -- the role marks, switched off
-
 				local string
-				local harpooned = bufferline_state.harpooned_buffers[buffer.number]
+				local harpooned = bufferline_state.harpooned_buffers[buffer.number] and not M.is_hidden("indicators", "harpoon")
+				if M.is_hidden("indicators", "roles") then -- the role marks, switched off: a marked buffer keeps its mark
+					return harpooned and "󰛢  " or ' '
+				end
 				local bufnr = buffer.number
 				if bufnr == ctriquetra.primary_bufnr or bufnr == ctriquetra.ternary_bufnr then
 					string = "⦉" .. bufnr .. "⦊"
@@ -484,7 +507,7 @@ function M.bufferline.cokeline.create_buffer_components()
 				return get_theme_fg_by_slot(buffer.number)
 			end,
 			text = function(buffer)
-				if bufferline_state.harpooned_buffers[buffer.number] and not M.is_hidden("indicators") then
+				if bufferline_state.harpooned_buffers[buffer.number] and not M.is_hidden("indicators", "harpoon") then
 					return buffer.filename .. " ⥤ {" .. bufferline_state.harpooned_lookup[buffer.number] .. "}"
 				else
 					return buffer.filename

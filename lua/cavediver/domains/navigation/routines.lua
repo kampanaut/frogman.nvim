@@ -50,7 +50,7 @@ local function skippable_window(winid)
 end
 
 function M.record_window_jump(from_win, to_win)
-	if not skippable_window(from_win) and vim.api.nvim_win_is_valid(from_win) then
+	if vim.api.nvim_win_is_valid(from_win) and not skippable_window(from_win) then -- a window gone has nothing to skip
 		data.window_jump_history[to_win] = from_win
 	end
 end

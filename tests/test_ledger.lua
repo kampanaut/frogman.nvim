@@ -237,15 +237,22 @@ T['T399 [char] (A27, A16) <M-S-w> on an empty list while other lists hold closed
 	child.settle()
 	child.messages()
 	child.steps({ '<M-S-w>' })
-	local warns = said(vim.log.levels.WARN)
-	local one = warns[1] or ''
-	eq({
-		count = #warns,
-		empty = one:find('empty', 1, true) ~= nil,
-		counted = one:find('1 closed file', 1, true) ~= nil,
-		points = one:find(':CavediverClosed', 1, true) ~= nil,
-		old = one:find('No closed buffers to reopen.', 1, true) ~= nil,
-	}, { count = 1, empty = true, counted = true, points = true, old = false })
+	local one = said(vim.log.levels.WARN)
+	-- three on t's list: a and b visited in t's tab and closed there, not shown
+	child.cmd('tabnext')
+	child.steps({ ':e a', ':e b', ':e d' })
+	child.cmd('bdelete a.txt')
+	child.cmd('bdelete b.txt')
+	child.settle()
+	child.cmd('tabprevious')
+	child.settle()
+	child.messages()
+	child.steps({ '<M-S-w>' })
+	local three = said(vim.log.levels.WARN)
+	eq({ one = one, three = three }, {
+		one = { "No closed buffers to reopen in this tab.\n1 is on another tab's list: :CavediverClosed" },
+		three = { "No closed buffers to reopen in this tab.\n3 are on other tabs' lists: :CavediverClosed" },
+	})
 end
 
 -- a is visited in the session's tab, then closed with <M-.> in the first tab,
