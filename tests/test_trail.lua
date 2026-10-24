@@ -595,4 +595,45 @@ T['T445 [char] (A27) a close by a rename or a repair turns the life line closed'
 	eq({ copy = copy, repair = repair }, { copy = 'CavediverTrailLifeClosed', repair = 'CavediverTrailLifeClosed' })
 end
 
+
+T['T455 [char] (A27) a window\'s search follows the window'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('vsplit')
+	child.steps({ ':e x' })
+	child.cmd('wincmd p')
+	child.steps({ ':e c', '<M-n>' })
+	child.cmd('wincmd p')
+	child.settle(200)
+	child.cmd('CavediverTrail win 2')
+	child.settle(100)
+	local header = lines()[1]
+	local row = line_with('┃', '⇤')
+	cursor_to(row or 1, 12)
+	type_in('*')
+	local star = lines()[1]
+	type_in('q')
+	type_in('q')
+	child.messages()
+	child.cmd('CavediverTrail win 9')
+	child.settle(100)
+	local said = #child.messages() > 0
+	eq({ header = header:find('win 2', 1, true) ~= nil and header:find('1 move over 1 day', 1, true) ~= nil, row = row ~= nil,
+		star = star:find('1 move over 1 day', 1, true) ~= nil, said = said, searched = (lines()[1] or ''):find('⌕', 1, true) == nil },
+		{ header = true, row = true, star = true, said = true, searched = true })
+end
+
+T['T458 [char] (M13) the glyph sets are in the config, and a pair is changed there'] = function()
+	child.setup()
+	local defaults = child.lua('local g = require("cavediver.configs").glyphs; return { g.unicode and g.unicode.row_t, g.ascii and g.ascii.row_t }')
+	child.lua('require("cavediver").setup({ glyphs = { unicode = { row_t = { "<", ">" } }, closed = "v" } })')
+	child.steps({ ':e a', ':e b', ':e c' })
+	child.cmd('bdelete c.txt')
+	child.settle(300)
+	open_trail()
+	local closed = child.lua('return require("cavediver.domains.ui.routines").glyphs().closed')
+	eq({ defaults = defaults, row = line_with('<b> [c]') ~= nil, closed = closed },
+		{ defaults = { { '⦉', '⦊' }, { '<', '>' } }, row = true, closed = 'v' })
+end
+
 return T

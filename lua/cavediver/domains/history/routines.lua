@@ -1307,8 +1307,8 @@ function M.reopen_last_closed()
 		end
 		local elsewhere = vim.tbl_count(files)
 		if elsewhere > 0 then
-			vim.notify("This tab's closed list is empty; the other lists hold " .. elsewhere .. " closed file" ..
-				(elsewhere == 1 and "" or "s") .. ". :CavediverClosed shows them.", vim.log.levels.WARN)
+			vim.notify("No closed buffers to reopen in this tab.\n" .. (elsewhere == 1 and "1 is on another tab's list"
+				or (elsewhere .. " are on other tabs' lists")) .. ": :CavediverClosed", vim.log.levels.WARN)
 		else
 			vim.notify("No closed buffers to reopen.", vim.log.levels.WARN)
 		end

@@ -17,6 +17,22 @@ local update_timer = vim.loop:new_timer()
 
 local M = {}
 
+---What a window visits, as its winbar names it: the buffer's id and its buftype, or its filetype when
+---it looks like a file (oil's acwrite), and a terminal's command, from its term:// name.
+---@param bufnr Bufnr
+---@return string
+local function visit_label(bufnr)
+	local buftype = vim.bo[bufnr].buftype
+	local visited = (buftype == "" or buftype == "acwrite") and vim.bo[bufnr].filetype or buftype
+	if buftype == "terminal" then
+		local command = (vim.api.nvim_buf_get_name(bufnr):match("//%d+:(.*)$") or ""):match("^%S+")
+		if command then
+			visited = visited .. ": " .. vim.fs.basename(command)
+		end
+	end
+	return ((bufnr .. " " .. visited):gsub("%%", "%%%%"))
+end
+
 -- the primary pop-up's decoration: the switch, a closed entry's glyph, a missing file's tag
 local primary_ns = vim.api.nvim_create_namespace("cavediver_primary_popup")
 
@@ -250,44 +266,14 @@ local closed_ns = vim.api.nvim_create_namespace("cavediver_closed_lists")
 -- each open closed-lists buffer's state, by buffer
 local closed_pickers = {}
 
-local glyph_sets = {
-	unicode = {
-		list = "≡", closed = "↓", tag = "⎇", more = "…",
-		-- the trail's: its title, fills by depth (and unshaded), gauge, marks, branches, folds, arrows, and a
-		-- search's mark and life line
-		title = "⦉ trail ⦊", shade0 = "≋", shade1 = "░", shade2 = "▒", shade3 = "▓", rule = "─",
-		bars = "▁▂▃▄▅▆▇█", now_left = "❬", now_right = "❭", dot = " · ", older = "<<<", newer = ">>>",
-		branch = "├ ", last = "└ ", stem = "│ ", folded = "▸", unfolded = "▾", arrow = " → ", ring = "┊",
-		row_t = { "⦉", "⦊" }, row_c = { "[", "]" }, row_s = { "⟦", "⟧" }, search = "⌕", life = "┃",
-		-- what set a step off
-		keymap = "⌨", command = "⌨", event = "⚡", timer = "⏲", load = "◆", save = "◇", restart = "↻", label = "⎇",
-		-- a move's family
-		reopened = "↑", forgotten = "∅", note_dropped = "⌫", gone = "✗", back = "✓", repair = "⚒", repointed = "⟲",
-		landed = "⤳", undone = "↶", dropped = "⊘", cleared = "⊘", rewritten = "✎", cancelled = "⇤", loaded = "◆",
-		fresh = "◆", saved = "◇", refreshed = "◇", tab_closed = "◇", copied = "⧉", moved = "⇢", detached = "≡",
-		detached_left = "≡",
-	},
-	ascii = {
-		list = "#", closed = "v", tag = "@", more = "...",
-		title = "[ trail ]", shade0 = "~", shade1 = ".", shade2 = ":", shade3 = "#", rule = "-",
-		bars = "_.-=+*#", now_left = "(", now_right = ")", dot = " - ", older = "<<<", newer = ">>>",
-		branch = "|- ", last = "`- ", stem = "|  ", folded = "+", unfolded = "-", arrow = " -> ", ring = ":",
-		row_t = { "<", ">" }, row_c = { "[", "]" }, row_s = { "{", "}" }, search = "?", life = "|",
-		keymap = "K", command = ":", event = "E", timer = "T", load = "L", save = "S", restart = "R", label = "@",
-		reopened = "^", forgotten = "0", note_dropped = "x", gone = "X", back = "+", repair = "!", repointed = "~",
-		landed = ">", undone = "<", dropped = "/", cleared = "/", rewritten = "*", cancelled = "|", loaded = "L",
-		fresh = "L", saved = "S", refreshed = "S", tab_closed = "S", copied = "=", moved = ">", detached = "#",
-		detached_left = "#",
-	},
-}
 
 ---The glyphs cavediver's views draw with: config's set, with any glyph it names in that glyph's place.
 ---@return table<string, string>
 function M.glyphs()
 	local configured = require('cavediver.configs').glyphs or {}
-	local glyphs = vim.deepcopy(glyph_sets[configured.set] or glyph_sets.unicode)
+	local glyphs = vim.deepcopy(configured[configured.set] or configured.unicode or {})
 	for name, glyph in pairs(configured) do
-		if name ~= "set" then
+		if name ~= "set" and name ~= "unicode" and name ~= "ascii" then
 			glyphs[name] = glyph
 		end
 	end
@@ -1011,8 +997,7 @@ local function derive_cache_from_window_triquetra(winid, again)
 	-- buffer that looks like a file (oil's acwrite).
 	local shown = vim.api.nvim_win_get_buf(winid)
 	if history.get_hash_from_buffer(shown) == nil then
-		local buftype = vim.bo[shown].buftype
-		ui_triquetra.visiting = (buftype == "" or buftype == "acwrite") and vim.bo[shown].filetype or buftype
+		ui_triquetra.visiting = visit_label(shown)
 	else
 		ui_triquetra.visiting = nil
 	end
@@ -1318,11 +1303,6 @@ local function construct_winbar_string(winid, theme)
 		missing_tag("secondary")
 	end
 
-	local diff = vim.api.nvim_strwidth(display_string)
-	display_string = string.gsub(display_string, "zsh:terminal", "terminal:")
-	diff = diff - vim.api.nvim_strwidth(display_string)
-
-	display_string_length = display_string_length - diff
 	local segment = display_string
 
 	display_string = string.format("%%#%s#────── ", theme.base) .. display_string
@@ -1447,6 +1427,50 @@ local function window_touches_top(win_id)
 end
 
 
+-- the visit bars cavediver wrote, by window: it writes only where the winbar is empty or one of these
+local visit_bars = {}
+
+---A window with no current slot, born untracked (a :help split, :copen, a terminal split), shows what
+---it visits alone, centred, in its own colour, unless another plugin set its winbar.
+local function update_visit_bars()
+	local own = require('cavediver.configs').winbar.own ~= false
+	local hidden = require('cavediver.domains.ui').is_hidden("winbar")
+	for winid, bar in pairs(visit_bars) do
+		if not vim.api.nvim_win_is_valid(winid) or window.data.crux[winid] then
+			visit_bars[winid] = nil
+		elseif not own or not M.is_visiting(vim.api.nvim_win_get_buf(winid), winid) then
+			-- it stopped qualifying: the bar goes, unless something else wrote over it
+			if vim.wo[winid].winbar == bar then
+				vim.wo[winid].winbar = ""
+			end
+			visit_bars[winid] = nil
+		end
+	end
+	if not own then
+		return
+	end
+	for _, winid in ipairs(vim.api.nvim_list_wins()) do
+		local bufnr = vim.api.nvim_win_get_buf(winid)
+		-- the command-line window, and a window an autocmd borrows, are Neovim's own
+		local special = vim.fn.win_gettype(winid) == "command" or vim.fn.win_gettype(winid) == "autocmd"
+		if window.data.crux[winid] == nil and not special and M.is_visiting(bufnr, winid) then
+			local current = vim.wo[winid].winbar
+			if current == "" or current == visit_bars[winid] then
+				local bar = ""
+				if not hidden then
+					local group = vim.api.nvim_get_current_win() == winid and "WinbarVisit" or "WinbarVisitNC"
+					local label = "[" .. visit_label(bufnr) .. "]"
+					local free = vim.api.nvim_win_get_width(winid) - vim.api.nvim_strwidth((label:gsub("%%%%", "%%"))) - 2
+					local left = math.max(0, math.floor(free / 2))
+					bar = "%#" .. group .. "#" .. string.rep("─", left) .. " " .. label .. " " .. string.rep("─", math.max(0, free - left))
+				end
+				vim.wo[winid].winbar = bar
+				visit_bars[winid] = bar
+			end
+		end
+	end
+end
+
 local function update_all_winbars()
 	local top_windows = {}
 	local all_windows = {}
@@ -1476,6 +1500,7 @@ local function update_all_winbars()
 	end
 	-- reset the preserve_winbar_overlap state table
 	preserve_winbar_overlap = {}
+	update_visit_bars()
 end
 
 ---We now need to show the UI Cache.

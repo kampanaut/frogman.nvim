@@ -332,4 +332,79 @@ T['T450 [char] (M12, P26) marked buffers come from the provider'] = function()
 	eq({ marked = marked, off = off }, { marked = { a = false, b = { true, 1 }, c = false }, off = false })
 end
 
+
+-- The filename the bufferline draws for a buffer, seventh in the components' order.
+local FILENAME = [==[
+package.loaded['cokeline.hlgroups'] = package.loaded['cokeline.hlgroups'] or { get_hl_attr = function() return '#000000' end }
+local comps = require('cavediver').bufferline.cokeline.create_buffer_components()
+return comps[7].text({ number = ..., filename = 'b.txt', index = 1, is_focused = true })
+]==]
+
+T['T456 [char] (M12) the indicators by kind'] = function()
+	child.lua([[
+		local root = _G.CDV_TEST.root
+		require('cavediver').setup({ marks_provider = function() return { root .. '/b.txt' } end })
+	]])
+	child.steps({ ':e a', ':e b' })
+	child.settle(300)
+	local b = bufnr('b.txt')
+	local function drawn()
+		child.settle(300)
+		return { child.lua(INDEX, { b }), child.lua(FILENAME, { b }) }
+	end
+	local got = { on = drawn() }
+	child.cmd('CavediverIndicators roles off')
+	got.roles_off = drawn()
+	child.cmd('CavediverIndicators roles on')
+	child.cmd('CavediverIndicators harpoon off')
+	got.harpoon_off = drawn()
+	child.cmd('CavediverIndicators off')
+	got.off = drawn()
+	child.cmd('CavediverIndicators on')
+	got.again = drawn()
+	eq(got, {
+		on = { '[' .. b .. '] 󰛢  ', 'b.txt ⥤ {1}' },
+		roles_off = { '󰛢  ', 'b.txt ⥤ {1}' },
+		harpoon_off = { '[' .. b .. ']  ', 'b.txt' },
+		off = { ' ', 'b.txt' },
+		again = { '[' .. b .. '] 󰛢  ', 'b.txt ⥤ {1}' },
+	})
+end
+
+T['T457 [char] (M12) a window with no current slot shows its visit alone'] = function()
+	child.steps({ ':e a' })
+	child.cmd('help')
+	child.settle(300)
+	local hw, hb = child.lua('return vim.api.nvim_get_current_win()'), child.lua('return vim.api.nvim_get_current_buf()')
+	local focused = child.lua('return vim.wo[...].winbar', { hw })
+	child.cmd('wincmd p')
+	child.settle(300)
+	local unfocused = child.lua('return vim.wo[...].winbar', { hw })
+	-- a split with a winbar of its own keeps it
+	child.cmd('split | terminal')
+	child.settle(300)
+	local tw = child.lua('return vim.api.nvim_get_current_win()')
+	child.lua('vim.wo[...].winbar = "MINE"', { tw })
+	child.settle(300)
+	local mine = child.lua('return vim.wo[...].winbar', { tw })
+	-- the help split stops qualifying: a skip-list filetype; its bar goes
+	child.lua('vim.bo[...].filetype = "neo-tree"', { hb })
+	child.settle(300)
+	local gone = child.lua('return vim.wo[...].winbar', { hw })
+	local piece = '[' .. hb .. ' help]'
+	local left, right = focused:match('^(.-)' .. vim.pesc(piece) .. '(.*)$')
+	local function rules(s) return select(2, (s or ''):gsub('─', '')) end
+	eq({ piece = left ~= nil, group = focused:find('%#WinbarVisit#', 1, true) ~= nil,
+		centred = left ~= nil and math.abs(rules(left) - rules(right)) <= 1,
+		nc = unfocused:find('%#WinbarVisitNC#', 1, true) ~= nil and unfocused:find(piece, 1, true) ~= nil, mine = mine, gone = gone },
+		{ piece = true, group = true, centred = true, nc = true, mine = 'MINE', gone = '' })
+	-- not owned: none drawn
+	child.setup()
+	child.lua('require("cavediver").setup({ winbar = { own = false } })')
+	child.steps({ ':e a' })
+	child.cmd('help')
+	child.settle(300)
+	eq(child.lua('return vim.wo.winbar'), '')
+end
+
 return T

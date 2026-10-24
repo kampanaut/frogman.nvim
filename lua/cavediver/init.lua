@@ -191,16 +191,24 @@ function M.setup(user_config)
 	-- the winbar, indicator and bufferline toggles: on, off, or toggle (no argument toggles)
 	for name, part in pairs({ CavediverWinbar = "winbar", CavediverIndicators = "indicators", CavediverBufferline = "bufferline" }) do
 		vim.api.nvim_create_user_command(name, function(opts)
-			local hidden = ui.is_hidden(part)
-			local want = opts.args == "" and "toggle" or opts.args
-			if want == "on" or (want == "toggle" and hidden) then
-				ui["show_" .. part]()
-			elseif want == "off" or (want == "toggle" and not hidden) then
-				ui["hide_" .. part]()
-			else
-				vim.notify("cavediver: :" .. name .. " takes on, off or toggle.", vim.log.levels.WARN)
+			local args = vim.deepcopy(opts.fargs)
+			local kind = part == "indicators" and (args[1] == "roles" or args[1] == "harpoon") and table.remove(args, 1) or nil
+			local hidden = ui.is_hidden(part, kind)
+			local want = args[1] or "toggle"
+			if #args > 1 then
+				want = nil
 			end
-		end, { nargs = "?", complete = function() return { "on", "off", "toggle" } end,
+			if want == "on" or (want == "toggle" and hidden) then
+				ui["show_" .. part](kind)
+			elseif want == "off" or (want == "toggle" and not hidden) then
+				ui["hide_" .. part](kind)
+			else
+				vim.notify("cavediver: :" .. name .. " takes " .. (part == "indicators" and "roles or harpoon, then " or "")
+					.. "on, off or toggle.", vim.log.levels.WARN)
+			end
+		end, { nargs = "*", complete = function()
+			return part == "indicators" and { "roles", "harpoon", "on", "off", "toggle" } or { "on", "off", "toggle" }
+		end,
 			desc = "Switch cavediver's " .. part .. " on or off, or toggle it" })
 	end
 	vim.api.nvim_create_user_command("CavediverTrail", function(opts)

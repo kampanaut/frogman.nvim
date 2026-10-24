@@ -415,7 +415,7 @@ end
 -- Visiting (the desk's visiting rule, A2) ------------------------------------
 
 -- Help shown in a's own window: a visit.
-T['T268 [char] (A2) the winbar shows the visit, like "a.txt ← [help]"'] = function()
+T['T268 [char] (A2) the winbar shows the visit, like "a.txt ← [<id> help]"'] = function()
 	child.steps({ ':e a' })
 	local aw = child.win()
 	child.cmd('help')
@@ -427,10 +427,18 @@ T['T268 [char] (A2) the winbar shows the visit, like "a.txt ← [help]"'] = func
 	child.lua('vim.api.nvim_win_set_buf(0, ...)', { hb })
 	child.settle(300)
 	eq(child.lua('return vim.bo.buftype'), 'help')
-	-- Format locked 2026-10-21: the current slot's piece becomes "[<bufnr>] a.txt ← [help]",
-	-- the ternary and secondary pieces kept around it; the brackets hold the buftype.
-	local text = Dec.winbar_text(child, aw)
-	eq(text:match('%[%d+%] a%.txt ← %[help%]') ~= nil, true)
+	-- Format locked 2026-10-21, and 2026-10-24 with the visited buffer's id: the current slot's piece
+	-- becomes "[<bufnr>] a.txt ← [<id> help]", the ternary and secondary pieces kept around it.
+	local help = Dec.winbar_text(child, aw):find('] a.txt ← [' .. hb .. ' help]', 1, true) ~= nil
+	-- a terminal names its command, from its term:// name
+	child.cmd('terminal')
+	child.settle(300)
+	local tb, cmd = unpack(child.lua([[
+		local name = vim.api.nvim_buf_get_name(0)
+		return { vim.api.nvim_get_current_buf(), vim.fs.basename((name:match('//%d+:(.*)$') or ''):match('^%S+') or '') }
+	]]))
+	local term = Dec.winbar_text(child, aw):find('] a.txt ← [' .. tb .. ' terminal: ' .. cmd .. ']', 1, true) ~= nil
+	eq({ help = help, term = term, cmd = cmd ~= '' }, { help = true, term = true, cmd = true })
 end
 
 T['T269 [char] (A2, A6, A7) while visiting, <M-f> and <M-S-f> take the window back to its current slot first'] = function()

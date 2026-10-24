@@ -122,7 +122,35 @@ local defaults = {
 		header = { tally = true, gauge = true, shade = true },
 	},
 	glyphs = {
-		set = "unicode", -- "unicode" | "ascii"; a glyph named here (list, closed, tag) replaces the set's
+		set = "unicode", -- "unicode" | "ascii"; a glyph named here, outside the sets, replaces the set's
+		unicode = {
+			list = "≡", closed = "↓", tag = "⎇", more = "…",
+			-- the trail's: its title, fills by depth (and unshaded), gauge, marks, branches, folds, arrows, and a
+			-- search's mark and life line
+			title = "⦉ trail ⦊", shade0 = "≋", shade1 = "░", shade2 = "▒", shade3 = "▓", rule = "─",
+			bars = "▁▂▃▄▅▆▇█", now_left = "❬", now_right = "❭", dot = " · ", older = "<<<", newer = ">>>",
+			branch = "├ ", last = "└ ", stem = "│ ", folded = "▸", unfolded = "▾", arrow = " → ", ring = "┊",
+			row_t = { "⦉", "⦊" }, row_c = { "[", "]" }, row_s = { "⟦", "⟧" }, search = "⌕", life = "┃",
+			-- what set a step off
+			keymap = "⌨", command = "⌨", event = "⚡", timer = "⏲", load = "◆", save = "◇", restart = "↻", label = "⎇",
+			-- a move's family
+			reopened = "↑", forgotten = "∅", note_dropped = "⌫", gone = "✗", back = "✓", repair = "⚒", repointed = "⟲",
+			landed = "⤳", undone = "↶", dropped = "⊘", cleared = "⊘", rewritten = "✎", cancelled = "⇤", loaded = "◆",
+			fresh = "◆", saved = "◇", refreshed = "◇", tab_closed = "◇", copied = "⧉", moved = "⇢", detached = "≡",
+			detached_left = "≡",
+		},
+		ascii = {
+			list = "#", closed = "v", tag = "@", more = "...",
+			title = "[ trail ]", shade0 = "~", shade1 = ".", shade2 = ":", shade3 = "#", rule = "-",
+			bars = "_.-=+*#", now_left = "(", now_right = ")", dot = " - ", older = "<<<", newer = ">>>",
+			branch = "|- ", last = "`- ", stem = "|  ", folded = "+", unfolded = "-", arrow = " -> ", ring = ":",
+			row_t = { "<", ">" }, row_c = { "[", "]" }, row_s = { "{", "}" }, search = "?", life = "|",
+			keymap = "K", command = ":", event = "E", timer = "T", load = "L", save = "S", restart = "R", label = "@",
+			reopened = "^", forgotten = "0", note_dropped = "x", gone = "X", back = "+", repair = "!", repointed = "~",
+			landed = ">", undone = "<", dropped = "/", cleared = "/", rewritten = "*", cancelled = "|", loaded = "L",
+			fresh = "L", saved = "S", refreshed = "S", tab_closed = "S", copied = "=", moved = ">", detached = "#",
+			detached_left = "#",
+		},
 	},
 	formatters = {}, -- closed_entry, trail_step, trail_move, trail_header: each gives {text, highlight} chunks, or nil for cavediver's own
 	colors = {
@@ -219,6 +247,11 @@ local defaults = {
 			life_open = "#879A39", -- green-400
 			life_closed = "#DA702C", -- orange-400
 			life_gone = "#D14D41", -- red-400
+		},
+		-- a window with no current slot: its visit alone
+		visit_bar = {
+			focused = "#3AA99F", -- cyan-400
+			unfocused = "#575653", -- base-700
 		},
 		cokeline = {
 			is_picking_close = "#D14D41", -- red-400

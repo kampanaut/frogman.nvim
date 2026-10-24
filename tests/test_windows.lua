@@ -68,6 +68,17 @@ T['T449 [char] (A17) <M-,>\'s skip list is configurable'] = function()
 	eq({ skipped = skipped, went = child.win() == w1 }, { skipped = true, went = true })
 end
 
+T['T459 [char] (A3, M12) the command-line window is neither a visit nor a jump to record'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.messages()
+	child.type_keys('q:')
+	child.lua('vim.wait(600)')
+	local open = child.lua('return { vim.fn.getcmdwintype(), vim.wo.winbar }')
+	child.type_keys('<C-c>')
+	child.lua('vim.wait(300)')
+	eq({ open = open, failures = Extra.at_least(child.messages()) }, { open = { ':', '' }, failures = {} })
+end
+
 T['T194 [char] one jump table serves every tab'] = function()
 	-- Tab 1: a | b. Tab 2: c | d.
 	child.steps({ ':e a' })
