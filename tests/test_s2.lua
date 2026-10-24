@@ -565,6 +565,72 @@ T['T474 [char] (S2) an open No Name text shown in another tab keeps its cursor']
 	eq(child.lua('return vim.api.nvim_win_get_cursor(0)'), { 3, 2 })
 end
 
+-- c is closed with <M-.>, and its buffer, unlisted after :bdelete, shown again
+-- with :buffer, which doesn't list it: the window visits a buffer cavediver
+-- doesn't track, whose file it knows.
+T['T475 [char] (S2) a closed file shown again through its unlisted buffer is not an outsider, and the load goes through'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
+	child.cmd('buffer ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")'))
+	child.settle()
+	eq(child.lua('return vim.bo.buflisted'), false)
+	eq(Misc.save(child), { true })
+
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b', 'c' }, 'c')
+	child.messages()
+	local dumps = child.dump_files()
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq({ errors = Misc.errors(child), dump = child.dumped_since(dumps), triquetra = child.slots() ~= 'no triquetra' },
+		{ errors = {}, dump = nil, triquetra = true })
+end
+
+-- The text is open in the ternary, the window on b, when the session is saved;
+-- its buffer is then set to nofile, which takes it out of cavediver's hands.
+T['T476 [char] (S2) a saved-open No Name text whose buffer turned nofile is reopened from its file, and the load goes through'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	local n = S2.noname(child, { 'turned text' })
+	child.steps({ ':e b' })
+	eq(Misc.save(child), { true })
+	child.lua('vim.bo[...].buftype = "nofile"', { n })
+	child.settle(300)
+	child.messages()
+	local dumps = child.dump_files()
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq({ errors = Misc.errors(child), dump = child.dumped_since(dumps), holding = S2.holding(child, 'turned text') },
+		{ errors = {}, dump = nil, holding = 2 })
+end
+
+-- libcrypto made unloadable in the fresh editor before anything has needed it.
+T['T477 [char] (S1) a load whose file can\'t be read for an environment reason fails inside its hook'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(Misc.save(child), { true })
+
+	S2.start(child, s)
+	child.lua([[
+		local ffi = require('ffi')
+		local real = ffi.load
+		ffi.load = function(name, ...)
+			if tostring(name):match('crypto') then error('simulated: library not found') end
+			return real(name, ...)
+		end
+	]])
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	child.messages()
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	local msgs = child.messages()
+	eq({ failed = S2.has(msgs, 'failed during transition'), state = child.lua('return require("cavediver.domains.storage").sm:state()') },
+		{ failed = true, state = 'idle' })
+end
+
 -- 150 more files in the project, each opened and closed. It held before the
 -- encrypted format and holds with it.
 T['T309 [char] (S2) no count limit: 150 closed files all come back'] = function()
