@@ -404,8 +404,11 @@ function StateMachine:enable_hook(name)
 	self.hooks[name].enabled = true
 end
 
----Make a hook critical: when it fails, the error isn't caught and notified as other hooks'
----errors are. The transition is abandoned, and the error reaches whoever called `to()`.
+---Make a hook critical, so its failure reaches the caller.
+---
+---A critical hook's error isn't caught and notified as other hooks' errors are. The transition
+---is abandoned, the machine stays in the state it was in, and the error reaches whoever called
+---`to()`.
 ---
 ---@param name string Name of the hook to make critical
 ---@return nil

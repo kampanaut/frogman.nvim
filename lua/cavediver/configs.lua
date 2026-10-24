@@ -14,90 +14,90 @@
 ---@field toggle_window string Jump between previous windows
 ---@field open_primary_buffer_history string Open primary buffer history window
 ---@field open_closed_lists string Open the closed lists
----@field views CavediverViewKeymaps The keys inside cavediver's own views, the same in each
+---@field views CavediverViewKeymaps Keys inside cavediver's own views (the same keys in each)
 
 ---@class CavediverViewKeymaps
----@field leave string Write, then leave the view
----@field leave_too string Leave the view as `leave` does, a second key for it
----@field act string The view's main action on the line under the cursor, then leave
----@field act_and_stay string The main action, staying in the view
----@field fold string Fold or unfold a section
----@field previous_section string Go to the previous section
----@field next_section string Go to the next section
----@field pick string The primary pop-up's: add files through the picker
----@field search string The trail's: search every page for a name
----@field search_word string The trail's: search for the name under the cursor
+---@field leave string Write the view and leave it (the trail backs out of a search first)
+---@field leave_too string Second key that writes and leaves the view (in the trail, even from a search)
+---@field act string Run the view's main action on the line under the cursor, then leave
+---@field act_and_stay string Run the view's main action, staying in the view
+---@field fold string Fold or unfold what's under the cursor
+---@field previous_section string Go to the previous section (the older day in the trail)
+---@field next_section string Go to the next section (the newer day in the trail)
+---@field pick string Add files through the picker, in the primary pop-up
+---@field search string Search every page for a name, in the trail
+---@field search_word string Search for the name under the cursor, in the trail
 
 ---@class CavediverGlyphs
----@field set "unicode"|"ascii" The glyph set; any glyph named here replaces the set's own
----@field list string|nil Before a list's name
----@field closed string|nil Before a closed entry
----@field tag string|nil Before a missing file's tag
+---@field set "unicode"|"ascii" The glyph set (a glyph named here, outside the sets, replaces the set's own)
+---@field list string|nil Glyph before a list's name
+---@field closed string|nil Glyph before a closed entry
+---@field tag string|nil Glyph before a missing file's tag
 
----A closed entry, as the closed lists draw it and hand it to a formatter.
+---A closed entry, as the closed lists draw it and hand it to a formatter
 ---@class CavediverClosedEntry
----@field name string The line's text: the file's path, or `[No Name] "first line…"`
----@field path string The file's path, or its NONAME_ name
----@field time number|nil When it was closed, in seconds
----@field filetype string|nil A No Name text's filetype
----@field tag string|nil Where the file went missing, when it's gone from disk
----@field list string The list's name
+---@field name string The line's text (the file's path from the cwd, or `[No Name] "first line…"`)
+---@field path string The file's full path, or its NONAME_ name
+---@field time number|nil When it was closed, in seconds since the epoch
+---@field filetype string|nil Filetype of a No Name text
+---@field tag string|nil Label of where the file went missing, when it's gone from disk
+---@field list string Name of the list it's under
 
----What the trail's header is drawn from, as its formatter gets it.
+---What the trail's header is drawn from, as its formatter gets it
 ---@class CavediverTrailHeader
----@field day string|nil The day shown, `YYYY-MM-DD`
----@field date string The day as the header writes it
+---@field day string|nil The day shown, as `YYYY-MM-DD`
+---@field date string The day as the header writes it (`%a %d %b %Y`)
 ---@field depth integer How many calendar days before today
----@field moves integer The day's moves
----@field kinds table<string, integer> The day's moves by kind
+---@field moves integer Number of the day's moves
+---@field kinds table<string, integer> Number of the day's moves by kind (kind → count)
 
 ---@class CavediverFormatters
----@field closed_entry fun(entry: CavediverClosedEntry, glyphs: table): table[]|nil The virtual text after an entry, as {text, highlight} chunks
----@field trail_step fun(step: CavediverLedgerStep, glyphs: table): table[]|nil A step's line in the trail, as {text, highlight} chunks
----@field trail_move fun(move: CavediverLedgerMove, glyphs: table, step: CavediverLedgerStep): table[]|nil A move's line in the trail
----@field trail_header fun(header: CavediverTrailHeader, glyphs: table): table[]|nil The trail's header line
+---@field closed_entry fun(entry: CavediverClosedEntry, glyphs: table): table[]|nil Virtual text after a closed entry, as {text, highlight} chunks (nil draws none)
+---@field trail_step fun(step: CavediverLedgerStep, glyphs: table): table[]|nil A step's line in the trail, as {text, highlight} chunks (nil for cavediver's own)
+---@field trail_move fun(move: CavediverLedgerMove, glyphs: table, step: CavediverLedgerStep): table[]|nil A move's line in the trail (nil for cavediver's own)
+---@field trail_header fun(header: CavediverTrailHeader, glyphs: table): table[]|nil The trail's header line (nil for cavediver's own)
 
----The ledger's records, which the ring and the trail read. Kept stable: formatters read them.
+---The ledger's records, read by the ring, the trail and the formatters, so their shape stays stable
 
----A window's slots at one moment. Files are hashes; the step that holds the row names them.
+---A window's slots at one moment, with files as hashes (the step holding the row names them)
 ---@class CavediverLedgerRow
 ---@field c Filehash|nil The current slot
 ---@field s Filehash|nil The secondary slot
 ---@field t Filehash|nil The ternary slot
 ---@field p Filehash[] The primary queue
 ---@field on boolean Whether the primary is switched on
----@field dtm table<string, Filehash> The ternary notes, `-swap` keys included
----@field dsm table<string, Filehash> The secondary notes, `-swap` keys included
+---@field dtm table<string, Filehash> Ternary notes (displacement_ternary_map), `-swap` keys included
+---@field dsm table<string, Filehash> Secondary notes (displacement_secondary_map), `-swap` keys included
 ---@field shows Filehash|nil What the window shows, when cavediver tracks it (a replay plants it)
 
----What set things off, and what cavediver did then.
+---A ledger step, with what set it off and what cavediver did then
 ---@class CavediverLedgerStep
----@field seq integer Its number, one more than the step before
----@field time number When it began, in seconds
----@field cause "keymap"|"command"|"event"|"timer"|"load"|"save"|"restart"|"label"
----@field trigger string What set it off, as written: `<M-f>`, `:bdelete c.txt`, `BufDelete c.txt`, `cleanup`
+---@field seq integer Step number, one more than the step before
+---@field time number When it began, in seconds since the epoch
+---@field cause "keymap"|"command"|"event"|"timer"|"load"|"save"|"restart"|"label" Kind of trigger that began it
+---@field trigger string What set it off, as written (`<M-f>`, `:bdelete c.txt`, `BufDelete c.txt`, `cleanup`)
 ---@field win integer|nil The window it's about
----@field tab integer|nil That window's tab
----@field pool string|nil The id of that tab's list then: "" the editor's, or a session's
+---@field tab integer|nil That window's tabpage
+---@field pool string|nil Id of that tab's list then ("" for the editor's, otherwise a session's)
 ---@field row_before CavediverLedgerRow|nil The window's row as the step began
 ---@field row_after CavediverLedgerRow|nil The window's row as the step closed
----@field names table<Filehash, string> The name of every file in its rows and moves, as they were then
----@field events string[] The events it set off, `BufEnter b.txt`, listed under it
+---@field names table<Filehash, string> Name of every file in its rows and moves, as it was then
+---@field events string[] Events it set off, listed under it (`BufEnter b.txt`)
 ---@field moves CavediverLedgerMove[] What cavediver did in it
----@field told table[] The messages it queued, said as it closes
+---@field told table[] Messages it queued, said as it closes (and emptied then)
 ---@field closed boolean|nil Whether it has closed
----@field torn boolean|nil A whole-editor load replaced what it did: the session manager's teardown
+---@field torn boolean|nil Whether a whole-editor load replaced what it did (the session manager's teardown)
 ---@field dumped boolean|nil Whether the flight recorder dumped in it
 
----Something cavediver did in a step.
+---Something cavediver did in a step
 ---@class CavediverLedgerMove
----@field kind string What it was: closed, reopened, forgotten, repair, …
----@field subject Filehash|string|nil What it's about: a file's hash, a list, a window
+---@field kind string Kind of move (closed, reopened, forgotten, repair, …)
+---@field subject Filehash|string|nil What it's about (a file's hash, a list or a window)
 ---@field name string|nil The subject as shown
 ---@field words string|nil What happened, in words
 ---@field lists string[]|nil The lists it names, the tab's own first
----@field dim boolean|nil Bookkeeping: what the key's own result left, shown dim
----@field state "open"|"closed"|nil Where it left its file, when that isn't its kind's: a repair's
+---@field dim boolean|nil Whether it's bookkeeping of the key's own result, shown dim
+---@field state "open"|"closed"|nil Where it left its file, when its kind doesn't say (a repair's)
 
 
 ---Default configuration

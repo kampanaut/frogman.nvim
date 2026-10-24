@@ -55,7 +55,10 @@ function M.init_winbar_highlights()
 	vim.api.nvim_set_hl(0, "BothWayNerdArrowNC", { fg = configs.colors.both_way_arrow.unfocused, bg = configs.colors.base.unfocused.bg})                      -- Amber buffer ID
 end
 
----Initiate the highlight groups cavediver's own views draw with (colors.trail).
+---Initiate the highlight groups cavediver's own views draw with.
+---
+---Their colours come from the config's `colors.trail`.
+---
 ---@return nil
 function M.init_trail_highlights()
 	local trail = configs.colors.trail
@@ -94,7 +97,10 @@ function M.stop_refresh_timer()
 	end
 end
 
----Initiate UI Timers (cleanup and winbar refresh). Calling it again restarts them.
+---Initiate UI Timers (cleanup and winbar refresh)
+---
+---Calling it again stops the running timer and starts a new one.
+---
 ---@return nil
 function M.init_refresh_timer()
 	M.stop_refresh_timer()
@@ -151,7 +157,11 @@ end
 -- the indicators, by kind: the role marks, and a marked buffer's mark and label
 local hidden_indicators = { roles = false, harpoon = false }
 
----Switch some indicators, one kind or every kind; the machine is off once every kind is hidden.
+---Hide or show the indicators of one kind, or of every kind.
+---
+---The indicators machine goes off once every kind is hidden, and on while any kind shows.
+---
+---@return nil
 local function set_indicators(kind, hidden)
 	for name, _ in pairs(hidden_indicators) do
 		if kind == nil or kind == name then
@@ -164,7 +174,7 @@ end
 
 ---Turn off indicators.
 ---
----@param kind "roles"|"harpoon"|nil One kind; every kind when nil
+---@param kind "roles"|"harpoon"|nil Indicator kind to turn off, or every kind when nil
 ---@return nil
 function M.hide_indicators(kind)
 	set_indicators(kind, true)
@@ -172,7 +182,7 @@ end
 
 ---Turn on indicators.
 ---
----@param kind "roles"|"harpoon"|nil One kind; every kind when nil
+---@param kind "roles"|"harpoon"|nil Indicator kind to turn on, or every kind when nil
 ---@return nil
 function M.show_indicators(kind)
 	set_indicators(kind, false)
@@ -188,7 +198,7 @@ end
 ---Check if a UI component is currently hidden.
 ---
 ---@param component string Component name ("bufferline", "winbar", "indicators")
----@param kind "roles"|"harpoon"|nil For the indicators, one kind; every kind when nil
+---@param kind "roles"|"harpoon"|nil Indicator kind to check, or every kind when nil
 ---@return boolean hidden True if component is hidden
 function M.is_hidden(component, kind)
 	if component == "bufferline" then

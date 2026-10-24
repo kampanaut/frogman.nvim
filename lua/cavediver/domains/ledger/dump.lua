@@ -1,24 +1,25 @@
 ---Ledger domain dumps for the failures that shouldn't happen.
 ---
----When something that shouldn't happen fires, this module writes the steps that led
----there into a file under stdpath("state")/cavediver/ and shows them in a window.
----The file is sealed, as a session's is, since it's usage data, so it holds things as they
----are: files by their hashes and paths, lists by their sessions, windows by number and id.
+---When something that shouldn't happen fires, this module writes the steps that led there to
+---a file under stdpath("state")/cavediver/ and shows them in a window. The file is sealed as a
+---session's is, since it's usage data, so it holds things as they are (files by their hashes
+---and paths, lists by their sessions, windows by number and id).
 
 local data = require('cavediver.domains.ledger.data')
 
 local M = {}
 
----Steps kept between two snapshots (the last two are kept, so a dump starts 50 to 100 steps back)
+---Steps the ring keeps between two snapshots (the last two snapshots are kept, so a dump
+---starts 50 to 100 steps back)
 ---@type integer
 local EVERY = 50
 
----Steps the ring kept since the last snapshot. A timer's tick that did nothing isn't counted, so
----an idle editor doesn't push the steps worth seeing out of the dump
+---Steps the ring kept since the last snapshot (a timer's tick that did nothing isn't kept, so
+---an idle editor doesn't push the steps worth seeing out of the dump)
 ---@type integer
 local kept_since = 0
 
----Snapshots kept for the dumps, oldest first
+---Snapshots kept for the dumps, the last two at most, oldest first
 ---@type { seq: integer, snapshot: table }[]
 local checkpoints = {}
 
@@ -26,11 +27,11 @@ local checkpoints = {}
 ---@type table<string, boolean>
 local dumped = {}
 
----Messages `never` dumped, so a hook failure carrying one isn't dumped again
+---Messages `M.never()` has dumped, so a hook failure carrying one isn't dumped again
 ---@type table<string, boolean>
 local nevers = {}
 
----Dumps written by this editor, for numbering their names
+---Last number this editor put in a dump's name (a name already on disk is skipped)
 ---@type integer
 local count = 0
 
@@ -48,11 +49,11 @@ local keys = {}
 
 ---Get the key for a directory and a salt.
 ---
----Stretches it the first time and keeps it, so only an editor's first dump pays for it.
+---Stretches it the first time and keeps it, so each directory and salt pays for it once.
 ---
 ---@param directory string The directory the key is stretched from
 ---@param with_salt string The salt
----@return string key
+---@return string key The key that seals and opens dumps
 local function key_for(directory, with_salt)
 	local id = directory .. "\0" .. with_salt
 	keys[id] = keys[id] or require('cavediver.domains.storage.crypto').derive_key(directory, with_salt)
@@ -61,10 +62,11 @@ end
 
 ---Get what a dump's seal covers besides its text.
 ---
----The header, the salt and the word `dump`, so a dump can't pass for a session's file.
+---Returns the header, the salt and the word `dump` together, so a dump can't pass for a
+---session's file.
 ---
 ---@param with_salt string The dump's salt
----@return string aad
+---@return string aad The extra data the seal covers
 local function aad(with_salt)
 	return HEADER .. with_salt .. "\ndump"
 end
@@ -80,8 +82,9 @@ end
 
 ---Take a snapshot of the state a replay starts from.
 ---
----Copies every triquetra, the global and per-window histories, every list's closed
----files, the missing tags and the machines' states, all by hash, as the dump writes them.
+---Copies the triquetra and history of every valid window, the global history, every list's
+---closed files, the missing tags, the machines' states, the cycling window and the history
+---view. Files are kept by hash, as the dump writes them.
 ---
 ---@return table snapshot The state as it is now
 local function snapshot()
@@ -121,8 +124,9 @@ end
 
 ---Record a step's start for the snapshots.
 ---
----Takes a snapshot once the ring has kept 50 steps since the last one, and keeps the last
----two, so a dump starts 50 to 100 steps back.
+---Takes the first snapshot at the first step, then another once the ring has kept 50 steps
+---since the last one. The last two are kept, so a dump starts 50 to 100 steps back. Does
+---nothing while dumps are off.
 ---
 ---@param step CavediverLedgerStep The step that just began
 ---@return nil
@@ -151,8 +155,8 @@ end
 
 ---Find every triquetra that breaks the slot rules.
 ---
----Checks each window for a file in two of its slots (I1), and for a note a restore
----would read that names the slot's own occupant (I23).
+---Checks each valid window for a file in two of its slots (I1), and for a note a restore would
+---read that names the buffer already in that slot (I23).
 ---
 ---@return table<string, table> breaks Each break by its key, with its rule, window and what broke
 function M.breaks()
@@ -180,10 +184,10 @@ end
 
 ---Compose a dump's text.
 ---
----Builds the rows from the older snapshot up to the step the failure fired in. Returns
----the heading with one row per step, and the replay part as JSON. The file is sealed, so
----everything is written as it is: files by hash and path, lists by their sessions, windows
----by number and id.
+---Takes the steps from the older snapshot up to the step the failure fired in. Returns the
+---heading, with the settle work still pending and every file the dump names, then one row per
+---step, and the replay part as JSON. The file is sealed, so everything is written as it is
+---(files by hash and path, lists by their sessions, windows by number and id).
 ---
 ---@param what string What fired, in words
 ---@param failing CavediverLedgerStep|nil The step it fired in
@@ -327,7 +331,7 @@ end
 
 ---Open the dump's window once the editor settles.
 ---
----The window is a float, on a scratch buffer the ledger records no step about. It isn't
+---The window is a float on a scratch buffer, which the ledger records no step about. It isn't
 ---entered when a dump fires, and is when `:CavediverDump` opens one. `q` closes it.
 ---
 ---@param name string The dump's name
@@ -362,8 +366,9 @@ end
 
 ---Write a sealed file, the way a session's is written.
 ---
----Seals the text with the key stretched from the global directory and this editor's salt,
----made with its first dump, and writes it atomically.
+---Seals the text with the key stretched from the global working directory and this editor's
+---salt, made with its first dump, and writes it atomically. Its directory is made first when
+---it's missing.
 ---
 ---@param path string Where the dump goes
 ---@param text string The dump's text
@@ -381,9 +386,10 @@ end
 
 ---Write a dump, once per failure.
 ---
----Writes the sealed file right away, then opens the window and says where the file is
----once the editor settles. When the file can't be written, the window still shows the
----rows. A failure that was already dumped is skipped.
+---Writes the sealed file right away, then shows the rows in a window and says where the file
+---is once the editor settles. When the file can't be written, the window still shows the rows.
+---The step it fired in is marked as dumped. A failure already dumped is skipped, and so is
+---every failure while dumps are off.
 ---
 ---@param key string What makes this failure distinct
 ---@param what string What fired, in words
@@ -439,8 +445,8 @@ end
 
 ---Read a dump back, decrypted.
 ---
----Opens only from the directory the dump was written in, since its key is stretched from
----it. `:CavediverDump` reads dumps through here, and so will the replay.
+---Opens only from the directory the dump was written in, since its key is stretched from it.
+---`:CavediverDump` and the replay both read dumps through here.
 ---
 ---@param path string The dump's file
 ---@return string|nil text The dump's text, or nil when it can't be read here
@@ -465,10 +471,10 @@ function M.read(path)
 	return text
 end
 
----Open a dump in a window to read it, decrypted, its replay part included.
+---Open a dump in a window to read it.
 ---
----Says why when it can't: no such file, not a dump, or a dump that opens only from the
----directory it was written in.
+---Shows it decrypted, with its replay part, and enters the window. When it can't, it says why
+---(no such file, not a dump, or a dump that was edited or written from another directory).
 ---
 ---@param path string The dump's file, as typed
 ---@return nil
@@ -485,9 +491,10 @@ function M.open(path)
 	show(vim.fn.fnamemodify(path, ":t:r"), vim.split(text, "\n", { plain = true }), true)
 end
 
----Dump a message that `never` is about to raise.
+---Dump a message that `ledger.never()` is about to raise.
 ---
----Marks the message too, so the hook failure carrying it isn't dumped a second time.
+---The open step is the one it fired in. The message is marked too, so the hook failure
+---carrying it isn't dumped a second time.
 ---
 ---@param message string The message being raised
 ---@return nil
@@ -496,10 +503,10 @@ function M.never(message)
 	M.fire("never:" .. message, message, data.open)
 end
 
----Dump a failed hook that isn't critical.
+---Dump a hook that failed without being critical.
 ---
----Dumps once per hook and error, unless the error carries a message `never` already
----dumped.
+---The engine calls this through its `on_failure`. Dumps once per hook and error message,
+---unless the error carries a message `ledger.never()` already dumped.
 ---
 ---@param name string The hook's name
 ---@param err string The hook's error, with its traceback

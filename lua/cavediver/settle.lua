@@ -1,9 +1,9 @@
----Settle work for cavediver's domains.
+---Settle queue for the work cavediver puts off until the editor settles.
 ---
----This module queues the work cavediver puts off until the editor settles after an event,
----when that work changes what cavediver knows about the editor. While anything is queued,
----cavediver isn't settled. A key runs what's still queued before acting, so keys in one
----batch (a macro, a mapping) act as if they were typed by hand.
+---This module queues the work an event leaves for later when that work changes what cavediver
+---knows about the editor. While anything is queued, cavediver isn't settled. A key runs what's
+---still queued before acting, so keys in one batch (a macro, a mapping) act as if they were
+---typed by hand.
 
 local M = {}
 
@@ -17,11 +17,11 @@ local busy = 0
 
 ---Run one item of the queue, once.
 ---
----Takes it off the queue first, so whichever runs it, a drain or its own schedule, the
----other finds it done. An error is reported the way a scheduled callback's is, and doesn't
+---Takes it off the queue before running it, so whichever runs it (a drain or its own schedule),
+---the other finds it done. An error is reported the way a scheduled callback's is, and doesn't
 ---stop the rest.
 ---
----@param item { name: string, fn: function, done: boolean }
+---@param item { name: string, fn: function, done: boolean } The queued item
 ---@return nil
 local function run(item)
 	if item.done then
@@ -46,11 +46,11 @@ end
 
 ---Queue settle work, to run once the editor settles.
 ---
----It runs by itself on `vim.schedule`, as it would without the queue, unless a key runs it
----first.
+---The work runs by itself on `vim.schedule`, as it would without the queue, unless a key runs
+---it first.
 ---
----@param name string What it is, as the dump lists it: "arrival b.txt"
----@param fn function The work
+---@param name string Name of the work, as the dump lists it ("arrival b.txt")
+---@param fn function The work to run
 ---@return nil
 function M.later(name, fn)
 	local item = { name = name, fn = fn, done = false }
@@ -60,7 +60,7 @@ function M.later(name, fn)
 	end)
 end
 
----Run every piece of settle work still queued, oldest first.
+---Run all the settle work still queued, oldest first.
 ---
 ---Work queued while it runs is run too. Does nothing inside a key or a running item, so
 ---nothing runs out of its order.
@@ -77,8 +77,8 @@ end
 
 ---Run a key's job once cavediver has settled.
 ---
----Drains the queue, then runs the job. No drain starts until the job is done, so work the
----key queues itself keeps its order.
+---Drains the queue, then runs the job. No drain starts until the job is done, so the work
+---the key queues itself keeps its order. The job's error is raised again as it was raised.
 ---
 ---@param fn function The key's job
 ---@param ... any The job's arguments
@@ -96,7 +96,7 @@ end
 
 ---Get the names of the settle work still queued, oldest first.
 ---
----@return string[] names What's still to run, as `later` named it
+---@return string[] names Names of the work still to run, as `M.later()` got them
 function M.pending()
 	local names = {}
 	for _, item in ipairs(queue) do

@@ -21,7 +21,7 @@
 ---@field [9] table<Filehash, number> The window's own access history
 ---
 ---Window buffer relationships data structure
----One entry per window with a triquetra, in window order (tab by tab)
+---Holds one entry per window with a triquetra, in window order (tab by tab)
 ---Example: { [1] = { "a1b2c3d4e5f6g7h8", vim.NIL, {}, "z9y8x7w6v5u4t3s2", {}, {}, "a1b2c3d4e5f6g7h8", false, { ["a1b2c3d4e5f6g7h8"] = 42 } } }
 ---@class WindowBufferData: table<number, WindowTriquetraSerialised>
 ---
@@ -30,8 +30,9 @@
 ---Example: { "a1b2c3d4e5f6g7h8", "z9y8x7w6v5u4t3s2" }
 ---@class ClosedBufferData: Filehash[]
 ---
----Every saved hash's path is in the session file's paths table, so a hash whose buffer doesn't
----come back still resolves to its file.
+---Paths data structure
+---Maps every saved hash to its path, so a hash whose buffer doesn't come back still
+---resolves to its file
 ---Example: { ["a1b2c3d4e5f6g7h8"] = "/path/to/file.lua" }
 ---@class PathsData: table<Filehash, string>
 
@@ -45,19 +46,19 @@ local crypto = require('cavediver.domains.storage.crypto')
 local M = {}
 
 
----The clear header at the start of a main file, saying which format it is. The tag covers it.
+---Format header at the start of a main file, in the clear but covered by the seal's tag
 local HEADER = "CDV1"
 
----A key's text form, for naming a session's files.
----@param bytes string
----@return string
+---Turn bytes into hex text, for naming a session's files after its key.
+---@param bytes string Raw bytes, such as a key
+---@return string hex The bytes as lowercase hex
 local function hex(bytes)
 	return (bytes:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
 
 ---Read a whole file.
----@param path string
----@return string|nil bytes nil when the file can't be read
+---@param path string Path of the file to read
+---@return string|nil bytes The file's bytes, or nil if it can't be opened
 local function read_file(path)
 	local fh = io.open(path, "rb")
 	if not fh then
@@ -68,10 +69,14 @@ local function read_file(path)
 	return bytes
 end
 
----Write a file atomically: a temporary file in the same directory, synced, then renamed over the
----old one, readable by the user only. A crash leaves the old file or the new one, never half of one.
----@param path string
----@param bytes string
+---Write a file atomically.
+---
+---Writes the bytes to a temporary file in the same directory, syncs it, then renames it over the
+---old one, readable by the user only. A crash leaves the old file or the new one, never half of
+---one. Throws if the temporary file can't be opened, written, synced or renamed.
+---
+---@param path string Path of the file to write
+---@param bytes string The file's new content
 ---@return nil
 local function write_atomic(path, bytes)
 	local temporary = path .. ".tmp" .. string.format("%.0f", vim.uv.hrtime())
@@ -95,22 +100,28 @@ local function write_atomic(path, bytes)
 end
 M.write_atomic = write_atomic
 
----A No Name text's file name. It changes with the text, so an unchanged text keeps its file, and
----through the key it gives nothing of the text away.
----@param key string
----@param filehash Filehash
----@param plaintext string
----@return string
+---Get a No Name text's file name.
+---
+---The name hashes the key, the buffer's hash and the text, so it changes with the text and an
+---unchanged text keeps its file. Through the key it gives nothing of the text away.
+---
+---@param key string The session's key
+---@param filehash Filehash The No Name buffer's hash
+---@param plaintext string The text as it's saved, its lines, filetype and cursor in JSON
+---@return string name The file's name in the session's scratch directory
 local function scratch_name(key, filehash, plaintext)
 	return vim.fn.sha256(hex(key) .. "\n" .. filehash .. "\n" .. plaintext)
 end
 
----Reads a No Name text from its file when it's called. A text whose file fails its check (edited or
----corrupted) is lost on its own, and the rest of the session isn't.
----@param path string
----@param key string
----@param filehash Filehash
----@return fun(): NoNameBufferContent|nil
+---Make a reader for a No Name text's file.
+---
+---The reader opens the file only when it's called. A text whose file is missing or fails its check
+---(edited or corrupted) is lost on its own, with a warning, and the rest of the session isn't.
+---
+---@param path string Path of the text's file
+---@param key string The session's key
+---@param filehash Filehash The No Name buffer's hash, which the file's seal is bound to
+---@return fun(): NoNameBufferContent|nil read Reads the text, or gives nil when it's lost
 local function scratch_reader(path, key, filehash)
 	return function()
 		local bytes = read_file(path)
@@ -124,17 +135,19 @@ local function scratch_reader(path, key, filehash)
 	end
 end
 
----Whether the path registry knows a hash. Hashes are saved as they are, and the paths behind
----them go into the paths table.
----@param filehash Filehash|nil
----@return boolean
+---Check if the path registry knows a hash.
+---
+---Hashes are saved as they are, and the paths behind them go into the paths table.
+---
+---@param filehash Filehash|nil The hash to look up
+---@return boolean known True if the registry has a path for it
 local function is_known(filehash)
 	return filehash ~= nil and history.get_filepath_from_hash(filehash) ~= nil
 end
 
----The hash when the path registry knows it, otherwise nil.
----@param filehash Filehash|nil
----@return Filehash|nil
+---Keep a hash only if the path registry knows it.
+---@param filehash Filehash|nil The hash to look up
+---@return Filehash|nil filehash The same hash, or nil if nothing knows it
 local function known(filehash)
 	if is_known(filehash) then
 		return filehash
@@ -144,11 +157,13 @@ local function known(filehash)
 	return nil
 end
 
----What a window shows, as a hash: its buffer's when the buffer is registered, otherwise its
----name's, an outsider such as an oil listing or a help file. An untracked buffer with no name
----gives nil.
----@param winid WinId
----@return Filehash|nil filehash
+---Get the hash of what a window shows.
+---
+---Returns its buffer's hash when the buffer is registered, otherwise the hash of the buffer's name,
+---for an outsider such as an oil listing or a help file. An untracked buffer with no name gives nil.
+---
+---@param winid WinId The window to look at
+---@return Filehash|nil filehash What the window shows, or nil for an untracked buffer with no name
 ---@return string|nil outsider The outsider's name, when the window shows one
 local function shown_by(winid)
 	local bufnr = vim.api.nvim_win_get_buf(winid)
@@ -163,12 +178,13 @@ local function shown_by(winid)
 	return history.routines.get_filehash(name), name
 end
 
----Loads the paths table: hash to path, with the outsiders left out (they only help match windows,
----through what each window shows).
+---Get the paths table from a session's file, outsiders left out.
 ---
----@param paths PathsData
+---Outsiders only help match windows, through what each window shows.
+---
+---@param paths PathsData The file's paths table
 ---@param outsiders Filehash[] The hashes in paths that untracked buffers had
----@return table<Filehash, Filepath> paths
+---@return table<Filehash, Filepath> paths Hash → path, outsiders left out
 local function load_paths(paths, outsiders)
 	local outsider = {}
 	for _, filehash in ipairs(outsiders or {}) do
@@ -186,13 +202,13 @@ end
 
 ---Loads buffer access history data.
 ---
----Every path the file knows becomes known again, so a reference whose buffer doesn't come back
----still resolves to its file. Every restored buffer the file knows is registered, loaded or not;
----one it doesn't know waits for its BufEnter, like any new buffer. A No Name buffer still open
----from before the load (a reload in the same process) is known by its id. Then restores saved
----buffer access history with original timestamps.
+---Registers every path the file knows, so a reference whose buffer doesn't come back still
+---resolves to its file. Every buffer in the editor that the file knows is registered too, loaded
+---or not, and one it doesn't know waits for its BufEnter, like any new buffer. A No Name buffer
+---still open from before the load (a reload in the same process) is known by its id. Then
+---restores saved buffer access history with original timestamps.
 ---
----@param buffers BufferCruxInternalsSerialised The global access history
+---@param buffers BufferCruxInternalsSerialised The saved global access history
 ---@param paths table<Filehash, Filepath> The paths the file knows, outsiders left out
 ---@return nil
 local function load_buffer_history(buffers, paths)
@@ -224,9 +240,14 @@ end
 -- the pool a load fills: the editor's for a whole-editor file, the tab session's for a tab's
 local load_pool = nil
 
----A file the session manager didn't bring back is a closed buffer from then on: its slot keeps it
----and reopens it when used. It goes under what was closed in the session, as the oldest.
----@param filehash Filehash|nil
+---Close a slot's file if the session manager didn't bring it back.
+---
+---The file is a closed buffer from then on, and its slot keeps it and reopens it when used. It goes
+---under what was closed in the session, as the oldest. A No Name buffer, or a file already on the
+---closed stack, is left alone.
+---
+---@param filehash Filehash|nil The slot's file
+---@return nil
 local function close_if_not_restored(filehash)
 	local filepath = filehash and history.get_filepath_from_hash(filehash)
 	local closed = load_pool and load_pool.closed or history.data.closed_buffers
@@ -252,10 +273,11 @@ end
 ---Restores per-window triquetra relationships (primary/secondary/ternary buffers). Each entry
 ---records what its window showed, and a restored window takes the first entry, in saved order,
 ---that showed what it shows, so windows on the same file keep their order. An entry that matches
----no window is dropped, and a window that matches no entry starts fresh.
+---no window is dropped, and a window that matches no entry starts fresh. Floating windows are
+---left out.
 ---
 ---@param window_buffer WindowBufferData Window relationships, in window order
----@param tabpage integer|nil The tab whose windows are matched, for a tab session; every window otherwise
+---@param tabpage integer|nil The tab to match windows in, for a tab session (nil = every window)
 ---@return table<WinId, table<Filehash, number>> window_histories Each matched window's own access history
 ---@return WinId[] matched The windows that took an entry
 ---@return table<integer, WinId> taken The window each saved entry went to, by the entry's index
@@ -398,13 +420,15 @@ end
 ---Serialize window buffer relationships for session saving.
 ---
 ---Creates a compressed representation of all window triquetra relationships
----that can be safely serialized to JSON: one entry per window with a triquetra,
----holding hashes, and what the window shows so the load can find it.
+---that can be safely serialized to JSON. Holds one entry per window with a triquetra,
+---in window order, with its slots and notes as hashes, its own access history and what
+---it shows, so the load can find it. A slot's hash the path registry doesn't know is
+---dropped.
 ---
 ---@return WindowBufferData compressed Serializable window relationship data
 ---@return WinId[] entry_wins The window each entry came from
 ---@param outsiders table<Filehash, string> Filled with the untracked buffers the windows show
----@param tabpage integer|nil Only this tab's windows, for a tab session
+---@param tabpage integer|nil The tab to save windows from, for a tab session (nil = every window)
 local function serialise_window_relationships(outsiders, tabpage)
 	local compressed = {}
 	local entry_wins = {} -- the window each entry was written from
@@ -523,11 +547,11 @@ end
 
 ---Serialize the paths every saved hash points at.
 ---
----Everything the path registry knows, closed buffers and No Name names included,
----plus the outsiders.
+---Copies everything the path registry knows, closed buffers and No Name names included, and
+---adds the outsiders the windows show.
 ---
----@return PathsData paths
----@param outsiders table<Filehash, string> The untracked buffers the windows show
+---@param outsiders table<Filehash, string> The untracked buffers the windows show, hash → name
+---@return PathsData paths Hash → path for every saved hash
 local function serialise_paths(outsiders)
 	local paths = vim.deepcopy(history.data.hash_filepath_registry.filepaths)
 	for filehash, name in pairs(outsiders) do
@@ -540,8 +564,9 @@ end
 ---
 ---Creates a copy of the closed buffer hashes that can be safely
 ---serialized to JSON. Preserves the stack of reopenable files. Several pools are
----merged by when their entries were closed, each pool's own order kept, with one
----copy of a file, the newer.
+---merged by when their entries were closed, each pool's own order kept. A file
+---closed in more than one pool is kept once, at its newer close, and a hash the
+---path registry doesn't know is left out.
 ---
 ---@param pools Pool[] The pools to save, the editor's first
 ---@return ClosedBufferData copy Serializable copy of closed buffer list
@@ -586,16 +611,16 @@ end
 
 ---Serialize [No Name] buffer content for session saving.
 ---
----The closed [No Name] texts, with their filetype and cursor position, and every
----open, non-empty [No Name] buffer's text the same way, marked to be reopened at
----load: no session manager saves its text.
+---Collects the closed [No Name] texts, with their filetype and cursor position, and
+---every open, non-empty [No Name] buffer's text the same way. The open ones are marked
+---to be reopened at load, since no session manager saves their text.
 ---
----With `owner`, only the texts a pool owns: its closed texts, and the open ones its tabs visited
----(their windows show them or have them in their history); the editor's pool owns those no tab
----session's tab visited.
+---With `owner`, only the texts that pool owns are collected: its closed texts, and the open
+---ones its tabs visited (their windows show them or have them in their history). The editor's
+---pool also owns the open ones no tab session's tab visited.
 ---
----@param owner Pool|nil
----@return table<Filehash, NoNameBufferContent> texts
+---@param owner Pool|nil The pool whose texts are collected (nil = every text)
+---@return table<Filehash, NoNameBufferContent> texts Each text, by its buffer's hash
 local function serialise_noname_content(owner)
 	local function owned(filehash)
 		if owner == nil then
@@ -643,11 +668,14 @@ local function serialise_noname_content(owner)
 	return texts
 end
 
----Each [No Name] text goes into a file of its own in the session's scratch directory,
----encrypted, and the main file keeps each text's file name. Only a text that changed is
----written; a closed text never read since the load keeps its file.
+---Write each [No Name] text into a file of its own in the session's scratch directory.
 ---
----@param texts table<Filehash, NoNameBufferContent> `reopen` marks a text open at the save
+---Each file is encrypted, and the main file keeps its name. A file is named after its text, so
+---only a text that changed is written. A closed text never read since the load keeps its file,
+---unless it was saved under another session or key, when it's read and written again here. One
+---whose file has gone, swept by another editor's save, is dropped.
+---
+---@param texts table<Filehash, NoNameBufferContent> The texts, `reopen` marking the open ones
 ---@param key string The session's key
 ---@param scratch_dir string The session's scratch directory
 ---@return table<Filehash, {scratch: string, reopen: boolean|nil}> noname_content Each text's file name
@@ -681,10 +709,12 @@ local function write_noname_texts(texts, key, scratch_dir)
 	return noname_content, kept
 end
 
----The unnamed buffer that is already the No Name buffer saved as `filehash`, when there's one: a
----reopened one carries the hash it came back from, and one never torn down still has its id.
----@param filehash Filehash
----@return Bufnr|nil
+---Find the unnamed buffer that is already the No Name buffer saved as `filehash`.
+---
+---A reopened one carries the hash it came back from, and one never torn down still has its id.
+---
+---@param filehash Filehash The saved No Name buffer's hash
+---@return Bufnr|nil bufnr The buffer, or nil if it isn't back
 local function noname_already_back(filehash)
 	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
 		if vim.api.nvim_buf_get_name(bufnr) == "" then
@@ -700,9 +730,12 @@ local function noname_already_back(filehash)
 	return nil
 end
 
----No Name buffers open at the save come back in the background: listed, hidden and modified,
----under a fresh id, and every slot, note and history entry that named them follows. One that is
----already back is taken as it is.
+---Reopen the No Name buffers that were open at the save.
+---
+---They come back in the background, listed, hidden and modified, under a fresh id, and every slot,
+---note and history entry that named them follows. One that is already back is taken as it is. The
+---cursor goes back once a window shows the buffer. A text whose file fails its check is lost, and
+---the rest still come back.
 ---
 ---@param noname_content table<Filehash, {scratch: string, reopen: boolean|nil}> Each text's file name
 ---@param key string The session's key
@@ -747,19 +780,19 @@ end
 
 ---Loads closed buffer history data.
 ---
----Restores the stack of closed buffer hashes that can be reopened. A closed
----buffer the session manager brought back isn't closed any more, so it stays
----off the stack.
+---Restores the stack of closed buffer hashes that can be reopened, into the pool
+---being loaded. A closed buffer the session manager brought back isn't closed any
+---more, so it stays off the stack.
 ---
 ---A closed [No Name] text is read from its file only when it's reopened.
 ---
----@param closed_buffers ClosedBufferData Closed buffer list
+---@param closed_buffers ClosedBufferData Closed buffer list, newest last
 ---@param noname_content table<Filehash, {scratch: string, reopen: boolean|nil}> Each text's file name
 ---@param key string The session's key
 ---@param scratch_dir string The session's scratch directory
 ---@param times table<Filehash, integer>|nil When each was closed
----@param merge boolean|nil The pool is open already: what's in memory stays, and the file's entries it
----doesn't have go under them, as the oldest
+---@param merge boolean|nil Whether the pool is open already, so what's in memory stays and the file's
+---entries it doesn't have go under them, as the oldest
 ---@return nil
 local function load_closed_buffers(closed_buffers, noname_content, key, scratch_dir, times, merge)
 	if merge then
@@ -817,10 +850,14 @@ local function load_closed_buffers(closed_buffers, noname_content, key, scratch_
 	-- print_table(history.data.closed_buffers)
 end
 
----Helper function to get the session's file path from its directory and name.
+---Get a session's file path from its directory and name.
+---
+---The file is named after a hash of the two, in the configured session directory, which is made
+---when it's missing.
+---
 ---@param directory string The session's directory
----@param name string|nil The session's name; nil for a nameless save
----@return string project_filepath
+---@param name string|nil The session's name (nil for a nameless save)
+---@return string project_filepath Path of the session's main file
 local function get_session_filepath(directory, name)
 	if not directory then
 		require('cavediver.domains.ledger').never("No directory provided to get_session_filepath")
@@ -843,11 +880,14 @@ end
 -- key is noted, so a session's key can go once the session isn't open.
 local keys, key_of = {}, {}
 
----A session's key, made once for its directory and salt.
----@param directory string
----@param salt string
+---Get a session's key, made once for its directory and salt.
+---
+---The key is noted as the file's last one, so it can go once the session isn't open.
+---
+---@param directory string The session's directory, the secret the key is stretched from
+---@param salt string The salt from the file's header
 ---@param file_path string The session's file, whose key this is now
----@return string key
+---@return string key The session's key
 local function key_for(directory, salt, file_path)
 	local id = directory .. "\0" .. salt
 	keys[id] = keys[id] or crypto.derive_key(directory, salt)
@@ -855,19 +895,22 @@ local function key_for(directory, salt, file_path)
 	return keys[id]
 end
 
----Let the keys of sessions no longer open go (defined with the records, below).
+---Forgets the keys of sessions no longer open (defined further down, with the records)
 ---@type fun()
 local forget_closed_keys
 
 ---Read and decrypt a session's main file.
 ---
----@param file_path string
+---The header is checked first, so a newer format's file or one from before encryption is told apart
+---from a damaged one. The key comes from the directory and the salt in the header.
+---
+---@param file_path string The session's main file
 ---@param directory string The session's directory, the secret its key is stretched from
 ---@param bytes string|nil The file's bytes, when they're read already
----@return table|nil saved_data
----@return string|nil key
+---@return table|nil saved_data The decoded data, or nil if there's a problem
+---@return string|nil key The session's key, or nil if there's a problem
 ---@return string|nil problem "missing", "newer" (a newer format's header), "unencrypted" (the format
----before encryption) or "integrity" (the check failed: edited or corrupted, or not this directory's)
+---before encryption) or "integrity" (an edited or corrupted file, or one that isn't this directory's)
 local function read_session_file(file_path, directory, bytes)
 	bytes = bytes or read_file(file_path)
 	if bytes == nil then
@@ -894,9 +937,9 @@ end
 ---Read a session's saved data, as the load reads it.
 ---
 ---@param directory string The session's directory
----@param name string|nil The session's name; nil for a nameless save
----@return table|nil saved_data
----@return string|nil problem See read_session_file
+---@param name string|nil The session's name (nil for a nameless save)
+---@return table|nil saved_data The decoded data, or nil if it can't be read
+---@return string|nil problem Why not, as `read_session_file()` says it
 function M.read_session(directory, name)
 	local saved_data, _, problem = read_session_file(get_session_filepath(directory, name), directory)
 	return saved_data, problem
@@ -907,11 +950,14 @@ local prepared = nil
 
 ---Read a session's file for the load about to run.
 ---
+---The read is kept for `M.load_history()`, and its scope decides how the storage machine moves. A
+---file's own scope wins over the hint, and with no usable file the hint decides.
+---
 ---@param directory string The session's directory
----@param name string|nil The session's name; nil for a nameless save
----@param hint integer|nil The tab the call names (load_session's { tab = … }): it's a tab session, loading
----into that tab
----@return boolean tab_session Whether it's a tab session's file
+---@param name string|nil The session's name (nil for a nameless save)
+---@param hint integer|nil The tab the call names (load_session's `{ tab = … }`), which makes it
+---a tab session loading into that tab
+---@return boolean tab_session True if it's a tab session's load
 function M.prepare_load(directory, name, hint)
 	local saved_data, key, problem = read_session_file(get_session_filepath(directory, name), directory)
 	prepared = { directory = directory, name = name, saved_data = saved_data, key = key, problem = problem, hint = hint }
@@ -921,11 +967,11 @@ function M.prepare_load(directory, name, hint)
 	return hint ~= nil
 end
 
----Whether a session has a file, in that directory under that name.
+---Check if a session has a file, in that directory under that name.
 ---
----@param directory string
----@param name string|nil
----@return boolean
+---@param directory string The session's directory
+---@param name string|nil The session's name (nil for a nameless save)
+---@return boolean exists True if the session's main file is there
 function M.session_exists(directory, name)
 	return vim.uv.fs_stat(get_session_filepath(directory, name)) ~= nil
 end
@@ -938,8 +984,8 @@ end
 -- file, apart from its closed list, and found again at a whole-editor load through its tab's windows;
 -- once its tab is gone, it's in that file alone.
 
----The detached lists the whole editor's file holds, when there's a whole-editor session with a file.
----@return table[] lists
+---Get the detached lists the whole editor's file holds.
+---@return table[] lists The file's detached lists, or none if there's no such session or file
 local function file_detached_lists()
 	local session = data.unnamed or data.editor_session
 	if session == nil then
@@ -949,19 +995,19 @@ local function file_detached_lists()
 	return saved and saved.detached or {}
 end
 
----A new detached pool, in no tab yet.
----@param label string
+---Create a detached pool, in no tab yet.
+---@param label string The detached list's name
 ---@param of string|nil The id of the session's pool it came from
----@return Pool
+---@return Pool pool The new pool, added to the pools
 local function new_detached_pool(label, of)
 	local pool = { id = "\0detached\n" .. label, name = label, detached = true, of = of, closed = {}, times = {}, visits = {}, tabs = {} }
 	history.data.pools[pool.id] = pool
 	return pool
 end
 
----A tab joins a detached pool, leaving the pool it was in.
----@param tabpage integer
----@param pool Pool
+---Move a tab into a detached pool, out of the pool it was in.
+---@param tabpage integer The tab that joins
+---@param pool Pool The detached pool
 ---@return nil
 local function join_detached(tabpage, pool)
 	local previous = history.data.tab_pools[tabpage]
@@ -972,10 +1018,13 @@ local function join_detached(tabpage, pool)
 	pool.tabs[tabpage] = true
 end
 
----The next free name for a detached list of a session: `t_DETACHED`, then `t_DETACHED_2`, and so on,
----counting the names in memory and in the whole editor's file.
+---Get the next free name for a detached list of a session.
+---
+---The names go `t_DETACHED`, then `t_DETACHED_2`, and so on, after the session's name (or its
+---directory's), counting the names in memory and in the whole editor's file.
+---
 ---@param pool Pool The session's pool
----@return string
+---@return string label The free name
 local function detached_label(pool)
 	local base = (pool.name or vim.fn.fnamemodify(pool.directory or "", ":t")) .. "_DETACHED"
 	local taken = {}
@@ -995,8 +1044,11 @@ local function detached_label(pool)
 	return label
 end
 
----A session is in one tab at a time: every other tab in its pool leaves it for a detached list of its
----own, a copy of the session's list and visits.
+---Push every other tab out of a session's pool.
+---
+---A session is in one tab at a time, so every other tab in its pool leaves it for a detached list
+---of its own, a copy of the session's closed list, close times and visits.
+---
 ---@param pool Pool The session's pool
 ---@param tabpage integer The tab the session is in now
 ---@return nil
@@ -1013,13 +1065,16 @@ local function push_out(pool, tabpage)
 	end
 end
 
----The detached lists as the whole editor's file holds them: each detached pool in memory, with the
----window entries of its tab when a save gives them (`windows_of`), or else the file's own, which a
----records write leaves as the manager last saved them; then each list the file holds and memory
----doesn't, as it is, but with no windows at a save, since a save writes the windows anew.
+---Build the detached lists as the whole editor's file holds them.
+---
+---Each detached pool in memory comes first, with its closed list and close times. Its window
+---entries come from `windows_of` at a save, and otherwise from the file, which a records write
+---leaves as the session manager last saved them. Then each list the file holds and memory doesn't
+---comes as it is, but with no windows at a save, since a save writes the windows anew.
+---
 ---@param old table|nil The file's data
----@param windows_of (fun(pool: Pool): integer[])|nil
----@return table[] lists
+---@param windows_of (fun(pool: Pool): integer[])|nil A pool's window entries, at a save
+---@return table[] lists The detached lists to write
 ---@return table<string, boolean> live The names of the lists in memory
 local function detached_lists(old, windows_of)
 	local lists, live, old_windows, pools = {}, {}, {}, {}
@@ -1051,16 +1106,20 @@ local function detached_lists(old, windows_of)
 	return lists, live
 end
 
----The texts of the detached lists in memory, added to the texts a whole-editor write takes; and, for
----the lists in the file alone, their texts' files by reference and their entries' paths, carried from
----the file, so the sweep keeps them and nothing forgets where they point.
----@param lists table[]
----@param live table<string, boolean>
+---Carry the detached lists' texts and paths into a whole-editor write.
+---
+---The closed No Name texts of the detached lists in memory are added to the texts the write takes.
+---For the lists in the file alone, their texts' files are carried from the file by reference,
+---unread, and so are their entries' paths, so the sweep keeps the files and nothing forgets where
+---they point.
+---
+---@param lists table[] The detached lists to write
+---@param live table<string, boolean> The names of the lists in memory
 ---@param old table|nil The file's data
----@param texts table<Filehash, table>
----@param paths table<Filehash, string>
----@param key string
----@param scratch_dir string
+---@param texts table<Filehash, table> The texts the write takes, added to in place
+---@param paths table<Filehash, string> The paths the write takes, added to in place
+---@param key string The session's key
+---@param scratch_dir string The session's scratch directory
 ---@return nil
 local function carry_detached(lists, live, old, texts, paths, key, scratch_dir)
 	for _, pool in pairs(history.data.pools) do
@@ -1090,14 +1149,17 @@ local function carry_detached(lists, live, old, texts, paths, key, scratch_dir)
 	end
 end
 
----A tab joins a session's pool for a load. The session it was in until then is closed in that tab, its
----windows' triquetras dropped already: once no tab is left in it, its records are written and its pool
----goes, as when its last tab closes.
+---Move a tab into a session's pool for a load.
 ---
----@param tabpage integer
----@param name string|nil
----@param directory string
----@return Pool
+---The session it was in until then is closed in that tab, its windows' triquetras dropped already.
+---Once no tab is left in that session, its records are written and its pool goes, as when its last
+---tab closes. When the session loads back into the tab of its own detached list, that list waits
+---in memory instead, and the closed lists open on it at once.
+---
+---@param tabpage integer The tab the load goes into
+---@param name string|nil The session's name (nil for a nameless save)
+---@param directory string The session's directory
+---@return Pool pool The session's pool
 local function join_for_load(tabpage, name, directory)
 	local before = history.routines.pool_of_tab(tabpage)
 	local pool = history.routines.join_pool(tabpage, name, directory)
@@ -1114,11 +1176,14 @@ local function join_for_load(tabpage, name, directory)
 	return pool
 end
 
----A tab session with no file it can use, loaded with the hint, starts only the tab the hint names fresh:
----its windows start over with what they show, and nothing else changes.
+---Start a tab session fresh in the tab its hint names.
 ---
----@param directory string
----@param name string|nil
+---Runs when a tab session loaded with the hint has no file it can use. Only that tab starts over,
+---its windows taking what they show. Any other tab in the session's pool gets a detached list of
+---its own.
+---
+---@param directory string The session's directory
+---@param name string|nil The session's name (nil for a nameless save)
 ---@param tabpage integer The tab the hint names
 ---@return nil
 local function start_tab_fresh(directory, name, tabpage)
@@ -1143,17 +1208,21 @@ local function start_tab_fresh(directory, name, tabpage)
 	end
 end
 
----A tab session loads into one tab, and nothing else changes: that tab's windows start over and take
----the file's entries, the session's pool comes in with its closed stack and its own visits, and the
----editor's history stays underneath.
+---Load a tab session into one tab.
 ---
----@param saved_data table
----@param key string
----@param file_path string
----@param directory string
----@param name string|nil
----@param tabpage integer The tab it loads into: the hint's, or the one you're in
----@return WinId[] matched
+---That tab's windows start over and take the file's entries, and the session's pool comes in with
+---its closed stack and its own visits, older than any made from then on. The editor's history stays
+---underneath. A pool already in memory is newer than the file, so it keeps its visits and its
+---closed stack, and the file's closed entries it lacks go under them. Any other tab in the pool
+---gets a detached list of its own.
+---
+---@param saved_data table The file's data
+---@param key string The session's key
+---@param file_path string The session's main file
+---@param directory string The session's directory
+---@param name string|nil The session's name (nil for a nameless save)
+---@param tabpage integer The tab it loads into, the hint's or the current one
+---@return WinId[] matched The windows that took an entry
 local function load_tab_session(saved_data, key, file_path, directory, name, tabpage)
 	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
 		if window.data.crux[winid] then
@@ -1206,8 +1275,8 @@ end
 ---Main entry point for restoring all buffer and window state from saved session.
 ---Coordinates loading of buffer history, window relationships, and closed buffers.
 ---
----@param cwd string the session's directory
----@param name string|nil the session's name; nil for a nameless save
+---@param cwd string The session's directory
+---@param name string|nil The session's name (nil for a nameless save)
 ---@return nil
 function M.load_history(cwd, name)
 	if not cwd then
@@ -1245,9 +1314,12 @@ function M.load_history(cwd, name)
 	local why = ({ missing = "no session file", newer = "made by a newer cavediver", unencrypted = "from before encryption",
 		integrity = "failed its integrity check" })[problem] or "its file holds no session"
 	local ledger = require('cavediver.domains.ledger')
+	---Record the load in the ledger, with how many windows matched or started fresh, and how many
+	---entries were dropped.
 	---@param matched integer[] The windows that took an entry
 	---@param windows integer[] The windows the load lays its entries over
 	---@param entries integer How many entries the file had
+	---@return nil
 	local function loaded(matched, windows, entries)
 		local fresh = 0
 		for _, winid in ipairs(windows) do
@@ -1342,8 +1414,10 @@ function M.load_history(cwd, name)
 	-- print_table(window.data)
 end
 
----Once the restore's batch is over: the window the restore left focused becomes the last valid
----window when it has a triquetra, and the bufferline order is built for it.
+---Take in the window the restore left focused, once the restore's batch is over.
+---
+---When that window has a triquetra, it becomes the last valid window and the current one, and its
+---crux and the bufferline order are built for it.
 ---
 ---@return nil
 function M.after_restore()
@@ -1357,14 +1431,16 @@ function M.after_restore()
 	end
 end
 
----The key for a session's file, and its salt. The salt stays from one save to the next, so the
----key does too, and a text that didn't change keeps its file. A file a newer cavediver made isn't
----overwritten.
+---Get the key for a session's file, and its salt.
 ---
----@param file_path string
+---The salt is read from the file and stays from one save to the next, so the key does too, and a
+---text that didn't change keeps its file. A file with no usable salt gets a new random one. Throws
+---if a newer cavediver made the file, so it isn't overwritten.
+---
+---@param file_path string The session's main file
 ---@param directory string The session's directory
----@return string key
----@return string salt
+---@return string key The session's key
+---@return string salt The salt the file is written with
 local function session_key(file_path, directory)
 	local existing = read_file(file_path) or ""
 	if existing:match("^CDV%d") and existing:sub(1, #HEADER) ~= HEADER then
@@ -1377,16 +1453,18 @@ local function session_key(file_path, directory)
 	return key_for(directory, salt, file_path), salt
 end
 
----Write the main file, the commit point, after the texts it names; then sweep the text files
----nothing references any more, and anything a crash left half-written. A closed No Name buffer
----whose text couldn't be kept leaves the closed stack in the file too, so no load meets a closed
----No Name entry without its text.
+---Write a session's main file, then sweep what it no longer needs.
 ---
----@param file_path string
----@param key string
----@param salt string
+---The main file is the commit point, so it's written after the texts it names. Then the text files
+---nothing references any more are swept, with anything a crash left half-written. A closed No Name
+---buffer whose text couldn't be kept leaves the file's closed stacks first, so no load meets a
+---closed No Name entry without its text.
+---
+---@param file_path string The session's main file
+---@param key string The session's key
+---@param salt string The salt written into the header
 ---@param storage table The session's data
----@param kept table<string, boolean> The text files the main file references
+---@param kept table<string, boolean> The files in the scratch directory the main file references
 ---@return nil
 local function commit_session(file_path, key, salt, storage, kept)
 	local function with_text(filehash)
@@ -1415,8 +1493,8 @@ local function commit_session(file_path, key, salt, storage, kept)
 	end
 end
 
----Every pool, the editor's first, for a whole-editor save.
----@return Pool[]
+---Get every pool for a whole-editor save, the editor's first.
+---@return Pool[] pools The editor's pool, then each tab session's by id, detached lists left out
 local function every_pool()
 	local pools = {}
 	for id, pool in pairs(history.routines.pools()) do
@@ -1429,9 +1507,14 @@ local function every_pool()
 	return pools
 end
 
----A tab session's file holds only what it references: its windows' slots, queues, notes, histories
----and what they show, its pool's closed entries and visits, and its texts.
+---Narrow a tab session's data to what it references.
+---
+---What it references is its windows' slots, queues, notes, histories and what they show, its
+---pool's closed entries and visits, and its texts. The paths, missing files, outsiders and
+---unwritten files are cut down to those.
+---
 ---@param storage table The tab session's data, narrowed in place
+---@return nil
 local function narrow(storage)
 	local referenced = {}
 	local function add(filehash)
@@ -1485,23 +1568,30 @@ end
 
 ---The trail's pages --------------------------------------------------------------------
 
----A page's file name, through the session's key, after its date, and marked as a page, so it's told
----apart from a No Name text's file beside it.
----@param key string
----@param day string `YYYY-MM-DD`
----@return string
+---Get a trail page's file name.
+---
+---The name hashes the session's key with the page's day, and ends in `.trail`, so it's told apart
+---from a No Name text's file beside it.
+---
+---@param key string The session's key
+---@param day string The page's day, `YYYY-MM-DD`
+---@return string name The page's file name in the session's scratch directory
 local function page_name(key, day)
 	return vim.fn.sha256(hex(key) .. "\ntrail\n" .. day) .. ".trail"
 end
 
----How many pages were read since cavediver started: a page is read only when it's shown or searched.
+---Trail pages read since cavediver started (a view reads only the pages it shows or searches, and
+---a save reads a day's earlier page only the first time it writes that day)
 M.page_reads = 0
 
----A page's steps, read from its file; nil when it's missing or fails its check.
----@param path string
----@param key string
----@param day string
----@return table[]|nil
+---Read a trail page's steps from its file.
+---
+---Every call counts in `M.page_reads`.
+---
+---@param path string Path of the page's file
+---@param key string The session's key
+---@param day string The page's day, `YYYY-MM-DD`
+---@return table[]|nil steps The page's steps, or nil if the file is missing or fails its check
 local function read_page(path, key, day)
 	M.page_reads = M.page_reads + 1
 	local bytes = read_file(path)
@@ -1516,12 +1606,15 @@ local function read_page(path, key, day)
 	return page.steps
 end
 
----The steps a session's file keeps: every step for the whole editor while it's the editor's session;
----for the unnamed one, the steps in tabs in no tab session, in detached tabs, and with no tab; for a
----tab session, the steps in its tab and those whose moves name its list.
----@param owner Pool|nil The session's pool: nil for the whole editor's session
----@param steps CavediverLedgerStep[]
----@return CavediverLedgerStep[]
+---Filter the steps a session's file keeps.
+---
+---The whole editor's session keeps every step while it covers every tab. The unnamed session keeps
+---the steps in tabs in no tab session, in detached tabs, and with no tab. A tab session keeps the
+---steps in its tab and those whose moves name its pool or its list.
+---
+---@param owner Pool|nil The session's pool (nil for the whole editor's session)
+---@param steps CavediverLedgerStep[] The steps to filter
+---@return CavediverLedgerStep[] kept The steps the file keeps, in their order
 local function steps_kept(owner, steps)
 	if owner == nil then
 		return steps
@@ -1554,15 +1647,18 @@ local pages_written = {}
 -- A page that couldn't be written at a save is said once.
 local trail_warned = false
 
----Write the pages a session's file keeps, for each day the ledger holds steps of it: the steps earlier
----editors wrote that day, then this editor's. A day with nothing new isn't written again, and earlier
----days' pages stay as they are.
+---Write the trail pages a session's file keeps.
+---
+---Writes a page for each day the ledger holds steps of the session, with the steps earlier editors
+---wrote that day, then this editor's. A day with nothing new isn't written again, and earlier days'
+---pages stay as they are.
+---
 ---@param file_path string The session's main file
----@param old_trail table<string, string>|nil The pages the main file lists: day -> file name
----@param owner Pool|nil The session's pool: nil for the whole editor's session
----@param key string
----@param kept table<string, boolean> The names to keep in `<main>.d/`; the pages are added
----@return table<string, string>|nil trail The pages the main file lists now
+---@param old_trail table<string, string>|nil The pages the main file lists, day → file name
+---@param owner Pool|nil The session's pool (nil for the whole editor's session)
+---@param key string The session's key
+---@param kept table<string, boolean> The names to keep in `<main>.d/`, which the pages are added to
+---@return table<string, string>|nil trail The pages the main file lists now (nil if none)
 local function write_trail_pages(file_path, old_trail, owner, key, kept)
 	local ledger = require('cavediver.domains.ledger')
 	local scratch_dir = file_path .. ".d/"
@@ -1611,10 +1707,10 @@ local function write_trail_pages(file_path, old_trail, owner, key, kept)
 	return next(trail) and trail or nil
 end
 
----The days a session's file has trail pages for, oldest first.
----@param directory string
----@param name string|nil
----@return string[]
+---Get the days a session's file has trail pages for, oldest first.
+---@param directory string The session's directory
+---@param name string|nil The session's name (nil for a nameless save)
+---@return string[] days The days, `YYYY-MM-DD`, or none if the file can't be read
 function M.trail_days(directory, name)
 	local saved = read_session_file(get_session_filepath(directory, name), directory)
 	local days = vim.tbl_keys(saved and saved.trail or {})
@@ -1622,11 +1718,11 @@ function M.trail_days(directory, name)
 	return days
 end
 
----A day's page of a session's trail, its steps oldest first; nil when there's none or it can't be read.
----@param directory string
----@param name string|nil
----@param day string `YYYY-MM-DD`
----@return table[]|nil
+---Read a day's page of a session's trail.
+---@param directory string The session's directory
+---@param name string|nil The session's name (nil for a nameless save)
+---@param day string The page's day, `YYYY-MM-DD`
+---@return table[]|nil steps The page's steps oldest first, or nil if it's missing or unreadable
 function M.read_trail(directory, name, day)
 	local file_path = get_session_filepath(directory, name)
 	local saved, key = read_session_file(file_path, directory)
@@ -1637,15 +1733,19 @@ function M.read_trail(directory, name, day)
 	return read_page(file_path .. ".d/" .. page, key, day)
 end
 
----Write a session's records, its closed list, close times and No Name texts, into its file, from its
----pool, leaving its references as the session manager last saved them. A file that isn't there isn't
----made; one that can't be read, or whose scope isn't the session's, isn't touched.
+---Write a session's records into its file.
+---
+---The records are its closed list, close times and No Name texts, from its pools, and the trail's
+---pages ride along. Its references stay as the session manager last saved them, and the whole
+---editor's records carry the detached lists too. A file that isn't there isn't made, and one that
+---can't be read, or whose scope isn't the session's, isn't touched.
 ---
 ---@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string}
----@param changes table<string, {closed: Filehash[], times: table}|false>|nil For the whole editor's: new
----entries and close times for lists in the file alone, by name; false, or no entries, and the list goes
----@return boolean written
----@return string|nil problem Why not: "missing", or what went wrong
+---@param changes table<string, {closed: Filehash[], times: table}|false>|nil For the whole editor's
+---session, new entries and close times for the lists in the file alone, by name (false, or no
+---entries, drops the list)
+---@return boolean written True if the file was written
+---@return string|nil problem "missing" when there's no file, otherwise what went wrong
 local function write_records(session, changes)
 	local file_path = get_session_filepath(session.directory, session.name)
 	local bytes = read_file(file_path)
@@ -1711,10 +1811,13 @@ local function write_records(session, changes)
 	return true, nil
 end
 
----At a tab-session save, the unnamed session's records are refreshed in its file: its closed stack and
----its No Name texts, from the editor's pool. Its references stay as the session manager last saved them.
----A file that isn't there isn't made, and one that can't be read or written isn't overwritten; the
----tab session's own save, written by then, goes through.
+---Refresh the unnamed session's records in its file.
+---
+---Runs at a tab-session save. The closed stack and the No Name texts come from the editor's pool,
+---and the references stay as the session manager last saved them. A file that isn't there isn't
+---made, and one that can't be read or written isn't overwritten, with a warning. The tab session's
+---own save, written by then, still goes through.
+---
 ---@return nil
 local function refresh_unnamed()
 	local unnamed = data.unnamed
@@ -1747,10 +1850,13 @@ end
 -- tab closed, waiting for the next tick (pool id → pool)
 local dirty, writing, generation, quiet, told, closing = {}, false, 0, nil, {}, {}
 
----The whole editor's session, when there's one. It covers every tab, so every pool, until tab sessions
----start after its last save or load; from then on it's the unnamed session, covering the tabs in no tab
----session, so the editor's pool. Either way the detached lists ride with it.
----@return table|nil
+---Get the whole editor's session, if there's one.
+---
+---It covers every tab, so every pool, until tab sessions start after its last save or load. From
+---then on it's the unnamed session, which covers the tabs in no tab session, so the editor's pool.
+---Either way the detached lists ride with it.
+---
+---@return table|nil session The session as a records write takes it, or nil if there's none
 local function whole_editor_session()
 	local editor_pool = history.routines.pools()[""]
 	if data.unnamed then
@@ -1764,9 +1870,11 @@ end
 -- what the last look at the whole editor's file found, for an entry moved out of a list there
 local file_view = nil
 
----The detached lists the whole editor's file holds alone, as the closed lists show them: each list's
----entries and close times, with their paths and each No Name text's first line and filetype, read
----from the file.
+---Get the detached lists the whole editor's file holds alone, as the closed lists show them.
+---
+---Each list comes with its entries and close times, their paths, and each No Name text's first line
+---and filetype, read from the file. What it finds is kept for `M.adopt_file_entry()`.
+---
 ---@return {label: string, closed: Filehash[], times: table, paths: table, texts: table}[]
 function M.file_only_lists()
 	file_view = nil
@@ -1803,9 +1911,11 @@ function M.file_only_lists()
 	return lists
 end
 
----The closed files on the lists the whole editor's file holds alone, by hash. Nothing else is read.
+---Get the closed files on the lists the whole editor's file holds alone.
 ---
----@return table<Filehash, boolean>
+---Only the main file is read, none of the texts.
+---
+---@return table<Filehash, boolean> closed Each closed file's hash → true
 function M.file_only_closed()
 	local closed = {}
 	local session = whole_editor_session()
@@ -1832,9 +1942,12 @@ function M.file_only_closed()
 	return closed
 end
 
----An entry moved out of a list in the file alone onto a list in memory: its path is registered, and a
----No Name text's file is held unread, as a load holds a closed one's.
----@param filehash Filehash
+---Adopt an entry moved out of a list in the file alone onto a list in memory.
+---
+---Its path is registered, and a No Name text's file is held unread, as a load holds a closed one's.
+---It uses what the last `M.file_only_lists()` found, and does nothing without it.
+---
+---@param filehash Filehash The entry's hash
 ---@return nil
 function M.adopt_file_entry(filehash)
 	if file_view == nil then
@@ -1852,9 +1965,10 @@ function M.adopt_file_entry(filehash)
 end
 
 ---Write the closed lists' edits to the lists in the whole editor's file alone.
----@param changes table<string, {closed: Filehash[], times: table}|false>
----@return boolean written
----@return string|nil problem
+---@param changes table<string, {closed: Filehash[], times: table}|false> Each list's new entries
+---and close times, by name (false, or no entries, drops the list)
+---@return boolean written True if the file was written
+---@return string|nil problem "missing" when there's no session or file, otherwise what went wrong
 function M.write_file_only_lists(changes)
 	local session = whole_editor_session()
 	if session == nil then
@@ -1863,8 +1977,13 @@ function M.write_file_only_lists(changes)
 	return write_records(session, changes)
 end
 
----Once the closed lists case 8 opened are gone: a detached list still waiting goes into the whole
----editor's file, as any left with no tab does; one the merge emptied goes from memory and from the file.
+---Settle the detached lists that waited on the closed lists, once those are gone.
+---
+---A session loaded back into its own detached list's tab opens the closed lists on that list, and
+---the list waits in memory until they close. Then a list still holding entries goes into the whole
+---editor's file, as any left with no tab does, and one the merge emptied goes from memory and from
+---the file.
+---
 ---@return nil
 function M.settle_merging()
 	for id, pool in pairs(history.data.pools) do
@@ -1884,7 +2003,7 @@ function M.settle_merging()
 	end
 end
 
----Every session cavediver knows: the whole editor's and each tab session's.
+---Get every session cavediver knows, the whole editor's and each tab session's.
 ---@return {id: string, name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, tabs: table|nil, scope: string}[]
 local function known_sessions()
 	local sessions = {}
@@ -1897,11 +2016,14 @@ local function known_sessions()
 	return sessions
 end
 
----Whether the editor is still where the session would be saved from: the global directory for the
----whole editor's, one of its tabs' for a tab session. A switch whose load isn't wired leaves it
----elsewhere, and nothing is written then.
----@param session table
----@return boolean
+---Check if the editor is still where a session would be saved from.
+---
+---For the whole editor's session that's the global directory, and for a tab session one of its
+---tabs' directories. A switch whose load isn't wired leaves the editor elsewhere, and nothing is
+---written then.
+---
+---@param session table The session, as `known_sessions()` gives it
+---@return boolean there True if the editor is still in the session's directory
 local function still_there(session)
 	if session.scope == "editor" then
 		return vim.fn.getcwd(-1, -1) == session.directory
@@ -1934,9 +2056,12 @@ forget_closed_keys = function()
 	end
 end
 
----Write a session's records now, telling once what stops it.
----@param session table
----@return boolean written
+---Write a session's records now, warning once about what stops it.
+---
+---A missing file isn't warned about. A session that's written is no longer marked as changed.
+---
+---@param session table The session, as `known_sessions()` gives it
+---@return boolean written True if the records were written
 local function write_now(session)
 	local ok, problem = write_records(session)
 	if ok then
@@ -1948,10 +2073,13 @@ local function write_now(session)
 	return ok
 end
 
----A pool whose last tab closed: its records go into its file, and then it goes. When they can't be
----written, it's kept with no tab, and a warning says so. A load since, which tore it down, or a tab
----back in it, leaves it alone.
----@param pool Pool
+---Write the records of a pool whose last tab closed, then let the pool go.
+---
+---A tab session's records go into its own file, and a detached list's into the whole editor's. When
+---they can't be written, the pool is kept with no tab, and a warning says so. A load since, which
+---tore it down, or a tab back in it, leaves it alone.
+---
+---@param pool Pool The pool whose last tab closed
 ---@return nil
 local function close_now(pool)
 	closing[pool.id] = nil
@@ -1991,10 +2119,13 @@ local function close_now(pool)
 		(problem == "missing" and "it has no session file yet" or problem) .. "); they stay, with no tab, in :CavediverClosed.", vim.log.levels.WARN)
 end
 
----Write every changed session's records, when storage is idle and the editor is still where each
----would be saved from.
----@param all boolean|nil Every known session, changed or not (at quit), and the pools whose last tab
----closed, which nothing scheduled writes after a quit
+---Write every changed session's records.
+---
+---Runs only while records are being written and storage is idle, and skips a session when the
+---editor isn't where it would be saved from.
+---
+---@param all boolean|nil Whether to write every known session, changed or not, and the pools whose
+---last tab closed, as at quit, when nothing scheduled runs any more
 ---@return nil
 function M.write_records(all)
 	if not writing or require('cavediver.domains.storage.sm'):state() ~= "idle" then
@@ -2012,8 +2143,12 @@ function M.write_records(all)
 	end
 end
 
----A pool's records changed: the first change after a quiet second is written on the next tick, and the
----rest of that second when it ends.
+---Mark a pool's records as changed, and schedule their write.
+---
+---The first change after a quiet second is written on the next tick, and the rest of that second
+---when it ends. A detached list's changes count as the whole editor's. Nothing happens while
+---records aren't being written.
+---
 ---@param id string The pool's id
 ---@return nil
 function M.records_changed(id)
@@ -2042,8 +2177,12 @@ function M.records_changed(id)
 	end))
 end
 
----A load is starting: a write still waiting may hold the manager's teardown, so it's dropped, and so is
----the write of a tab the teardown closed.
+---Drop the record writes still waiting, as a load starts.
+---
+---A write still waiting may hold the session manager's teardown, so it's dropped, and so is the
+---write of a tab the teardown closed. Writes already scheduled see the generation move on, and
+---skip themselves.
+---
 ---@return nil
 function M.drop_pending_records()
 	generation = generation + 1
@@ -2054,8 +2193,13 @@ function M.drop_pending_records()
 	closing = {}
 end
 
----Start or stop writing records: setup() starts, disable() stops.
----@param on boolean
+---Start or stop writing records.
+---
+---Turned on by setup(), and off by disable() and by a dump's replay. While it's on, history tells
+---`M.records_changed()` of each change to a pool's records. Turning it off drops the writes still
+---waiting.
+---
+---@param on boolean Whether records are written
 ---@return nil
 function M.write_records_on(on)
 	writing = on
@@ -2065,10 +2209,13 @@ function M.write_records_on(on)
 	history.routines.on_records_change = on and M.records_changed or nil
 end
 
----A tab session's last tab left it: its records go into its file on the next tick, and then its pool
----goes. A manager's switch closes tabs inside its teardown, before the load it ends with, so a load in
----the same batch drops this write with the rest.
----@param pool Pool
+---Close a pool whose last tab left it, on the next tick.
+---
+---Its records are written, a detached list's into the whole editor's file, and then the pool goes.
+---A session manager's switch closes tabs inside its teardown, before the load it ends with, so a
+---load in the same batch drops this write with the rest.
+---
+---@param pool Pool The pool whose last tab left
 ---@return nil
 function M.close_tab_pool(pool)
 	closing[pool.id] = pool
@@ -2085,13 +2232,13 @@ end
 ---Serializes all buffer history, window relationships, and closed buffers
 ---into a file named after the session's directory and name, encrypted with a
 ---key stretched from the directory. Every [No Name] text that changed goes into
----a file of its own first; the main file goes last, so it's the commit point; then
----the text files nothing references any more are swept.
+---a file of its own first, and the main file goes last, so it's the commit point.
+---Then the text files nothing references any more are swept.
 ---
 ---@param cwd string The session's directory to save session data for
----@param name string|nil The session's name; nil for a nameless save
----@param tab integer|nil The tab, for a tab session: only its windows, its pool and its texts, and the tab
----joins that session's pool
+---@param name string|nil The session's name (nil for a nameless save)
+---@param tab integer|nil The tab, for a tab session, which joins that session's pool and saves only
+---its windows, its pool and its texts
 ---@return nil
 function M.save_history(cwd, name, tab)
 	if not cwd then
@@ -2214,11 +2361,14 @@ function M.save_history(cwd, name, tab)
 	forget_closed_keys()
 end
 
----The session whose trail the tab you're in shows: its tab session's, or else the whole editor's; and
----the list whose steps its file keeps (nil while the whole editor's session covers every tab).
+---Get the session whose trail the current tab shows.
 ---
----@return {name: string|nil, directory: string}|nil session nil when there's no session file to read yet
----@return Pool|nil owner
+---That's the tab's own tab session, or else the whole editor's. The owner is the list whose steps
+---the session's file keeps, nil while the whole editor's session covers every tab. With no
+---whole-editor session yet but tab sessions about, the tabs in none are the editor's list.
+---
+---@return {name: string|nil, directory: string}|nil session The session (nil with no file yet)
+---@return Pool|nil owner The list whose steps the session's file keeps
 function M.trail_session()
 	local pool = history.routines.current_pool()
 	if pool.id ~= "" and not pool.detached then
@@ -2237,12 +2387,13 @@ function M.trail_session()
 	return nil, nil
 end
 
----A reader of the trail of the tab you're in: its session's main file is read once, and each page
----once, when it's asked for, so a view reads only the pages it shows. A day's steps are the page's
----from editors before this one, then this editor's that the session's file keeps, by the rule its pages
----are written by.
+---Make a reader of the current tab's trail.
 ---
----@return {days: fun(): string[], steps: fun(day: string): table[]}
+---The session's main file is read once, and each page once, when it's asked for, so a view reads
+---only the pages it shows. A day's steps are the page's steps from editors before this one, then
+---this editor's steps that the session's file keeps, by the same rule its pages are written by.
+---
+---@return {days: fun(): string[], steps: fun(day: string): table[]} reader
 function M.trail_reader()
 	local ledger = require('cavediver.domains.ledger')
 	local session, owner = M.trail_session()
@@ -2254,7 +2405,7 @@ function M.trail_reader()
 	local trail = saved and saved.trail or {}
 	local pages = {}
 	local reader = {}
-	---The days it has steps of, oldest first.
+	---Get the days the trail has steps of, from its pages and this editor's ledger, oldest first.
 	function reader.days()
 		local days = {}
 		for day, _ in pairs(trail) do
@@ -2269,7 +2420,7 @@ function M.trail_reader()
 		table.sort(list)
 		return list
 	end
-	---A day's steps, oldest first.
+	---Get a day's steps, oldest first, reading its page only the first time.
 	function reader.steps(day)
 		if pages[day] == nil then
 			local steps = {}
@@ -2287,12 +2438,14 @@ function M.trail_reader()
 	return reader
 end
 
----Write a session's file from data in the saved shape, as a save writes it. The migration script
----writes the files it converts with this.
+---Write a session's file from data in the saved shape, as a save writes it.
+---
+---Used by the migration script to write the files it converts. The data holds `paths`,
+---`outsiders`, `buffers`, `windows` and `closed`, as a save writes them.
 ---
 ---@param directory string The session's directory
----@param name string|nil The session's name; nil for a nameless save
----@param storage table `paths`, `outsiders`, `buffers`, `windows` and `closed`, as a save writes them
+---@param name string|nil The session's name (nil for a nameless save)
+---@param storage table The session's data, in the saved shape
 ---@param texts table<Filehash, NoNameBufferContent> The No Name texts, `reopen` marking open ones
 ---@return nil
 function M.write_session(directory, name, storage, texts)

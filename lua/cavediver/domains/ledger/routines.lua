@@ -1,7 +1,10 @@
 local data = require('cavediver.domains.ledger.data')
 
----Ledger domain routines: steps begin at what set them off, moves land on the step they follow
----from, and the messages a step queued are said once it closes.
+---Ledger domain core routines for recording steps and moves.
+---
+---This module begins a step at whatever set it off, lands each move cavediver makes on the
+---step it follows from, and says the messages a step queued once it closes. A kept step goes
+---in the ring and, when it made moves, in its day's trail.
 local M = {}
 
 -- How many settles a step stays open for. cavediver's own follow-ups run on vim.schedule, each
@@ -16,17 +19,19 @@ local ALWAYS = { keymap = true, load = true, save = true, restart = true, label 
 -- timer says nothing: what it closes or reopens isn't news to anyone.
 local SAYS = { keymap = true, command = true, event = true }
 
----Now, to the microsecond.
----@return number
+---Get the time now, to the microsecond.
+---@return number seconds Seconds since the epoch
 local function now()
 	local seconds, microseconds = vim.uv.gettimeofday()
 	return seconds + microseconds / 1e6
 end
 
----A file's name as the trail shows it: its basename, or `[No Name]`.
+---Get a file's name as the trail shows it.
 ---
----@param filehash Filehash|nil
----@return string|nil
+---Returns its basename, or `[No Name]` for a No Name buffer.
+---
+---@param filehash Filehash|nil The file's hash
+---@return string|nil name The file's name, or nil when cavediver knows no path for it
 function M.name_of(filehash)
 	if filehash == nil then
 		return nil
@@ -41,19 +46,25 @@ function M.name_of(filehash)
 	return vim.fs.basename(path)
 end
 
----A buffer's name as an event names it.
----@param bufnr integer
----@return string
+---Get a buffer's name as an event names it.
+---
+---Returns its basename, or `[No Name]` when it has none or isn't valid.
+---
+---@param bufnr integer Buffer number
+---@return string label The buffer's name
 function M.buffer_label(bufnr)
 	local name = vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_get_name(bufnr) or ""
 	return name == "" and "[No Name]" or vim.fs.basename(name)
 end
 
----A window's row as it stands, with the names of every file in it kept in `names`.
+---Read a window's row as it stands.
 ---
----@param winid integer|nil
----@param names table<Filehash, string>
----@return CavediverLedgerRow|nil
+---Copies its slots, its primary queue and switch, its notes, and what the window shows. The
+---name of every file in the row goes in `names`, unless it's there already.
+---
+---@param winid integer|nil The window to read
+---@param names table<Filehash, string> The names to fill in, a step's own
+---@return CavediverLedgerRow|nil row The window's row, or nil if there's no triquetra for it
 local function row_of(winid, names)
 	local triquetra = winid and require('cavediver.domains.window.data').crux[winid]
 	if not triquetra then
@@ -93,10 +104,12 @@ local function row_of(winid, names)
 end
 M.row_of = row_of
 
----A window's slots as they stand, for a move's row: the slots, the primary queue and its switch.
+---Read a window's slots as they stand, for a move's row.
 ---
----@param winid integer|nil
----@return CavediverLedgerRow|nil
+---Copies its slots, primary queue and switch, without the notes or what the window shows.
+---
+---@param winid integer|nil The window to read
+---@return CavediverLedgerRow|nil row The window's slots, or nil if there's no triquetra for it
 function M.slots(winid)
 	local triquetra = winid and require('cavediver.domains.window.data').crux[winid]
 	if not triquetra then
@@ -111,19 +124,22 @@ function M.slots(winid)
 	}
 end
 
----A window as the trail names it: `win 2`, by its number in its tab.
----@param winid integer
----@return string
+---Get a window's name as the trail shows it.
+---
+---Returns `win 2`, by its number in its tab, or by its id once the window is gone.
+---
+---@param winid integer The window
+---@return string name The window's name
 function M.window_name(winid)
 	return "win " .. (vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_number(winid) or winid)
 end
 
----Check if two rows hold the same slots, queue and notes.
+---Check if two rows hold the same slots, queue, switch and notes.
 ---
 ---What the window shows is left out, so a visit alone doesn't keep a step.
 ---
----@param a CavediverLedgerRow|nil
----@param b CavediverLedgerRow|nil
+---@param a CavediverLedgerRow|nil The first row
+---@param b CavediverLedgerRow|nil The second row
 ---@return boolean same True if only what the windows show differs, if anything
 local function same_row(a, b)
 	local function bare(row)
@@ -138,10 +154,15 @@ local function same_row(a, b)
 end
 M.same_row = same_row
 
----@param cause string
----@param trigger string
----@param winid integer|nil
----@return CavediverLedgerStep
+---Make a new step, numbered one past the last.
+---
+---Reads the window's row as the step begins and notes the id of its tab's list. Then tells the
+---dump the step began, which takes a snapshot when one is due.
+---
+---@param cause string The kind of trigger
+---@param trigger string What set it off, as written
+---@param winid integer|nil The window it's about
+---@return CavediverLedgerStep step The new step
 local function new_step(cause, trigger, winid)
 	data.seq = data.seq + 1
 	local step = {
@@ -166,9 +187,12 @@ local function new_step(cause, trigger, winid)
 	return step
 end
 
----Names in one line: `a`, `a and b`, `a, b and c`.
----@param names string[]
----@return string
+---Join names into one line.
+---
+---Returns `a`, `a and b` or `a, b and c`, and an empty string for no names.
+---
+---@param names string[] The names to join
+---@return string line The names in one line
 local function joined(names)
 	if #names <= 1 then
 		return names[1] or ""
@@ -176,9 +200,13 @@ local function joined(names)
 	return table.concat(names, ", ", 1, #names - 1) .. " and " .. names[#names]
 end
 
----The messages a step queued, one line for each kind, the names and lists of all its moves of
----that kind together.
----@param step CavediverLedgerStep
+---Say the messages a step queued.
+---
+---Says one line for each kind, with the names and lists of all its messages of that kind
+---together, each named once.
+---
+---@param step CavediverLedgerStep The step closing
+---@return nil
 local function say(step)
 	local kinds, order = {}, {}
 	for _, told in ipairs(step.told) do
@@ -209,8 +237,13 @@ local function say(step)
 	end
 end
 
----Put a step in the ring, in order, and in its day's trail when it made moves.
----@param step CavediverLedgerStep
+---Keep a step in the ring, and in its day's trail when it made moves.
+---
+---Both stay in the order of the steps' numbers. The step is counted for the dump's snapshots,
+---and the ring then drops its oldest steps past `ledger.ring`.
+---
+---@param step CavediverLedgerStep The step to keep
+---@return nil
 local function keep(step)
 	local ring = data.ring
 	local i = #ring
@@ -235,14 +268,16 @@ local function keep(step)
 	end
 end
 
----Close a step: its row after is read now, it's kept when it did anything, and what it queued is
----said.
+---Close a step.
 ---
----A step held open its full time has its rules checked too. One the next trigger closed early may
----still have follow-ups to land, so it isn't checked.
+---Reads its row after, and keeps the step when it did anything or was an action asked for. A
+---step set off by a key, a command or an event then says what it queued. Only a step held open
+---its full time has the slot rules checked, since one the next trigger closed early may still
+---have follow-ups to land.
 ---
----@param step CavediverLedgerStep
+---@param step CavediverLedgerStep The step to close
 ---@param held boolean|nil True when the step was held open its full time
+---@return nil
 local function close(step, held)
 	if step.closed then
 		return
@@ -264,9 +299,13 @@ local function close(step, held)
 	end
 end
 
----Keep a step open for a few settles, then close it.
----@param step CavediverLedgerStep
----@param left integer
+---Hold a step open for a few settles, then close it.
+---
+---Each settle is one `vim.schedule` turn. A step the next trigger has closed is left alone.
+---
+---@param step CavediverLedgerStep The step to hold open
+---@param left integer Settles still to wait
+---@return nil
 local function hold_open(step, left)
 	vim.schedule(function()
 		if data.open ~= step then
@@ -280,15 +319,17 @@ local function hold_open(step, left)
 	end)
 end
 
----Begin a step at what set it off. An event while a step is open is one of its own follow-ups:
----it's listed under that step, and begins none. A save or a load isn't followed by events of its
----own: a session manager saves the outgoing session, then tears it down in the same call, and that
----teardown is a step of its own.
+---Begin a step at what set it off.
 ---
----@param cause "keymap"|"command"|"event"|"load"|"save"|"restart"|"label"
----@param trigger string What set it off, as written: `<M-f>`, `:bdelete c.txt`, `BufDelete c.txt`
+---An event while a step is open is one of that step's follow-ups, so it's listed under it and
+---begins none. A save or a load takes no events, since what follows one in the same call is a
+---step of its own. Anything else closes the open step and begins a new one, held open for a
+---few settles.
+---
+---@param cause "keymap"|"command"|"event"|"load"|"save"|"restart"|"label" The kind of trigger
+---@param trigger string What set it off, as written (`<M-f>`, `:bdelete c.txt`, `BufDelete c.txt`)
 ---@param winid integer|nil The window it's about
----@return CavediverLedgerStep
+---@return CavediverLedgerStep step The step begun, or the open one an event went under
 function M.begin(cause, trigger, winid)
 	local open = data.open
 	if cause == "event" and open and open.cause ~= "save" and open.cause ~= "load" then
@@ -304,14 +345,16 @@ function M.begin(cause, trigger, winid)
 	return step
 end
 
----Run a call as a step of its own, a timer's tick: what it does lands on it, and it's kept only
----when it made a move. Errors go on as they came.
+---Run a call as a step of its own, such as a timer's tick.
 ---
----@param cause "timer"
----@param trigger string
----@param fn function
----@param ... any fn's arguments
----@return any fn's results
+---Every move the call makes lands on that step, which is kept only when it made one. The step
+---closes either way, and an error in the call is then raised again with its traceback.
+---
+---@param cause "timer" The kind of trigger
+---@param trigger string What set it off, as written
+---@param fn function The call to run
+---@param ... any The call's arguments
+---@return any ... The call's results
 function M.within(cause, trigger, fn, ...)
 	local step = new_step(cause, trigger, nil)
 	table.insert(data.scopes, step)
@@ -328,8 +371,12 @@ function M.within(cause, trigger, fn, ...)
 	return unpack(results, 2, table.maxn(results))
 end
 
----The step a move lands on: the call's own, the one open, or else a new one.
----@return CavediverLedgerStep
+---Get the step a move lands on.
+---
+---Returns the running call's own step, else the open step, else a new one begun for the
+---current window.
+---
+---@return CavediverLedgerStep step The step to land on
 local function current()
 	local scope = data.scopes[#data.scopes]
 	if scope then
@@ -343,9 +390,11 @@ end
 
 ---Record a move on the step it follows from.
 ---
----@param kind string closed, reopened, forgotten, repair, …
+---The step keeps the name of every file the move names, as it is now.
+---
+---@param kind string What the move was (closed, reopened, forgotten, repair, …)
 ---@param fields table The move's other fields (CavediverLedgerMove)
----@return CavediverLedgerMove
+---@return CavediverLedgerMove move The move recorded
 function M.move(kind, fields)
 	local move = { kind = kind }
 	for key, value in pairs(fields or {}) do
@@ -375,13 +424,21 @@ function M.move(kind, fields)
 	return move
 end
 
----A note cavediver changed by itself: rewritten to an older one, or dropped.
+---Record a note cavediver changed by itself.
+---
+---It's recorded as rewritten when it names another buffer now, otherwise as dropped. A note
+---that didn't change isn't recorded. `by` says what changed it:
+--- - "stale": a stale note, rewritten to the older one or dropped
+--- - "guard": the guard (Q6) that keeps the ternary's note off the buffer becoming current
+--- - "navigation": navigation's own check on a plain move onto a buffer
+--- - "no path": a note dropped for naming a file nothing knows any more
 ---
 ---@param map "ternary"|"secondary" The map it's on
 ---@param owner Filehash The buffer whose note it is
 ---@param before Filehash|nil What it named
 ---@param after Filehash|nil What it names now
----@param by string What changed it: "stale" (keep the older one), "guard" (Q6), "navigation", "no path"
+---@param by string What changed it ("stale", "guard", "navigation" or "no path")
+---@return nil
 function M.note(map, owner, before, after, by)
 	if before == after then
 		return
@@ -391,12 +448,15 @@ function M.note(map, owner, before, after, by)
 	})
 end
 
----A window's slots that cavediver moved by itself, from a row taken before the change.
+---Record a window's slots that cavediver moved by itself.
 ---
----@param kind string repointed, landed, undone, cleared
----@param winid integer
----@param before CavediverLedgerRow|nil
+---The move's row runs from the slots taken before the change to the window's slots now.
+---
+---@param kind string What the move was (repointed, landed, undone, cleared)
+---@param winid integer The window whose slots moved
+---@param before CavediverLedgerRow|nil The slots before the change
 ---@param fields table|nil The move's other fields
+---@return nil
 function M.slots_moved(kind, winid, before, fields)
 	local move = { subject = tostring(winid), name = M.window_name(winid), row = { before = before or {}, after = M.slots(winid) or {} } }
 	for key, value in pairs(fields or {}) do
@@ -405,25 +465,33 @@ function M.slots_moved(kind, winid, before, fields)
 	M.move(kind, move)
 end
 
----The step still open, if any.
----@return CavediverLedgerStep|nil
+---Get the step still open.
+---@return CavediverLedgerStep|nil step The open step, or nil if none is open
 function M.open_step()
 	return data.open
 end
 
----Queue a message on the step it follows from, said once the step closes, with the others of
----its kind.
+---Queue a message on the step it follows from.
 ---
----@param kind "closed"|"reopened"
+---It's said once the step closes, in one line with the others of its kind, when the step was
+---set off by a key, a command or an event.
+---
+---@param kind "closed"|"reopened" The message's kind
 ---@param name string The file's name
 ---@param lists string[] The other lists, by name
+---@return nil
 function M.tell(kind, name, lists)
 	table.insert(current().told, { kind = kind, name = name, lists = lists })
 end
 
----A whole-editor load replaces what its batch did: the session manager's teardown closed every
----buffer with events on. The step still open loses its moves and its messages, unless it's a
----session's own step (a save before the switch, `:restart`'s reload), which the teardown isn't.
+---Drop what the open step did, once a whole-editor load replaces it.
+---
+---By then the session manager has torn the outgoing session down in the same batch, closing
+---every buffer with events on. The open step loses those moves and messages, is marked torn
+---and closes. Only a step set off by a key, a command or an event is dropped, since a
+---session's own steps aren't the teardown.
+---
+---@return nil
 function M.drop_batch()
 	local open = data.open
 	if open and (open.cause == "event" or open.cause == "command" or open.cause == "keymap") then
@@ -434,16 +502,18 @@ function M.drop_batch()
 	end
 end
 
----The ring's steps, oldest first.
----@return CavediverLedgerStep[]
+---Get the ring's steps.
+---@return CavediverLedgerStep[] steps The steps kept, oldest first
 function M.steps()
 	return data.ring
 end
 
----A day's steps that made moves, oldest first, the step still open included when it made some.
+---Get a day's steps that made moves, oldest first.
 ---
----@param day string|nil `YYYY-MM-DD`; today when nil
----@return CavediverLedgerStep[]
+---The open step is included when it began that day and has made moves.
+---
+---@param day string|nil The day as `YYYY-MM-DD` (the current day when nil)
+---@return CavediverLedgerStep[] steps The day's steps with moves
 function M.trail(day)
 	day = day or os.date("%Y-%m-%d")
 	local steps = data.days[day] or {}
@@ -454,8 +524,11 @@ function M.trail(day)
 	return steps
 end
 
----The days the ledger holds steps with moves of, the step still open's included.
----@return string[]
+---Get the days the trail holds steps for.
+---
+---The day the open step began counts when that step has made moves.
+---
+---@return string[] days The days as `YYYY-MM-DD`, in no set order
 function M.trail_days()
 	local days = vim.tbl_keys(data.days)
 	local open = data.open

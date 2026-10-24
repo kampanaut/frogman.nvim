@@ -45,7 +45,11 @@ function M.stop_cleanup_timer()
 	end
 end
 
----Initiate the history cleanup timer. Calling it again restarts it.
+---Initiate the history cleanup timer.
+---
+---It runs `routines.cleanup_system()` right away, then every `configs.cleanup_interval`.
+---Calling it again restarts it.
+---
 ---@return nil
 function M.init_cleanup_timer()
 	M.stop_cleanup_timer()
@@ -73,6 +77,8 @@ function M.get_buffer_history()
 end
 
 ---Get the stack of closed buffer filehashes.
+---
+---This is the editor's own stack. Each tab session's pool keeps a stack of its own.
 ---
 ---@return string[] closed_buffers Stack of closed buffer filehashes that can be reopened
 function M.get_closed_buffers()

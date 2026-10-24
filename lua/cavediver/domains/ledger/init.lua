@@ -1,8 +1,11 @@
 local data = require('cavediver.domains.ledger.data')
 local routines = require('cavediver.domains.ledger.routines')
 
----Ledger domain: one record of what set things off (steps) and what cavediver did then (moves),
----read two ways: the ring of the last steps, and the trail of the days' moves.
+---Ledger domain initialization and API layer.
+---
+---The ledger domain records what set things off (steps) and what cavediver did then (moves).
+---It's read two ways, as the ring of the last steps and as the trail of each day's moves. This
+---module provides the API layer and the autocmds that begin steps.
 local M = {}
 
 M.data = data
@@ -26,7 +29,8 @@ M.open_step = routines.open_step
 ---Raise an error for something that shouldn't happen, dumping the steps that led there first.
 ---
 ---Every "this is impossible" in cavediver goes through here. The dump is written once per
----distinct message, then the error is raised as `error()` would have raised it at the caller.
+---distinct message while dumps are on, then the error is raised as `error()` would have raised
+---it at the caller.
 ---
 ---@param message string What shouldn't have happened
 function M.never(message)
@@ -36,18 +40,20 @@ end
 
 ---Check if a buffer is the flight recorder's dump, which the ledger records nothing about.
 ---
----@param bufnr Bufnr
+---@param bufnr Bufnr Buffer number
 ---@return boolean dump True if the buffer is a dump's
 local function is_dump(bufnr)
 	return vim.api.nvim_buf_is_valid(bufnr) and vim.b[bufnr].cavediver_dump == true
 end
 
----Create the ledger's autocmds in cavediver's augroup. setup() calls this before the other
----domains', so a step has begun by the time their handlers act on the same event.
+---Create the ledger's autocmds in cavediver's augroup.
 ---
----It also hooks the dump into the engine's catch, so a hook that fails is dumped.
+---They're created before the other domains' in setup(), so a step has begun by the time their
+---handlers act on the same event. This also hooks the dump into the engine's catch, so a hook
+---that fails is dumped.
 ---
 ---@param group integer The cavediver augroup
+---@return nil
 function M.init_autocmds(group)
 	require('cavediver.engine.helpers').on_failure = function(name, err)
 		require('cavediver.domains.ledger.dump').hook_failed(name, err)

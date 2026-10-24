@@ -12,11 +12,13 @@ local function is_no_name_buffer(bufnr)
 		and vim.api.nvim_buf_is_loaded(bufnr) -- Buffer is loaded
 end
 
----The name cavediver gives a No Name buffer: NONAME_ and an id kept on the buffer, made of the time and
----a high-resolution clock, so a later session's buffer with the same number doesn't take it over.
+---Get the name cavediver gives a No Name buffer.
 ---
----@param bufnr Bufnr
----@return string
+---The name is NONAME_ and an id kept on the buffer, made on the first call from the time and a
+---high-resolution clock, so a later session's buffer with the same number can't take it over.
+---
+---@param bufnr Bufnr The No Name buffer
+---@return string name NONAME_ and the buffer's id
 function M.noname_name(bufnr)
 	if vim.b[bufnr].cavediver_noname == nil then
 		vim.b[bufnr].cavediver_noname = tostring(os.time()) .. string.format("%.0f", vim.uv.hrtime()) -- digits, however large
@@ -41,11 +43,12 @@ function M.get_filehash(filename)
 	return filehash
 end
 
----Whether a buffer is `nowrite` on an existing regular file, as image.nvim leaves an image's
----buffer. cavediver tracks those like files.
+---Check if a buffer is `nowrite` on an existing regular file.
+---
+---This is how image.nvim leaves an image's buffer, and cavediver tracks those like files.
 ---
 ---@param bufnr Bufnr
----@return boolean
+---@return boolean nowrite_file True if it's `nowrite` on a readable file, not a directory
 function M.is_nowrite_file(bufnr)
 	local name = vim.api.nvim_buf_get_name(bufnr)
 	return vim.bo[bufnr].buftype == "nowrite" and
@@ -54,12 +57,14 @@ function M.is_nowrite_file(bufnr)
 		vim.fn.isdirectory(name) == 0
 end
 
----Whether cavediver tracks a buffer: a listed buffer with buftype "" (or `nowrite` on an
----existing regular file), whose name is empty (a No Name buffer) or a plain path. A plugin's
----scratch or helper buffers are unlisted, so they're left alone.
+---Check if cavediver tracks a buffer.
+---
+---A tracked buffer is listed and has buftype "" (or is `nowrite` on an existing regular file).
+---Its name is empty (a No Name buffer) or a plain path, with no `://` in it. A plugin's
+---scratch and helper buffers are unlisted, so they're left alone.
 ---
 ---@param bufnr Bufnr
----@return boolean
+---@return boolean trackable True if cavediver tracks the buffer
 function M.is_trackable(bufnr)
 	if not vim.bo[bufnr].buflisted or vim.api.nvim_buf_get_name(bufnr):match("://") then
 		return false
@@ -138,11 +143,13 @@ function M.unregister_buffer(bufnr)
 	-- print("Unregistered buffer: " .. bufnr .. "\n with filehash: " .. filehash .. "\n" .. debug.traceback())
 end
 
----Whether anything still references this filehash: a slot, a primary queue, a displacement map
----(keys and values), the history or the closed stack.
+---Check if anything still references a filehash.
+---
+---Looks in every window's slots, primary queue and displacement maps (keys and values), in the
+---history (overall, each window's and each pool's visits), and on every pool's closed stack.
 ---
 ---@param filehash Filehash
----@return boolean
+---@return boolean referenced True if anything still references the filehash
 function M.is_filehash_referenced(filehash)
 	if data.crux[filehash] or data.crux_internals.global[filehash] then
 		return true
@@ -177,18 +184,23 @@ function M.is_filehash_referenced(filehash)
 	return false
 end
 
----Whether cavediver still knows a hash: an open buffer, a slot or a primary queue holds it, or the
----closed stack does. Notes and history never keep a hash known; they follow along.
+---Check if cavediver still knows a hash.
+---
+---A hash is known while an open buffer, a slot, a primary queue or a closed stack holds it.
+---Notes and history never keep a hash known. They follow along instead.
 ---
 ---@param filehash Filehash
----@return boolean
+---@return boolean known True if cavediver still knows the hash
 function M.is_filehash_known(filehash)
 	return M.known_filehashes()[filehash] == true
 end
 
----Every hash cavediver still knows, as a set, built once for a pass over many hashes.
+---Get every hash cavediver still knows, as a set.
 ---
----@return table<Filehash, boolean>
+---Used for a pass over many hashes, so the set is built once. A hash is known as
+---`M.is_filehash_known()` says.
+---
+---@return table<Filehash, boolean> known File hash → true for every known hash
 function M.known_filehashes()
 	local known = {}
 	for filehash, _ in pairs(data.hash_buffer_registry.buffers) do
@@ -210,9 +222,12 @@ function M.known_filehashes()
 	return known
 end
 
----The editor's pool. It holds closed_buffers itself, whatever replaced that table last.
+---Get the editor's pool.
 ---
----@return Pool
+---Its closed stack is closed_buffers itself, whatever replaced that table last. When it isn't,
+---or there's no editor's pool yet, a fresh pool is made around that table.
+---
+---@return Pool pool The editor's pool
 local function editor_pool()
 	local pool = data.pools[""]
 	if pool == nil or not rawequal(pool.closed, data.closed_buffers) then
@@ -222,13 +237,19 @@ local function editor_pool()
 	return pool
 end
 
----Told when a pool's records (its closed list, its close times) change, with the pool's id; the
----storage domain writes them.
+---Callback given a pool's id when its records (closed list, close times) change
+---
+---The storage domain sets it while it writes records, and clears it when it stops.
+---
 ---@type fun(id: string)|nil
 M.on_records_change = nil
 
----A pool's records changed.
----@param pool Pool
+---Mark a pool's records as changed.
+---
+---Stamps the pool's change time and tells `M.on_records_change`, when that's set.
+---
+---@param pool Pool The pool whose closed list or close times changed
+---@return nil
 local function changed(pool)
 	pool.changed_at = vim.uv.hrtime()
 	if M.on_records_change then
@@ -237,19 +258,24 @@ local function changed(pool)
 end
 M.pool_changed = changed
 
----A list's name, as the closed lists and the trail show it: "editor", or its session's.
+---Get a pool's list name, as the closed lists and the trail show it.
+---
+---Returns "editor" for the editor's pool, otherwise the tab session's name, or the last part
+---of its directory when it has no name.
 ---
 ---@param pool Pool
----@return string
+---@return string name The list's name
 function M.list_name(pool)
 	return pool.id == "" and "editor" or (pool.name or vim.fn.fnamemodify(pool.directory or "", ":t"))
 end
 
----The names of some lists, the tab's own first, and the others' apart.
+---Get the list names of a set of pools, the current tab's own first.
 ---
----@param pools table<Pool, boolean>
----@return string[] names
----@return string[] others the lists other than the tab's
+---The other names are sorted, and are also returned apart.
+---
+---@param pools table<Pool, boolean> The pools to name (pool → true)
+---@return string[] names Every pool's name, the current tab's first
+---@return string[] others The names of the pools other than the current tab's
 local function named_lists(pools)
 	local here = M.current_pool()
 	local others = {}
@@ -263,23 +289,31 @@ local function named_lists(pools)
 	return names, others
 end
 
----The id of a tab session's pool.
----@param name string|nil
----@param directory string
----@return string
+---Get the id of a tab session's pool.
+---
+---The id is the session's name (empty when nil), a newline, then its directory.
+---
+---@param name string|nil The tab session's name
+---@param directory string The tab session's directory
+---@return string id The pool's id
 function M.pool_id(name, directory)
 	return (name or "") .. "\n" .. directory
 end
 
----Every pool, the editor's included.
+---Get every pool, the editor's included.
 ---
----@return table<string, Pool>
+---@return table<string, Pool> pools Pool id → pool
 function M.pools()
 	editor_pool()
 	return data.pools
 end
 
----Back to the editor's pool alone, as at startup.
+---Reset the pools to the editor's pool alone, as at startup.
+---
+---Every tab session's pool goes, with the record of which tab is in which pool and of the
+---pools each reopened file came out of.
+---
+---@return nil
 function M.reset_pools()
 	data.pools = {}
 	data.tab_pools = {}
@@ -287,28 +321,32 @@ function M.reset_pools()
 	editor_pool()
 end
 
----The pool a tab belongs to: its tab session's, or the editor's.
+---Get the pool a tab belongs to.
 ---
----@param tabpage integer
----@return Pool
+---Returns its tab session's pool, or the editor's when the tab is in no tab session.
+---
+---@param tabpage integer The tab
+---@return Pool pool The tab's pool
 function M.pool_of_tab(tabpage)
 	local id = data.tab_pools[tabpage]
 	return id and data.pools[id] or editor_pool()
 end
 
----The pool of the tab you're in.
+---Get the pool of the current tab.
 ---
----@return Pool
+---@return Pool pool The current tab's pool
 function M.current_pool()
 	return M.pool_of_tab(vim.api.nvim_get_current_tabpage())
 end
 
----A tab session's pool, made when it's first needed, with the tab joining it.
+---Join a tab to a tab session's pool, making the pool when it's first needed.
 ---
----@param tabpage integer
----@param name string|nil
----@param directory string
----@return Pool
+---The tab leaves the pool it was in before.
+---
+---@param tabpage integer The tab joining
+---@param name string|nil The tab session's name
+---@param directory string The tab session's directory
+---@return Pool pool The tab session's pool
 function M.join_pool(tabpage, name, directory)
 	local id = M.pool_id(name, directory)
 	local pool = data.pools[id]
@@ -325,18 +363,25 @@ function M.join_pool(tabpage, name, directory)
 	return pool
 end
 
----Now, to the microsecond, so closes within one second still have an order.
----@return number
+---Get the time now, to the microsecond.
+---
+---Closes within the same second still get an order this way.
+---
+---@return number time Seconds since the epoch, with the microseconds as the fraction
 local function close_time()
 	local seconds, microseconds = vim.uv.gettimeofday()
 	return seconds + microseconds / 1e6
 end
 
----Put a file on a pool's closed stack as its newest entry, one copy per pool.
+---Put a file on a pool's closed stack as its newest entry.
+---
+---A pool keeps one copy of each file, so an older entry for it is taken off first. The close
+---time is stored, and the pool is marked as changed.
 ---
 ---@param pool Pool
 ---@param filehash Filehash
----@param time integer|nil When it was closed; now when nil
+---@param time integer|nil When it was closed (defaults to now)
+---@return nil
 local function push_closed(pool, filehash, time)
 	for i = #pool.closed, 1, -1 do
 		if pool.closed[i] == filehash then
@@ -348,10 +393,12 @@ local function push_closed(pool, filehash, time)
 	changed(pool)
 end
 
----The tabs that visited a file: their windows show it or have it in their history.
+---Get the tabs that visited a file.
+---
+---A tab visited it when one of its windows shows it or has it in its history.
 ---
 ---@param filehash Filehash
----@return table<integer, boolean> tabpages
+---@return table<integer, boolean> tabpages Tab page → true for every tab that visited it
 function M.tabs_that_visited(filehash)
 	local tabpages = {}
 	for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
@@ -369,13 +416,16 @@ function M.tabs_that_visited(filehash)
 	return tabpages
 end
 
----Close a file into its pools: the pool of the tab it's closed in, every pool it came out of when it
----was opened again, and the pool of every tab whose windows show it or have it in their history.
----The trail gets the close, and a close onto lists other than the tab's is said too.
+---Close a file into its pools.
+---
+---Its pools are the current tab's, every pool it came out of when it was opened again, and the
+---pool of every tab that visited it (see `M.tabs_that_visited()`). Each one gets it as its
+---newest entry, with the same close time. The trail records the close, and a close onto lists
+---other than the current tab's also gets a message.
 ---
 ---@param filehash Filehash
----@param quiet boolean|nil The caller records the close itself
----@return table<Pool, boolean> pools the pools it went on
+---@param quiet boolean|nil Whether the caller records the close itself
+---@return table<Pool, boolean> pools The pools it went on (pool → true)
 function M.close_into_pools(filehash, quiet)
 	local time = close_time()
 	local targets = { [M.current_pool()] = true }
@@ -403,10 +453,14 @@ function M.close_into_pools(filehash, quiet)
 	return targets
 end
 
----A file open again is closed nowhere: it leaves every pool, and the pools it left are remembered for
----its next close.
+---Take a file that's open again off every pool's closed stack.
+---
+---A file open again is closed nowhere, and the pools it left are remembered for its next
+---close. The trail records the reopen, and a reopen off lists other than the current tab's
+---also gets a message.
 ---
 ---@param filehash Filehash
+---@return nil
 function M.open_out_of_pools(filehash)
 	local left = {}
 	for id, pool in pairs(M.pools()) do
@@ -433,9 +487,12 @@ function M.open_out_of_pools(filehash)
 	end
 end
 
----Take a hash off every pool, remembering nothing: it's gone, not opened again.
+---Take a hash off every pool's closed stack, remembering nothing.
+---
+---Used for a hash that's gone rather than opened again, so no pool is kept for its next close.
 ---
 ---@param filehash Filehash
+---@return nil
 function M.discard_from_pools(filehash)
 	for _, pool in pairs(M.pools()) do
 		for i = #pool.closed, 1, -1 do
@@ -449,11 +506,16 @@ function M.discard_from_pools(filehash)
 	data.came_from[filehash] = nil
 end
 
----A file closed on one pool goes on another too, under that pool's own entries, with its close time.
+---Copy a closed file from one pool's closed stack onto another's.
 ---
----@param from Pool
----@param to Pool
+---It goes under the other pool's own entries, as its oldest, with its close time, and the
+---first pool keeps its entry. Nothing happens when the file isn't closed on the first pool, or
+---is already on the second.
+---
+---@param from Pool The pool it's closed on
+---@param to Pool The pool it's copied onto
 ---@param filehash Filehash|nil
+---@return nil
 function M.carry_closed(from, to, filehash)
 	if filehash == nil or not vim.tbl_contains(from.closed, filehash) or vim.tbl_contains(to.closed, filehash) then
 		return
@@ -463,10 +525,12 @@ function M.carry_closed(from, to, filehash)
 	changed(to)
 end
 
----The git directory for the session's directory, found upward from it. A `.git` file, as a
----worktree has, points to it.
+---Find the git directory for the session's directory.
 ---
----@return string|nil git_dir
+---Searches upward from the global working directory. A `.git` file, as a worktree has, is
+---followed to the directory it points to.
+---
+---@return string|nil git_dir The git directory, or nil if there's none
 function M.git_dir()
 	local found = vim.fs.find(".git", { upward = true, path = vim.fn.getcwd(-1, -1) })[1]
 	if not found then
@@ -486,10 +550,12 @@ function M.git_dir()
 	return gitdir
 end
 
----The label from git's HEAD, read as a file: the branch, or the first 7 hex characters of a
----detached HEAD.
+---Get the label from git's HEAD.
 ---
----@return string|nil label
+---HEAD is read as a file, without running git. Returns the branch, or the first 7 hex
+---characters of a detached HEAD.
+---
+---@return string|nil label The label, or nil when there's no HEAD to read
 function M.git_label()
 	local git_dir = M.git_dir()
 	if not git_dir then
@@ -503,9 +569,12 @@ function M.git_label()
 	return head:match("^ref:%s*refs/heads/(.+)$") or head:match("^ref:%s*(.+)$") or head:match("^(%x%x%x%x%x%x%x)")
 end
 
----Where you are right now, as the label provider in config says: a git branch, by default.
+---Get the label for where you are right now.
 ---
----@return string|nil label nil when there's no label
+---The `label_provider` config decides it. A function there gives the label, and `false` turns
+---labels off. With no provider set, it's the git branch (see `M.git_label()`).
+---
+---@return string|nil label The label, or nil when there's none
 function M.current_label()
 	local provider = require('cavediver.configs').label_provider
 	if provider == false then
@@ -521,12 +590,16 @@ end
 local mark_slice = 500
 local mark_queue, mark_next = {}, 1
 
----Mark the known files that are gone from disk, each tagged with where you were when it went
----missing (or the time, with no label), and clear the marks of files that are back.
+---Mark the known files that are gone from disk, and clear the marks of files that are back.
+---
+---Each missing file is tagged with where you were when it went missing (the label), or the
+---time when there's no label. A file never written isn't missing. With a limit, the open
+---buffers and the slots are always checked, and the other files a slice at a time, carrying on
+---from where the last such pass stopped. The trail records each file that goes and comes back,
+---and the marks of files cavediver no longer knows are dropped.
 ---
 ---@param label string|nil The label the files went missing under
----@param limit integer|nil At most this many files are checked, carrying on from where the last such
----pass stopped, besides the open buffers and the slots, which are always checked; nil checks every one
+---@param limit integer|nil How many other files to check at most (nil = every file)
 ---@return nil
 function M.mark_missing(label, limit)
 	local known = M.known_filehashes()
@@ -601,6 +674,8 @@ local head_watch, head_watch_dir
 local head_watch_on = false
 
 ---Stop watching git's HEAD.
+---
+---@return nil
 function M.stop_head_watch()
 	if head_watch then
 		head_watch:stop()
@@ -609,9 +684,13 @@ function M.stop_head_watch()
 	head_watch, head_watch_dir = nil, nil
 end
 
----Let git's HEAD be watched, or stop watching it for good: setup() lets it, disable() stops it.
+---Allow git's HEAD to be watched, or stop the watch for good.
 ---
----@param on boolean
+---Called by setup() to allow it, and by disable() to stop it. While it's stopped,
+---`M.refresh_label()` doesn't start the watch again.
+---
+---@param on boolean Whether HEAD may be watched
+---@return nil
 function M.enable_head_watch(on)
 	head_watch_on = on
 	if not on then
@@ -619,10 +698,14 @@ function M.enable_head_watch(on)
 	end
 end
 
----Watch git's HEAD, so a branch switch is seen when it happens. The git directory is watched, not
----the file, since git replaces HEAD by renaming a new one over it.
+---Watch git's HEAD, so a branch switch is seen when it happens.
 ---
----@param git_dir string|nil
+---The git directory is watched, not the file, since git replaces HEAD by renaming a new one
+---over it. A change to HEAD reads the label again. Watching another directory, or none, stops
+---the old watch first.
+---
+---@param git_dir string|nil The git directory to watch (nil = stop watching)
+---@return nil
 local function watch_head(git_dir)
 	if git_dir == head_watch_dir then
 		return
@@ -643,10 +726,14 @@ local function watch_head(git_dir)
 	head_watch_dir = git_dir
 end
 
----Read the label again. When it changed, the files that went missing with the change are tagged
----with the label being left. The first label seen only starts the record.
+---Read the label again.
 ---
----@return boolean checked Whether every known file was just checked, for a change of label
+---When it changed, every known file is checked, and the ones that went missing with the change
+---are tagged with the label being left. The first label seen only starts the record. It also
+---starts or stops the watch on git's HEAD, which runs only for the default label provider, and
+---only while `M.enable_head_watch()` allows it.
+---
+---@return boolean checked True if every known file was just checked, for a change of label
 function M.refresh_label()
 	if require('cavediver.configs').label_provider == nil and head_watch_on then
 		watch_head(M.git_dir())
@@ -667,11 +754,15 @@ function M.refresh_label()
 	return checked
 end
 
----Follow along: a note or a history entry goes once what it points at is no longer known, and then
----the path of a hash nothing references any more is forgotten.
+---Drop the notes and history entries that point at hashes cavediver no longer knows.
 ---
----@param known_set table<Filehash, boolean>|nil The known hashes, when a caller has them already
----@return integer forgotten How many hashes went
+---A note goes when either buffer it names is no longer known, and a history entry (overall,
+---each window's, each pool's visits) when its hash isn't. Then the path of each unknown hash
+---is forgotten, unless something still references it. The trail records each hash forgotten,
+---and the notes that went with it.
+---
+---@param known_set table<Filehash, boolean>|nil The known hashes, if the caller has them
+---@return integer forgotten How many hashes were forgotten
 function M.follow_along(known_set)
 	known_set = known_set or M.known_filehashes()
 	local unknown, notes = {}, {}
@@ -729,9 +820,12 @@ function M.follow_along(known_set)
 	return forgotten
 end
 
----unregister a filepath from the registry. A path is never forgotten while anything references its
----hash, so a referenced one stays.
+---unregister a filepath from the registry
+---
+---A path is never forgotten while anything references its hash, so a referenced one stays.
+---
 ---@param filepath Filepath
+---@return nil
 function M.unregister_filepath(filepath)
 	local filehash = data.hash_filepath_registry.hashes[filepath]
 
@@ -744,8 +838,12 @@ function M.unregister_filepath(filepath)
 	-- print("Unregistered filepath: " .. filepath .. "\n with filehash: " .. filehash .. "\n" .. debug.traceback())
 end
 
----Make sure a window has its history entry. Every triquetra comes with one, wherever it's made.
+---Make sure a window has its own history entry.
+---
+---Every triquetra comes with one, wherever it's made.
+---
 ---@param winid WinId
+---@return nil
 function M.ensure_window_entry(winid)
 	if data.crux_internals.window[winid] == nil then
 		data.crux_internals.window[winid] = {}
@@ -762,7 +860,7 @@ local previous_window_constructed = nil
 
 ---Initialize the history crux and internal crux structures.
 ---
----@param crux_internals BufferCruxInternals The global history, and each window's own history by window id
+---@param crux_internals BufferCruxInternals Global crux, and each window's crux by window id
 ---@return nil
 function M.initialise_crux_internals(crux_internals)
 	data.crux_internals.window = {}
@@ -911,7 +1009,8 @@ end
 ---Update buffer history with the current access time for regular file buffers.
 ---
 ---Records buffer access in the history system if it's a valid file buffer.
----Only tracks buffers that pass `M.is_trackable()`.
+---Only takes in buffers that pass `M.is_trackable()`, and drops a registered one that has
+---turned into a directory, or into a non-file buffer with nothing on disk.
 ---
 ---@param cbufnr number|nil Buffer number (defaults to current buffer)
 ---@return boolean history_modified True if the buffer was successfully registered and tracked
@@ -978,10 +1077,13 @@ function M.update_buffer_history_ordered()
 	return data.ordered.crux
 end
 
----The marked files, in their order, as full paths: config's `marks_provider`, a function giving their
----paths; with none set, harpoon's list when harpoon is installed; `false` marks nothing.
+---Get the marked files, in their order, as full paths.
 ---
----@return string[]
+---The `marks_provider` config gives them. A function there returns their paths, and `false`
+---marks nothing. With no provider set, harpoon's list is used when harpoon is installed.
+---Anything in the list that isn't a string is skipped.
+---
+---@return string[] paths Full paths of the marked files
 function M.marked_paths()
 	local provider = require('cavediver.configs').marks_provider
 	local list = {}
@@ -1047,6 +1149,7 @@ end
 ---not a copy, so it always names the window's current slot.
 ---
 ---@param winid number Window ID to snapshot
+---@return nil
 function M.snapshot_origin(winid)
 	-- window's data.crux[winid] is ensured to be non-nil.
 	local get_smart_basename = require('cavediver.domains.ui.routines').get_smart_basename
@@ -1146,11 +1249,15 @@ function M.reopen_filehash(filehash)
 	end
 end
 
----Carry a hash's history to a new hash, as a reopened No Name buffer takes a new name: its visits,
----overall and in each window. A visit the new hash has already, being newer, stays.
+---Carry a hash's history over to a new hash.
 ---
----@param old_hash Filehash
----@param new_hash Filehash
+---Used when a file takes a new hash: a reopened No Name buffer, or a rename that was a move.
+---Its visits move overall, in each window and in each pool, and a visit the new hash already
+---has stays.
+---
+---@param old_hash Filehash The hash it had
+---@param new_hash Filehash The hash it takes
+---@return nil
 function M.rename_hash_in_history(old_hash, new_hash)
 	local cruxes = { data.crux, data.crux_internals.global }
 	for _, window_crux in pairs(data.crux_internals.window) do
@@ -1167,11 +1274,13 @@ function M.rename_hash_in_history(old_hash, new_hash)
 	end
 end
 
----A hash's visits, overall and in each window, kept so that a rename which turns out to be a move can
----hand them to the new name: the delete a rename starts with untracks them.
+---Get a hash's visits, overall and in each window.
+---
+---Used to keep them through the delete a rename starts with, which untracks them. A rename
+---that turns out to be a move then hands them to the new name.
 ---
 ---@param hash Filehash
----@return { crux: integer|nil, global: integer|nil, windows: table<WinId, integer> }
+---@return { crux: integer|nil, global: integer|nil, windows: table<WinId, integer> } visits
 function M.history_of(hash)
 	local windows = {}
 	for winid, window_crux in pairs(data.crux_internals.window) do
@@ -1180,10 +1289,13 @@ function M.history_of(hash)
 	return { crux = data.crux[hash], global = data.crux_internals.global[hash], windows = windows }
 end
 
----Decide a rename once the command that made it is over: the disk decides. If the old name is still a
----file, it was a copy (the caller closes the old name). If it isn't, or never was (a No Name buffer), it
----was a move: the buffer, and every slot, note and history entry that named the old hash, follow to the
----new name, and nothing stays on the closed stack.
+---Decide whether a rename was a copy or a move, once the command that made it is over.
+---
+---The disk decides. If the old name is still a file, it was a copy, and the caller closes the
+---old name. If it isn't, or never was (a No Name buffer), it was a move. Every slot, note and
+---history entry that named the old hash then follows to the new name, and the old hash leaves
+---every closed stack. The buffer is unregistered from the old hash, for the caller to register
+---under the new one. A buffer cavediver doesn't track is left alone.
 ---
 ---@param bufnr Bufnr The renamed buffer
 ---@param old_hash Filehash Its hash before the rename
@@ -1491,11 +1603,14 @@ function M.get_hash_from_filepath(filepath)
 	return data.hash_filepath_registry.hashes[filepath]
 end
 
----A short routine on forgetting a filehash from the system. It only touches cavediver's own
----data, never a buffer.
+---A short routine on cleaning up the buffer from the system
+---
+---Drops the hash's history, overall and in each window, and its buffer's registration. Its
+---path stays registered, and no Neovim buffer is touched.
 ---
 ---@param filepath Filepath
 ---@param filehash Filehash
+---@return nil
 local function detach_filehash_from_crux(filepath, filehash)
 	data.crux[filehash] = nil
 	data.crux_internals.global[filehash] = nil
@@ -1515,11 +1630,13 @@ local function detach_filehash_from_crux(filepath, filehash)
 	data.hash_buffer_registry.buffers[filehash] = nil
 end
 
----Find the buffer that holds this exact filepath, if any. `vim.fn.bufnr()` would pattern-match,
----so the names are compared as they are.
+---Find the buffer whose name is exactly this filepath.
+---
+---`vim.fn.bufnr()` would pattern-match, so the names are compared as they are. A NONAME_ path
+---never has a buffer by that name, so it finds none.
 ---
 ---@param filepath Filepath|nil
----@return Bufnr|nil
+---@return Bufnr|nil bufnr Buffer number or nil if not found
 local function find_buffer_by_filepath(filepath)
 	if not filepath or filepath:match("^NONAME_") then
 		return nil
@@ -1537,8 +1654,7 @@ end
 ---Removes orphaned entries, validates registries, and ensures data consistency.
 ---Should be called periodically and before critical operations like saving.
 ---
----@param on_tick boolean|nil True when the cleanup timer runs it: files are then checked for being
----gone from disk a slice at a time
+---@param on_tick boolean|nil Whether a timer tick runs it, checking the disk a slice at a time
 ---@return table cleanup_report Summary of what was cleaned up
 function M.cleanup_system(on_tick)
 	local report = {
@@ -1672,7 +1788,9 @@ function M.cleanup_system(on_tick)
 end
 
 -- Fucking reset everything.
----Tear the history domain's state down, for a load from idle: it starts from nothing, as at startup.
+---Tear the history domain's state down, so a load from idle starts from nothing.
+---
+---Everything goes back to how it is at startup, the pools included.
 ---
 ---@return nil
 function M.teardown()

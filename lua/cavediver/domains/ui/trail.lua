@@ -1,6 +1,9 @@
----The trail's view, :CavediverTrail: a day's page of the ledger's steps and moves, in the trail's
----language. Every line is drawn from the records, and every key reads what a line stands for from
----the map the drawing keeps, never the text.
+---UI domain trail view for the ledger's steps and moves.
+---
+---This module draws :CavediverTrail, a day's page of the ledger's steps and moves in the
+---trail's language, or a search's results across every page. Every line is drawn from the
+---records, and every key reads what a line stands for from the map the drawing keeps, never
+---from the text.
 
 local M = {}
 
@@ -43,8 +46,9 @@ local TALLY = {
 	{ "Session", "loaded" }, { "Rename", "moved" }, { "List", "detached" },
 }
 
----@param segs table[] { text, group } pieces
----@return integer
+---Get the display width of a line's pieces.
+---@param segs table[] The { text, group } pieces
+---@return integer width Display width in cells
 local function width(segs)
 	local w = 0
 	for _, seg in ipairs(segs) do
@@ -53,10 +57,14 @@ local function width(segs)
 	return w
 end
 
----A file's name in a row: its basename without the extension.
----@param names table<string, string>
----@param filehash string|nil
----@return string
+---Get a file's name as a row shows it, its basename without the extension.
+---
+---A name in brackets ([No Name]) is kept whole. No file shows as "-", and a file with no name
+---as "?".
+---
+---@param names table<string, string> File hash → basename, as the step keeps them
+---@param filehash string|nil The file's hash
+---@return string stem The name to show
 local function stem(names, filehash)
 	if filehash == nil then
 		return "-"
@@ -65,7 +73,7 @@ local function stem(names, filehash)
 	return name:match("^%[") and name or vim.fn.fnamemodify(name, ":r")
 end
 
----A row, `⦉t⦊ [c] ⟦s⟧`, as coloured pieces.
+---Build a row, `⦉t⦊ [c] ⟦s⟧`, as coloured pieces.
 local function row_segs(glyphs, names, row)
 	row = row or {}
 	return {
@@ -75,7 +83,7 @@ local function row_segs(glyphs, names, row)
 	}
 end
 
----Lists, `≡editor, ≡t`.
+---Join lists into the trail's text for them, `≡editor, ≡t`.
 local function lists_text(glyphs, lists)
 	local out = {}
 	for _, list in ipairs(lists or {}) do
@@ -84,8 +92,12 @@ local function lists_text(glyphs, lists)
 	return table.concat(out, ", ")
 end
 
----What a move says, from its own words or its fields.
----@return string
+---Get what a move says, from its own words or its fields.
+---
+---A move without words of its own is told from its kind and fields, such as a note's change or
+---where a landing came from. The lists it names come last.
+---
+---@return string words The move's words, in the trail's language
 local function move_words(glyphs, names, move)
 	local words = move.words
 	if move.kind == "closed" and not words then
@@ -112,7 +124,9 @@ local function move_words(glyphs, names, move)
 	return words
 end
 
----Words with each `≡list` and `⎇tag` picked out.
+---Split words into coloured pieces, with each `≡list` and `⎇tag` picked out.
+---
+---A list's piece carries its target, so the keys can act on it.
 local function word_segs(glyphs, text, group)
 	local out = {}
 	local i = 1
@@ -142,9 +156,9 @@ local function word_segs(glyphs, text, group)
 	return out
 end
 
----A day's depth: how many calendar days before today.
----@param day string `YYYY-MM-DD`
----@return integer
+---Get a day's depth, how many calendar days ago it was.
+---@param day string The day, as `YYYY-MM-DD`
+---@return integer depth Calendar days ago, 0 for the current day
 local function depth_of(day)
 	local y, m, d = day:match("^(%d+)-(%d+)-(%d+)$")
 	local then_ = os.time({ year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = 12 })
@@ -153,7 +167,10 @@ local function depth_of(day)
 	return math.floor((today - then_) / 86400 + 0.5)
 end
 
----The fill's glyph and group for a depth.
+---Get the header fill's glyph and highlight group for a depth.
+---
+---There are four shades, for the current day, up to a week, up to a month, and older. With
+---shading off it's the plain rule.
 local function fill_of(glyphs, depth, shade)
 	if not shade then
 		return glyphs.rule, "CavediverTrailGutter"
@@ -167,15 +184,21 @@ local function fill_of(glyphs, depth, shade)
 	return glyphs.shade3, "CavediverTrailWave3"
 end
 
----The days the gauge draws: up to 15 around the one shown, newest on the right.
----@return integer first
----@return integer last
+---Get the days the gauge draws, up to 15 around the one shown.
+---
+---They're indices into the view's days, oldest first, so the newest is on the right.
+---
+---@return integer first The index of the first day drawn
+---@return integer last The index of the last day drawn
 local function gauge_window(shown, days)
 	local first = math.max(1, math.min(shown - 7, days - 14))
 	return first, math.min(days, first + 14)
 end
 
----The gauge: a bar per day it draws, its height the day's moves.
+---Build the gauge's pieces, a bar per day it draws.
+---
+---A bar's height is the day's moves against the busiest day drawn, and the day shown is marked.
+---
 ---@param counts table<integer, integer> The moves of each day it draws, by the day's index
 local function gauge_segs(glyphs, counts, shown, first, last)
 	local bars = vim.fn.split(glyphs.bars, "\\zs")
@@ -195,7 +218,7 @@ local function gauge_segs(glyphs, counts, shown, first, last)
 	return out
 end
 
----The day's moves, and its tally by kind.
+---Count a day's moves, in all and by kind.
 local function count_moves(steps)
 	local total, kinds = 0, {}
 	for _, step in ipairs(steps) do
@@ -209,9 +232,12 @@ end
 
 local frame, target_of
 
----The header line, the dive: the fill shaded by depth, the title, the date, the depth, the moves, the
----tally and the gauge, the keys to the older and the newer day at the sides. A narrow window drops the
----tally first, then the gauge.
+---Build the day's header line, the dive.
+---
+---It holds the fill shaded by the day's depth, the title, the date, the depth, the move count,
+---the tally and the gauge, with the keys to the older and the newer day at the sides. A narrow
+---window drops the tally first, then the gauge. The config's `trail.header` can turn off the
+---shading, the tally and the gauge, and a `trail_header` formatter replaces the whole line.
 local function header(glyphs, keys, winwidth)
 	local configured = (require('cavediver.configs').trail or {}).header or {}
 	local day = view.days[view.day]
@@ -272,7 +298,9 @@ local function header(glyphs, keys, winwidth)
 	return frame(l, r, chosen, ch, group, winwidth)
 end
 
----The header's frame: the keys at the sides, the fill, and what's in the middle.
+---Frame a header's middle with the fill, and the keys at the sides.
+---
+---The fill takes the room that's left, split between the two sides, at least two on each.
 frame = function(l, r, chosen, ch, group, winwidth)
 	local free = winwidth - width(l) - width(r) - width(chosen) - 2
 	local a = math.max(2, math.floor(free / 2))
@@ -287,8 +315,12 @@ frame = function(l, r, chosen, ch, group, winwidth)
 	return line
 end
 
----What a move's name stands for, for gf and *: a file by its hash, a window by its id, or a name.
----@return table
+---Get what a move's name stands for, for gf and *.
+---
+---A file is named by its hash, a window by its id, and a list by its name. Anything else is a
+---plain name.
+---
+---@return table target The target's `kind`, `value` and `name`
 target_of = function(move)
 	local subject = move.subject
 	if type(subject) == "string" and #subject == 16 and subject:match("^%x+$") then
@@ -301,8 +333,12 @@ target_of = function(move)
 	return { kind = "name", value = move.name, name = move.name }
 end
 
----The ring's steps, by the very record: a step of this editor's that the ring still holds.
----@return table<CavediverLedgerStep, integer> Each step's index in the ring
+---Index the ring's steps by the very records it holds.
+---
+---A step is found by its own table, so only this editor's steps that the ring still keeps are
+---in it.
+---
+---@return table<CavediverLedgerStep, integer> in_ring Each step's index in the ring
 local function ring_index()
 	local in_ring = {}
 	for i, step in ipairs(require('cavediver.domains.ledger').data.ring) do
@@ -311,22 +347,28 @@ local function ring_index()
 	return in_ring
 end
 
----A step's index in the ring when it's this editor's own, or nil: a line from a page, written by an
----editor before this one, never opens.
+---Get a step's index in the ring when it's this editor's own.
+---
+---A step on a page that an editor before this one wrote gets nil, so its line never opens.
 local function own_of(in_ring, step)
 	return type(step.time) == "number" and step.time >= require('cavediver.domains.ledger').data.started and in_ring[step] or nil
 end
 
----The key a step opens under, the day's and the step's own.
+---Get the key a step opens under, made of the day and the step's own number and time.
 local function ring_key(day, step)
 	return "ring:" .. day .. ":" .. step.seq .. ":" .. step.time
 end
 
----The ring's steps since the trail's line before a step, the nearest first shown, 20 at a time.
+---Build the lines of the ring's steps between a step and the trail's line before it.
+---
+---The steps nearest the step are shown, 20 at a time, and a line above them counts the earlier
+---ones still hidden. Each step shows its time, its trigger and its window, then the row it
+---changed or its events.
+---
 ---@param own integer The step's index in the ring
 ---@param before integer The ring's index of the trail's line before it, 0 for none
 ---@param key string The step's key in view.open and view.more
----@return table[]
+---@return table[] lines The lines, each with its pieces and what it stands for
 local function ring_lines(glyphs, own, before, key)
 	local ledger = require('cavediver.domains.ledger')
 	local lines = {}
@@ -359,7 +401,11 @@ local function ring_lines(glyphs, own, before, key)
 	return lines
 end
 
----The day's lines, each with what it stands for.
+---Build the day's lines, each with what it stands for.
+---
+---The header comes first, then each step with its moves under it. More than three moves of a
+---kind under one step fold to a count, and a step of this editor's opens into the ring's steps
+---before it. The config's `trail_step` and `trail_move` formatters can draw a line instead.
 local function day_lines(glyphs, winwidth)
 	local keys = require('cavediver.configs').keymaps.views or {}
 	local lines = { { segs = header(glyphs, keys, winwidth) }, { segs = { { "", nil } } } }
@@ -470,11 +516,15 @@ local function day_lines(glyphs, winwidth)
 	return lines
 end
 
----A search's results: every move about the name, on every page, oldest first (the approved mock's
----order, the author's pick), each with the name's state after it.
----@param name string
----@param subject string|nil A file's hash: its moves alone, not every file of that name
----@return table[]
+---Find every move about a name, on every page, oldest first.
+---
+---Each result carries the name's state after its move, and a file back on disk returns to the
+---state it had before it went. With a subject, only its own moves are found, not every one of
+---that name.
+---
+---@param name string The name to search for
+---@param subject string|nil A file's hash or a window's id
+---@return table[] results Each move found, with its day, its step and the state after it
 local function find(name, subject)
 	local results, state, before_gone = {}, "Open", nil
 	for _, day in ipairs(view.reader.days()) do
@@ -499,7 +549,10 @@ local function find(name, subject)
 	return results
 end
 
----A search's lines: the name's life line, a gutter bar coloured by its state at each line.
+---Build a search's lines, with the name's life line down the gutter.
+---
+---The life line is a bar on each result, coloured by the name's state after its move. A result
+---of this editor's opens into the ring's steps as its step does on its day.
 local function search_lines(glyphs, winwidth)
 	local keys = require('cavediver.configs').keymaps.views or {}
 	local days = {}
@@ -568,7 +621,12 @@ local function search_lines(glyphs, winwidth)
 	return lines
 end
 
----Draw the view: its lines, their colours, and the map of what each line stands for.
+---Draw the view.
+---
+---Writes its lines and their colours, and keeps the map of what each line stands for, with
+---where its targets sit, for the keys to read.
+---
+---@return nil
 local function draw()
 	if not view or not vim.api.nvim_buf_is_valid(view.buf) then
 		return
@@ -611,7 +669,7 @@ local function draw()
 	view.lines = lines
 end
 
----What the line under the cursor stands for.
+---Get what the line under the cursor stands for (nil when the trail isn't open).
 local function at_cursor()
 	if not view or not vim.api.nvim_win_is_valid(view.win) then
 		return nil
@@ -619,7 +677,11 @@ local function at_cursor()
 	return view.lines and view.lines[vim.api.nvim_win_get_cursor(view.win)[1]]
 end
 
----Leave the view.
+---Leave the trail.
+---
+---Closes its window and goes back to the window it was opened from.
+---
+---@return nil
 function M.leave()
 	if view and vim.api.nvim_win_is_valid(view.win) then
 		local from = view.from
@@ -631,8 +693,12 @@ function M.leave()
 	view = nil
 end
 
----Go to the older (-1) or the newer (1) day.
----@param step integer
+---Go to the older or the newer day.
+---
+---Nothing happens past the oldest or the newest day. The cursor goes back to the header.
+---
+---@param step integer Which way to go, -1 for the older day and 1 for the newer
+---@return nil
 function M.page(step)
 	if not view then
 		return
@@ -645,7 +711,12 @@ function M.page(step)
 	end
 end
 
----Open or close what's under the cursor: a fold, a step into the ring's steps, or 20 more of them.
+---Open or close what's under the cursor.
+---
+---A folded count opens into its moves, a step of this editor's into the ring's steps before it,
+---and the line that counts the hidden steps shows 20 more. The cursor stays where it was.
+---
+---@return nil
 function M.fold()
 	local line = at_cursor()
 	if not line then
@@ -666,8 +737,11 @@ function M.fold()
 	pcall(vim.api.nvim_win_set_cursor, view.win, cursor)
 end
 
----What's under the cursor: the target at its column, or the line's first.
----@return table|nil
+---Get the target under the cursor.
+---
+---It's the target at the cursor's column, or the line's first when the cursor is on none.
+---
+---@return table|nil target The target, or nil when the line has none
 local function target_at_cursor()
 	local line = at_cursor()
 	if not line or not line.targets or #line.targets == 0 then
@@ -682,9 +756,11 @@ local function target_at_cursor()
 	return line.targets[1].target
 end
 
----Search every page for a name: its life line.
----@param name string
----@param subject string|nil A file's hash, to follow that file alone
+---Search every page for a name, and show its life line.
+---
+---@param name string The name to search for
+---@param subject string|nil A file's hash or a window's id, to follow that one alone
+---@return nil
 function M.search(name, subject)
 	if not view or name == nil or name == "" then
 		return
@@ -696,13 +772,19 @@ function M.search(name, subject)
 end
 
 ---Ask for a name and search for it.
+---@return nil
 function M.ask()
 	vim.ui.input({ prompt = "Search the trail for: " }, function(input)
 		M.search(input)
 	end)
 end
 
----Search for the name under the cursor: a file follows that file, by its hash, and anything else its name.
+---Search for the name under the cursor.
+---
+---A file is followed by its hash and a window by its id, and anything else by its name. On a
+---line with no target, the line's move gives one.
+---
+---@return nil
 function M.search_word()
 	local target = target_at_cursor()
 	local line = at_cursor()
@@ -716,8 +798,13 @@ function M.search_word()
 	end
 end
 
----Act on what's under the cursor and stay: a file opened in the window the trail came from, a list shown
----in the closed lists, a window gone to.
+---Act on the target under the cursor, and keep the trail open.
+---
+---A file opens in the window the trail came from, a list shows in the closed lists with the
+---cursor on its header, and a window becomes the current one. A No Name text, a file with no
+---path, or one whose window is gone can't be opened, and the trail says so.
+---
+---@return nil
 function M.act_and_stay()
 	local target = target_at_cursor()
 	if not target then
@@ -747,7 +834,11 @@ function M.act_and_stay()
 	end
 end
 
----The main action on a line: in a search, open the result's day on its step.
+---Open the day of the search result under the cursor, on its step.
+---
+---It's the main action on a line, which only a search's results have.
+---
+---@return nil
 function M.act()
 	local line = at_cursor()
 	if not (view and view.mode == "search" and line and line.result) then
@@ -769,7 +860,11 @@ function M.act()
 	end
 end
 
----`q`: out of a search, back to the day it came from; out of a day, leave.
+---Go back from a search to the day it was opened on, or leave the trail from a day.
+---
+---It's the views' leave key (`q`).
+---
+---@return nil
 function M.back()
 	if view and view.mode == "search" then
 		view.mode = "day"
@@ -780,8 +875,13 @@ function M.back()
 	end
 end
 
----Open the trail of the tab you're in, on today's page or the newest day with moves, or on a search.
+---Open the trail of the current tab, on its newest day with moves, or on a search.
+---
+---Opened from a float, it takes the last tracked window as the one it came from. A query of
+---`win <N>`, or `win` alone, searches for a window of this tab by its id.
+---
 ---@param query string|nil A name to search for
+---@return nil
 function M.open(query)
 	local window = require('cavediver.domains.window')
 	local from = vim.api.nvim_get_current_win()

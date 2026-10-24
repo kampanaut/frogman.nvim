@@ -6,7 +6,7 @@
 ---@field name string The name of the general hook.
 ---@field func hookFunction The body of the hook.
 ---@field mode_filter transitionModePattern A pattern for registered modes that the hook applies to.
----@field critical boolean|nil When true, a failure abandons the transition and reaches the caller.
+---@field critical boolean|nil Whether the hook's failure abandons the transition and reaches the caller.
 
 ---@class gHook
 ---@field class number Provides a way to group hooks by class and priority.

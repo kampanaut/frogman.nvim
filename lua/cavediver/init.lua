@@ -29,8 +29,8 @@ M.engine = engine
 
 ---Begin a key's step, once what's still queued has settled.
 ---
----The settle work still queued runs first, so it lands on the step it belongs to, as if
----the key had been typed by hand. Then the key's own step begins.
+---Runs the settle work still queued first, so it lands on the step it belongs to, as if the
+---key had been typed by hand. Then begins the key's own step, in the current window.
 ---
 ---@param lhs string The key, as the step's trigger
 ---@return nil
@@ -156,10 +156,15 @@ end
 
 local setup_debug_commands
 
----Initialize cavediver plugin with configuration. Nothing runs at require: this creates the
----autocmds (in the cavediver augroup), the commands and the timers, and calling it again
----replaces them cleanly.
+---Initialize cavediver plugin with configuration.
+---
+---Nothing runs at require, so this creates the autocmds (in the cavediver augroup), the commands
+---and the timers, and calling it again replaces them cleanly. It also sets the keymaps. A list in
+---the user configuration replaces the default list whole, and a table given where the default
+---isn't one (or the other way round) throws.
+---
 ---@param user_config? CavediverConfig User configuration (merged with defaults)
+---@return nil
 function M.setup(user_config)
 	-- Merge user configuration with defaults
 	
@@ -453,7 +458,11 @@ function setup_debug_commands()
 	end, { desc = "Print all window triquetra objects and UI caches" })
 end
 
----Turn cavediver off: its autocmds and timers go, so nothing is tracked until setup() runs again.
+---Turn cavediver off.
+---
+---Clears its autocmds, stops its timers and the head watch, and stops writing records, so nothing
+---is tracked until setup() runs again.
+---
 ---@return nil
 function M.disable()
 	vim.api.nvim_create_augroup("cavediver", { clear = true })

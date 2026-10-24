@@ -83,12 +83,17 @@ local renames = {}
 ---@type table<Bufnr, { hash: Filehash, history: table }>
 local noname_deleted = {}
 
----Settle a rename once the command that made it is over: the disk decides whether it was a copy or a
----move (routines.settle_rename), then the buffer is taken in under its new name, as an arrival in the
----window that shows it, or just registered when no window does.
+---Settle a rename once the command that made it is over.
 ---
----@param bufnr Bufnr
----@param rename { hash: Filehash, history: table }
+---The disk decides whether it was a copy or a move (see `routines.settle_rename()`), and the
+---trail records which. A copy closes the old name. The buffer is then taken in under its new
+---name, as an arrival in the window that shows it, or just registered when no window does. A
+---new name that isn't on disk yet is marked as unwritten. A buffer that's gone, or left with
+---no name, was deleted rather than renamed, and is left alone.
+---
+---@param bufnr Bufnr The renamed buffer
+---@param rename { hash: Filehash, history: table } Its old hash, and its history if kept
+---@return nil
 local function settle_rename(bufnr, rename)
 	if not vim.api.nvim_buf_is_valid(bufnr) or vim.api.nvim_buf_get_name(bufnr) == "" then
 		return -- deleted for good (a No Name buffer closed), not renamed.
@@ -128,10 +133,13 @@ end
 
 local M = {}
 
----Create the history domain's autocmds in cavediver's augroup. setup() calls this, so nothing
----runs at require, and calling it again after the group is cleared replaces them cleanly.
+---Create the history domain's autocmds in cavediver's augroup.
+---
+---Called by setup(), so nothing runs at require. Calling it again after the group is cleared
+---replaces them cleanly.
 ---
 ---@param group integer The cavediver augroup
+---@return nil
 function M.init_autocmds(group)
 	-- where you are can change without cavediver seeing it: the label is read again at these
 	-- settle points, and the files gone from disk are marked with it.

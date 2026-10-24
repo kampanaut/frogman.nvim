@@ -20,7 +20,7 @@
 ---@class SlotMasks
 ---@field secondary boolean Whether secondary slot is on or off
 ---@field ternary boolean Whether ternary slot is on or off
----@field current boolean|nil Whether current slot is on or off (only closed while visiting)
+---@field current boolean|nil Whether current slot is on or off (it can be closed only while visiting)
 
 ---@class UIWindowTriquetra Display-optimized window buffer relationships
 ---@field winid number Window ID
@@ -37,7 +37,7 @@
 ---@field has_primary boolean Whether primary buffer is set
 ---@field loaded_slots SlotMasks Which slots reference valid buffers
 ---@field deleted_slots SlotMasks Which slots reference deleted files
----@field visiting string|nil What the window shows when it's something we don't track: its buftype, or its filetype
+---@field visiting string|nil Label of the untracked buffer the window visits (its number and buftype or filetype)
 
 ---@class UITriquetraTheme Triquetra theme configuration
 ---@field base "WinbarBase"|"WinbarBaseNC" Base highlight group for active/inactive winbar

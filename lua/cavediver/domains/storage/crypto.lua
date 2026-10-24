@@ -1,15 +1,15 @@
 ---Storage domain encryption for the session files.
 ---
----AES-256-GCM through OpenSSL 3's libcrypto, called with LuaJIT's FFI. The key is stretched from
----the session's directory with PBKDF2, so a file only decrypts in its own directory. GCM's tag
----checks the stored bytes before any decrypted byte is used, so an edited or corrupted file fails
----as a whole instead of decrypting into something else.
+---This module encrypts with AES-256-GCM through OpenSSL 3's libcrypto, called with LuaJIT's FFI.
+---The key is stretched from the session's directory with PBKDF2, so a file only decrypts in its
+---own directory. GCM's tag checks the stored bytes before any decrypted byte is used, so an edited
+---or corrupted file fails as a whole instead of decrypting into something else.
 
 local ffi = require('ffi')
 
 local M = {}
 
----PBKDF2 rounds stretching the directory into the key.
+---PBKDF2 rounds that stretch the directory into the key
 M.rounds = 200000
 M.salt_length = 16
 M.key_length = 32
@@ -44,9 +44,12 @@ end
 
 local libcrypto
 
----libcrypto, loaded the first time it's needed. A missing library is an environment failure: it
----throws, so a save fails as a whole and the session manager's save with it.
----@return ffi.namespace*
+---Get libcrypto, loading it the first time it's needed.
+---
+---A missing library is an environment failure, so this throws. A save then fails as a whole,
+---and the session manager's save with it.
+---
+---@return ffi.namespace* lib The loaded libcrypto
 local function crypto()
 	if libcrypto == nil then
 		for _, name in ipairs({ "crypto", "libcrypto.so.3", "libcrypto.3.dylib" }) do
@@ -63,8 +66,12 @@ local function crypto()
 	return libcrypto
 end
 
----@param n integer
----@return string bytes n random bytes
+---Get random bytes from libcrypto.
+---
+---Throws when libcrypto can't make them.
+---
+---@param n integer How many bytes
+---@return string bytes The n random bytes
 function M.random_bytes(n)
 	local buf = ffi.new("unsigned char[?]", n)
 	if crypto().RAND_bytes(buf, n) ~= 1 then
@@ -73,10 +80,13 @@ function M.random_bytes(n)
 	return ffi.string(buf, n)
 end
 
----The key for a session's directory and a file's salt.
+---Derive the key for a session's directory and a file's salt.
+---
+---Runs PBKDF2 with SHA-256 for `M.rounds` rounds. Throws when libcrypto can't derive it.
+---
 ---@param directory string The session's directory
----@param salt string
----@return string key
+---@param salt string The file's salt
+---@return string key The key, `M.key_length` bytes long
 function M.derive_key(directory, salt)
 	local key = ffi.new("unsigned char[?]", M.key_length)
 	local ok = crypto().PKCS5_PBKDF2_HMAC(directory, #directory, salt, #salt, M.rounds, crypto().EVP_sha256(), M.key_length, key)
@@ -86,11 +96,15 @@ function M.derive_key(directory, salt)
 	return ffi.string(key, M.key_length)
 end
 
----Encrypt with a fresh nonce. `aad` is authenticated but not encrypted.
----@param key string
----@param plaintext string
----@param aad string
----@return string sealed nonce, ciphertext and tag
+---Encrypt bytes with a fresh nonce.
+---
+---The `aad` is authenticated but not encrypted, so `M.open()` needs the same one. Throws when
+---libcrypto can't encrypt.
+---
+---@param key string The key from `M.derive_key()`
+---@param plaintext string The bytes to encrypt
+---@param aad string Additional data to authenticate
+---@return string sealed The nonce, the ciphertext and the tag, in that order
 function M.seal(key, plaintext, aad)
 	local lib = crypto()
 	local nonce = M.random_bytes(M.nonce_length)
@@ -115,11 +129,15 @@ function M.seal(key, plaintext, aad)
 	return sealed
 end
 
----Decrypt what `seal` made. The tag is checked before anything is returned.
----@param key string
----@param sealed string nonce, ciphertext and tag
----@param aad string
----@return string|nil plaintext nil when the bytes, the key or the aad don't match
+---Decrypt what `M.seal()` made.
+---
+---The tag is checked before anything is returned, so nothing comes back from bytes that were
+---changed.
+---
+---@param key string The key from `M.derive_key()`
+---@param sealed string The nonce, the ciphertext and the tag, as `M.seal()` returned them
+---@param aad string Additional data, the same as the seal's
+---@return string|nil plaintext The decrypted bytes, or nil when the bytes, the key or the aad don't match
 function M.open(key, sealed, aad)
 	if #sealed < M.nonce_length + M.tag_length then
 		return nil

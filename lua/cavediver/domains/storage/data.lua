@@ -50,25 +50,26 @@ M.session_template = {
     },
 }
 
----Whether a load ran in the current batch of events. A native restore calls load_session once per
----loaded buffer; only the first call loads, and vim.schedule clears this once the batch is over.
+---Whether a load ran in the current batch of events, cleared by a vim.schedule once the batch
+---is over (a native restore calls load_session once per loaded buffer, and only the first loads)
 ---@type boolean
 M.loading_batch = false
 
 ---What the last load in this startup loaded, so cavediver can load it again after Neovim's own
----:restart session. `name` is nil for a nameless load, and `tab` is true when the load had the hint.
+---:restart session (`name` is nil for a nameless load, `tab` is true when the load had the hint)
 ---@type {name: string|nil, tab: boolean}|nil
 M.last_loaded = nil
 
----Whether this editor replayed a flight recorder's dump: its state is then no session's, and
----isn't saved
+---Whether this editor replayed a flight recorder's dump (its state is then no session's, and
+---isn't saved)
 ---@type boolean
 M.replayed = false
 
----The last whole-editor session loaded or saved, and the unnamed session: the whole-editor session
----in effect when tab sessions started, whose records each tab-session save refreshes in its file.
+---The last whole-editor session loaded or saved
 ---@type {name: string|nil, directory: string}|nil
 M.editor_session = nil
+---The unnamed session, the whole-editor session in effect when tab sessions started (each
+---tab-session save refreshes its records in its file)
 ---@type {name: string|nil, directory: string}|nil
 M.unnamed = nil
 

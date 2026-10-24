@@ -1,13 +1,16 @@
----Ledger domain data: the steps cavediver records, and the moves it makes in them. The shapes,
----CavediverLedgerStep, CavediverLedgerMove and CavediverLedgerRow, are documented in configs.lua.
+---Ledger domain data structures for steps and moves.
+---
+---This module holds the steps cavediver records and the moves it makes in them. The shapes of
+---a step, a move and a row (CavediverLedgerStep, CavediverLedgerMove, CavediverLedgerRow) are
+---documented in configs.lua.
 ---
 ---@class LedgerData
----@field ring CavediverLedgerStep[] The last steps kept, oldest first, at most `ledger.ring` of them
----@field seq integer The number of the last step begun
----@field open CavediverLedgerStep|nil The step still open: what follows from its trigger lands on it
----@field scopes CavediverLedgerStep[] Steps that last only while a call runs, a timer's tick
----@field days table<string, CavediverLedgerStep[]> The trail: each day's steps that made moves, oldest first
----@field started number When this editor's ledger began, in seconds: a page keeps what editors before it wrote
+---@field ring CavediverLedgerStep[] The last steps kept, oldest first (at most `ledger.ring` of them)
+---@field seq integer Number of the last step begun
+---@field open CavediverLedgerStep|nil The open step, where what follows from its trigger lands
+---@field scopes CavediverLedgerStep[] Steps that last only while a call runs, such as a timer's tick
+---@field days table<string, CavediverLedgerStep[]> Day → its steps with moves, oldest first (the trail)
+---@field started number When this editor's ledger began, in seconds (older steps on a trail page came from earlier editors)
 
 return {
 	ring = {},
