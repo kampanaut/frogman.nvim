@@ -484,6 +484,87 @@ T['T341 [char] (S2) a closed No Name text that can\'t be read at a save leaves t
 		{ errors = {}, noname_closed = false })
 end
 
+-- A No Name text closed with <M-.> keeps its hash on the closed stack. Each
+-- fresh editor is a new process, encoding JSON in its own key order; the
+-- closed lists read the text, as drawing its first line does, and q leaves
+-- them unedited.
+T['T472 [char] (S2) an unchanged No Name text keeps its file in every editor'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	S2.noname(child, { 'same text' })
+	child.steps({ '<M-.>' })
+	eq(Misc.save(child), { true })
+	local one = S2.scratch_files(s.session_dir)
+	eq(#one, 1)
+	for _ = 1, 5 do
+		S2.start(child, s)
+		Misc.restore(child, { 'a', 'b' }, 'b')
+		eq(Misc.load(child), { true })
+		child.settle(300)
+		S2.picker(child)
+		child.type_keys('q')
+		child.settle()
+		eq(Misc.save(child), { true })
+		eq(S2.scratch_files(s.session_dir), one)
+	end
+end
+
+-- A No Name text closed with <M-.> and saved under A is held unread in the
+-- next editor, which saves B. A's files then go, as another editor's save of
+-- A would sweep the text's file.
+T['T473 [char] (S2) a closed No Name text read from another session\'s file is kept when that file goes'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	S2.noname(child, { 'carried text' })
+	child.steps({ '<M-.>' })
+	eq(S2.save(child, 'A'), { true })
+
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child, 'A'), { true })
+	child.settle(300)
+	eq(S2.save(child, 'B'), { true })
+	local a = S2.main_file(s.session_dir, S2.cwd(child), 'A')
+	vim.fn.delete(s.session_dir .. a)
+	vim.fn.delete(s.session_dir .. a .. '.d', 'rf')
+	child.messages()
+	eq(S2.save(child, 'B'), { true })
+	eq(S2.has(child.messages(), 'integrity check'), false)
+
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child, 'B'), { true })
+	child.settle(300)
+	child.steps({ '<M-S-w>' })
+	eq(S2.holding(child, 'carried text'), 1)
+end
+
+-- The No Name text is in a second tab, its cursor on its third line; the
+-- save runs from the first tab.
+T['T474 [char] (S2) an open No Name text shown in another tab keeps its cursor'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('tabnew')
+	S2.noname(child, { 'one', 'two', 'three' })
+	child.lua('vim.api.nvim_win_set_cursor(0, { 3, 2 })')
+	child.cmd('tabprevious')
+	child.settle()
+	eq(Misc.save(child), { true })
+
+	S2.start(child, s)
+	Misc.restore(child, { 'a' }, 'a')
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	local b = S2.buffer_holding(child, 'three')
+	eq(b ~= nil, true)
+	child.cmd('buffer ' .. b)
+	child.settle()
+	eq(child.lua('return vim.api.nvim_win_get_cursor(0)'), { 3, 2 })
+end
+
 -- 150 more files in the project, each opened and closed. It held before the
 -- encrypted format and holds with it.
 T['T309 [char] (S2) no count limit: 150 closed files all come back'] = function()

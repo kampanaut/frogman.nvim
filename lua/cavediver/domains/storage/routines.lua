@@ -656,6 +656,7 @@ local function serialise_noname_content(owner)
 			local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 			if not (#lines == 0 or (#lines == 1 and lines[1] == "")) then -- empty ones are skipped, as when closed
 				local winid = vim.fn.bufwinid(bufnr)
+				winid = winid ~= -1 and winid or (vim.fn.win_findbuf(bufnr)[1] or -1) -- or one in another tab
 				texts[filehash] = {
 					lines = lines,
 					filetype = vim.bo[bufnr].filetype,
@@ -672,8 +673,8 @@ end
 ---
 ---Each file is encrypted, and the main file keeps its name. A file is named after its text, so
 ---only a text that changed is written. A closed text never read since the load keeps its file,
----unless it was saved under another session or key, when it's read and written again here. One
----whose file has gone, swept by another editor's save, is dropped.
+---unless it was saved under another session or key, when it's read, written again here and kept
+---read. One whose file has gone, swept by another editor's save, is dropped.
 ---
 ---@param texts table<Filehash, NoNameBufferContent> The texts, `reopen` marking the open ones
 ---@param key string The session's key
@@ -689,12 +690,17 @@ local function write_noname_texts(texts, key, scratch_dir)
 		if text.lines == nil then
 			if text.source ~= scratch_dir .. name or text.key ~= key then
 				text = text.read() -- saved under another session or key: read, and written again here
+				if text then
+					history.data.noname_content[filehash] = text -- kept read, so it no longer needs that file
+				end
 			elseif vim.uv.fs_stat(scratch_dir .. name) == nil then
 				text = nil -- its file is gone, swept by another editor's save: nothing is left to keep
 			end
 		end
 		if text and text.lines then
-			local plaintext = vim.json.encode({ lines = text.lines, filetype = text.filetype, cursor = text.cursor })
+			-- its keys always in this order, so a text is the same JSON, and the same name, in every editor
+			local plaintext = ('{"lines":%s,"filetype":%s,"cursor":%s}'):format(
+				vim.json.encode(text.lines), vim.json.encode(text.filetype), vim.json.encode(text.cursor))
 			name = scratch_name(key, filehash, plaintext)
 			if vim.uv.fs_stat(scratch_dir .. name) == nil then
 				vim.fn.mkdir(scratch_dir, "p", 448) -- 0700
