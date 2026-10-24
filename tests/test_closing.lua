@@ -132,6 +132,16 @@ T['T497 [char] (A15) <M-.> refuses the last open buffer after a window switch'] 
 		{ refused = true, shown = 'a' })
 end
 
+-- <M-.> on c and :e c.txt in one batch, as a macro or a mapping gives them: the close's delete
+-- waits for the editor to settle, by which time :e has brought c back.
+T['T507 [char] (A15, P2) the close key\'s delete leaves a buffer a later command brought back'] = function()
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
+	child.lua([[pcall(vim.api.nvim_feedkeys, vim.api.nvim_replace_termcodes('<M-.>:e c.txt<CR>', true, false, true), 'x', false)]])
+	child.settle(300)
+	eq({ shown = child.shown(), slots = child.slots(), closed = child.closed() }, { shown = 'c', slots = '⦉b⦊ [c] ⟦-⟧', closed = '' })
+end
+
 -- delete_buffer keeps the cursor before it switches the window away (history/routines.lua:709),
 -- so the cache doesn't fall back to {1,0}.
 T['T83 [char] <M-.> on a modified No Name buffer closes it and caches its lines, filetype and cursor'] = function()

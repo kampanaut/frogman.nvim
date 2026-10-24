@@ -30,6 +30,7 @@ function M.save_session(name, opts)
 		-- a replay planted another editor's state: it isn't this project's session, and it isn't saved
 		error("cavediver: this editor replayed a dump, so its state isn't a session, and it isn't saved.", 0)
 	end
+	require('cavediver.settle').drain() -- the editor as it stands, with nothing still settling
 	local directory = vim.fn.getcwd(-1, -1)
 	if opts and opts.tab then
 		directory = vim.fn.getcwd(-1, vim.api.nvim_tabpage_get_number(opts.tab))
@@ -166,6 +167,7 @@ function M.init_autocmds(group)
 	vim.api.nvim_create_autocmd("VimLeavePre", {
 		group = group,
 		callback = function()
+			require('cavediver.settle').drain() -- a write still settling, `:wq name`, is a move by then
 			routines.write_records(true)
 		end,
 	})
