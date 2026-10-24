@@ -125,26 +125,6 @@ local display_settings = {
     indicators_enabled = true,
 }
 
----@type string[]
-local excluded_filetypes = {
-	"neo-tree-popup",
-	"neo-tree",
-	"notify",
-	"neominimap",
-	"Avante",
-	"AvanteInput",
-	"dropbar_menu",
-	"dropbar_menu_fzf",
-	"DressingInput",
-	"cmp_docs",
-	"cmp_menu",
-	"noice",
-	"prompt",
-	"TelescopePrompt",
-	"blink_menu",
-	"blink_docs",
-}
-
 -- Simple basename display cache - cleared on buffer changes
 ---@type table<Filehash, Filepath>
 local display_name_cache = {}
@@ -241,6 +221,9 @@ M.window_display_cache = window_display_cache
 
 M.winbar_themes = winbar_themes
 
-M.excluded_filetypes = excluded_filetypes
+-- the filetypes whose windows get no winbar: config's `winbar.skip_filetypes`
+M.excluded_filetypes = function()
+	return require('cavediver.configs').winbar.skip_filetypes or {}
+end
 
 return M

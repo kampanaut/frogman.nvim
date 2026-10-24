@@ -9,6 +9,7 @@ local SMFactory = require('cavediver.engine')
 -- Create or get multiple independent UI state machines
 local bufferlineSM = SMFactory:get("ui_bufferline") or SMFactory:create("ui_bufferline")
 local indicatorsSM = SMFactory:get("ui_indicators") or SMFactory:create("ui_indicators")
+local winbarSM = SMFactory:get("ui_winbar") or SMFactory:create("ui_winbar")
 local loopSM = SMFactory:get("ui_loop") or SMFactory:create("ui_loop")
 
 -- Register bufferline states
@@ -21,6 +22,11 @@ indicatorsSM:register_state(states.INDICATORS.ON)
 indicatorsSM:register_state(states.INDICATORS.OFF)
 indicatorsSM.current_state = states.INDICATORS.ON
 
+-- Register winbar states
+winbarSM:register_state(states.WINBAR.ACTIVE)
+winbarSM:register_state(states.WINBAR.MINIMAL)
+winbarSM.current_state = states.WINBAR.ACTIVE
+
 -- Register loop state (single state that transitions to itself)
 loopSM:register_state(states.LOOP.SELF)
 loopSM.current_state = states.LOOP.SELF
@@ -28,5 +34,6 @@ loopSM.current_state = states.LOOP.SELF
 return {
     bufferline = bufferlineSM,
     indicators = indicatorsSM,
+    winbar = winbarSM,
     loop = loopSM,
 }

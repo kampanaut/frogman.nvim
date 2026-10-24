@@ -1030,7 +1030,8 @@ function M.toggle_primary_buffer(winid)
 		triquetra.primary_enabled = not triquetra.primary_enabled
 	end
 	loop_sm:to(loop_states.SELF)
-	vim.cmd("redraw!")
+	vim.cmd("redrawstatus!")
+	vim.cmd("redrawtabline")
 end
 
 ---Overwrite the primary buffer in the target window with the current slot.
@@ -1058,7 +1059,8 @@ function M.set_primary_buffer(winid)
 		triquetra.primary_enabled = not triquetra.primary_enabled
 	end
 	loop_sm:to(loop_states.SELF)
-	vim.cmd("redraw!")
+	vim.cmd("redrawstatus!")
+	vim.cmd("redrawtabline")
 end
 
 ---A general function to restore from a displacement map.

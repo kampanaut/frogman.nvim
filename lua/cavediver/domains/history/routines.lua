@@ -978,16 +978,41 @@ function M.update_buffer_history_ordered()
 	return data.ordered.crux
 end
 
+---The marked files, in their order, as full paths: config's `marks_provider`, a function giving their
+---paths; with none set, harpoon's list when harpoon is installed; `false` marks nothing.
+---
+---@return string[]
+function M.marked_paths()
+	local provider = require('cavediver.configs').marks_provider
+	local list = {}
+	if type(provider) == "function" then
+		local ok, result = pcall(provider)
+		list = ok and type(result) == "table" and result or {}
+	elseif provider == nil then
+		local ok, harpoon = pcall(require, "harpoon")
+		if ok then
+			local listed, result = pcall(function() return harpoon:list():display() end)
+			list = listed and type(result) == "table" and result or {}
+		end
+	end
+	local paths = {}
+	for _, path in ipairs(list) do
+		if type(path) == "string" then
+			table.insert(paths, vim.fn.fnamemodify(path, ":p"))
+		end
+	end
+	return paths
+end
+
 ---Check if a bufnr is harpooned mark.
 ---
 ---@param bufnr Bufnr
 ---@return boolean
 local function is_harpooned(bufnr)
-	local harpoon = require("harpoon")
 	if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
 		return vim.tbl_contains(
-			harpoon:list():display(),
-			vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":.")
+			M.marked_paths(),
+			vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":p")
 		)
 	else
 		return false

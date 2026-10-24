@@ -408,9 +408,9 @@ function M.bufferline.cokeline.create_buffer_components()
 			end,
 			fg = function(buffer)
 				if mappings.is_picking_close() then
-					return "#a05959"
+					return colors.cokeline.is_picking_close
 				elseif mappings.is_picking_focus() then
-					return "#d7d7a5"
+					return colors.cokeline.is_picking_focus
 				else
 					return get_theme_fg_by_slot(buffer.number)
 				end
@@ -421,6 +421,7 @@ function M.bufferline.cokeline.create_buffer_components()
 			text = function(buffer)
 				local ctriquetra = bufferline_state.current_window_triquetra
 				if not ctriquetra then return ' ' end -- Graceful fallback
+				if M.is_hidden("indicators") then return ' ' end -- the role marks, switched off
 
 				local string
 				local harpooned = bufferline_state.harpooned_buffers[buffer.number]
@@ -483,7 +484,7 @@ function M.bufferline.cokeline.create_buffer_components()
 				return get_theme_fg_by_slot(buffer.number)
 			end,
 			text = function(buffer)
-				if bufferline_state.harpooned_buffers[buffer.number] then
+				if bufferline_state.harpooned_buffers[buffer.number] and not M.is_hidden("indicators") then
 					return buffer.filename .. " ⥤ {" .. bufferline_state.harpooned_lookup[buffer.number] .. "}"
 				else
 					return buffer.filename

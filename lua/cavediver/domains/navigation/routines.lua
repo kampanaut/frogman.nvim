@@ -46,7 +46,7 @@ local function skippable_window(winid)
 	local buf = vim.api.nvim_win_get_buf(winid)
 	local filetype = vim.bo[buf].filetype
 
-	return filetype == "minimap"
+	return vim.tbl_contains(require('cavediver.configs').toggle_window.skip_filetypes or {}, filetype)
 end
 
 function M.record_window_jump(from_win, to_win)

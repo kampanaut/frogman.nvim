@@ -26,6 +26,16 @@ storageSM:on(storageStates.IDLE, storageStates.BARE, "ui_teardown", function()
 	cache.initialized, cache.history_detached = false, false
 end, 4, true)
 
+-- The toggles: the winbar, the indicators and the bufferline, each drawn again once its new state is set
+for _, machine in ipairs({ uiMachines.winbar, uiMachines.indicators, uiMachines.bufferline }) do
+	machine:on("*", "*", "redraw_toggled", function()
+		vim.schedule(function()
+			uiMachines.loop:to(states.LOOP.SELF)
+			vim.cmd("redrawtabline")
+		end)
+	end, 1, true)
+end
+
 uiMachines.loop:on("*", states.LOOP.SELF, "update_ui_state", function()
 	local navigation = require('cavediver.domains.navigation')
 	local tracked_winid = navigation.routines.find_most_recent_tracked_window()

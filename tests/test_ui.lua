@@ -1,6 +1,7 @@
 -- UI (M12): the winbar, the bufferline callbacks and the keymap descriptions.
 -- IDs are the spec's (what-is-cavediver.md, section 7).
 local Helpers = dofile('tests/helpers.lua')
+local S2 = dofile('tests/helpers_s2.lua')
 local eq = Helpers.eq
 local child = Helpers.new_child()
 
@@ -131,7 +132,7 @@ T['T122 [char] with 40 tracked buffers, bufnr_is_displayed is true for all 40 (Q
 	eq(got, { 40, 40 })
 end
 
-T['T123 [target] hide_bufferline() and show_bufferline() do not throw'] = function()
+T['T123 [char] hide_bufferline() and show_bufferline() do not throw'] = function()
 	local got = child.lua([[
 		local ui = require('cavediver').ui
 		local ok1, err1 = pcall(ui.hide_bufferline)
@@ -156,7 +157,7 @@ end
 
 T['T170 [char] the engine has no machine named window (D25)'] = function()
 	local got = child.lua('local l = require("cavediver.engine"):list(); table.sort(l); return l')
-	eq(got, { 'history', 'navigation', 'storage', 'ui_bufferline', 'ui_indicators', 'ui_loop' })
+	eq(got, { 'history', 'navigation', 'storage', 'ui_bufferline', 'ui_indicators', 'ui_loop', 'ui_winbar' })
 end
 
 T['T169 [char] the mapped keys have their own descriptions (D3)'] = function()
@@ -190,9 +191,10 @@ end
 
 -- cokeline is stubbed: the picking state comes from _G.CDV_PICK, and the pick
 -- letter's component is the one whose text is the letter while picking.
-T['T168 [target] the pick letter takes its colour from the config (D2)'] = function()
+T['T168 [char] the pick letter takes its colour from the config (D2)'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.settle(300)
+	eq(child.lua('return require("cavediver.configs").colors.cokeline.is_picking_focus'), '#4385BE')
 	child.lua([[
 		local real = require('cokeline.mappings')
 		_G.CDV_PICK = { close = false, focus = false }
@@ -231,6 +233,103 @@ T['T168 [target] the pick letter takes its colour from the config (D2)'] = funct
 	end
 	eq(pick_colours('#111111', '#222222'), { close = '#111111', focus = '#222222' })
 	eq(pick_colours('#333333', '#444444'), { close = '#333333', focus = '#444444' })
+end
+
+
+-- The index the bufferline draws for a buffer, through cavediver's own components.
+local INDEX = [==[
+package.loaded['cokeline.hlgroups'] = package.loaded['cokeline.hlgroups'] or { get_hl_attr = function() return '#000000' end }
+local comps = require('cavediver').bufferline.cokeline.create_buffer_components()
+return comps[4].text({ number = ..., index = 1, is_focused = true }) -- the index, fourth in the order they're drawn
+]==]
+
+T['T446 [char] (M12) the toggles\' commands, with no keymap'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.settle(300)
+	local b = bufnr('b.txt')
+	local wb = {}
+	child.cmd('CavediverWinbar off')
+	wb.off = winbar()
+	child.cmd('CavediverWinbar on')
+	wb.on = winbar() ~= ''
+	child.cmd('CavediverWinbar')
+	wb.toggled = winbar()
+	child.cmd('CavediverWinbar toggle')
+	wb.back = winbar() ~= ''
+	local marks = { on = child.lua(INDEX, { b }) }
+	child.cmd('CavediverIndicators off')
+	child.settle(300)
+	marks.off = child.lua(INDEX, { b })
+	child.cmd('CavediverIndicators on')
+	child.settle(300)
+	marks.again = child.lua(INDEX, { b })
+	local shown = {}
+	child.cmd('CavediverBufferline off')
+	shown.off = not not child.lua('return require("cavediver").bufferline.bufnr_is_displayed(...)', { b })
+	child.cmd('CavediverBufferline on')
+	shown.on = not not child.lua('return require("cavediver").bufferline.bufnr_is_displayed(...)', { b })
+	local keyed = child.lua([[
+		local out = {}
+		for name, _ in pairs(require('cavediver.configs').keymaps) do
+			if name:find('winbar') or name:find('indicator') or name:find('bufferline') then table.insert(out, name) end
+		end
+		return out
+	]])
+	eq({ wb = wb, marks = marks, shown = shown, keyed = keyed }, {
+		wb = { off = '', on = true, toggled = '', back = true },
+		marks = { on = '[' .. b .. ']  ', off = ' ', again = '[' .. b .. ']  ' },
+		shown = { off = false, on = true },
+		keyed = {},
+	})
+end
+
+T['T447 [char] (M12) with winbar.own off, cavediver writes no winbar, and offers its segment'] = function()
+	child.lua('require("cavediver").setup({ winbar = { own = false } })')
+	child.steps({ ':e a', ':e b' })
+	child.lua('vim.wo.winbar = "MINE"')
+	child.settle(300)
+	local refreshed = child.lua('return vim.wo.winbar')
+	local cwd = S2.cwd(child)
+	eq(S2.save(child, cwd), { true })
+	eq(S2.load(child, cwd), { true })
+	child.settle(300)
+	local loaded = child.lua('return vim.wo.winbar')
+	local segment = child.lua('return require("cavediver").winbar_segment()')
+	local b = bufnr('b.txt')
+	eq({ refreshed = refreshed, loaded = loaded, current = segment:find('[' .. b .. ']', 1, true) ~= nil,
+		name = segment:find('b.txt', 1, true) ~= nil, rule = segment:find('──────', 1, true) ~= nil },
+		{ refreshed = 'MINE', loaded = 'MINE', current = true, name = true, rule = false })
+end
+
+T['T448 [char] (M12) the winbar\'s skip list is configurable, and replaces the default one'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.lua('vim.bo.filetype = "skipme"')
+	local default = winbar() ~= ''
+	child.lua('require("cavediver").setup({ winbar = { skip_filetypes = { "skipme" } } })')
+	child.lua('vim.wo.winbar = ""')
+	local skipped = winbar()
+	child.lua('vim.bo.filetype = "neo-tree"')
+	local replaced = winbar() ~= ''
+	eq({ default = default, skipped = skipped, replaced = replaced }, { default = true, skipped = '', replaced = true })
+end
+
+T['T450 [char] (M12, P26) marked buffers come from the provider'] = function()
+	child.lua([[
+		local root = _G.CDV_TEST.root
+		require('cavediver').setup({ marks_provider = function() return { root .. '/b.txt' } end })
+	]])
+	child.steps({ ':e a', ':e b', ':e c' })
+	child.settle(300)
+	local bl = 'local bl = require("cavediver").bufferline; local b = ...; return { bl.is_harpooned(b), bl.get_harpoon_index(b) }'
+	local marked = { a = child.lua(bl, { bufnr('a.txt') })[1], b = child.lua(bl, { bufnr('b.txt') }), c = child.lua(bl, { bufnr('c.txt') })[1] }
+	child.lua([[
+		package.loaded['harpoon'] = { list = function() return { display = function() return { 'b.txt' } end } end }
+		require('cavediver').setup({ marks_provider = false })
+	]])
+	child.steps({ ':e a' })
+	child.settle(300)
+	local off = child.lua(bl, { bufnr('b.txt') })[1]
+	eq({ marked = marked, off = off }, { marked = { a = false, b = { true, 1 }, c = false }, off = false })
 end
 
 return T

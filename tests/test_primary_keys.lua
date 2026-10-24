@@ -39,4 +39,27 @@ T['T156 [char] the toggle_primary keymap description no longer reads "Toggle cur
 	no_eq(desc, 'Toggle current buffer as primary')
 end
 
+
+T['T451 [char] (A9, A10) the primary keys run no redraw!'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.lua([[
+		_G.CDV_CMDS = {}
+		local real = vim.cmd
+		vim.cmd = setmetatable({}, {
+			__call = function(_, c) table.insert(_G.CDV_CMDS, type(c) == 'string' and c or vim.inspect(c)); return real(c) end,
+			__index = real,
+		})
+	]])
+	child.steps({ '<M-;><M-x>', '<M-;><M-x>', '<M-;><M-c>' })
+	child.settle(100)
+	local cmds = child.lua('vim.cmd = getmetatable(vim.cmd).__index; return _G.CDV_CMDS')
+	local bang, status, tabline = false, false, false
+	for _, c in ipairs(cmds) do
+		if c:find('redraw!', 1, true) then bang = true end
+		if c:find('redrawstatus', 1, true) then status = true end
+		if c:find('redrawtabline', 1, true) then tabline = true end
+	end
+	eq({ bang = bang, status = status, tabline = tabline }, { bang = false, status = true, tabline = true })
+end
+
 return T
