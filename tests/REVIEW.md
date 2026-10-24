@@ -1,6 +1,6 @@
 # Test review sheet
 
-549 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+557 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -9,7 +9,7 @@
 
 ## Look at these first
 
-**State set by hand** (67): T184 (keep_older), T192 (keep_older), T107 (cleanup), T483 (cleanup), T484 (cleanup), T108 (cleanup), T113 (cleanup), T163 (cleanup), T91 (closing), T203 (cycling), T204 (cycling), T205 (cycling), T251 (decisions), T257 (decisions), T263 (decisions), T263 (decisions), T264 (decisions), T265 (decisions), T267 (decisions), T271 (decisions), T271 (decisions), T273 (decisions), T275 (decisions), T276 (decisions), T280 (decisions), T285 (decisions), T287 (decisions), T20 (history), T12 (identity), T157 (invariants), T398 (ledger), T403 (ledger), T406 (ledger), T25 (lifecycle), T34 (navigation), T35 (navigation), T219 (negative), T241 (negative), T242 (negative), T243 (negative), T243 (negative), T243 (negative), T247 (negative), T66 (restores), T68 (restores), T296 (s2), T298 (s2), T299 (s2), T315 (s2), T316 (s2), T322 (s2), T351 (s2), T352 (s2), T354 (s2), T357 (s2), T358 (s2), T366 (s2), T369 (s2), T383 (s2), T387 (s2), T367 (s2), T138 (sessions), T146 (sessions), T147 (sessions), T148 (sessions), T425 (trail), T445 (trail)
+**State set by hand** (69): T184 (keep_older), T192 (keep_older), T107 (cleanup), T483 (cleanup), T484 (cleanup), T108 (cleanup), T113 (cleanup), T163 (cleanup), T91 (closing), T203 (cycling), T204 (cycling), T205 (cycling), T490 (cycling), T491 (cycling), T251 (decisions), T257 (decisions), T263 (decisions), T263 (decisions), T264 (decisions), T265 (decisions), T267 (decisions), T271 (decisions), T271 (decisions), T273 (decisions), T275 (decisions), T276 (decisions), T280 (decisions), T285 (decisions), T287 (decisions), T20 (history), T12 (identity), T157 (invariants), T398 (ledger), T403 (ledger), T406 (ledger), T25 (lifecycle), T34 (navigation), T35 (navigation), T219 (negative), T241 (negative), T242 (negative), T243 (negative), T243 (negative), T243 (negative), T247 (negative), T66 (restores), T68 (restores), T296 (s2), T298 (s2), T299 (s2), T315 (s2), T316 (s2), T322 (s2), T351 (s2), T352 (s2), T354 (s2), T357 (s2), T358 (s2), T366 (s2), T369 (s2), T383 (s2), T387 (s2), T367 (s2), T138 (sessions), T146 (sessions), T147 (sessions), T148 (sessions), T425 (trail), T445 (trail)
 
 **Random walk** (24): T190 (keep_older), T190 (keep_older), T190 (keep_older), T190 (keep_older), T335 (keep_older), T335 (keep_older), T171 (cycling), T279 (decisions), T281 (decisions), T282 (decisions), T283 (decisions), T149 (history), T149 (history), T128 (invariants), T129 (invariants), T130 (invariants), T131 (invariants), T132 (invariants), T133 (invariants), T334 (invariants), T154 (invariants), T249 (negative), T249 (negative), T299 (s2)
 
@@ -527,7 +527,7 @@ spec: Q17, the only window: `:help`, `:only`, `<M-.>`. The help buffer is closed
 spec: Q17, a running terminal: `<M-.>` on a `:terminal` whose job is still running refuses with a message, and the terminal stays.  
 `tests/test_closing.lua:314`
 
-## tests/test_cycling.lua (43 cases: 43 char)
+## tests/test_cycling.lua (51 cases: 51 char)
 
 **T69 [char]** <M-m> from normal starts cycling and leaves the current slot  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -846,43 +846,86 @@ spec: (A26) A dumped file replays to the same assertion: on T200's route in a pr
 `tests/test_cycling.lua:858`
 
 **T202 [char]** replaying the snapshot and the steps reproduces every driven step's row  
-`:e a`, `:e b`, `:e c`, `keys` → `eq({ snapshot = r.snapshot, enough = r.driven >= 50, matched = r.matched == r.driven, mismatches = #r.mismatches },`  
+`:e a`, `:e b`, `:e c`, `keys` → `eq({ snapshot = r.snapshot, enough = r.driven >= 50, matched = r.matched == r.driven, mismatches = #r.mismatches, resynced = r.resynced },`  
 spec: (A26) A dump starts with a snapshot of the state at its first step, and replaying snapshot plus steps reproduces every driven step's row: `:e a`, `:e b`, `:e c`, then 110 `<M-S-f>`, so the dump starts from a snapshot that holds them (A26 What a dump holds), then a planted `never`…  
-`tests/test_cycling.lua:875`
+`tests/test_cycling.lua:876`
 
 **T470 [char]** a replay runs no code a command line chains or carries  
 `:e a` → `eq(child.lua('return _G.CDV_PLANTED'), true) -- they ran here, in the editor that made the dump`  
 → `eq({ ran = child.lua('return _G.CDV_PLANTED == true'), failure = r.failure == nil }, { ran = false, failure = true })`  
 spec: (A26) A replay runs no code a command line chains or carries: a dump holding `:e b.txt | lua _G.CDV_PLANTED = true` and `:e +lua\ _G.CDV_PLANTED=true c.txt`, typed in the editor that made it, replayed in a fresh editor in its project, leaves `CDV_PLANTED` unset there, both steps'…  
-`tests/test_cycling.lua:892`
+`tests/test_cycling.lua:893`
 
 **T468 [char]** a replay's editor isn't saved  
 `:e a` → `eq({ ok = res.ok, said = res.err:find("this editor replayed a dump", 1, true) ~= nil, files = res.files },`  
 spec: (A26) A replay's editor isn't saved: after T201's replay, `save_session()` throws the replay's message and writes no session file.  
-`tests/test_cycling.lua:908`
+`tests/test_cycling.lua:909`
 
 **T471 [char]** a replay goes into an editor that has taken in the empty buffer it started on  
 `:e a`, `:doautocmd BufEnter` → `eq({ registered = child.lua('return require("cavediver.domains.history").data.hash_buffer_registry.hashes[...] ~= nil', { start }),`  
 → `eq({`  
 note: as a config that calls setup() at startup has it: the start buffer entered once cavediver is set up  
 spec: (A26) A replay goes into an editor that has taken in the empty buffer it started on, as one whose config calls `setup()` at startup has: T468's dump, a fresh editor in its project whose empty start buffer is entered once cavediver is set up, so it's registered and its window has …  
-`tests/test_cycling.lua:926`
+`tests/test_cycling.lua:927`
+
+**T486 [char]** a command line whose path the ledger cut is planted, not driven  
+`:e a`, `:e b` → `eq({ mismatches = #r.mismatches, stray = child.lua('return vim.fn.bufnr(...)', { root .. '/deep.txt' }) },`  
+spec: (A26) A command line whose path the ledger cut is planted, not driven: `:e a`, then `:e sub/deep.txt` typed, recorded as `:e deep.txt`, `:e b`, a planted `never`; the replay in a fresh editor in its project finds no mismatch and makes no `deep.txt` buffer in the project's root.  
+`tests/test_cycling.lua:968`
+
+**T487 [char]** a command naming the original editor's buffers is planted  
+`:e a`, `:e b` → `eq({ mismatches = #r.mismatches, hash = child.lua([[return vim.fn.bufnr('^#$')]]) }, { mismatches = 0, hash = -1 })`  
+spec: (A26) A command naming the original editor's buffers is planted: `:e a`, `:e b`, then `:e #` and `:b 1` typed, a planted `never`; the replay finds no mismatch and makes no buffer named `#`.  
+`tests/test_cycling.lua:980`
+
+**T489 [char]** a replay writes no dump of its own  
+`:e a`, `:e b`, `:e c`, `<M-f>`, `<M-;><M-t> (via typed)` → `eq({ reproduced = r.failure ~= nil, new = #Extra.new_files(before_replay, child.dumps()) }, { reproduced = true, new = 0 })`  
+spec: (A26) A replay writes no dump of its own: T201's route, replayed, reproduces the restore's assertion and leaves no new dump file.  
+`tests/test_cycling.lua:1003`
+
+**T490 [char]** a cleanup tick's repair doesn't throw a replay off ⚑ state set by hand  
+`:e a`, `:e b`, `:e c`, `<M-f>`, `:vsplit`, `:e x`, `:noautocmd buffer ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")`, `:noautocmd bwipeout ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/x.txt")`, `<M-S-f>` → `eq({ mismatches = #r.mismatches, resynced = (r.resynced or 0) >= 1 }, { mismatches = 0, resynced = true })`  
+note: The split's buffer x is wiped without events while c is shown in its place; the cleanup tick's step re-points the split, a step with no window and no row of its own.  
+spec: (A26) A cleanup tick's repair doesn't throw a replay off: `:e a`, `:e b`, `:e c`, `<M-f>`, `:vsplit`, `:edit x.txt`, then c shown and x wiped without events, a cleanup tick, `<M-S-f>`, a planted `never`; the replay counts a resync and finds no mismatch.  
+`tests/test_cycling.lua:1019`
+
+**T491 [char]** a float in the replaying editor isn't one of its windows ⚑ state set by hand  
+`:e a`, `:e b`, `:e c`, `:vsplit`, `:e d`, `keys` → `eq({`  
+spec: (A26) A float in the replaying editor isn't one of its windows: a dump made with two windows, replayed with a float open and not entered, gives no mismatch, plants no triquetra on the float, and leaves two windows in the tab.  
+`tests/test_cycling.lua:1033`
+
+**T492 [char]** with a short ring the dump's snapshot and steps still meet  
+`:e a`, `:e b`, `:e c`, `:e d`, `:e e`, `:e f` → `eq({ mismatches = #r.mismatches, driven = r.driven > 0 }, { mismatches = 0, driven = true })`  
+spec: (A26) With a short ring the dump's snapshot and steps still meet: with `ledger.ring` at 20, `:e a`, `:e b`, `:e c`, 55 `<M-S-f>`, `:e d`, `:e e`, `:e f`, 57 `<M-S-f>`, a planted `never`; the replay, the ring at 20 there too, finds no mismatch.  
+`tests/test_cycling.lua:1052`
+
+**T493 [char]** a replayed editor writes no records as a tab session's tab closes  
+`:e a`, `:e a`, `:tabnew`, `:e b` → `eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
+`:tabnew`, `:e c`, `:tabclose` → `eq(raw(main) == bytes, true)`  
+spec: (A26, S1 Records) A replayed editor writes no records as a tab session's tab closes: a tab session saved in one editor; a fresh editor replays a dump, loads that session into a new tab and closes it, and the session's file is as it was.  
+`tests/test_cycling.lua:1070`
+
+**T494 [char]** a replay reports a slot rule its dump fired at  
+`:e a`, `:e b`, `:e c`, `<M-f>` → `eq({ i23 = table.concat(r.fired or {}, '\n'):find('I23', 1, true) ~= nil, failure = r.failure, new = #Extra.new_files(before_replay, child.dumps()) },`  
+note: T201's stale note planted by a typed :lua line held open on its own: its close finds I23 broken and dumps. The replay plants that row, so the rule is broken at its end.  
+spec: (A26) A replay reports a slot rule its dump fired at: T201's stale note planted by a typed `:lua` line held open on its own, whose close dumps I23's break; the replay in a fresh editor lists the break in what fired, stops nowhere, and writes no dump.  
+`tests/test_cycling.lua:1110`
 
 **T469 [char]** a dump that spans more than one tab isn't replayed  
 `:e a`, `:tabnew`, `:e b` → `eq({ said = Extra.has(child.messages(), 'spans more than one tab'), windows = child.lua('return #vim.api.nvim_list_wins()'),`  
 spec: (A26) A dump that spans more than one tab isn't replayed: a dump made with a second tab open, replayed, gives the WARN and leaves the fresh editor as it was.  
-`tests/test_cycling.lua:952`
+`tests/test_cycling.lua:1126`
 
 **T463 [char]** an export called from a user's mapping runs the cancel first too  
 → `eq({ ok = ok, dumps = #Extra.new_files(before, child.dumps()), split = child.shown(split), first = child.slots(first) },`  
 note: A user's own Lua mapping: a window jump and an export, in one function.  
 spec: (A12) An export called from a user's mapping runs the cancel first too: T461's setup, then `vim.cmd.wincmd('w')` and `require('cavediver').jump_to_primary()` in one function: nothing throws and nothing dumps, the split shows c again, and the other window is `⦉b⦊ [a] ⟦-⟧`.  
-`tests/test_cycling.lua:971`
+`tests/test_cycling.lua:1145`
 
 **T462 [char]** a jump's cancel says so  
 `:wincmd w` → `eq(#said, 1)`  
 spec: (A12) A jump's cancel says so: T461's setup, `<M-m>` in the split, then `<C-w>w` alone, settled, gives one INFO, "Cycling cancelled. Window 1 returned to cycling origin buffer: c.txt", the split being window 1 with `'splitright'` off, as the harness runs.  
-`tests/test_cycling.lua:983`
+`tests/test_cycling.lua:1157`
 
 ## tests/test_decisions.lua (52 cases: 52 char)
 

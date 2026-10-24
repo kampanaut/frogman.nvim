@@ -1767,6 +1767,9 @@ end
 ---@return boolean written True if the file was written
 ---@return string|nil problem "missing" when there's no file, otherwise what went wrong
 local function write_records(session, changes)
+	if data.replayed then
+		return true -- a replayed editor isn't a session: nothing waits to be written, and nothing is
+	end
 	local file_path = get_session_filepath(session.directory, session.name)
 	local bytes = read_file(file_path)
 	if bytes == nil then
@@ -2116,7 +2119,7 @@ local function close_now(pool)
 		local ledger = require('cavediver.domains.ledger')
 		if ok then
 			history.data.pools[pool.id] = nil
-			ledger.move("detached_left", { subject = pool.id, name = pool.name, words = "into the whole editor's file" })
+			ledger.move("detached_left", { subject = pool.id, name = pool.name, words = data.replayed and "let go" or "into the whole editor's file" })
 			return
 		end
 		ledger.move("detached_left", { subject = pool.id, name = pool.name, words = "kept, with no tab" })
@@ -2131,7 +2134,7 @@ local function close_now(pool)
 		history.data.pools[pool.id] = nil
 		forget_closed_keys()
 		ledger.move("tab_closed", { subject = pool.id, name = history.routines.list_name(pool),
-			words = "its records written; its list let go" })
+			words = data.replayed and "its list let go" or "its records written; its list let go" })
 		return
 	end
 	ledger.move("tab_closed", { subject = pool.id, name = history.routines.list_name(pool), words = "kept, with no tab" })

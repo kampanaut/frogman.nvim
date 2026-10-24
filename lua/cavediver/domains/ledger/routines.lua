@@ -172,6 +172,10 @@ local function new_step(cause, trigger, winid)
 		trigger = trigger,
 		win = winid,
 		tab = winid and vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_tabpage(winid) or nil,
+		-- numbered as they stand now, which is where a replay finds them
+		win_nr = winid and vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_number(winid) or nil,
+		tab_nr = winid and vim.api.nvim_win_is_valid(winid)
+			and vim.api.nvim_tabpage_get_number(vim.api.nvim_win_get_tabpage(winid)) or nil,
 		pool = nil,
 		names = {},
 		events = {},
@@ -287,7 +291,9 @@ local function close(step, held)
 		data.open = nil
 	end
 	step.row_after = row_of(step.win, step.names)
-	if ALWAYS[step.cause] or step.torn or #step.moves > 0 or not same_row(step.row_before, step.row_after) then
+	-- a command a replay drives is kept too, so a split reaches the dump
+	local driven = step.cause == "command" and require('cavediver.domains.ledger.replay').drives(step.trigger)
+	if ALWAYS[step.cause] or step.torn or driven or #step.moves > 0 or not same_row(step.row_before, step.row_after) then
 		keep(step)
 	end
 	if SAYS[step.cause] then

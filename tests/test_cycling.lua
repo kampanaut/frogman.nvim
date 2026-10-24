@@ -868,8 +868,9 @@ T['T201 [char] a dumped file replays to the same assertion'] = function()
 	eq({
 		error = r.failure ~= nil and r.failure.error:find('Remembered secondary is the same as current secondary', 1, true) ~= nil,
 		mismatches = #r.mismatches,
+		resynced = r.resynced,
 		ran = child.lua('return _G.CDV_PLANTED == true'),
-	}, { error = true, mismatches = 0, ran = false })
+	}, { error = true, mismatches = 0, resynced = 0, ran = false })
 end
 
 T['T202 [char] replaying the snapshot and the steps reproduces every driven step\'s row'] = function()
@@ -885,8 +886,8 @@ T['T202 [char] replaying the snapshot and the steps reproduces every driven step
 	local path = the_dump(before)
 	Misc.start(child, { root = root })
 	local r = replay(path)
-	eq({ snapshot = r.snapshot, enough = r.driven >= 50, matched = r.matched == r.driven, mismatches = #r.mismatches },
-		{ snapshot = true, enough = true, matched = true, mismatches = 0 })
+	eq({ snapshot = r.snapshot, enough = r.driven >= 50, matched = r.matched == r.driven, mismatches = #r.mismatches, resynced = r.resynced },
+		{ snapshot = true, enough = true, matched = true, mismatches = 0, resynced = 0 })
 end
 
 T['T470 [char] a replay runs no code a command line chains or carries'] = function()
@@ -947,6 +948,179 @@ T['T471 [char] a replay goes into an editor that has taken in the empty buffer i
 		start = child.lua('return require("cavediver.domains.history").data.hash_buffer_registry.hashes[...] ~= nil', { start }),
 		shows = child.lua('return vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":t")'),
 	}, { replayed = true, refused = false, start = false, shows = 'a.txt' })
+end
+
+-- A dump made by `body`, in a fresh child in a fresh project, after a planted never; then a
+-- fresh child in the same project, `before_replay` run in it, and the replay. Returns the result.
+local function made_and_replayed(body, before_replay)
+	local root = Misc.make_project()
+	Misc.start(child, { root = root })
+	body(root)
+	local before = child.dumps()
+	child.lua([[pcall(require('cavediver.domains.ledger').never, 'planted for the replay')]])
+	child.settle(200)
+	local path = the_dump(before)
+	Misc.start(child, { root = root })
+	if before_replay then before_replay(root) end
+	return replay(path), root
+end
+
+T['T486 [char] a command line whose path the ledger cut is planted, not driven'] = function()
+	local r, root = made_and_replayed(function(root)
+		vim.fn.mkdir(root .. '/sub', 'p')
+		vim.fn.writefile({ 'deep' }, root .. '/sub/deep.txt')
+		child.steps({ ':e a' })
+		typed(':e sub/deep.txt<CR>')
+		child.steps({ ':e b' })
+	end)
+	eq({ mismatches = #r.mismatches, stray = child.lua('return vim.fn.bufnr(...)', { root .. '/deep.txt' }) },
+		{ mismatches = 0, stray = -1 })
+end
+
+T['T487 [char] a command naming the original editor\'s buffers is planted'] = function()
+	local r = made_and_replayed(function()
+		child.steps({ ':e a', ':e b' })
+		typed(':e #<CR>')
+		typed(':b 1<CR>')
+	end)
+	eq({ mismatches = #r.mismatches, hash = child.lua([[return vim.fn.bufnr('^#$')]]) }, { mismatches = 0, hash = -1 })
+end
+
+for _, splitright in ipairs({ false, true }) do
+	T['T488 [char] a split reaches the dump and replays, splitright ' .. tostring(splitright)] = function()
+		local r = made_and_replayed(function()
+			child.lua('vim.o.splitright = ...', { splitright })
+			child.steps({ ':e a', ':e b' })
+			typed(':vsplit<CR>')
+			typed(':e c.txt<CR>')
+			typed(':close<CR>')
+			typed(':e d.txt<CR>')
+		end)
+		eq({ failure = r.failure, mismatches = #r.mismatches, enough = r.driven >= 4 }, { failure = nil, mismatches = 0, enough = true })
+	end
+end
+
+T['T489 [char] a replay writes no dump of its own'] = function()
+	local root = Misc.make_project()
+	Misc.start(child, { root = root })
+	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
+	local before = child.dumps()
+	typed(STALE .. '<M-;><M-t>')
+	local path = the_dump(before)
+	Misc.start(child, { root = root })
+	local before_replay = child.dumps()
+	local r = replay(path)
+	child.settle(200)
+	eq({ reproduced = r.failure ~= nil, new = #Extra.new_files(before_replay, child.dumps()) }, { reproduced = true, new = 0 })
+end
+
+-- The split's buffer x is wiped without events while c is shown in its place; the cleanup
+-- tick's step re-points the split, a step with no window and no row of its own.
+T['T490 [char] a cleanup tick\'s repair doesn\'t throw a replay off'] = function()
+	local r = made_and_replayed(function()
+		child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
+		child.cmd('vsplit')
+		child.steps({ ':e x' })
+		child.cmd('noautocmd buffer ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")'))
+		child.cmd('noautocmd bwipeout ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/x.txt")'))
+		child.lua([[require('cavediver.domains.ledger.routines').within('timer', 'cleanup', require('cavediver.domains.history').routines.cleanup_system, true)]])
+		child.settle(200)
+		child.steps({ '<M-S-f>' })
+	end)
+	eq({ mismatches = #r.mismatches, resynced = (r.resynced or 0) >= 1 }, { mismatches = 0, resynced = true })
+end
+
+T['T491 [char] a float in the replaying editor isn\'t one of its windows'] = function()
+	local keys = {}
+	for _ = 1, 110 do table.insert(keys, '<M-S-f>') end
+	local r = made_and_replayed(function()
+		child.steps({ ':e a', ':e b', ':e c' })
+		child.cmd('vsplit')
+		child.steps({ ':e d' })
+		child.steps(keys)
+	end, function()
+		child.lua([[_G.CDV_FLOAT = vim.api.nvim_open_win(vim.api.nvim_create_buf(false, true), false,
+			{ relative = 'editor', row = 1, col = 1, width = 10, height = 2 })]])
+	end)
+	eq({
+		mismatches = #r.mismatches,
+		float = child.lua('return require("cavediver.domains.window").data.crux[_G.CDV_FLOAT] ~= nil'),
+		windows = child.lua([[return #vim.tbl_filter(function(w) return vim.api.nvim_win_get_config(w).relative == '' end, vim.api.nvim_tabpage_list_wins(0))]]),
+	}, { mismatches = 0, float = false, windows = 2 })
+end
+
+T['T492 [char] with a short ring the dump\'s snapshot and steps still meet'] = function()
+	local function toggles(n)
+		local keys = {}
+		for _ = 1, n do table.insert(keys, '<M-S-f>') end
+		return keys
+	end
+	local r = made_and_replayed(function()
+		child.lua('require("cavediver.configs").ledger.ring = 20')
+		child.steps({ ':e a', ':e b', ':e c' })
+		child.steps(toggles(55))
+		child.steps({ ':e d', ':e e', ':e f' })
+		child.steps(toggles(57))
+	end, function()
+		child.lua('require("cavediver.configs").ledger.ring = 20')
+	end)
+	eq({ mismatches = #r.mismatches, driven = r.driven > 0 }, { mismatches = 0, driven = true })
+end
+
+T['T493 [char] a replayed editor writes no records as a tab session\'s tab closes'] = function()
+	local root = Misc.make_project()
+	Misc.start(child, { root = root })
+	child.steps({ ':e a' })
+	local before = child.dumps()
+	child.lua([[pcall(require('cavediver.domains.ledger').never, 'planted for T493')]])
+	child.settle(200)
+	local path = the_dump(before)
+	Misc.start(child, { root = root })
+	child.steps({ ':e a' })
+	child.cmd('tabnew')
+	child.steps({ ':e b' })
+	eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	local main = child.lua([[
+		local dir = require('cavediver.configs').session_dir
+		local want = vim.fn.sha256(vim.fn.getcwd(-1, -1) .. '\n' .. 't')
+		for _, f in ipairs(vim.fn.readdir(dir)) do
+			if f:sub(1, #want) == want and not f:match('%.d$') then return dir .. f end
+		end
+	]])
+	local function raw(file)
+		local fh = assert(io.open(file, 'rb'))
+		local out = fh:read('*a')
+		fh:close()
+		return out
+	end
+	Misc.start(child, { root = root })
+	replay(path)
+	local bytes = raw(main)
+	child.cmd('tabnew')
+	child.lua('require("cavediver").load_session("t", { tab = vim.api.nvim_get_current_tabpage() })')
+	child.settle(200)
+	child.steps({ ':e c' })
+	child.cmd('tabclose')
+	child.settle(300)
+	eq(raw(main) == bytes, true)
+end
+
+-- T201's stale note planted by a typed :lua line held open on its own: its close finds I23
+-- broken and dumps. The replay plants that row, so the rule is broken at its end.
+T['T494 [char] a replay reports a slot rule its dump fired at'] = function()
+	local root = Misc.make_project()
+	Misc.start(child, { root = root })
+	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
+	local before = child.dumps()
+	typed(STALE)
+	child.settle(300)
+	local path = the_dump(before)
+	Misc.start(child, { root = root })
+	local before_replay = child.dumps()
+	local r = replay(path)
+	child.settle(200)
+	eq({ i23 = table.concat(r.fired or {}, '\n'):find('I23', 1, true) ~= nil, failure = r.failure, new = #Extra.new_files(before_replay, child.dumps()) },
+		{ i23 = true, failure = nil, new = 0 })
 end
 
 T['T469 [char] a dump that spans more than one tab isn\'t replayed'] = function()

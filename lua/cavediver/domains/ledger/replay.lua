@@ -27,14 +27,36 @@ local function driven_command(trigger)
 	if not ok or not DRIVEN[cmd.cmd] or (cmd.nextcmd or "") ~= "" then
 		return nil
 	end
+	-- a buffer named by number, or by `#`, `%` or `<cfile>`, is the original editor's: planted instead
+	local by_number = cmd.cmd == "buffer" or cmd.cmd == "bdelete" or cmd.cmd == "bwipeout"
+	if by_number and #(cmd.range or {}) > 0 then
+		return nil
+	end
 	for _, arg in ipairs(cmd.args or {}) do
-		if arg:match("^%+") or arg:find("`", 1, true) then
+		if arg:match("^%+") or arg:find("`", 1, true) or arg:match("^[#%%<]") or (by_number and arg:match("^%d+$")) then
 			return nil
 		end
 	end
 	cmd.nextcmd, cmd.addr, cmd.nargs = nil, nil, nil
 	cmd.magic = { file = false, bar = false }
 	return cmd
+end
+
+---Check if a replay runs a recorded command line.
+---
+---@param trigger string The command line as the ledger recorded it
+---@return boolean drives True if a replay runs it rather than planting its row
+function M.drives(trigger)
+	return driven_command(trigger) ~= nil
+end
+
+---Get the windows of the current tab, floats left out, in the order their numbers go.
+---
+---@return WinId[] windows The tab's windows
+local function tab_windows()
+	return vim.tbl_filter(function(winid)
+		return vim.api.nvim_win_get_config(winid).relative == ""
+	end, vim.api.nvim_tabpage_list_wins(0))
 end
 
 ---Check if a recorded key is one of cavediver's own keymaps.
@@ -261,10 +283,10 @@ local function plant_snapshot(snapshot, plant)
 	for _, w in ipairs(snapshot.windows or {}) do
 		most = math.max(most, w.window or 0)
 	end
-	while #vim.api.nvim_tabpage_list_wins(0) < most do
+	while #tab_windows() < most do
 		vim.cmd("noautocmd vsplit")
 	end
-	local windows = vim.api.nvim_tabpage_list_wins(0)
+	local windows = tab_windows()
 	local editor
 	for _, pool in pairs(history.routines.pools()) do
 		if pool.id == "" then
@@ -353,28 +375,42 @@ function M.run(path)
 	forget_start()
 
 	local plant = planter(replay.files or {})
+	if replay.snapshot and replay.snapshot.splitright ~= nil then
+		-- splits put their windows where the original's did, so the numbers mean the same windows
+		vim.o.splitright, vim.o.splitbelow = replay.snapshot.splitright, replay.snapshot.splitbelow
+	end
 	if replay.snapshot then
 		plant_snapshot(replay.snapshot, plant)
 	end
 	settle.drain()
 
-	local result = { steps = 0, driven = 0, matched = 0, mismatches = {}, failure = nil, snapshot = replay.snapshot ~= nil }
+	local dump = require('cavediver.domains.ledger.dump')
+	dump.replay_fired()
+	local result = { steps = 0, driven = 0, matched = 0, resynced = 0, mismatches = {}, failure = nil, fired = {},
+		snapshot = replay.snapshot ~= nil }
 	for _, step in ipairs(replay.steps or {}) do
 		result.steps = result.steps + 1
-		local windows = vim.api.nvim_tabpage_list_wins(0)
+		local windows = tab_windows()
 		local winid = step.window and windows[step.window] or vim.api.nvim_get_current_win()
 		if vim.api.nvim_get_current_win() ~= winid then
-			vim.cmd("noautocmd " .. step.window .. "wincmd w")
+			vim.cmd("noautocmd call nvim_set_current_win(" .. winid .. ")")
 		end
 		local drive
 		if step.cause == "keymap" and own_key(step.trigger) then
 			local mapping = vim.fn.maparg(step.trigger, "n", false, true)
 			drive = mapping and mapping.callback
-		elseif step.cause == "command" then
+		elseif step.cause == "command" and not step.cut then
 			local cmd = driven_command(step.trigger)
 			drive = cmd and function()
 				vim.api.nvim_cmd(cmd, {})
 			end
+		end
+		if drive and step.before and not same(row_now(winid), step.before) then
+			-- what came between, a cleanup tick's repair or a planted step, left the window elsewhere: it's
+			-- put where the step began, so each driven step is checked from its own start
+			plant.row(winid, step.before)
+			settle.drain()
+			result.resynced = result.resynced + 1
 		end
 		if drive then
 			result.driven = result.driven + 1
@@ -396,12 +432,23 @@ function M.run(path)
 		end
 	end
 
-	local words = ("cavediver: replayed %d steps, %d driven, %d matching"):format(result.steps, result.driven, result.matched)
+	-- what fired along the way, a hook's failure or an assertion, and a slot rule broken at the end:
+	-- the last step is the one the dump fired at, and a planted row begins no step that checks the rules
+	vim.list_extend(result.fired, dump.replay_fired())
+	for _, b in pairs(dump.breaks()) do
+		local n = vim.api.nvim_win_is_valid(b.win) and vim.api.nvim_win_get_number(b.win) or "?"
+		table.insert(result.fired, b.rule .. " broke in win " .. n .. ": " .. b.what)
+	end
+	local words = ("cavediver: replayed %d steps, %d driven, %d matching, %d resynced"):format(result.steps, result.driven,
+		result.matched, result.resynced)
 	if #result.mismatches > 0 then
 		words = words .. ("; %d didn't match, the first at %s"):format(#result.mismatches, result.mismatches[1].trigger)
 	end
 	if result.failure then
 		words = words .. "; it stopped at " .. tostring(result.failure.trigger) .. ": " .. result.failure.error:match("[^\n]*")
+	end
+	if #result.fired > 0 then
+		words = words .. "; what fired: " .. result.fired[1]:match("[^\n]*")
 	end
 	vim.notify(words .. ".", vim.log.levels.INFO)
 	return result
