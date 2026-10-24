@@ -61,8 +61,12 @@ local function load(name, opts, restart)
 	-- a tab with a directory of its own: a tab session saved from it has its file there
 	if hint then
 		directory = vim.fn.getcwd(-1, vim.api.nvim_tabpage_get_number(opts.tab))
-	elseif vim.fn.haslocaldir(-1, 0) == 1 and routines.session_exists(vim.fn.getcwd(-1, 0), name) then
-		directory = vim.fn.getcwd(-1, 0)
+	elseif vim.fn.haslocaldir(-1, 0) == 1 then
+		-- a failure here is the read's too, which the load's hook raises (prepare_load)
+		local ok, exists = pcall(routines.session_exists, vim.fn.getcwd(-1, 0), name)
+		if ok and exists then
+			directory = vim.fn.getcwd(-1, 0)
+		end
 	end
 	local session = { name = name, directory = directory }
 	data.loading_batch = true

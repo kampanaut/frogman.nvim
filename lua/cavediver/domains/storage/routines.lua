@@ -523,7 +523,7 @@ local function serialise_window_relationships(outsiders, tabpage)
 
 			-- what the window shows, which is what the session manager saves
 			local shows, outsider = shown_by(winid)
-			if outsider then
+			if outsider and not is_known(shows) then -- a file cavediver knows isn't one, even through its unlisted buffer
 				outsiders[shows] = outsider
 			end
 
@@ -726,8 +726,9 @@ local function noname_already_back(filehash)
 		if vim.api.nvim_buf_get_name(bufnr) == "" then
 			local id = vim.b[bufnr].cavediver_noname
 			if
-				vim.b[bufnr].cavediver_reopened == filehash or
-				(id ~= nil and history.routines.get_filehash("NONAME_" .. id) == filehash)
+				(vim.b[bufnr].cavediver_reopened == filehash or
+				(id ~= nil and history.routines.get_filehash("NONAME_" .. id) == filehash))
+				and history.routines.is_trackable(bufnr) -- one turned nofile since isn't that buffer any more
 			then
 				return bufnr
 			end
@@ -965,7 +966,15 @@ local prepared = nil
 ---a tab session loading into that tab
 ---@return boolean tab_session True if it's a tab session's load
 function M.prepare_load(directory, name, hint)
-	local saved_data, key, problem = read_session_file(get_session_filepath(directory, name), directory)
+	-- this runs before the storage machine moves, outside its hooks' catch: a failure here (libcrypto
+	-- missing, a session directory that can't be made) is kept for the load's hook to raise
+	local ok, saved_data, key, problem = xpcall(function()
+		return read_session_file(get_session_filepath(directory, name), directory)
+	end, debug.traceback)
+	if not ok then
+		prepared = { directory = directory, name = name, err = saved_data, hint = hint }
+		return hint ~= nil
+	end
 	prepared = { directory = directory, name = name, saved_data = saved_data, key = key, problem = problem, hint = hint }
 	if saved_data and saved_data.paths and saved_data.buffers and saved_data.windows then
 		return saved_data.scope == "tab" -- a file's scope wins over the hint
@@ -1297,6 +1306,11 @@ function M.load_history(cwd, name)
 	local saved_data, key, problem
 	local hint = nil
 	if prepared and prepared.directory == cwd and prepared.name == name then
+		if prepared.err then
+			local err = prepared.err
+			prepared = nil
+			error(err, 0) -- the read's failure, raised here, where the hook's catch reports it
+		end
 		saved_data, key, problem, hint = prepared.saved_data, prepared.key, prepared.problem, prepared.hint
 	else
 		saved_data, key, problem = read_session_file(file_path, cwd)
