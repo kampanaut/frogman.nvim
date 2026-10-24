@@ -521,6 +521,11 @@ function M.cleanup_triquetras(bufnr_ondelete)
 		rows_before[winid] = ledger.slots(winid)
 	end
 	for winid, triquetra in pairs(data.crux) do
+		if not vim.api.nvim_win_is_valid(winid) then
+			-- a window gone without its WinClosed: closed while cavediver was off, or with noautocmd
+			data.unregister_triquetra(winid)
+			goto continue
+		end
 		local current_bufnr = history.get_buffer_from_hash(triquetra.current_slot)
 		local filepath, bufnr
 		if not current_bufnr then -- this is a special case. we can't have an unregistered

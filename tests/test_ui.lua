@@ -407,4 +407,85 @@ T['T457 [char] (M12) a window with no current slot shows its visit alone'] = fun
 	eq(child.lua('return vim.wo.winbar'), '')
 end
 
+
+-- The ERROR notifications since the last read: a hook failure in the UI loop is one.
+local function errors()
+	return vim.tbl_filter(function(m) return m.level == 4 end, child.messages())
+end
+
+T['T498 [char] (M12) a % in a file name doesn\'t break the winbar'] = function()
+	child.lua('vim.fn.writefile({ "x" }, _G.CDV_TEST.root .. "/50% off.txt")')
+	child.steps({ ':e a' })
+	child.lua('vim.cmd.edit(vim.fn.fnameescape(_G.CDV_TEST.root .. "/50% off.txt"))')
+	child.messages()
+	local bar = winbar()
+	eq({ errors = errors(), named = bar:find('50%% off.txt', 1, true) ~= nil }, { errors = {}, named = true })
+end
+
+-- b, the ternary, is wiped without events; :e d then clears the display names, so the next
+-- refresh reads b's dead buffer, unless the repair has run.
+T['T499 [char] (M12) a dead ternary is repaired on the spot, whatever the secondary holds'] = function()
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
+	child.cmd('noautocmd bwipeout ' .. bufnr('b.txt'))
+	child.messages()
+	child.steps({ ':e d' })
+	child.settle(500)
+	eq(errors(), {})
+end
+
+-- The split closes while cavediver is off, so its WinClosed never runs.
+T['T500 [char] (A25) a window closed while cavediver was off doesn\'t break the refresh once it\'s back on'] = function()
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.steps({ ':e b' })
+	child.lua('require("cavediver").disable()')
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('close')
+	child.lua('require("cavediver").setup({ session_dir = require("cavediver.configs").session_dir })')
+	child.messages()
+	child.settle(500)
+	child.steps({ ':e c' }) -- a history transition, which runs the cleanup pass
+	child.settle(300)
+	eq({ errors = errors(), kept = child.lua('return require("cavediver.domains.window").data.crux[...] ~= nil', { split }) },
+		{ errors = {}, kept = false })
+end
+
+-- b is nowrite on a real file, which tracking takes as any file.
+T['T501 [char] (M12) a nowrite buffer on a real file gets its winbar like any file'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('setlocal buftype=nowrite')
+	child.steps({ ':e c' })
+	child.cmd('buffer ' .. bufnr('b.txt'))
+	child.settle()
+	eq(child.slots(), '⦉c⦊ [b] ⟦-⟧')
+	local bar = winbar()
+	eq({ current = bar:find('[' .. bufnr('b.txt') .. ']', 1, true) ~= nil, ternary = bar:find('⦉' .. bufnr('c.txt') .. '⦊', 1, true) ~= nil },
+		{ current = true, ternary = true })
+end
+
+-- A whole-editor load from idle, with a help window focused: the teardown leaves the bufferline
+-- with no window's slots to read.
+T['T502 [char] (M12) after a load with an untracked window focused, the bufferline draws nothing it can\'t colour'] = function()
+	child.steps({ ':e a', ':e c', ':e b' })
+	eq(child.lua('return { pcall(require("cavediver").save_session, "s1") }'), { true })
+	child.cmd('help')
+	child.settle()
+	eq(child.lua('return { pcall(require("cavediver").load_session, "s1") }'), { true })
+	child.settle(200)
+	local dumps = child.dump_files()
+	child.messages()
+	child.cmd('bdelete ' .. bufnr('a.txt'))
+	child.settle(400)
+	-- what cokeline does for the README's setup: the colour callback for each buffer its filter keeps
+	child.lua([[
+		local bl = require('cavediver').bufferline
+		for _, b in ipairs(vim.api.nvim_list_bufs()) do
+			if bl.bufnr_is_displayed(b) then pcall(bl.get_theme_fg_color, b, false) end
+		end
+	]])
+	child.settle(200)
+	eq({ errors = errors(), dump = child.dumped_since(dumps) }, { errors = {}, dump = nil })
+end
+
 return T

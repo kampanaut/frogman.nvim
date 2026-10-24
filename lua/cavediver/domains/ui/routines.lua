@@ -429,7 +429,7 @@ local function decorate_closed_lists(dbuf)
 			vim.api.nvim_buf_set_extmark(dbuf, closed_ns, i - 1, 0, {
 				virt_text = { { "  " .. glyphs.closed .. " ", "CavediverTrailClosed" } }, virt_text_pos = "inline",
 			})
-			vim.api.nvim_buf_set_extmark(dbuf, closed_ns, i - 1, 0, { virt_text = formatter(entry, glyphs) or {}, virt_text_pos = "eol" })
+			vim.api.nvim_buf_set_extmark(dbuf, closed_ns, i - 1, 0, { virt_text = formatter(entry, glyphs) or closed_entry_text(entry, glyphs), virt_text_pos = "eol" })
 		end
 	end
 end
@@ -989,7 +989,7 @@ local function derive_cache_from_window_triquetra(winid, again)
 	end
 	-- a slot whose buffer went without events (noautocmd) leaves the registry pointing at a dead buffer.
 	-- cleanup repairs it now, as it would at its next tick: the window is re-pointed like navigation.
-	for _, filehash in ipairs({
+	for _, filehash in pairs({ -- pairs, not ipairs: an empty slot doesn't end the scan
 		window_triquetra.current_slot,
 		window_triquetra.secondary_slot,
 		window_triquetra.ternary_slot,
@@ -1155,6 +1155,9 @@ function M.refresh_ui(cwin)
 
 	-- Update current window triquetra display cache
 	cache.current_window_triquetra = derive_cache_from_window_triquetra(cwin) or cache.current_window_triquetra
+	if cache.current_window_triquetra == nil then
+		cache.recent_buffers = {} -- no window's slots to colour the buffers by: none is drawn
+	end
 
 	cache.initialized = true
 end
@@ -1221,6 +1224,11 @@ local function construct_winbar_string(winid, theme)
 		require('cavediver.domains.ledger').never("This should never happen, current_window_triquetra is nil")
 	end
 
+	-- a `%` in a name or a tag is the winbar's own, so it goes in doubled
+	local function esc(text)
+		return (tostring(text):gsub("%%", "%%%%"))
+	end
+
 	local fmt_sbufnr, fmt_cbufnr
 	fmt_cbufnr = "[%d]"
 	fmt_sbufnr = "⟦%d⟧"
@@ -1261,7 +1269,7 @@ local function construct_winbar_string(winid, theme)
 		if not tag then
 			return
 		end
-		display_string = display_string .. string.format("%%#Comment#⎇%s ", tag)
+		display_string = display_string .. string.format("%%#Comment#⎇%s ", esc(tag))
 		display_string_length = display_string_length + vim.api.nvim_strwidth("⎇" .. tag) + 1
 	end
 
@@ -1277,7 +1285,7 @@ local function construct_winbar_string(winid, theme)
 			display_string = display_string .. string.format(
 				"%%#%s#⦉ %%#%s# %%#%s# %s ⦊ ",
 				theme.ternary_slot_filename, theme.ternary_slot_bufnr, theme.ternary_slot_filename,
-				triquetra.ternary_display_name
+				esc(triquetra.ternary_display_name)
 			)
 			display_string_length = display_string_length +
 				8 + vim.api.nvim_strwidth(triquetra.ternary_display_name)
@@ -1294,7 +1302,7 @@ local function construct_winbar_string(winid, theme)
 		-- a closed current slot, while visiting: the closed icon stands where its number goes.
 		display_string = display_string .. string.format(
 			"%%#%s#[\u{f4c5}] %%#%s#%s%%#%s# ",
-			theme.current_slot_bufnr, theme.current_slot_filename, current_name, theme.secondary_slot_filename
+			theme.current_slot_bufnr, theme.current_slot_filename, esc(current_name), theme.secondary_slot_filename
 		)
 		display_string_length = display_string_length + 5 + vim.api.nvim_strwidth(current_name)
 		missing_tag("current")
@@ -1321,14 +1329,14 @@ local function construct_winbar_string(winid, theme)
 		display_string = display_string .. string.format(
 			"%%#%s#" .. fmt_cbufnr .. " %%#%s#%s%%#%s#  ",
 			theme.current_slot_bufnr, triquetra.current_bufnr, theme.current_slot_filename,
-			current_name, theme.secondary_slot_filename
+			esc(current_name), theme.secondary_slot_filename
 		)
 		display_string_length = display_string_length + 6
 	else
 		display_string = display_string .. string.format(
 			"%%#%s#" .. fmt_cbufnr .. " %%#%s#%s%%#%s# ",
 			theme.current_slot_bufnr, triquetra.current_bufnr, theme.current_slot_filename,
-			current_name, theme.secondary_slot_filename
+			esc(current_name), theme.secondary_slot_filename
 		)
 		display_string_length = display_string_length + 4
 	end
@@ -1346,14 +1354,14 @@ local function construct_winbar_string(winid, theme)
 				display_string = display_string .. string.format(
 					"%%#%s#   %%#%s#" .. fmt_sbufnr .. " %%#%s#%s  ",
 					theme.both_way_arrow, theme.secondary_slot_bufnr, triquetra.secondary_bufnr,
-					theme.secondary_slot_filename, triquetra.secondary_display_name
+					theme.secondary_slot_filename, esc(triquetra.secondary_display_name)
 				)
 				display_string_length = display_string_length + 10
 			else
 				display_string = display_string .. string.format(
 					"%%#%s#   %%#%s#" .. fmt_sbufnr .. " %%#%s#%s ",
 					theme.both_way_arrow, theme.secondary_slot_bufnr, triquetra.secondary_bufnr,
-					theme.secondary_slot_filename, triquetra.secondary_display_name
+					theme.secondary_slot_filename, esc(triquetra.secondary_display_name)
 				)
 				display_string_length = display_string_length + 8
 			end
@@ -1363,7 +1371,7 @@ local function construct_winbar_string(winid, theme)
 			display_string = display_string .. string.format(
 				"%%#%s#  %%#%s#   %%#%s#%s ",
 				theme.both_way_arrow, theme.secondary_slot_bufnr, theme.secondary_slot_filename,
-				triquetra.secondary_display_name
+				esc(triquetra.secondary_display_name)
 			)
 			display_string_length = display_string_length + 8
 			display_string_length = display_string_length + vim.api.nvim_strwidth(triquetra.secondary_display_name)
@@ -1385,7 +1393,7 @@ end
 ---@param winid WinId
 function M.remove_winbar_string(winid)
 	winbar_segments[winid] = nil
-	if require('cavediver.configs').winbar.own ~= false then
+	if require('cavediver.configs').winbar.own ~= false and vim.api.nvim_win_is_valid(winid) then -- a window that's gone has none
 		vim.wo[winid].winbar = ""
 	end
 end
@@ -1457,7 +1465,7 @@ function M.is_real_file(bufnr, win_id)
 		return false
 	end
 
-	if filetype == "image_nvim" then
+	if filetype == "image_nvim" or history.routines.is_nowrite_file(bufnr) then -- nowrite on a real file, as tracking takes it
 		return true
 	end
 
@@ -1555,8 +1563,9 @@ local function update_all_winbars()
 
 	-- First pass: identify windows touching the upper boundary
 	for win, _ in pairs(window.data.crux) do
-		local buf = vim.api.nvim_win_get_buf(win)
-		if M.is_real_file(buf, win) or M.is_visiting(buf, win) then
+		-- a window gone without its WinClosed (closed while cavediver was off) is cleanup's to drop
+		local buf = vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win)
+		if buf and (M.is_real_file(buf, win) or M.is_visiting(buf, win)) then
 			if window_touches_top(win) then
 				table.insert(top_windows, win)
 				update_topwin_winbar(win, win)
