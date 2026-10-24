@@ -180,7 +180,7 @@ function M.init_autocmds(group)
 		pattern = "buftype",
 		callback = function()
 			local bufnr = vim.api.nvim_get_current_buf()
-			vim.schedule(function()
+			require('cavediver.settle').later("buftype undo", function()
 				if
 					vim.api.nvim_buf_is_valid(bufnr) and
 					history.get_hash_from_buffer(bufnr) and

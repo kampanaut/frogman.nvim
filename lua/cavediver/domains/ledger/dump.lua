@@ -305,9 +305,14 @@ local function compose(what, failing)
 		"cavediver: something that shouldn't happen did",
 		what,
 		os.date("%Y-%m-%d %H:%M:%S"),
-		"",
-		"files:",
 	}
+	-- The settle work still queued: what cavediver hadn't taken in yet when it fired
+	local pending = require('cavediver.settle').pending()
+	replay.pending = pending
+	if #pending > 0 then
+		table.insert(head, "pending: " .. table.concat(pending, " · "))
+	end
+	vim.list_extend(head, { "", "files:" })
 	replay.files = {}
 	for _, f in ipairs(files) do
 		table.insert(head, "  " .. f.hash .. "  " .. (f.path or "?"))

@@ -732,8 +732,10 @@ T['T460 [char] a dump is sealed, and :CavediverDump opens it from the directory 
 end
 
 -- T461 and T462's setup: the first window at ⦉a⦊ [b] ⟦-⟧ with p=[a]on, and a split,
--- focused, at ⦉b⦊ [c] ⟦-⟧, cycling there (<M-m>).
-local function cycling_in_split()
+-- focused, at ⦉b⦊ [c] ⟦-⟧, cycling there (<M-m>). Window numbers depend on 'splitright' (off
+-- here, so the split opens on the left as window 1), so the cases read them from the windows.
+local function cycling_in_split(splitright)
+	child.lua('vim.o.splitright = ...', { splitright == true })
 	child.steps({ ':e a', '<M-;><M-c>', ':e b' })
 	local first = child.win()
 	eq(child.slots(first), '⦉a⦊ [b] ⟦-⟧')
@@ -747,10 +749,15 @@ local function cycling_in_split()
 	return first, split
 end
 
+local function number(winid)
+	return child.lua('return vim.api.nvim_win_get_number(...)', { winid })
+end
+
 -- Keys in one batch, as a macro or a mapping sends them: <M-;><M-f> reaches the first
--- window before the jump's cancel has settled.
-T['T461 [char] a key that comes before the cancel runs it first, then does its job'] = function()
-	local first, split = cycling_in_split()
+-- window before the jump's cancel has settled. Once with 'splitright' off, once on.
+local function key_before_cancel(splitright)
+	child.setup()
+	local first, split = cycling_in_split(splitright)
 	local before = child.dumps()
 	child.messages()
 	-- a throw in the batch doesn't come back through feedkeys: the dump count is what shows one
@@ -760,20 +767,66 @@ T['T461 [char] a key that comes before the cancel runs it first, then does its j
 		{ dumps = 0, nav = 'normal', split = 'c' })
 	-- said once: the cancel the jump scheduled finds the cycle over and does nothing
 	local said = vim.tbl_filter(function(m)
-		return m.msg == 'Cycling cancelled. Window 1 returned to cycling origin buffer: c.txt'
+		return m.msg == 'Cycling cancelled. Window ' .. number(split) .. ' returned to cycling origin buffer: c.txt'
 	end, child.messages())
 	eq(#said, 1)
 	eq(child.slots(first), '⦉b⦊ [a] ⟦-⟧')
-	-- the cancel is a move on the key's own step
+	-- the cancel is a move on the window jump's step, as typed by hand
 	eq(child.lua([[
 		for _, step in ipairs(require('cavediver').ledger.steps()) do
-			if step.trigger == '<M-;><M-f>' then
-				for _, move in ipairs(step.moves) do
-					if move.kind == 'cancelled' then return step.cause end
-				end
+			for _, move in ipairs(step.moves) do
+				if move.kind == 'cancelled' then return step.trigger end
 			end
 		end
-	]]), 'keymap')
+	]]), 'WinEnter win ' .. number(first))
+end
+
+T['T461 [char] a key that comes before the cancel runs it first, then does its job'] = function()
+	key_before_cancel(false)
+	key_before_cancel(true)
+end
+
+-- Keys in one batch, through the settle queue (M11): each key first runs what's still queued.
+local function batch(keys)
+	child.lua([[pcall(vim.api.nvim_feedkeys, vim.api.nvim_replace_termcodes(..., true, false, true), 'x', false)]], { keys })
+	child.settle(200)
+end
+
+-- From a fresh editor: the empty start buffer picked, then reused for b.txt, then a cycle.
+T['T464 [char] a cycle started before its window\'s arrival has settled starts from it'] = function()
+	local before = child.dumps()
+	child.messages()
+	batch('<M-m><M-m><M-v>:e b.txt<CR><M-m>')
+	eq({ hooks = Extra.has(child.messages(), "Hook '"), dumps = #Extra.new_files(before, child.dumps()),
+		nav = child.state().nav, current = child.slots():match('%[(.-)%]') }, { hooks = false, dumps = 0, nav = 'cycling', current = 'b' })
+end
+
+T['T465 [char] a key in a macro acts on the buffer the macro just opened'] = function()
+	child.steps({ ':e a', ':e c' })
+	eq(child.slots(), '⦉a⦊ [c] ⟦-⟧')
+	batch(':e b.txt<CR><M-f>')
+	eq({ shown = child.shown(), slots = child.slots() }, { shown = 'b', slots = '⦉-⦊ [b] ⟦c⟧' })
+end
+
+T['T466 [char] keys in one batch keep their order'] = function()
+	child.steps({ ':e e', ':e a', '<M-f>', ':e c' })
+	eq(child.slots(), '⦉a⦊ [c] ⟦e⟧')
+	batch(':e b.txt<CR><M-f>:e d.txt<CR>')
+	eq(child.slots(), '⦉e⦊ [d] ⟦b⟧')
+end
+
+T['T467 [char] a dump lists the settle work still queued'] = function()
+	child.steps({ ':e a' })
+	local before = child.dumps()
+	child.lua([[
+		vim.cmd('edit b.txt')
+		pcall(require('cavediver.domains.ledger').never, 'planted for T467')
+	]])
+	child.settle(200)
+	local files = Extra.new_files(before, child.dumps())
+	eq(#files, 1)
+	local text = child.lua('return require("cavediver.domains.ledger.dump").read(...) or ""', { files[1] })
+	eq(text:match('\npending: ([^\n]*)'), 'arrival b.txt')
 end
 
 -- A user's own Lua mapping: a window jump and an export, in one function.
@@ -790,12 +843,13 @@ T['T463 [char] an export called from a user\'s mapping runs the cancel first too
 end
 
 T['T462 [char] a jump\'s cancel says so'] = function()
-	cycling_in_split()
+	local _, split = cycling_in_split()
 	child.messages()
 	child.cmd('wincmd w')
 	child.settle(200)
 	local said = vim.tbl_filter(function(m)
-		return m.msg == 'Cycling cancelled. Window 1 returned to cycling origin buffer: c.txt' and m.level == vim.log.levels.INFO
+		return m.msg == 'Cycling cancelled. Window ' .. number(split) .. ' returned to cycling origin buffer: c.txt'
+			and m.level == vim.log.levels.INFO
 	end, child.messages())
 	eq(#said, 1)
 end

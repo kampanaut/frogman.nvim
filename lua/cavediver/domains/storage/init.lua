@@ -60,9 +60,12 @@ local function load(name, opts, restart)
 	data.loading_batch = true
 	data.last_loaded = { name = name, tab = hint }
 	-- once the restore's batch is over: the next call is a full load again, and the window the
-	-- restore left focused is taken in.
+	-- restore left focused is taken in. Only the second is settle work: a key may take the window
+	-- in sooner, but the flag must wait for the batch to be over, or a native restore loads twice.
 	vim.schedule(function()
 		data.loading_batch = false
+	end)
+	require('cavediver.settle').later("load's follow-up", function()
 		routines.after_restore()
 	end)
 	-- the file is read first, since its scope decides whether anything is torn down

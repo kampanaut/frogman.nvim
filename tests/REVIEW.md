@@ -1,6 +1,6 @@
 # Test review sheet
 
-525 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+529 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -492,7 +492,7 @@ spec: Q17, the only window: `:help`, `:only`, `<M-.>`. The help buffer is closed
 spec: Q17, a running terminal: `<M-.>` on a `:terminal` whose job is still running refuses with a message, and the terminal stays.  
 `tests/test_closing.lua:314`
 
-## tests/test_cycling.lua (33 cases: 33 char)
+## tests/test_cycling.lua (37 cases: 37 char)
 
 **T69 [char]** <M-m> from normal starts cycling and leaves the current slot  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -777,24 +777,43 @@ spec: (A26) A dump is sealed: on T200's route the file starts with `CDV1` and ho
 `tests/test_cycling.lua:698`
 
 **T461 [char]** a key that comes before the cancel runs it first, then does its job  
-→ `eq({ dumps = #Extra.new_files(before, child.dumps()), nav = child.state().nav, split = child.shown(split) },`  
-→ `eq(#said, 1)`  
-→ `slots = '⦉b⦊ [a] ⟦-⟧'`  
-→ `eq(child.lua([[`  
-note: Keys in one batch, as a macro or a mapping sends them: <M-;><M-f> reaches the first window before the jump's cancel has settled. a throw in the batch doesn't come back through feedkeys: the dump count is what shows one said once: the cancel the jump scheduled finds the cycle over and does nothing th  
 spec: (A12) A key that comes before the cancel runs it first: `:e a`, `<M-;><M-c>`, `:e b` give `⦉a⦊ [b] ⟦-⟧` with `p=[a]on`; `:vsplit`, `:e c` give the split `⦉b⦊ [c] ⟦-⟧`; `<M-m>` there, then `<C-w>w<M-;><M-f>` in one batch: nothing throws and nothing dumps, the split shows c again w…  
-`tests/test_cycling.lua:752`
+`tests/test_cycling.lua:784`
+
+**T464 [char]** a cycle started before its window's arrival has settled starts from it  
+→ `eq({ hooks = Extra.has(child.messages(), "Hook '"), dumps = #Extra.new_files(before, child.dumps()),`  
+note: From a fresh editor: the empty start buffer picked, then reused for b.txt, then a cycle.  
+spec: (M11, A12) A cycle started before its window's arrival has settled starts from it: from a fresh editor, `<M-m><M-m><M-v>:e b.txt<CR><M-m>` in one batch gives no hook failure and no dump, navigation `cycling`, and the window's current slot b. **[run 2026-10-24]** recorded, before …  
+`tests/test_cycling.lua:796`
+
+**T465 [char]** a key in a macro acts on the buffer the macro just opened  
+`:e a`, `:e c` → `slots = '⦉a⦊ [c] ⟦-⟧'`  
+→ `eq({ shown = child.shown(), slots = child.slots() }, { shown = 'b', slots = '⦉-⦊ [b] ⟦c⟧' })`  
+spec: (A1, M11) A key in a macro acts on the buffer the macro just opened: from `⦉a⦊ [c] ⟦-⟧`, `:e b.txt<CR><M-f>` in one batch shows b with `⦉-⦊ [b] ⟦c⟧`, as typed by hand. **[run 2026-10-24]** recorded it ending on c, `⦉a⦊ [c] ⟦-⟧`, "Jumped back to windows current buffer.", b never r…  
+`tests/test_cycling.lua:804`
+
+**T466 [char]** keys in one batch keep their order  
+`:e e`, `:e a`, `<M-f>`, `:e c` → `slots = '⦉a⦊ [c] ⟦e⟧'`  
+→ `slots = '⦉e⦊ [d] ⟦b⟧'`  
+spec: (M11) The batch keeps its order: from `⦉a⦊ [c] ⟦e⟧`, `:e b.txt<CR><M-f>:e d.txt<CR>` in one batch gives `⦉e⦊ [d] ⟦b⟧`, as typed by hand.  
+`tests/test_cycling.lua:811`
+
+**T467 [char]** a dump lists the settle work still queued  
+`:e a` → `eq(#files, 1)`  
+→ `eq(text:match('\npending: ([^\n]*)'), 'arrival b.txt')`  
+spec: (A26, M11) A dump lists the settle work still queued: `:edit b.txt` and a planted `never` in one call give a dump whose heading names `arrival b.txt` as pending.  
+`tests/test_cycling.lua:818`
 
 **T463 [char]** an export called from a user's mapping runs the cancel first too  
 → `eq({ ok = ok, dumps = #Extra.new_files(before, child.dumps()), split = child.shown(split), first = child.slots(first) },`  
 note: A user's own Lua mapping: a window jump and an export, in one function.  
 spec: (A12) An export called from a user's mapping runs the cancel first too: T461's setup, then `vim.cmd.wincmd('w')` and `require('cavediver').jump_to_primary()` in one function: nothing throws and nothing dumps, the split shows c again, and the other window is `⦉b⦊ [a] ⟦-⟧`.  
-`tests/test_cycling.lua:780`
+`tests/test_cycling.lua:833`
 
 **T462 [char]** a jump's cancel says so  
 `:wincmd w` → `eq(#said, 1)`  
-spec: (A12) A jump's cancel says so: T461's setup, `<M-m>` in the split, then `<C-w>w` alone, settled, gives one INFO, "Cycling cancelled. Window 1 returned to cycling origin buffer: c.txt".  
-`tests/test_cycling.lua:792`
+spec: (A12) A jump's cancel says so: T461's setup, `<M-m>` in the split, then `<C-w>w` alone, settled, gives one INFO, "Cycling cancelled. Window 1 returned to cycling origin buffer: c.txt", the split being window 1 with `'splitright'` off, as the harness runs.  
+`tests/test_cycling.lua:845`
 
 ## tests/test_decisions.lua (52 cases: 52 char)
 
@@ -1369,20 +1388,20 @@ spec: `track_buffer(h, t)` stores `t` in the global history.
 **T149 [char]** random visits across windows, global view: the visited buffer is leftmost ⚑ random walk  
 → `eq(walks('global'), nil)`  
 spec: A property test over random visits, with `history_view` set to `"global"` and to `"window"`, across windows: after any visit, the visited buffer is leftmost in the bufferline order (`compare_buffers`). The author's check: two windows, back into window A, `:e e` gave `e=7 b=6 a=5 …  
-`tests/test_history.lua:152`
+`tests/test_history.lua:157`
 
 **T149 [char]** random visits across windows, window view: the visited buffer is leftmost ⚑ random walk  
 → `eq(walks('window'), nil)`  
 note: Under the window view the rebuild gives every buffer its own time (history/routines.lua:271, :274; T197), on a window jump and on :close alike, e.g. after :e a, :e b, :vsplit, :close, :e a, a and b don't share one.  
 spec: A property test over random visits, with `history_view` set to `"global"` and to `"window"`, across windows: after any visit, the visited buffer is leftmost in the bufferline order (`compare_buffers`). The author's check: two windows, back into window A, `:e e` gave `e=7 b=6 a=5 …  
-`tests/test_history.lua:159`
+`tests/test_history.lua:164`
 
 **T149 [char]** the author's check (Q4): back into window A, :e e gives e=8 b=7 a=5 d=4 c=3  
 `:e a`, `:e b`, `:vsplit`, `:e c`, `:e d`, `:e e` → `eq(X.times(child), 'e=8 b=7 a=5 d=4 c=3')`  
 → `eq(X.leftmost(child), nil)`  
 note: e=7 b=6 a=5 d=4 c=3 before the tie fix, which gives the window's buffers one more time each on the rebuild: the same order.  
 spec: A property test over random visits, with `history_view` set to `"global"` and to `"window"`, across windows: after any visit, the visited buffer is leftmost in the bufferline order (`compare_buffers`). The author's check: two windows, back into window A, `:e e` gave `e=7 b=6 a=5 …  
-`tests/test_history.lua:163`
+`tests/test_history.lua:168`
 
 ## tests/test_identity.lua (7 cases: 7 char)
 

@@ -1420,7 +1420,7 @@ function M.delete_buffer(winid)
 	-- is only deleted, so neovim keeps its marks for when it's reopened; a No Name buffer is wiped,
 	-- its text is cached.
 	local loads = data.loads
-	vim.schedule(function()
+	require('cavediver.settle').later("close " .. require('cavediver.domains.ledger.routines').buffer_label(bufnr), function()
 		if not vim.api.nvim_buf_is_valid(bufnr) or data.loads ~= loads then
 			return -- gone already, or a session loaded since.
 		end

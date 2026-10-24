@@ -170,7 +170,7 @@ function M.init_autocmds(group)
 				local path = hash and routines.get_filepath_from_hash(hash)
 				if path and path:match("^NONAME_") then
 					noname_deleted[args.buf] = { hash = hash, history = routines.history_of(hash) }
-					vim.schedule(function()
+					require('cavediver.settle').later("No Name note", function()
 						noname_deleted[args.buf] = nil
 					end)
 				end
@@ -185,7 +185,7 @@ function M.init_autocmds(group)
 			local rename = noname_deleted[args.buf]
 			noname_deleted[args.buf] = nil
 			-- once the write is over: a No Name buffer written under a name settles as a rename.
-			vim.schedule(function()
+			require('cavediver.settle').later("write " .. require('cavediver.domains.ledger.routines').buffer_label(args.buf), function()
 				if rename then
 					settle_rename(args.buf, rename)
 					return
@@ -216,7 +216,7 @@ function M.init_autocmds(group)
 			-- happened in (not the focused one), and only if that window still shows the buffer then.
 			local cycling_step = historySM:state() == states.DETACHED
 			local loads = data.loads
-			vim.schedule(function()
+			require('cavediver.settle').later("arrival " .. require('cavediver.domains.ledger.routines').buffer_label(args.buf), function()
 				if
 					not vim.api.nvim_win_is_valid(winid) or
 					not vim.api.nvim_buf_is_valid(args.buf) or
@@ -266,7 +266,7 @@ function M.init_autocmds(group)
 				return
 			end
 			-- the disk decides once the rename is over (the settle rule).
-			vim.schedule(function()
+			require('cavediver.settle').later("rename " .. require('cavediver.domains.ledger.routines').buffer_label(args.buf), function()
 				settle_rename(args.buf, rename)
 			end)
 		end

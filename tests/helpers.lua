@@ -129,6 +129,28 @@ Helpers.new_child = function()
 		child.lua(CHILD_SETUP, { opts or {} })
 	end
 
+	-- The dumps under stdpath('state')/cavediver/.
+	child.dump_files = function()
+		return child.lua([[return vim.fn.globpath(vim.fn.stdpath('state') .. '/cavediver', 'dump-*.txt', true, true)]])
+	end
+
+	-- What fired in the first dump written since `before` (a child.dump_files() list), read in this
+	-- child's project, where it was sealed; nil when none was written. Walks fail on one.
+	child.dumped_since = function(before)
+		local fired = child.lua([[
+			local seen = {}
+			for _, f in ipairs(...) do seen[f] = true end
+			for _, f in ipairs(vim.fn.globpath(vim.fn.stdpath('state') .. '/cavediver', 'dump-*.txt', true, true)) do
+				if not seen[f] then
+					local text = require('cavediver.domains.ledger.dump').read(f)
+					return text and text:match('\n([^\n]*)') or ('a dump that does not open: ' .. vim.fn.fnamemodify(f, ':t'))
+				end
+			end
+		]], { before })
+		if fired == vim.NIL then return nil end
+		return fired
+	end
+
 	-- Let scheduled callbacks and short timers run.
 	child.settle = function(ms)
 		child.lua('vim.wait(...)', { ms or 30 })

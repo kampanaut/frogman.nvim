@@ -47,7 +47,7 @@ navigationSM:on(states.CYCLING, states.CYCLING, "cancel_cycle_on_window_jump", f
 	if cycling_window == nil or cycling_window == vim.api.nvim_get_current_win() then
 		return
 	end
-	vim.schedule(function()
+	require('cavediver.settle').later("cycle cancel", function()
 		routines.cancel_cycle(cycling_window)
 	end)
 end, 2, true, states.mode.WINENTER)
@@ -84,7 +84,7 @@ function M.init_autocmds(group)
 			if previous_win == 0 then
 				previous_win = require('cavediver.domains.window.data').last_valid_window
 			end
-			vim.schedule(function()
+			require('cavediver.settle').later("window entry win " .. vim.api.nvim_win_get_number(winid), function()
 				if vim.api.nvim_get_current_win() ~= winid then
 					return -- moved on already, the later WinEnter takes it from here.
 				end

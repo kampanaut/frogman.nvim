@@ -168,9 +168,13 @@ function M.init_autocmds(group)
 					local act = fn
 					if type(fn) == "function" then
 						act = function()
+							local settle = require('cavediver.settle')
+							settle.drain()
 							require('cavediver.domains.ledger').begin("keymap", lhs, vim.api.nvim_get_current_win())
-							require('cavediver.domains.navigation').cancel_cycle_elsewhere()
-							fn()
+							settle.guard(function()
+								require('cavediver.domains.navigation').cancel_cycle_elsewhere()
+								fn()
+							end)
 						end
 					end
 					vim.keymap.set("n", lhs, act, { buffer = buf, desc = desc })

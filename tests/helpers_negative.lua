@@ -173,7 +173,13 @@ return res
 ]==]
 
 Neg.self_walk = function(child, seed, nkeys, multi)
-	return child.lua(SELF_WALK, { seed, nkeys, multi or false })
+	local dumps = child.dump_files()
+	local res = child.lua(SELF_WALK, { seed, nkeys, multi or false })
+	local fired = child.dumped_since(dumps)
+	if fired then
+		error(string.format('walk (seed %d) dumped: %s\n  keys: %s', seed, fired, table.concat(res.actions, ', ')), 0)
+	end
+	return res
 end
 
 return Neg
