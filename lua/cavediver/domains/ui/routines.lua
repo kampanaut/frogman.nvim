@@ -434,6 +434,15 @@ local function decorate_closed_lists(dbuf)
 	end
 end
 
+---Get the window the closed lists were opened from.
+---
+---@param buf Bufnr The closed lists' buffer
+---@return WinId|nil winid The window, while it's still there
+function M.closed_lists_origin(buf)
+	local picker = closed_pickers[buf]
+	return picker and picker.came_from and vim.api.nvim_win_is_valid(picker.came_from) and picker.came_from or nil
+end
+
 ---Draw the closed lists into a buffer.
 ---
 ---Each list is a header with its closed entries under it, newest first. The editor's list comes
@@ -474,9 +483,34 @@ local function draw_closed_lists(dbuf)
 		label[pool] = pool.id == "" and "editor" or (pool.name or vim.fn.fnamemodify(pool.directory, ":t"))
 		named[label[pool]] = (named[label[pool]] or 0) + 1
 	end
+	-- as much of the directory as it takes: its last part, or more when two of them end alike
+	local groups = {}
 	for _, pool in ipairs(order) do
 		if named[label[pool]] > 1 and pool.directory then
-			label[pool] = label[pool] .. " (" .. vim.fn.fnamemodify(pool.directory, ":t") .. ")"
+			groups[label[pool]] = groups[label[pool]] or {}
+			table.insert(groups[label[pool]], pool)
+		end
+	end
+	for name, pools in pairs(groups) do
+		local function tail(pool, parts)
+			local pieces = vim.split(pool.directory, "/", { trimempty = true })
+			return table.concat(pieces, "/", math.max(1, #pieces - parts + 1), #pieces)
+		end
+		local parts = 1
+		while parts < 64 do
+			local seen, clash = {}, false
+			for _, pool in ipairs(pools) do
+				local t = tail(pool, parts)
+				clash = clash or seen[t] ~= nil
+				seen[t] = true
+			end
+			if not clash then
+				break
+			end
+			parts = parts + 1
+		end
+		for _, pool in ipairs(pools) do
+			label[pool] = name .. " (" .. tail(pool, parts) .. ")"
 		end
 	end
 
@@ -789,6 +823,15 @@ function M.show_closed_lists(opts)
 		cwin = window.data.last_valid_window -- opened from a float: reopen into the last tracked window
 	end
 	local existing = vim.fn.bufnr("cavediver://closed-lists")
+	if existing ~= -1 and vim.bo[existing].modified then
+		-- an edit not written yet stays: the lists open as they are
+		local shown = vim.fn.win_findbuf(existing)[1]
+		if shown then
+			vim.api.nvim_set_current_win(shown)
+		end
+		vim.notify("cavediver: the closed lists have edits not written yet: write them with :w, or leave them, first.", vim.log.levels.WARN)
+		return
+	end
 	if existing ~= -1 then
 		vim.api.nvim_buf_delete(existing, { force = true })
 	end
