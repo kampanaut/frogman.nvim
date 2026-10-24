@@ -53,6 +53,21 @@ T['T94 [char] <M-,> skips a previous window whose filetype is minimap'] = functi
 	eq(Extra.has(child.messages(), 'No valid previous window to toggle to.'), true)
 end
 
+T['T449 [char] (A17) <M-,>\'s skip list is configurable'] = function()
+	child.lua('require("cavediver").setup({ toggle_window = { skip_filetypes = { "mything" } } })')
+	child.steps({ ':e a' })
+	local w1 = child.win()
+	child.cmd('vsplit')
+	child.steps({ ':e b' })
+	local w2 = child.win()
+	child.lua('vim.bo[vim.api.nvim_win_get_buf(...)].filetype = "mything"', { w1 })
+	child.steps({ '<M-,>' })
+	local skipped = child.win() == w2
+	child.lua('vim.bo[vim.api.nvim_win_get_buf(...)].filetype = "minimap"', { w1 })
+	child.steps({ '<M-,>' })
+	eq({ skipped = skipped, went = child.win() == w1 }, { skipped = true, went = true })
+end
+
 T['T194 [char] one jump table serves every tab'] = function()
 	-- Tab 1: a | b. Tab 2: c | d.
 	child.steps({ ':e a' })

@@ -199,7 +199,7 @@ T['T214 [char] (P24) a save leaves the closed stack as it was, a closed file gon
 	eq(got.after, got.before)
 end
 
-T['T215 [target] (P26) with harpoon not installed, navigation, the slot keys and the UI raise nothing'] = function()
+T['T215 [char] (P26) with harpoon not installed, navigation, the slot keys and the UI raise nothing'] = function()
 	Neg.start(child, { no_harpoon = true })
 	eq(child.lua('return (pcall(require, "harpoon"))'), false)
 	child.messages()
@@ -297,7 +297,7 @@ end
 -- Engine and model -------------------------------------------------------------
 
 -- Decided 2026-10-21: the toggles are built (how they're exposed, key or command, comes later).
-T['T220 [target] (M11, D23) the winbar and indicator toggles work at runtime'] = function()
+T['T220 [char] (M11, D23) the winbar and indicator toggles work at runtime'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.settle(300)
 	eq(child.lua('return vim.wo.winbar ~= ""'), true)
@@ -540,7 +540,7 @@ T['T231 [char] (A14, Q7) <M-;><M-f> while cycling on the start announces the ori
 	end
 end
 
-T['T232 [target] (A17) <M-,> skips a previous window whose filetype is neominimap'] = function()
+T['T232 [char] (A17) <M-,> skips a previous window whose filetype is neominimap'] = function()
 	child.steps({ ':e a' })
 	local w1 = child.win()
 	child.cmd('vsplit')

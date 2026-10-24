@@ -960,11 +960,10 @@ end
 ---@return nil
 -- Function to update the cache state
 function M.refresh_ui(cwin)
-	local harpoon = require("harpoon")
 	local cbuf = vim.api.nvim_win_get_buf(cwin)
 	local cache = data.bufferline_state
-	-- Update harpooned buffers cache
-	local harpooned_list = harpoon:list():display()
+	-- Update harpooned buffers cache: the marked files, from config's marks_provider or harpoon
+	local harpooned_list = history.routines.marked_paths()
 	-- Helper function to map keys (from original buffers.lua)
 	local function map_keys_trans_bufnr(tbl)
 		local return_tbl = {}
@@ -978,7 +977,7 @@ function M.refresh_ui(cwin)
 	cache.harpooned_buffers = {}
 	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
 		if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
-			local path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":.")
+			local path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":p")
 			cache.harpooned_buffers[bufnr] = cache.harpooned_lookup[path] ~= nil
 			if cache.harpooned_buffers[bufnr] then
 				cache.harpooned_lookup[bufnr] = cache.harpooned_lookup[path]
@@ -1033,6 +1032,33 @@ end
 
 ---@param winid WinId
 ---@param theme UITriquetraTheme
+-- each window's triquetra segment, as the winbar last drew it, for require('cavediver').winbar_segment
+local winbar_segments = {}
+
+---Put a window's winbar, unless cavediver doesn't own the winbar (config's `winbar.own`), and empty
+---while it's hidden. The segment is kept for the component either way.
+---@param winid WinId
+---@param winbar string The whole winbar
+---@param segment string|nil The triquetra's segment, without the rule and the padding
+local function put_winbar(winid, winbar, segment)
+	winbar_segments[winid] = segment
+	if require('cavediver.configs').winbar.own == false then
+		return
+	end
+	vim.wo[winid].winbar = require('cavediver.domains.ui').is_hidden("winbar") and "" or winbar
+end
+
+---A window's triquetra segment, `""` while the winbar is hidden or the window has none.
+---@param winid WinId|nil The current window when nil
+---@return string
+function M.winbar_segment(winid)
+	winid = (winid == nil or winid == 0) and vim.api.nvim_get_current_win() or winid
+	if require('cavediver.domains.ui').is_hidden("winbar") then
+		return ""
+	end
+	return winbar_segments[winid] or ""
+end
+
 local function construct_winbar_string(winid, theme)
 	local triquetra = data.get_or_create_window_display_cache(winid)
 
@@ -1132,7 +1158,7 @@ local function construct_winbar_string(winid, theme)
 			actual_winbuf = vim.api.nvim_win_get_buf(winid)
 		}
 		vim.notify("WINBAR STATE CORRUPTION: current_bufnr is nil | " .. vim.inspect(debug_info), vim.log.levels.WARN)
-		vim.wo[winid].winbar = ""
+		put_winbar(winid, "", nil)
 		return
 	end
 
@@ -1195,6 +1221,7 @@ local function construct_winbar_string(winid, theme)
 	diff = diff - vim.api.nvim_strwidth(display_string)
 
 	display_string_length = display_string_length - diff
+	local segment = display_string
 
 	display_string = string.format("%%#%s#────── ", theme.base) .. display_string
 	display_string_length = display_string_length + 7
@@ -1202,12 +1229,15 @@ local function construct_winbar_string(winid, theme)
 	local padding_length = vim.api.nvim_win_get_width(winid) - display_string_length
 	display_string = display_string .. "%#" .. theme.base .. "#" .. string.rep("─", math.max(0, padding_length))
 
-	vim.wo[winid].winbar = display_string
+	put_winbar(winid, display_string, segment)
 end
 
 ---@param winid WinId
 function M.remove_winbar_string(winid)
-	vim.wo[winid].winbar = ""
+	winbar_segments[winid] = nil
+	if require('cavediver.configs').winbar.own ~= false then
+		vim.wo[winid].winbar = ""
+	end
 end
 
 
@@ -1285,7 +1315,7 @@ function M.is_real_file(bufnr, win_id)
 	local value = (buftype == "" or buftype == "terminal" or buftype == "acwrite") -- Empty buftype signifies a normal file buffer
 		and vim.api.nvim_buf_is_loaded(bufnr)
 		and (not vim.api.nvim_buf_get_name(bufnr):match("://") or buftype == "acwrite")
-		and not vim.tbl_contains(data.excluded_filetypes, filetype)
+		and not vim.tbl_contains(data.excluded_filetypes(), filetype)
 		-- Allow no-name buffers for regular windows, exclude for popups
 		and (bufname ~= "" or win_config.relative == "")
 
@@ -1302,7 +1332,7 @@ function M.is_visiting(bufnr, win_id)
 	return history.get_hash_from_buffer(bufnr) == nil
 		and vim.api.nvim_buf_is_loaded(bufnr)
 		and vim.api.nvim_win_get_config(win_id).relative == ""
-		and not vim.tbl_contains(data.excluded_filetypes, vim.bo[bufnr].filetype)
+		and not vim.tbl_contains(data.excluded_filetypes(), vim.bo[bufnr].filetype)
 end
 
 local function window_touches_top(win_id)

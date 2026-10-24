@@ -219,6 +219,7 @@ local defaults = {
 		},
 		cokeline = {
 			is_picking_close = "#D14D41", -- red-400
+			is_picking_focus = "#4385BE", -- blue-400
 			active = "#FFAF00",
 			bg = {
 				detached = {
@@ -285,6 +286,35 @@ local defaults = {
 	},
 	-- label_provider: where you are, for tagging files that go missing: nil reads .git/HEAD, a
 	-- function returning a string gives the label, false turns labels off (the tag is then the time).
+	-- marks_provider: the marked files, for the bufferline's marks: nil reads harpoon's list when it's
+	-- installed, a function returning their paths in order gives them, false marks nothing.
+	-- the winbar: `own`, whether cavediver writes it (otherwise `require('cavediver').winbar_segment()`
+	-- gives its segment to place yourself); `skip_filetypes`, windows of these filetypes get none
+	winbar = {
+		own = true,
+		skip_filetypes = {
+			"neo-tree-popup",
+			"neo-tree",
+			"notify",
+			"neominimap",
+			"Avante",
+			"AvanteInput",
+			"dropbar_menu",
+			"dropbar_menu_fzf",
+			"DressingInput",
+			"cmp_docs",
+			"cmp_menu",
+			"noice",
+			"prompt",
+			"TelescopePrompt",
+			"blink_menu",
+			"blink_docs",
+		},
+	},
+	-- <M-,> (toggle_window) skips a previous window of these filetypes
+	toggle_window = {
+		skip_filetypes = { "minimap", "neominimap" },
+	},
 	cleanup_interval = 4000,              -- seconds
 	winbar_refresh_interval = 140         -- milliseconds
 }

@@ -154,7 +154,9 @@ function M.setup(user_config)
 		for key, value in pairs(user_config) do
 			local type_value = type(value)
 			local type_default = type(default[key])
-			if type(value) == "table" and type(default[key]) == "table" then 
+			if type(value) == "table" and type(default[key]) == "table" and vim.islist(value) and vim.islist(default[key]) then
+				default[key] = vim.deepcopy(value) -- a list replaces the default list whole
+			elseif type(value) == "table" and type(default[key]) == "table" then 
 				deep_merge_into(default[key], value)
 			elseif type_value ~= "table" and type_default ~= "table" then
 				default[key] = value
@@ -186,6 +188,21 @@ function M.setup(user_config)
 	vim.api.nvim_create_user_command("CavediverClosed", function()
 		M.open_closed_lists()
 	end, { desc = "Open the closed lists" })
+	-- the winbar, indicator and bufferline toggles: on, off, or toggle (no argument toggles)
+	for name, part in pairs({ CavediverWinbar = "winbar", CavediverIndicators = "indicators", CavediverBufferline = "bufferline" }) do
+		vim.api.nvim_create_user_command(name, function(opts)
+			local hidden = ui.is_hidden(part)
+			local want = opts.args == "" and "toggle" or opts.args
+			if want == "on" or (want == "toggle" and hidden) then
+				ui["show_" .. part]()
+			elseif want == "off" or (want == "toggle" and not hidden) then
+				ui["hide_" .. part]()
+			else
+				vim.notify("cavediver: :" .. name .. " takes on, off or toggle.", vim.log.levels.WARN)
+			end
+		end, { nargs = "?", complete = function() return { "on", "off", "toggle" } end,
+			desc = "Switch cavediver's " .. part .. " on or off, or toggle it" })
+	end
 	vim.api.nvim_create_user_command("CavediverTrail", function(opts)
 		M.open_trail(opts.args)
 	end, { nargs = "?", desc = "Open the trail, or with a name, that name's life line across every page" })
@@ -511,6 +528,7 @@ M.set_cache_from_window_triquetra = ui.set_cache_from_window_triquetra
 M.get_buffer_history = history.get_buffer_history
 M.get_window_triquetra = window.get_triquetra
 M.get_smart_basename = ui.routines.get_smart_basename
+M.winbar_segment = ui.routines.winbar_segment
 M.get_all_triquetras = window.get_window_relationships
 
 M.bufferline = ui.bufferline

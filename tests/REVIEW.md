@@ -1,6 +1,6 @@
 # Test review sheet
 
-505 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+511 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -1857,7 +1857,7 @@ spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary
 spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary write the same notes: from `⦉c⦊ [d] ⟦b⟧`, either one gives `⦉c⦊ [b] ⟦d⟧` with the swap notes `dsm{d-swap>b}` and `dtm{d-swap>c}`, and no plain secondary note for d. T30 and T39 pin the same notes. Plain na…  
 `tests/test_navigation.lua:147`
 
-## tests/test_negative.lua (48 cases: 41 char, 7 target)
+## tests/test_negative.lua (48 cases: 44 char, 4 target)
 
 **T207 [char]** (P5) a nofile scratch entered in a tracked window is not registered  
 `:e a`, `:e b` → `eq(registered(), true)`  
@@ -1934,13 +1934,13 @@ note: b is closed and outside the slots; its file goes, then the save, in one ca
 spec: (P24, A22) A save leaves the closed stack as it was: with b closed and outside the slots, deleting b.txt and saving straight away keeps b on the stack, and the slots, the notes and the history order stay as they were too. Before step 6 the save's `cleanup_system` dropped b, in it…  
 `tests/test_negative.lua:184`
 
-**T215 [target]** (P26) with harpoon not installed, navigation, the slot keys and the UI raise nothing  
+**T215 [char]** (P26) with harpoon not installed, navigation, the slot keys and the UI raise nothing  
 → `eq(child.lua('return (pcall(require, "harpoon"))'), false)`  
 → `eq(raised, {})`  
 → `eq(Extra.at_least(child.messages()), {})`  
 → `slots = '⦉d⦊ [c] ⟦b⟧'`  
 note: Ex commands raise; keys return ok, err.  
-spec: (P26) With harpoon not installed, `:e`, `<M-f>`, `<M-S-f>`, `<M-;><M-c>`, `<M-;><M-r>` and the UI ticks raise nothing and report no hook failure. Today every history update fails at `history/routines.lua:986` with "module 'harpoon' not found".  
+spec: (P26) With harpoon not installed, `:e`, `<M-f>`, `<M-S-f>`, `<M-;><M-c>`, `<M-;><M-r>` and the UI ticks raise nothing and report no hook failure. Before step 8 every history update failed with "module 'harpoon' not found": harpoon was required with no guard.  
 `tests/test_negative.lua:202`
 
 **T216 [char]** (I16) a No Name id is not reused across sessions  
@@ -1982,7 +1982,7 @@ spec: (I18) A repeated file in the primary queue window is refused loudly: from 
 spec: (I19, Q14) An empty queue that's switched on stays on: from `p=[]on`, `:e c`, `<M-f>`, `<M-;><M-f>`, `:e a`, `<M-S-f>` and the UI ticks leave `p=[]on`.  
 `tests/test_negative.lua:281`
 
-**T220 [target]** (M11, D23) the winbar and indicator toggles work at runtime  
+**T220 [char]** (M11, D23) the winbar and indicator toggles work at runtime  
 `:e a`, `:e b` → `eq(child.lua('return vim.wo.winbar ~= ""'), true)`  
 → `eq(got, { hide_winbar = true, show_winbar = true, hide_indicators = true, show_indicators = true })`  
 → `eq(child.lua('return vim.wo.winbar'), '')`  
@@ -1990,12 +1990,12 @@ spec: (I19, Q14) An empty queue that's switched on stays on: from `p=[]on`, `:e 
 → `eq(child.lua('return require("cavediver").ui.is_hidden("indicators")'), true)`  
 → `eq(child.lua('return require("cavediver").ui.is_hidden("indicators")'), false)`  
 note: Decided 2026-10-21: the toggles are built (how they're exposed, key or command, comes later). Hidden stays hidden through the refresh, and shown comes back.  
-spec: (M11, D23) The winbar and indicator toggles work at runtime: `hide_winbar()` empties the winbar and it stays empty through the refresh, `show_winbar()` brings it back, and `hide_indicators()`/`show_indicators()` switch the indicators off and on. Today the winbar machine doesn't e…  
+spec: (M11, D23) The winbar and indicator toggles work at runtime: `hide_winbar()` empties the winbar and it stays empty through the refresh, `show_winbar()` brings it back, and `hide_indicators()`/`show_indicators()` switch the indicators off and on. **[run 2026-10-21]** recorded each…  
 `tests/test_negative.lua:300`
 
 **T221 [char]** (M11) unregister_hook(name) removes that hook from its machine, and nothing else, without throwing  
 → `eq(got, { ok = true, ran = { 'one.g', 'two.h' }, reusable = true })`  
-spec: (M11) `unregister_hook(name)` removes that hook from its own machine and nothing else, without throwing, and the name can be bound again. Today it calls the class instead of the instance (`state-machine.lua:382`), throws, and the hook still runs.  
+spec: (M11) `unregister_hook(name)` removes that hook from its own machine and nothing else, without throwing, and the name can be bound again. Before step 8 it called the class instead of the instance, threw, and the hook still ran (DESK:2483).  
 `tests/test_negative.lua:326`
 
 **T222 [char]** (M1, D4) hashing a file name runs no shell  
@@ -2093,7 +2093,7 @@ spec: (A13) A pick writes no secondary notes: from `⦉d⦊ [e] ⟦c⟧`, a pick
 spec: (A14, Q7) `<M-;><M-f>` while cycling with the window already on the start says "Returned to cycling origin buffer" each time and changes nothing: the slots, the notes, the shown buffer and the order stay, and navigation stays `cycling`.  
 `tests/test_negative.lua:528`
 
-**T232 [target]** (A17) <M-,> skips a previous window whose filetype is neominimap  
+**T232 [char]** (A17) <M-,> skips a previous window whose filetype is neominimap  
 `:e a`, `:vsplit`, `:e b`, `<M-,>` → `eq(child.win(), w2)`  
 → `eq(Extra.has(child.messages(), 'No valid previous window to toggle to.'), true)`  
 spec: (A17) `<M-,>` skips a previous window whose filetype is `neominimap`, as it does `minimap` (T94): it warns "No valid previous window to toggle to." and stays.  
@@ -2187,7 +2187,7 @@ spec: (A26) The recorder never records raw keystrokes: text typed in insert mode
 → `slots = '⦉c⦊ [b] ⟦-⟧'`  
 → `eq(Extra.at_least(child.messages()), {})`  
 note: A bug found while porting: a tracked buffer wiped with noautocmd, here the window's current buffer. Decided 2026-10-21: the UI repairs it on the spot, within one refresh, as cleanup's re-point would (like navigation, Q18): the window shows b, so b is current and c the ternary.  
-spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't make the UI loop error: `:e a`, `:e b`, `:e c`, then `noautocmd bwipeout` of c give no hook failure over the next ticks. Without the repair, "Invalid buffer id" comes on every tick (`ui/routines.lua:1139`); w…  
+spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't make the UI loop error: `:e a`, `:e b`, `:e c`, then `noautocmd bwipeout` of c give no hook failure over the next ticks. Without the repair, "Invalid buffer id" comes on every tick (`ui/routines.lua:1165`); w…  
 `tests/test_negative.lua:723`
 
 **T243 [char]** (I23) the check runs at graduation: a stale secondary note naming the graduated buffer is dropped ⚑ state set by hand  
@@ -2371,7 +2371,7 @@ note: x is the primary, switched off; then T150's first seven keys give {c=c s=a
 spec: Q6 on the fallback: with the primary disabled, `{c=A s=S t=T}` and `dtm[T] = S`, `<M-;><M-f>` acts as `<M-f>` and rewrites `dtm[T]` to A before the swap.  
 `tests/test_primary_jump.lua:141`
 
-## tests/test_primary_keys.lua (3 cases: 3 char)
+## tests/test_primary_keys.lua (4 cases: 4 char)
 
 **T59 [char]** toggle_primary: empty queue gives [a]on, again [a]off, on another buffer [a]on with the queue unchanged  
 `:e a` → `primary = '[]off'`  
@@ -2392,6 +2392,11 @@ spec: `set_primary` on an empty queue gives `[a]on`; on b it gives `[b,a]on`; on
 **T156 [char]** the toggle_primary keymap description no longer reads "Toggle current buffer as primary"  
 spec: The `toggle_primary` keymap's description no longer reads "Toggle current buffer as primary" (Q8).  
 `tests/test_primary_keys.lua:36`
+
+**T451 [char]** (A9, A10) the primary keys run no redraw!  
+`:e a`, `:e b`, `<M-;><M-x>`, `<M-;><M-x>`, `<M-;><M-c>` → `eq({ bang = bang, status = status, tabline = tabline }, { bang = false, status = true, tabline = true })`  
+spec: (A9, A10) `<M-;><M-x>` and `<M-;><M-c>` run no `redraw!`: they redraw the status lines and the tabline.  
+`tests/test_primary_keys.lua:43`
 
 ## tests/test_primary_window.lua (12 cases: 8 char, 3 target, 1 today)
 
@@ -3663,13 +3668,13 @@ note: the rename: b.txt copied to g.txt, b.txt closed the repair: b's buffer wip
 spec: (A27) A close by a rename or a repair turns the life line closed: T417's `:saveas g.txt` gives b.txt's result a bar in the closed state's colour, and so does T398's repair, b.txt kept on the editor's list.  
 `tests/test_trail.lua:568`
 
-## tests/test_ui.lua (13 cases: 11 char, 2 target)
+## tests/test_ui.lua (17 cases: 17 char)
 
 **T115 [char]** the winbar holds the slots in order, with their highlights  
 `:e c`, `:e d`, `<M-f>`, `:e e` → `slots = '⦉d⦊ [e] ⟦c⟧'`  
 → `eq({ in_order(winbar(), {`  
 spec: For `{c=e s=c t=d}`, the winbar holds these pieces in order (seen in run s14): `%#WinbarBufnrTernary#⦉<d>⦊ `, then `%#WinbarBufnrCurrent#[<e>] `, then `%#WinbarFilenameCurrent#e.txt`, then `%#WinbarBufnrSecondary#⟦<c>⟧ `, then `%#WinbarFilenameSecondary#c.txt`. `<x>` stands for t…  
-`tests/test_ui.lua:38`
+`tests/test_ui.lua:39`
 
 **T116 [char]** a closed ternary shows as ⦉ … name ⦊ with no buffer number  
 `:e a`, `:e b`, `:e c`, `<M-.>` → `slots = '⦉c⦊ [b] ⟦-⟧'`  
@@ -3679,69 +3684,92 @@ spec: For `{c=e s=c t=d}`, the winbar holds these pieces in order (seen in run s
 → `eq(inner:find('%d'), nil)`  
 note: <M-.> on c lands on b and leaves c in the ternary as a closed hash (T80).  
 spec: A closed ternary is shown as `⦉ … name ⦊` with no buffer number.  
-`tests/test_ui.lua:52`
+`tests/test_ui.lua:53`
 
 **T117 [char]** the current buffer as the primary shows as ⦉N⦊ in WinbarBufnrPrimary  
 `:e a`, `<M-;><M-c>` → `primary = '[a]on'`  
 → `eq(in_order(winbar(), { '%#WinbarBufnrPrimary#⦉' .. bufnr('a.txt') .. '⦊ ' }), true)`  
 spec: When the current buffer is the primary, it's shown as `⦉N⦊` in `WinbarBufnrPrimary`.  
-`tests/test_ui.lua:63`
+`tests/test_ui.lua:64`
 
 **T118 [char]** a slot closed with :bdelete shows its basename, not its full path  
 `:e a`, `:e b`, `:e c`, `:bdelete b.txt` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 → `eq(part:find('# b.txt ⦊', 1, true) ~= nil, true)`  
 spec: A slot closed with `:bdelete` shows its basename, not its full path.  
-`tests/test_ui.lua:69`
+`tests/test_ui.lua:70`
 
 **T119 [char]** get_buffer_relationships does not throw when current = primary, or it is gone (Q16)  
 `:e a`, `<M-;><M-c>` → `eq(got, { true })`  
 spec: `get_buffer_relationships` doesn't throw when current = primary, or it's gone (Q16).  
-`tests/test_ui.lua:78`
+`tests/test_ui.lua:79`
 
 **T120 [char]** get_smart_basename is a function  
 → `eq(child.lua('return type(require("cavediver").get_smart_basename)'), 'function')`  
 spec: `require('cavediver').get_smart_basename` is a function.  
-`tests/test_ui.lua:90`
+`tests/test_ui.lua:91`
 
 **T121 [char]** compare_buffers ranks by recency; bufnr_is_displayed is true for tracked, false for help  
 `:e a`, `:e b` → `eq(got, { true, false })`  
 `:help` → `eq(got, { true, false })`  
 spec: `compare_buffers(a, b)` is true when a was visited more recently than b; `bufnr_is_displayed` is true for tracked buffers and false for help.  
-`tests/test_ui.lua:94`
+`tests/test_ui.lua:95`
 
 **T122 [char]** with 40 tracked buffers, bufnr_is_displayed is true for all 40 (Q5)  
 → `eq(got, { 40, 40 })`  
 spec: With 40 tracked buffers, `bufnr_is_displayed` is true for all 40 (Q5).  
-`tests/test_ui.lua:114`
+`tests/test_ui.lua:115`
 
-**T123 [target]** hide_bufferline() and show_bufferline() do not throw  
+**T123 [char]** hide_bufferline() and show_bufferline() do not throw  
 → `eq(got, { true, true })`  
 spec: `hide_bufferline()` and `show_bufferline()` don't throw.  
-`tests/test_ui.lua:134`
+`tests/test_ui.lua:135`
 
 **T124 [char]** while cycling, get_theme_bg_color(true) is the detached focused colour  
 `:e a`, `:e b`, `<M-m>` → `eq(got, { 'cycling', true })`  
 spec: While cycling, `get_theme_bg_color(true)` returns `colors.cokeline.bg.detached.focused`.  
-`tests/test_ui.lua:144`
+`tests/test_ui.lua:145`
 
 **T170 [char]** the engine has no machine named window (D25)  
-→ `eq(got, { 'history', 'navigation', 'storage', 'ui_bufferline', 'ui_indicators', 'ui_loop' })`  
-spec: (D25) The engine has no machine named `window`; `require('cavediver.engine'):list()` gives the other six.  
-`tests/test_ui.lua:157`
+→ `eq(got, { 'history', 'navigation', 'storage', 'ui_bufferline', 'ui_indicators', 'ui_loop', 'ui_winbar' })`  
+spec: (D25) The engine has no machine named `window`; `require('cavediver.engine'):list()` gives `history`, `navigation`, `storage`, `ui_bufferline`, `ui_indicators`, `ui_loop` and `ui_winbar`, the winbar's own, which the toggles build (M12).  
+`tests/test_ui.lua:158`
 
 **T169 [char]** the mapped keys have their own descriptions (D3)  
 → `eq(got, {`  
 spec: (D3) The `desc` of the mapped keys: `toggle_primary` "Switch the primary on or off", `close_buffer` "Close the current buffer", `open_primary_buffer_history` "Open the primary queue"; no two keys share a description.  
-`tests/test_ui.lua:162`
+`tests/test_ui.lua:163`
 
-**T168 [target]** the pick letter takes its colour from the config (D2)  
-`:e a`, `:e b` → `eq(pick_colours('#111111', '#222222'), { close = '#111111', focus = '#222222' })`  
+**T168 [char]** the pick letter takes its colour from the config (D2)  
+`:e a`, `:e b` → `eq(child.lua('return require("cavediver.configs").colors.cokeline.is_picking_focus'), '#4385BE')`  
+→ `eq(pick_colours('#111111', '#222222'), { close = '#111111', focus = '#222222' })`  
 → `eq(pick_colours('#333333', '#444444'), { close = '#333333', focus = '#444444' })`  
 note: cokeline is stubbed: the picking state comes from _G.CDV_PICK, and the pick letter's component is the one whose text is the letter while picking.  
-spec: (D2) While cokeline is picking, the pick letter's colour is `colors.cokeline.is_picking_close` (closing) or `colors.cokeline.is_picking_focus` (focusing) from the config; setting either changes the letter's colour.  
-`tests/test_ui.lua:193`
+spec: (D2) While cokeline is picking, the pick letter's colour is `colors.cokeline.is_picking_close` (closing) or `colors.cokeline.is_picking_focus` (focusing) from the config; setting either changes the letter's colour. By default `is_picking_focus` is `#4385BE` (the author, 2026-10-2…  
+`tests/test_ui.lua:194`
 
-## tests/test_windows.lua (4 cases: 4 char)
+**T446 [char]** (M12) the toggles' commands, with no keymap  
+`:e a`, `:e b`, `:CavediverWinbar off`, `:CavediverWinbar on`, `:CavediverWinbar`, `:CavediverWinbar toggle`, `:CavediverIndicators off`, `:CavediverIndicators on`, `:CavediverBufferline off`, `:CavediverBufferline on` → `eq({ wb = wb, marks = marks, shown = shown, keyed = keyed }, {`  
+spec: (M12) The toggles' commands: `:CavediverWinbar off` empties the winbar and it stays empty through the refresh, `on` brings it back, and `toggle` with no argument flips it; `:CavediverIndicators off` takes the role marks off the bufferline's index, and `on` puts them back; `:Caved…  
+`tests/test_ui.lua:246`
+
+**T447 [char]** (M12) with winbar.own off, cavediver writes no winbar, and offers its segment  
+`:e a`, `:e b` → `eq(S2.save(child, cwd), { true })`  
+→ `eq(S2.load(child, cwd), { true })`  
+→ `eq({ refreshed = refreshed, loaded = loaded, current = segment:find('[' .. b .. ']', 1, true) ~= nil,`  
+spec: (M12) With `winbar = { own = false }`, cavediver writes no winbar: a winbar set by hand on a tracked window at `⦉a⦊ [b] ⟦-⟧` stays through the refresh, a save, and a load from idle, whose teardown clears winbars otherwise; and `require('cavediver').winbar_segment()` gives the win…  
+`tests/test_ui.lua:286`
+
+**T448 [char]** (M12) the winbar's skip list is configurable, and replaces the default one  
+`:e a`, `:e b` → `eq({ default = default, skipped = skipped, replaced = replaced }, { default = true, skipped = '', replaced = true })`  
+spec: (M12) The winbar's skip list is configurable: with `winbar = { skip_filetypes = { 'skipme' } }`, a tracked window whose buffer's filetype is `skipme` gets no winbar; with the defaults, it gets one.  
+`tests/test_ui.lua:304`
+
+**T450 [char]** (M12, P26) marked buffers come from the provider  
+`:e a`, `:e b`, `:e c`, `:e a` → `eq({ marked = marked, off = off }, { marked = { a = false, b = { true, 1 }, c = false }, off = false })`  
+spec: (M12, P26) Marked buffers come from the provider: with `marks_provider` returning b.txt's path, b is marked in the bufferline (`is_harpooned`) with its index 1, and a and c aren't; with `marks_provider = false`, nothing is marked though harpoon's stub lists b.  
+`tests/test_ui.lua:316`
+
+## tests/test_windows.lua (5 cases: 5 char)
 
 **T92 [char]** <M-,> toggles between the last two windows  
 `:e a`, `:vsplit`, `:e b` → `eq(w1 ~= w2, true)`  
@@ -3764,6 +3792,11 @@ note: The window <M-,> would go back to now shows a minimap.
 spec: `<M-,>` skips a previous window whose filetype is `minimap`.  
 `tests/test_windows.lua:42`
 
+**T449 [char]** (A17) <M-,>'s skip list is configurable  
+`:e a`, `:vsplit`, `:e b`, `<M-,>`, `<M-,>` → `eq({ skipped = skipped, went = child.win() == w1 }, { skipped = true, went = true })`  
+spec: (A17) `<M-,>`'s skip list is configurable: with `toggle_window = { skip_filetypes = { 'mything' } }`, `<M-,>` skips a previous window whose filetype is `mything`, and goes to one whose filetype is `minimap`.  
+`tests/test_windows.lua:56`
+
 **T194 [char]** one jump table serves every tab  
 `:e a`, `:vsplit`, `:e b`, `:tabnew`, `:e c`, `:vsplit`, `:e d` → `shown = 'd'`  
 `:tabnext 1` → `eq(child.win(), tab1_win)`  
@@ -3773,5 +3806,5 @@ spec: `<M-,>` skips a previous window whose filetype is `minimap`.
 → `eq(child.lua('return vim.fn.tabpagenr()'), 1)`  
 note: Tab 1: a | b. Tab 2: c | d. <M-,> goes to the window just left, d's window in tab 2. And <M-,> there comes back.  
 spec: (D17) One jump table serves every tab: tab 1 with two windows (`:e a`, `:vsplit`, `:e b`), then `:tabnew`, `:e c`, `:vsplit`, `:e d`. Back in tab 1 (`:tabnext 1`), `<M-,>` goes to d's window in tab 2, the window just left, and `<M-,>` there comes back **[run `t/pkA_d17.lua`]**.  
-`tests/test_windows.lua:56`
+`tests/test_windows.lua:71`
 
