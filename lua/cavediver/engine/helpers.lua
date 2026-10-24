@@ -1,5 +1,10 @@
 local M = {}
 
+---Called with a hook's name and its error when a hook that isn't critical fails. The ledger
+---sets it, for its dump; the engine knows nothing of the ledger
+---@type fun(name: string, err: string)|nil
+M.on_failure = nil
+
 function M.get_keys(tbl)
 	local keys = {}
 	for k, _ in pairs(tbl) do
@@ -42,6 +47,9 @@ function M.execute_transition(from_state, to_state, mode, context, statemachine)
 					error(message, 0)
 				end
 				vim.notify(message, vim.log.levels.ERROR)
+				if M.on_failure then
+					pcall(M.on_failure, hook.name, tostring(error_msg))
+				end
 			end
 		end
 	end

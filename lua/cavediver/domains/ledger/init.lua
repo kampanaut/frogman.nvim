@@ -23,17 +23,42 @@ M.note = routines.note
 M.slots_moved = routines.slots_moved
 M.open_step = routines.open_step
 
+---Raise an error for something that shouldn't happen, dumping the steps that led there first.
+---
+---Every "this is impossible" in cavediver goes through here. The dump is written once per
+---distinct message, then the error is raised as `error()` would have raised it at the caller.
+---
+---@param message string What shouldn't have happened
+function M.never(message)
+	pcall(require('cavediver.domains.ledger.dump').never, message)
+	error(message, 2)
+end
+
+---Check if a buffer is the flight recorder's dump, which the ledger records nothing about.
+---
+---@param bufnr Bufnr
+---@return boolean dump True if the buffer is a dump's
+local function is_dump(bufnr)
+	return vim.api.nvim_buf_is_valid(bufnr) and vim.b[bufnr].cavediver_dump == true
+end
+
 ---Create the ledger's autocmds in cavediver's augroup. setup() calls this before the other
 ---domains', so a step has begun by the time their handlers act on the same event.
 ---
+---It also hooks the dump into the engine's catch, so a hook that fails is dumped.
+---
 ---@param group integer The cavediver augroup
 function M.init_autocmds(group)
+	require('cavediver.engine.helpers').on_failure = function(name, err)
+		require('cavediver.domains.ledger.dump').hook_failed(name, err)
+	end
+
 	-- a command line entered is a step under its text, never the keys that typed it.
 	vim.api.nvim_create_autocmd("CmdlineLeave", {
 		group = group,
 		callback = function()
 			local event = vim.v.event
-			if event.cmdtype ~= ":" or event.abort then
+			if event.cmdtype ~= ":" or event.abort or is_dump(vim.api.nvim_get_current_buf()) then
 				return
 			end
 			local line = vim.fn.getcmdline()
@@ -52,6 +77,9 @@ function M.init_autocmds(group)
 	vim.api.nvim_create_autocmd({ "BufEnter", "BufDelete", "BufWritePost", "BufFilePost" }, {
 		group = group,
 		callback = function(args)
+			if is_dump(args.buf) then
+				return
+			end
 			routines.begin("event", args.event .. " " .. routines.buffer_label(args.buf), vim.api.nvim_get_current_win())
 		end,
 	})
@@ -60,6 +88,9 @@ function M.init_autocmds(group)
 		group = group,
 		callback = function()
 			local winid = vim.api.nvim_get_current_win()
+			if is_dump(vim.api.nvim_win_get_buf(winid)) then
+				return
+			end
 			routines.begin("event", "WinEnter win " .. vim.api.nvim_win_get_number(winid), winid)
 		end,
 	})
@@ -68,6 +99,9 @@ function M.init_autocmds(group)
 		group = group,
 		pattern = "buftype",
 		callback = function()
+			if is_dump(vim.api.nvim_get_current_buf()) then
+				return
+			end
 			routines.begin("event", "OptionSet buftype", vim.api.nvim_get_current_win())
 		end,
 	})

@@ -1,6 +1,6 @@
 # Test review sheet
 
-520 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+522 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -492,7 +492,7 @@ spec: Q17, the only window: `:help`, `:only`, `<M-.>`. The help buffer is closed
 spec: Q17, a running terminal: `<M-.>` on a `:terminal` whose job is still running refuses with a message, and the terminal stays.  
 `tests/test_closing.lua:314`
 
-## tests/test_cycling.lua (28 cases: 23 char, 5 target)
+## tests/test_cycling.lua (30 cases: 30 char)
 
 **T69 [char]** <M-m> from normal starts cycling and leaves the current slot  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -703,7 +703,7 @@ note: N, the ring's length, is ledger.ring (A26, A27); set to 5 here, so ten act
 spec: (A26) With no assertion, the recorder writes no file and opens no buffer, and the ring never holds more than N steps.  
 `tests/test_cycling.lua:451`
 
-**T200 [target]** the restore assertion dumps the last steps to a file and a scratch buffer  
+**T200 [char]** the restore assertion dumps the last steps to a file and a scratch buffer  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
 `<M-;><M-t>` → `eq(ok, false)`  
 → `eq(err:find('Remembered secondary is the same as current secondary', 1, true) ~= nil, true)`  
@@ -714,14 +714,14 @@ note: A file whose last row is the failing step, on c's slots. A scratch buffer 
 spec: (A26) When the restore assertion fires, a file appears under `stdpath("state")/cavediver/` and a scratch buffer opens, both holding the last steps as rows: action or event, window, `⦉t⦊ [c] ⟦s⟧` and notes, ending at the failing step.  
 `tests/test_cycling.lua:464`
 
-**T203 [target]** a planted rule break dumps at the next step ⚑ state set by hand  
+**T203 [char]** a planted rule break dumps at the next step ⚑ state set by hand  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 `:vsplit`, `:e d`, `:e e`, `:e x` → `eq(#Extra.new_files(before, child.dumps()), 1)`  
 note: A planted stale note, not a real route: every real route into a rule break is one the decided fixes remove, so the recorder is tested on its own. The note is planted in the other window, so the step taken in this window can't repair it first. Plant in the first window: c's ternary note names b, whic  
 spec: (A26) A planted rule break dumps at the next step: with c current in one window and b its ternary, c's ternary note is set to b by hand, and a step in the other window (`:e x`) produces one dump. The break is planted because every real route into one is a route the decided fixes …  
 `tests/test_cycling.lua:500`
 
-**T204 [target]** a session load and a cleanup re-point appear in the dump, tagged load and timer ⚑ state set by hand  
+**T204 [char]** a session load and a cleanup re-point appear in the dump, tagged load and timer ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
 → `eq(other.slots(), '⦉-⦊ [c] ⟦b⟧')`  
 → `eq(other.slots(win2), '⦉c⦊ [x] ⟦-⟧')`  
@@ -733,7 +733,7 @@ note: Save a session from this child... ...and load it in a second one, with the
 spec: (A26) A session load and a cleanup re-point appear in the dump as steps tagged `load` and `timer`.  
 `tests/test_cycling.lua:515`
 
-**T205 [target]** a failure that repeats gives one dump, and the dump window is nofile, unlisted, untracked and unrecorded ⚑ state set by hand  
+**T205 [char]** a failure that repeats gives one dump, and the dump window is nofile, unlisted, untracked and unrecorded ⚑ state set by hand  
 → `eq(errs, 10)`  
 → `eq(#Extra.new_files(files_before, child.dumps()), 1)`  
 → `eq(#scratch > 0, true)`  
@@ -745,21 +745,38 @@ spec: (A26) A session load and a cleanup re-point appear in the dump as steps ta
 … and 2 more  
 note: Nothing tracked yet, so the bufferline's colour callback throws on every call, as it would on every redraw. Entering the dump window isn't recorded: after a visit there, a second,  
 spec: (A26) A failure that repeats (a highlight callback throwing on every redraw) gives one dump, and the dump window is neither recorded nor tracked: its buffer is `nofile` and unlisted, with no hash, no triquetra and no place in the bufferline, and after a visit to its window, a sec…  
-`tests/test_cycling.lua:577`
+`tests/test_cycling.lua:578`
 
-**T333 [target]** a dump opens after the editor settles, and names files by alias and basename, never by full path  
+**T333 [char]** a dump opens after the editor settles, and names files by their paths  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
 `<M-;><M-t> (via _G.CDV_TEST.press)` → `eq(during.ok, false)`  
 → `eq(new_items(bufs_before, during.bufs), {})`  
 → `eq(#scratch > 0, true)`  
 → `eq(#files > 0, true)`  
-→ `eq(text:find(root, 1, true) == nil, true)`  
-→ `eq(text:find('c.txt', 1, true) ~= nil, true)`  
-note: T200's route. The scratch buffer isn't opened inside the failing call, only once the editor settles; and files are named by alias and basename, never by their full path, in the file and in the scratch buffer alike.  
-spec: (A26) A dump opens its scratch buffer only once the editor settles, and names files by alias and basename, never by full path: on T200's route, no buffer is added inside the failing call, the scratch buffer is there once it settles, and neither it nor the file holds the project's…  
-`tests/test_cycling.lua:641`
+→ `eq({ path = text:find(root .. '/c.txt', 1, true) ~= nil, hash = text:find(c, 1, true) ~= nil }, { path = true, hash = true })`  
+note: T200's route. The scratch buffer isn't opened inside the failing call, only once the editor settles; and files are named by their full path and hash, in the file and in the scratch buffer alike: the file is sealed.  
+spec: (A26) A dump opens its scratch buffer only once the editor settles, and names files by their paths: on T200's route, no buffer is added inside the failing call, the scratch buffer is there once it settles, and both it and the file name `c.txt` by its full path, and give its hash.…  
+`tests/test_cycling.lua:642`
 
-## tests/test_decisions.lua (52 cases: 46 char, 6 target)
+**T333 [char]** a hook failure's dump, with a list named by the cwd, holds the hook and the session  
+`:e a`, `:e b`, `:e c` → `eq(#texts >= 2, true)`  
+→ `eq({ session = text:find(root, 1, true) ~= nil, hook = text:find('t333_breaks', 1, true) ~= nil },`  
+spec: (A26) A dump opens its scratch buffer only once the editor settles, and names files by their paths: on T200's route, no buffer is added inside the failing call, the scratch buffer is there once it settles, and both it and the file name `c.txt` by its full path, and give its hash.…  
+`tests/test_cycling.lua:672`
+
+**T460 [char]** a dump is sealed, and :CavediverDump opens it from the directory it was written in  
+`:e a`, `:e b`, `:e c`, `<M-f>` → `eq(child.step('<M-;><M-t>'), false)`  
+`<M-;><M-t>` → `eq(#files, 1)`  
+→ `eq(child.lua([[`  
+→ `eq(last_row(lines):find('<M-;><M-t>', 1, true) ~= nil, true)`  
+→ `eq(vim.tbl_contains(lines, 'replay:'), true)`  
+→ `eq(new_items(bufs_before, bufs()), {})`  
+→ `eq(Extra.has(child.messages(), "doesn't open here"), true)`  
+note: T200's route. The file on disk is sealed, and :CavediverDump opens it from the directory it was written in only.  
+spec: (A26) A dump is sealed: on T200's route the file starts with `CDV1` and holds none of its text in clear (no `c.txt`, no `<M-;><M-t>`, no `cavediver:`); `:CavediverDump <file>` opens it in a buffer holding the failing row and the `replay:` part; after `:cd sub`, the same command s…  
+`tests/test_cycling.lua:698`
+
+## tests/test_decisions.lua (52 cases: 52 char)
 
 **T250 [char]** (P2, A1) the slotting happens after the event, not inside it  
 `:e a`, `:e b` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
@@ -1027,75 +1044,75 @@ spec: (A22) The stale pass keeps the history of the file it re-points: T113's st
 spec: (A23) `:CavediverTriquetra` and `:CavediverTriquetraVerbose` print `primary_buffer[1]` as "Primary buffer".  
 `tests/test_decisions.lua:602`
 
-**T275 [target]** (A26) the fill assertion dumps  
+**T275 [char]** (A26) the fill assertion dumps  
 `:e a`, `:e b`, `:vsplit`, `<M-f> (via _G.CDV_TEST.press)` → `eq(#files > 0, true)`  
 note: The ordered list's first two entries swapped by hand, so its first entry isn't the window's current buffer (T176).  
 spec: (A26) Each "shouldn't happen" dumps: the fill assertion (T176's second half), "Duplicates detected" (T34's state), and a hook failure (a hook that throws, bound by hand to the history machine's updates) each leave a new file under `stdpath("state")/cavediver/` (the location T200 …  
-`tests/test_decisions.lua:621`
+`tests/test_decisions.lua:620`
 
-**T275 [target]** (A26) "Duplicates detected" dumps ⚑ state set by hand  
+**T275 [char]** (A26) "Duplicates detected" dumps ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `:e d` → `slots = '⦉c⦊ [d] ⟦c⟧'`  
 `:e a` → `eq(Extra.has(child.messages(), 'Duplicates detected'), true)`  
 → `eq(#files > 0, true)`  
 note: s = t, set directly (T34).  
 spec: (A26) Each "shouldn't happen" dumps: the fill assertion (T176's second half), "Duplicates detected" (T34's state), and a hook failure (a hook that throws, bound by hand to the history machine's updates) each leave a new file under `stdpath("state")/cavediver/` (the location T200 …  
-`tests/test_decisions.lua:637`
+`tests/test_decisions.lua:636`
 
-**T275 [target]** (A26) a hook failure dumps  
+**T275 [char]** (A26) a hook failure dumps  
 `:e a`, `:e b` → `eq(Extra.has(child.messages(), "Hook 't275_breaks' failed"), true)`  
 → `eq(#files > 0, true)`  
 note: A failing hook bound by hand to the history machine's updates.  
 spec: (A26) Each "shouldn't happen" dumps: the fill assertion (T176's second half), "Duplicates detected" (T34's state), and a hook failure (a hook that throws, bound by hand to the history machine's updates) each leave a new file under `stdpath("state")/cavediver/` (the location T200 …  
-`tests/test_decisions.lua:654`
+`tests/test_decisions.lua:653`
 
-**T276 [target]** (A26) a planted I1 break dumps at the next step ⚑ state set by hand  
+**T276 [char]** (A26) a planted I1 break dumps at the next step ⚑ state set by hand  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 `:vsplit`, `:e d`, `:e e` → `slots = '⦉b⦊ [c] ⟦b⟧'`  
 `:e x` → `eq(#files, 1)`  
 note: T203's layout, with a duplicate planted in the first window instead of a stale note: c's secondary set to b, which is already its ternary.  
 spec: (A26) A planted I1 break dumps at the next step: T203's layout, with c's secondary set by hand to b, its ternary, and `:e x` in the other window produces one dump.  
-`tests/test_decisions.lua:667`
+`tests/test_decisions.lua:666`
 
-**T277 [target]** (A26) the error says where the dump file is  
+**T277 [char]** (A26) the error says where the dump file is  
 → `eq(#files > 0, true)`  
 → `eq(named, true)`  
 spec: (A26) The error message says where the dump file is: T200's restore assertion, and the error or a message names the new file.  
-`tests/test_decisions.lua:694`
+`tests/test_decisions.lua:693`
 
-**T278 [target]** (A26) steps from keymaps and from events are tagged keymap and event  
+**T278 [char]** (A26) steps from keymaps and from events are tagged keymap and event  
 → `eq(#files > 0, true)`  
 → `eq(tagged, true)`  
 spec: (A26) Steps are tagged by cause: in T200's dump, the steps from keymaps and from events carry the tags `keymap` and `event` (T204 checks `load` and `timer`).  
-`tests/test_decisions.lua:706`
+`tests/test_decisions.lua:705`
 
 **T279 [char]** (I5) the registry stays a bijection over random walks ⚑ random walk  
 spec: (I5) The registry stays a bijection, for buffers and for paths: random walks with T130's mix plus `:enew`, a No Name buffer with text, `<M-.>` and `<M-S-w>`, checked after every action.  
-`tests/test_decisions.lua:744`
+`tests/test_decisions.lua:743`
 
 **T280 [char]** (I6) a buffer wiped without events leaves no stale registration after a cleanup tick ⚑ state set by hand  
 `:e a`, `:e b`, `:e c` → `eq(child.lua([[`  
 note: b, the ternary, wiped without events: no BufDelete, so the registry is stale until the cleanup tick (4 s, first tick at once).  
 spec: (I6) A buffer wiped without events leaves no stale registration once a cleanup tick has run: `:e a`, `:e b`, `:e c`, `noautocmd bwipeout` of b, then a 4.6 s wait leave every registered buffer number valid.  
-`tests/test_decisions.lua:750`
+`tests/test_decisions.lua:749`
 
 **T281 [char]** (I7) after a cleanup pass, no closed hash has an open buffer, over random walks ⚑ random walk  
 note: Checked after a cleanup pass forced after every action ("eventually").  
 spec: (I7) After a cleanup pass, no hash on the closed stack has an open buffer: random walks with T279's mix, a `cleanup_system` pass forced after every action ("eventually enforced").  
-`tests/test_decisions.lua:764`
+`tests/test_decisions.lua:763`
 
 **T282 [char]** (I8) the current slot is the shown buffer outside cycling and visits, over random walks ⚑ random walk  
 note: Cycles left open across a window jump (Y1, Y2), as in T128.  
 spec: (I8) A window's current slot is the hash of the buffer it shows, except in the window a cycle runs in and during a visit: random walks with T128's mix, cycles left open across a window jump included. A cycle left open across a window jump is cancelled, so work in the other window…  
-`tests/test_decisions.lua:769`
+`tests/test_decisions.lua:768`
 
 **T283 [char]** (I9) every triquetra belongs to a valid, non-floating window, over random walks ⚑ random walk  
 spec: (I9) Every triquetra belongs to a valid, non-floating window: random walks with T128's mix plus `:enew`, `<M-.>` and `<M-S-w>`.  
-`tests/test_decisions.lua:773`
+`tests/test_decisions.lua:772`
 
 **T284 [char]** (I9) :file onto a name not on disk in a split leaves no triquetra for a dead window  
 `:e a`, `:vsplit`, `:e b`, `:file new.txt` → `eq(child.lua([[`  
 spec: (I9) `:file` onto a name not on disk, in a split, leaves no triquetra for a dead window: `:e a`, `:vsplit`, `:e b`, `:file new.txt`.  
-`tests/test_decisions.lua:777`
+`tests/test_decisions.lua:776`
 
 **T285 [char]** (I14) a save with a slot holding a hash with no path succeeds ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
@@ -1103,13 +1120,13 @@ spec: (I9) `:file` onto a name not on disk, in a split, leaves no triquetra for 
 → `eq(errors(), {})`  
 note: A secondary set to a hash nothing knows, saved in the same call so no other pass runs first.  
 spec: (I14) A save with a slot holding a hash with no path succeeds and reports nothing: at `⦉c⦊ [d] ⟦b⟧`, the secondary set by hand to an unknown hash, then `save_session` in the same call.  
-`tests/test_decisions.lua:795`
+`tests/test_decisions.lua:794`
 
 **T286 [char]** (I21) the critical save hook throws to the caller and leaves storage where it was  
 `:e a` → `eq({ got[1], state }, { false, before })`  
 note: T143's read-only session directory. The transition is abandoned, so storage stays where it was: idle after a load or a save, bare before either (as here, a fresh process's first save).  
 spec: (I21) The critical save hook throws to the caller, and the abandoned transition leaves storage where it was: `idle` after a load or a save, `bare` before either. T143's read-only session directory, saved from a fresh process (so `bare`).  
-`tests/test_decisions.lua:811`
+`tests/test_decisions.lua:810`
 
 **T287 [char]** (I23, A21) a cleanup re-point runs the check on the buffer it makes current ⚑ state set by hand  
 `:e d`, `:e b`, `:e c`, `<M-f>`, `:e a` → `slots = '⦉c⦊ [a] ⟦b⟧'`  
@@ -1118,27 +1135,27 @@ spec: (I21) The critical save hook throws to the caller, and the abandoned trans
 `<M-;><M-t>` → `eq({ ok, err }, { true, nil })`  
 note: T163's re-point: the window put on d without a BufEnter, then a's buffer wiped. d's secondary note names b, the window's secondary, set by hand; the secondary stays b either way, so the note is stale once d is current.  
 spec: (I23, A21, final section) The check runs at a cleanup pass that moved a window's slots: T163's re-point, with d's secondary note set by hand to b, the window's secondary; once d is current I23 holds and `<M-;><M-t>` doesn't throw.  
-`tests/test_decisions.lua:828`
+`tests/test_decisions.lua:827`
 
 **T288 [char]** (D11) under the window view, :close leaves no tie: :e a after it ranks a first  
 `:e a`, `:e b`, `:vsplit`, `:close`, `:e a` → `eq(Dec.leftmost(child), nil)`  
 spec: (D11, bug found while porting) Under the window view, `:close` leaves no tie: `:e a`, `:e b`, `:vsplit`, `:close`, `:e a` put a strictly first in the bufferline order.  
-`tests/test_decisions.lua:841`
+`tests/test_decisions.lua:840`
 
 **T289 [char]** (D25) the window machine is gone: its file, its SHOWING_ constants and its require  
 → `eq({`  
 spec: (D25) The window machine goes: no `window/sm.lua`, no `SHOWING_` constants in `window/states.lua`, and nothing requires `cavediver.domains.window.sm`. A doc check, matched by text.  
-`tests/test_decisions.lua:859`
+`tests/test_decisions.lua:858`
 
 **T290 [char]** (D18, D22, D24) STATUS and the old project CLAUDE.md live in archive/  
 → `eq({`  
 spec: (D18, D22, D24) STATUS and the old project `CLAUDE.md` live in `archive/`, and neither is at the repo root. A doc check. It holds today already, so it's [char]: a guard that stays true when the decided code lands.  
-`tests/test_decisions.lua:873`
+`tests/test_decisions.lua:872`
 
 **T291 [char]** (D8, D13) README:15 and README:355 stay as written  
 → `eq({`  
 spec: (D8, D13) README:15 ("Closed buffers reopen when accessed through relationships") and README:355 ("Every time you jump to secondary…") stay as written. A doc check, matched by text. It holds today already, so it's [char]: a guard that stays true when the decided code lands.  
-`tests/test_decisions.lua:882`
+`tests/test_decisions.lua:881`
 
 ## tests/test_docs.lua (24 cases: 14 char, 10 target)
 
@@ -1256,13 +1273,14 @@ spec: `to()` on a transition with no bound hook throws from `to()` itself.
 → `eq(#msgs, 1)`  
 → `eq(msgs[1].level, vim.log.levels.ERROR)`  
 → `Helpers.expect.no_equality(msgs[1].msg:find("Hook 'breaks' failed during transition a->b", 1, true), nil)`  
+note: the flight recorder's notice of its dump is a message of its own (A26)  
 spec: A hook that errors is reported as "Hook '<name>' failed during transition a->b", the later hooks still run, and the state still changes.  
 `tests/test_engine.lua:33`
 
 **T3 [char]** sm:state() inside a hook returns the state being left  
 → `eq(got, { inside = 'a', after = 'b' })`  
 spec: `sm:state()` inside a hook returns the state being left.  
-`tests/test_engine.lua:54`
+`tests/test_engine.lua:57`
 
 **T4 [char]** hooks run in class order; no mode runs only "*" hooks, a mode adds its own  
 → `eq(got.none, { 'star1', 'star3' })`  
@@ -1270,22 +1288,22 @@ spec: `sm:state()` inside a hook returns the state being left.
 → `eq(got.m2, { 'm2_0', 'star1', 'star3' })`  
 note: registered out of class order, with distinct classes  
 spec: Hooks run in class order. `to()` without a mode runs only `"*"` hooks; `to(…, m)` also runs hooks filtered to `m`.  
-`tests/test_engine.lua:68`
+`tests/test_engine.lua:71`
 
 **T5 [char]** off(from, to, name) removes that hook from that transition and nothing else  
 → `eq(got, { 'g:a->b', 'h:b->a' })`  
 spec: `off(from, to, name)` removes that hook from that transition and nothing else.  
-`tests/test_engine.lua:98`
+`tests/test_engine.lua:101`
 
 **T6 [char]** transition modes are shared: a mode registered on one machine works on another (Q20)  
 → `eq(got, { ok_on = true, ok_to = true, ran = { 'named' } })`  
 spec: Transition modes are one table shared by every machine: a mode registered on one machine can be named by a hook on any other, and `to(…, m)` on any machine accepts it (Q20).  
-`tests/test_engine.lua:117`
+`tests/test_engine.lua:120`
 
 **T7 [char]** sm.history keeps every transition: 1,000 transitions, 1,000 entries (Q21)  
 → `eq(got, { n = 1000, all_same = true })`  
 spec: `sm.history` keeps every transition: after 1,000 transitions on one machine, its history holds all 1,000 (Q21).  
-`tests/test_engine.lua:139`
+`tests/test_engine.lua:142`
 
 ## tests/test_history.lua (9 cases: 9 char)
 
@@ -1825,7 +1843,7 @@ spec: With `dtm[X] = A` and the ternary T ≠ X, `:e X` from A rewrites `dtm[X] 
 → `eq(errs[1].level, vim.log.levels.ERROR)`  
 → `shown = 'a'`  
 → `slots = '⦉c⦊ [d] ⟦c⟧'`  
-note: s = t can't be reached by keys here; set it directly, as run s18 does the hook stops before any slot moves (A1)  
+note: s = t can't be reached by keys here; set it directly, as run s18 does the flight recorder's notice of its dump is a message of its own (A26) the hook stops before any slot moves (A1)  
 spec: Navigation with secondary equal to ternary reports "Duplicates detected in current triquetra".  
 `tests/test_navigation.lua:82`
 
@@ -1835,7 +1853,7 @@ spec: Navigation with secondary equal to ternary reports "Duplicates detected in
 → `slots = '⦉c⦊ [d] ⟦b⟧'`  
 → `notes = notes`  
 spec: Entering an untracked buffer, such as an `acwrite` buffer, leaves the slots alone (A2). For `:terminal` shown in the window, see T26 and T27.  
-`tests/test_navigation.lua:97`
+`tests/test_navigation.lua:100`
 
 **T151 [char]** Q6 on plain navigation: :e onto the secondary rewrites the ternary's note, and the restore then works  
 `:e a`, `:e b`, `:e c`, `:e b`, `<M-f>`, `:e a`, `<M-f>` → `slots = '⦉b⦊ [c] ⟦a⟧'`  
@@ -1846,19 +1864,19 @@ spec: Entering an untracked buffer, such as an `acwrite` buffer, leaves the slot
 → `slots = '⦉c⦊ [b] ⟦a⟧'`  
 note: :e a reaches the secondary by plain navigation  
 spec: Q6 on plain navigation: `:e a`, `:e b`, `:e c`, `:e b`, `<M-f>`, `:e a`, `<M-f>`, then `:e a` again, which reaches the secondary by plain navigation. The ternary's note is rewritten to the buffer left (`dtm[b] := c`), and `<M-S-f>`, `<M-;><M-r>` then restores without throwing, gi…  
-`tests/test_navigation.lua:114`
+`tests/test_navigation.lua:117`
 
 **T191 [char]** (D8) plain navigation onto the secondary writes the swap notes dsm{d-swap>b} dtm{d-swap>c}, no dsm[d]  
 `:e b`  
 spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary write the same notes: from `⦉c⦊ [d] ⟦b⟧`, either one gives `⦉c⦊ [b] ⟦d⟧` with the swap notes `dsm{d-swap>b}` and `dtm{d-swap>c}`, and no plain secondary note for d. T30 and T39 pin the same notes. Plain na…  
-`tests/test_navigation.lua:141`
+`tests/test_navigation.lua:144`
 
 **T191 [char]** (D8) <M-f> onto the secondary writes the swap notes dsm{d-swap>b} dtm{d-swap>c}, no dsm[d]  
 `<M-f>`  
 spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary write the same notes: from `⦉c⦊ [d] ⟦b⟧`, either one gives `⦉c⦊ [b] ⟦d⟧` with the swap notes `dsm{d-swap>b}` and `dtm{d-swap>c}`, and no plain secondary note for d. T30 and T39 pin the same notes. Plain na…  
-`tests/test_navigation.lua:147`
+`tests/test_navigation.lua:150`
 
-## tests/test_negative.lua (48 cases: 47 char, 1 target)
+## tests/test_negative.lua (48 cases: 48 char)
 
 **T207 [char]** (P5) a nofile scratch entered in a tracked window is not registered  
 `:e a`, `:e b` → `eq(registered(), true)`  
@@ -2173,7 +2191,7 @@ spec: (A21) A slot pointing at an open buffer is kept whatever the disk says: at
 spec: (A25) `disable()` clears the `cavediver` augroup and stops the timers, and afterwards `:e c` changes no slot and records nothing.  
 `tests/test_negative.lua:668`
 
-**T241 [target]** (A26) the flight recorder records keymap actions and events, never raw keystrokes ⚑ state set by hand  
+**T241 [char]** (A26) the flight recorder records keymap actions and events, never raw keystrokes ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
 `<M-;><M-t>` → `eq(ok, false)`  
 → `eq(#texts > 0, true)`  

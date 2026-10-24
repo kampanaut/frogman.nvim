@@ -608,8 +608,7 @@ T['T274 [char] (A23) the triquetra commands print primary_buffer[1] as "Primary 
 end
 
 -- The flight recorder (A26) ----------------------------------------------------
--- Not built. Its dumps go under stdpath('state')/cavediver/, as in
--- test_cycling.lua.
+-- Its dumps go under stdpath('state')/cavediver/, as in test_cycling.lua.
 
 local function dumps_after(fn)
 	local before = child.dumps()
@@ -618,7 +617,7 @@ local function dumps_after(fn)
 	return Extra.new_files(before, child.dumps())
 end
 
-T['T275 [target] (A26) the fill assertion dumps'] = function()
+T['T275 [char] (A26) the fill assertion dumps'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.cmd('vsplit')
 	child.settle()
@@ -634,7 +633,7 @@ T['T275 [target] (A26) the fill assertion dumps'] = function()
 	eq(#files > 0, true)
 end
 
-T['T275 [target] (A26) "Duplicates detected" dumps'] = function()
+T['T275 [char] (A26) "Duplicates detected" dumps'] = function()
 	child.steps({ ':e a', ':e b', ':e c', ':e d' })
 	-- s = t, set directly (T34).
 	child.lua([[
@@ -651,7 +650,7 @@ T['T275 [target] (A26) "Duplicates detected" dumps'] = function()
 end
 
 -- A failing hook bound by hand to the history machine's updates.
-T['T275 [target] (A26) a hook failure dumps'] = function()
+T['T275 [char] (A26) a hook failure dumps'] = function()
 	child.steps({ ':e a' })
 	child.lua([[
 		require('cavediver.domains.history').sm:on('attached', 'attached', 't275_breaks', function() error('planted') end, 5, true)
@@ -664,7 +663,7 @@ end
 
 -- T203's layout, with a duplicate planted in the first window instead of a
 -- stale note: c's secondary set to b, which is already its ternary.
-T['T276 [target] (A26) a planted I1 break dumps at the next step'] = function()
+T['T276 [char] (A26) a planted I1 break dumps at the next step'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	local win1 = child.win()
 	eq(child.slots(win1), '⦉b⦊ [c] ⟦-⟧')
@@ -691,7 +690,7 @@ local function fire_restore_assertion()
 	return files, err
 end
 
-T['T277 [target] (A26) the error says where the dump file is'] = function()
+T['T277 [char] (A26) the error says where the dump file is'] = function()
 	local files, err = fire_restore_assertion()
 	eq(#files > 0, true)
 	local text = err
@@ -703,12 +702,12 @@ T['T277 [target] (A26) the error says where the dump file is'] = function()
 	eq(named, true)
 end
 
-T['T278 [target] (A26) steps from keymaps and from events are tagged keymap and event'] = function()
+T['T278 [char] (A26) steps from keymaps and from events are tagged keymap and event'] = function()
 	local files = fire_restore_assertion()
 	eq(#files > 0, true)
 	local tagged = false
 	for _, f in ipairs(files) do
-		local text = table.concat(child.lua('return vim.fn.readfile(...)', { f }), '\n')
+		local text = child.lua('return require("cavediver.domains.ledger.dump").read(...) or ""', { f })
 		if text:find('%f[%w]keymap%f[%W]') and text:find('%f[%w]event%f[%W]') then tagged = true end
 	end
 	eq(tagged, true)

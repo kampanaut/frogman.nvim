@@ -88,6 +88,7 @@ local function row_of(winid, names)
 	end
 	return row
 end
+M.row_of = row_of
 
 ---A window's slots as they stand, for a move's row: the slots, the primary queue and its switch.
 ---
@@ -145,6 +146,7 @@ local function new_step(cause, trigger, winid)
 	if step.tab then
 		step.pool = require('cavediver.domains.history').routines.pool_of_tab(step.tab).id
 	end
+	require('cavediver.domains.ledger.dump').began(step)
 	return step
 end
 
@@ -200,6 +202,7 @@ local function keep(step)
 		i = i - 1
 	end
 	table.insert(ring, i + 1, step)
+	require('cavediver.domains.ledger.dump').kept()
 	local n = math.max(require('cavediver.configs').ledger.ring or 0, 0)
 	while #ring > n do
 		table.remove(ring, 1)
@@ -218,8 +221,13 @@ end
 
 ---Close a step: its row after is read now, it's kept when it did anything, and what it queued is
 ---said.
+---
+---A step held open its full time has its rules checked too. One the next trigger closed early may
+---still have follow-ups to land, so it isn't checked.
+---
 ---@param step CavediverLedgerStep
-local function close(step)
+---@param held boolean|nil True when the step was held open its full time
+local function close(step, held)
 	if step.closed then
 		return
 	end
@@ -235,6 +243,9 @@ local function close(step)
 		say(step)
 	end
 	step.told = {}
+	if held then
+		require('cavediver.domains.ledger.dump').closed(step)
+	end
 end
 
 ---Keep a step open for a few settles, then close it.
@@ -248,7 +259,7 @@ local function hold_open(step, left)
 		if left > 1 then
 			hold_open(step, left - 1)
 		else
-			close(step)
+			close(step, true)
 		end
 	end)
 end

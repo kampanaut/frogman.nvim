@@ -257,14 +257,14 @@ function M.bufferline.get_buffer_relationships(bufnr)
 
 	if is_secondary then
 		if has_true then
-			error("A buffer cannot have more than one role")
+			require('cavediver.domains.ledger').never("A buffer cannot have more than one role")
 		end
 		has_true = true
 	end
 
 	if is_ternary then
 		if has_true then
-			error("A buffer cannot have more than one role")
+			require('cavediver.domains.ledger').never("A buffer cannot have more than one role")
 		end
 		has_true = true
 	end
@@ -298,7 +298,7 @@ end
 function M.bufferline.get_theme_fg_color(bufnr, is_focused)
 	local ctriquetra = bufferline_state.current_window_triquetra
 	if not ctriquetra then
-		error("This should not happen: No current triquetra found.")
+		require('cavediver.domains.ledger').never("This should not happen: No current triquetra found.")
 	end
 	if bufnr == ctriquetra.primary_bufnr then
 		return configs.colors.primary.active
@@ -323,7 +323,7 @@ end
 function M.bufferline.get_theme_bg_color(is_focused)
 	local ctriquetra = bufferline_state.current_window_triquetra
 	if not ctriquetra then
-		error("This should not happen: No current triquetra found.")
+		require('cavediver.domains.ledger').never("This should not happen: No current triquetra found.")
 	end
 	if history.is_detached() then
 		if is_focused then
@@ -342,7 +342,7 @@ end
 local function get_theme_fg_by_slot(bufnr)
 	local ctriquetra = bufferline_state.current_window_triquetra
 	if not ctriquetra then
-		error("This should not happen: No current triquetra found.")
+		require('cavediver.domains.ledger').never("This should not happen: No current triquetra found.")
 	end
 	if bufnr == ctriquetra.secondary_bufnr then
 		return configs.colors.secondary.focused.bufnr
@@ -365,7 +365,7 @@ end
 function M.bufferline.get_buffer_bold(bufnr)
 	local ctriquetra = bufferline_state.current_window_triquetra
 	if not ctriquetra then
-		error("This should not happen: No current triquetra found.")
+		require('cavediver.domains.ledger').never("This should not happen: No current triquetra found.")
 	end
 	return bufnr == ctriquetra.current_bufnr
 end

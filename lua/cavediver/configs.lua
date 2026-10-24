@@ -86,6 +86,7 @@
 ---@field told table[] The messages it queued, said as it closes
 ---@field closed boolean|nil Whether it has closed
 ---@field torn boolean|nil A whole-editor load replaced what it did: the session manager's teardown
+---@field dumped boolean|nil Whether the flight recorder dumped in it
 
 ---Something cavediver did in a step.
 ---@class CavediverLedgerMove
@@ -317,9 +318,11 @@ local defaults = {
 			search_word = "*", -- the trail's: search for the name under the cursor
 		},
 	},
-	-- the ledger: `ring`, how many of the last steps are kept in memory
+	-- the ledger: `ring`, how many of the last steps are kept in memory, and `dump`, whether something
+	-- that shouldn't happen writes them to a file under stdpath("state")/cavediver/ and a window
 	ledger = {
 		ring = 1000,
+		dump = true,
 	},
 	-- label_provider: where you are, for tagging files that go missing: nil reads .git/HEAD, a
 	-- function returning a string gives the label, false turns labels off (the tag is then the time).
