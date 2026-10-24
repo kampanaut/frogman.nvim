@@ -64,7 +64,23 @@ function M.is_normal()
     return NavigationSM:state() == states.NORMAL
 end
 
+---Check if a cycle can't start in the current window, saying so when it can't.
+---
+---A window with no triquetra (help, a quickfix list) has no start to hold, as the slot keys find.
+---
+---@return boolean refused True if the window has no triquetra and no cycle is running
+local function refused()
+	if M.is_normal() and not require('cavediver.domains.window').get_triquetra(vim.api.nvim_get_current_win()) then
+		vim.notify("Window with unregistered buffer.", vim.log.levels.WARN)
+		return true
+	end
+	return false
+end
+
 function M.cycle_left()
+	if refused() then
+		return
+	end
 	NavigationSM:to(states.CYCLING, {
 		direction = 1,
 		window = {
@@ -74,6 +90,9 @@ function M.cycle_left()
 end
 
 function M.cycle_right()
+	if refused() then
+		return
+	end
 	NavigationSM:to(states.CYCLING, {
 		direction = 2,
 		window = {
