@@ -270,10 +270,10 @@ end
 
 ---Close a step.
 ---
----Reads its row after, and keeps the step when it did anything or was an action asked for. A
----step set off by a key, a command or an event then says what it queued. Only a step held open
----its full time has the slot rules checked, since one the next trigger closed early may still
----have follow-ups to land.
+---Reads its row after, and keeps the step when it did anything, or always for a key, a load,
+---a save, `:restart`'s reload or a change of label. A step set off by a key, a command or an
+---event then says what it queued. Only a step held open its full time has the slot rules
+---checked, since one the next trigger closed early may still have follow-ups to land.
 ---
 ---@param step CavediverLedgerStep The step to close
 ---@param held boolean|nil True when the step was held open its full time
