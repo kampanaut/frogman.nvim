@@ -1214,7 +1214,7 @@ end
 function M.repopulate_window_relationships()
 	local set_cache_from_window_triquetra = require("cavediver.domains.ui").set_cache_from_window_triquetra
 	data.crux = {}
-	data.last_valid_window = vim.api.nvim_get_current_buf()
+	data.last_valid_window = vim.api.nvim_get_current_win()
 
 	for _, winid in pairs(vim.api.nvim_list_wins()) do
 		local current_slot = history.get_hash_from_buffer(vim.api.nvim_win_get_buf(winid))
@@ -1235,6 +1235,15 @@ function M.repopulate_window_relationships()
 		}
 		set_cache_from_window_triquetra(winid)
 		::continue::
+	end
+	if not data.crux[data.last_valid_window] then
+		-- the last window with a triquetra: the current one has none (a help window), so one that has
+		for _, winid in ipairs(vim.api.nvim_list_wins()) do
+			if data.crux[winid] then
+				data.last_valid_window = winid
+				break
+			end
+		end
 	end
 end
 

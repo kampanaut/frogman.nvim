@@ -60,7 +60,8 @@ history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_ma
 	if not triquetra then
 		return
 	end
-	if triquetra.current_slot ~= new_filehash then
+	local arriving = triquetra.current_slot ~= new_filehash
+	if arriving then
 		routines.remember_arrival(winid, triquetra, new_filehash)
 	end
 	-- happens when you are dealing with an empty ternary slot and it's just an ordinary
@@ -122,7 +123,9 @@ history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_ma
 		triquetra.current_slot = new_filehash
 		routines.keep_older_secondary_note(triquetra, new_filehash, triquetra.secondary_slot)
 	end
-	routines.seal_arrival(winid, triquetra)
+	if arriving then -- entering the current buffer again is no arrival, and keeps the last one
+		routines.seal_arrival(winid, triquetra)
+	end
 end, 2, true, history.states.mode.UPDATE)
 
 history.sm:on(history.states.DETACHED, history.states.ATTACHED, "reconcile_triquetra", function(context, _, _)

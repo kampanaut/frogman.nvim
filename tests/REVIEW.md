@@ -1,6 +1,6 @@
 # Test review sheet
 
-576 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+579 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -192,7 +192,7 @@ spec: (Q13) No key raises over random walks: T190's walks (one window and severa
 `:e x`, `:e b`, `:e c`, `:e d`, `:e a` → `notes = 'dtm{a-swap>b c>a} dsm{a-swap>b a>c d>a}'`  
 → `notes = 'dtm{c>x x-swap>b} dsm{d>x x-swap>b x>c}'`  
 note: Set up directly: a is renamed to x.  
-spec: ("Keep the older one") `rename_hash_in_triquetras(old, new)` moves `dsm[old-swap]` to `dsm[new-swap]` and renames values in both maps, as it already does for `dtm[old-swap]` (`window/data.lua:151-154`). Set it up directly, or with a No Name buffer that holds both kinds of seconda…  
+spec: ("Keep the older one") `rename_hash_in_triquetras(old, new)` moves `dsm[old-swap]` to `dsm[new-swap]` and renames values in both maps, as it already does for `dtm[old-swap]` (`window/data.lua:156-159`). Set it up directly, or with a No Name buffer that holds both kinds of seconda…  
 `tests/test_keep_older.lua:255`
 
 **T193 [char]** (D9) the missing-file rule on the secondary map: <M-;><M-t> says the file is missing, changes no slot, keeps both notes  
@@ -1862,7 +1862,7 @@ note: t's own steps, its save (in the first editor) and its load, are in its fil
 spec: (A27) Each file keeps its own moves: in T318's state with the whole editor saved before t was loaded, `:bdelete x.txt` in the first tab and `:bdelete c.txt` in t's, and a second's wait: t's page holds c's close and not x's, and the whole editor's page, the unnamed session's, x's …  
 `tests/test_ledger.lua:772`
 
-## tests/test_lifecycle.lua (7 cases: 7 char)
+## tests/test_lifecycle.lua (10 cases: 10 char)
 
 **T21 [char]** a first :e x in a fresh window gives {c=x}  
 `:e x` → `slots = '⦉-⦊ [x] ⟦-⟧'`  
@@ -1921,6 +1921,24 @@ spec: `:terminal` in a window with `{c=c s=b}` keeps its triquetra, and the term
 `:e c` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
 spec: The window keeps `{c=c s=b}` while it shows the terminal, and `:e c` returns with its slots intact (the visiting rule).  
 `tests/test_lifecycle.lua:111`
+
+**T513 [char]** (M6) under the window view, closing a window rebuilds the view for the window you're in  
+`:e a`, `:vsplit`, `:e c`, `:vsplit`, `:e d`, `:e f`, `:bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")` → `eq({ ok = ok[1], dump = child.dumped_since(dumps) }, { ok = true, dump = nil })`  
+note: Windows A (a), C (c) and D (d, then f), entered D, then C, then A, so C's jump points at D. :bdelete c.txt in A closes C, and the view is rebuilt for a window: A's, not D's.  
+spec: (M6, D11) Under the window view, closing a window rebuilds the view for the window you're in: windows A on a, C on c, D on d then f, the jumps D to C to A, then `:bdelete c.txt` in A, which closes C; `<M-f>` in A raises nothing and writes no dump.  
+`tests/test_lifecycle.lua:126`
+
+**T514 [char]** (M6, I10) entering the current buffer again keeps the last arrival  
+`:e a`, `<M-;><M-c>`, `:e b`, `:enew`, `<M-;><M-x>`, `:vsplit`, `:e d`, `:wincmd p`, `:setlocal buftype=nofile` → `eq({ slots = child.slots(), primary = child.primary() }, { slots = '⦉-⦊ [b] ⟦-⟧', primary = '[a]off' })`  
+note: P arrives in W, the queue is switched off, and W is left and entered again on P.  
+spec: (M6, I10) Entering the current buffer again keeps the last arrival: `:e a`, `<M-;><M-c>`, `:e b`, `:enew` (P), `<M-;><M-x>`, `:vsplit`, `:e d`, `:wincmd p`, then P set `nofile` give `⦉-⦊ [b] ⟦-⟧` with `[a]off`, as without the round trip.  
+`tests/test_lifecycle.lua:148`
+
+**T515 [char]** (M6) a fresh start leaves a window in last_valid_window  
+`:e a`, `:e b`, `:e c`, `:help` → `eq(child.lua([[`  
+note: Two loads of sessions with no file, the second with a help window focused: each is a fresh start.  
+spec: (M6) A fresh start leaves a window in `last_valid_window`: `:e a`, `:e b`, `:e c`, a load of a session with no file, `:help`, another such load, and `last_valid_window` is a valid window with a triquetra.  
+`tests/test_lifecycle.lua:163`
 
 ## tests/test_missing.lua (7 cases: 7 char)
 

@@ -120,4 +120,59 @@ T['T27 [char] the window keeps {c=c s=b} while it shows a terminal, and :e c ret
 	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')
 end
 
+
+-- Windows A (a), C (c) and D (d, then f), entered D, then C, then A, so C's jump points at D.
+-- :bdelete c.txt in A closes C, and the view is rebuilt for a window: A's, not D's.
+T['T513 [char] (M6) under the window view, closing a window rebuilds the view for the window you\'re in'] = function()
+	child.setup({ history_view = 'window' })
+	child.steps({ ':e a' })
+	local a = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('vsplit')
+	child.steps({ ':e c' })
+	local c = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('vsplit')
+	child.steps({ ':e d', ':e f' })
+	child.lua('vim.api.nvim_set_current_win(...)', { c })
+	child.settle()
+	child.lua('vim.api.nvim_set_current_win(...)', { a })
+	child.settle()
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")'))
+	child.settle(300)
+	local dumps = child.dump_files()
+	local ok = child.lua([[return { pcall(require('cavediver').toggle_secondary) }]])
+	child.settle(200)
+	eq({ ok = ok[1], dump = child.dumped_since(dumps) }, { ok = true, dump = nil })
+end
+
+-- P arrives in W, the queue is switched off, and W is left and entered again on P.
+T['T514 [char] (M6, I10) entering the current buffer again keeps the last arrival'] = function()
+	child.steps({ ':e a', '<M-;><M-c>', ':e b' })
+	child.cmd('enew')
+	child.settle()
+	child.steps({ '<M-;><M-x>' })
+	child.cmd('vsplit')
+	child.steps({ ':e d' })
+	child.cmd('wincmd p')
+	child.settle()
+	child.cmd('setlocal buftype=nofile')
+	child.settle(300)
+	eq({ slots = child.slots(), primary = child.primary() }, { slots = '⦉-⦊ [b] ⟦-⟧', primary = '[a]off' })
+end
+
+-- Two loads of sessions with no file, the second with a help window focused: each is a fresh start.
+T['T515 [char] (M6) a fresh start leaves a window in last_valid_window'] = function()
+	child.steps({ ':e a', ':e b', ':e c' })
+	child.lua('require("cavediver").load_session("fresh-1")')
+	child.settle(100)
+	child.cmd('help')
+	child.settle()
+	child.lua('require("cavediver").load_session("fresh-2")')
+	child.settle(200)
+	eq(child.lua([[
+		local W = require('cavediver.domains.window').data
+		local w = W.last_valid_window
+		return { valid = w ~= nil and vim.api.nvim_win_is_valid(w), tracked = w ~= nil and W.crux[w] ~= nil }
+	]]), { valid = true, tracked = true })
+end
+
 return T
