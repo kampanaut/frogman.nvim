@@ -649,6 +649,36 @@ T['T477 [char] (S1) a load whose file can\'t be read for an environment reason f
 		{ failed = true, state = 'idle' })
 end
 
+-- The No Name text is written as notes.txt and the quit's VimLeavePre runs in the same call, before
+-- the write has settled; the process is then killed, so nothing else runs.
+T['T508 [char] (S2) the quit\'s records come after the settle work'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(Misc.save(child), { true })
+	S2.noname(child, { 'note' })
+	child.lua([[vim.cmd('write ' .. vim.fn.fnameescape(_G.CDV_TEST.root .. '/notes.txt')); vim.cmd('doautocmd VimLeavePre')]])
+	pcall(child.lua, 'vim.uv.kill(vim.uv.os_getpid(), "sigkill")')
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq(child.closed():match('NONAME') == nil, true)
+end
+
+-- x is wiped, so its window lands after the delete, and the session loads in the same call.
+T['T509 [char] (A19, S1) a landing queued before a whole-editor load doesn\'t move the loaded window'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
+	eq(Misc.save(child), { true })
+	child.steps({ ':e x' })
+	child.lua([[vim.cmd('bwipeout ' .. vim.fn.bufnr(_G.CDV_TEST.root .. '/x.txt')); require('cavediver').load_session(vim.fn.getcwd())]])
+	child.settle(300)
+	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
+end
+
 -- 150 more files in the project, each opened and closed. It held before the
 -- encrypted format and holds with it.
 T['T309 [char] (S2) no count limit: 150 closed files all come back'] = function()

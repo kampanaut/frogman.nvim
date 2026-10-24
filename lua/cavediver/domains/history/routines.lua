@@ -1536,7 +1536,8 @@ function M.delete_buffer(winid)
 
 	-- Switch to next buffer before deletion
 	vim.b[bufnr].cavediver_cursor = vim.api.nvim_win_get_cursor(winid) -- for a No Name buffer's cache
-	if next_bufnr and vim.api.nvim_buf_is_valid(next_bufnr) then
+	local switched = next_bufnr and vim.api.nvim_buf_is_valid(next_bufnr)
+	if switched then
 		vim.api.nvim_set_current_buf(next_bufnr)
 	end
 
@@ -1547,6 +1548,9 @@ function M.delete_buffer(winid)
 	require('cavediver.settle').later("close " .. require('cavediver.domains.ledger.routines').buffer_label(bufnr), function()
 		if not vim.api.nvim_buf_is_valid(bufnr) or data.loads ~= loads then
 			return -- gone already, or a session loaded since.
+		end
+		if switched and #vim.fn.win_findbuf(bufnr) > 0 then
+			return -- shown again, by a command later in the same batch: it's open again, so it isn't closed
 		end
 		if vim.api.nvim_buf_get_name(bufnr) ~= "" then
 			vim.cmd("bdelete " .. bufnr)

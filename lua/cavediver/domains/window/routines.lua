@@ -401,9 +401,13 @@ end
 function M.land_after_delete(winid, deleted_bufnr)
 	local landing = { deleted = deleted_bufnr, pick = nil }
 	data.landing[winid] = landing
+	local loads = history.data.loads
 	require('cavediver.settle').later("landing", function()
 		if data.landing[winid] == landing then
 			data.landing[winid] = nil
+		end
+		if history.data.loads ~= loads then
+			return -- a session loaded since: the load laid its windows out
 		end
 		local triquetra = data.crux[winid]
 		if not triquetra or not vim.api.nvim_win_is_valid(winid) then
