@@ -51,12 +51,54 @@ local function own_key(lhs)
 	return false
 end
 
----Check if this editor tracks nothing yet.
+---Check if a buffer is empty and unnamed, as the one Neovim starts on is.
 ---
----@return boolean fresh True if no window has a triquetra and no buffer is registered
+---@param bufnr Bufnr
+---@return boolean empty True if it has no name, no text and no unsaved changes
+local function empty_noname(bufnr)
+	return vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_get_name(bufnr) == "" and not vim.bo[bufnr].modified
+		and vim.api.nvim_buf_line_count(bufnr) == 1 and vim.api.nvim_buf_get_lines(bufnr, 0, 1, false)[1] == ""
+end
+
+---Check if this editor tracks nothing yet but the buffer it started on.
+---
+---@return boolean fresh True if every registered buffer is an empty No Name buffer, and every triquetra holds one alone
 local function fresh()
-	return next(require('cavediver.domains.window').data.crux) == nil
-		and next(require('cavediver.domains.history').data.hash_buffer_registry.hashes) == nil
+	local history = require('cavediver.domains.history')
+	for bufnr, _ in pairs(history.data.hash_buffer_registry.hashes) do
+		if not empty_noname(bufnr) then
+			return false
+		end
+	end
+	for _, triquetra in pairs(require('cavediver.domains.window').data.crux) do
+		if triquetra.secondary_slot or triquetra.ternary_slot or next(triquetra.primary_buffer or {})
+			or not history.data.hash_buffer_registry.buffers[triquetra.current_slot] then
+			return false
+		end
+	end
+	return true
+end
+
+---Forget what a fresh editor tracks, its empty No Name buffers and their triquetras.
+---
+---A config that calls `setup()` at startup takes in the empty buffer Neovim starts on. The
+---snapshot is planted over nothing, so that buffer is forgotten first. It stays open.
+---
+---@return nil
+local function forget_start()
+	local window = require('cavediver.domains.window')
+	local history = require('cavediver.domains.history')
+	for winid, _ in pairs(window.data.crux) do
+		window.data.unregister_triquetra(winid)
+	end
+	for bufnr, hash in pairs(vim.deepcopy(history.data.hash_buffer_registry.hashes)) do
+		local path = history.data.hash_filepath_registry.filepaths[hash]
+		history.routines.untrack_buffer(bufnr)
+		history.routines.unregister_buffer(bufnr)
+		if path then
+			history.routines.unregister_filepath(path)
+		end
+	end
 end
 
 ---Check if a dump's windows span more than one tab.
@@ -265,8 +307,8 @@ end
 
 ---Replay a dump into this editor.
 ---
----Runs from the directory the dump was written in, into an editor that tracks nothing yet,
----and refuses a dump that spans more than one tab. Once it starts, this editor's state isn't a
+---Runs from the directory the dump was written in, into an editor that tracks nothing yet but
+---the empty buffer it started on, and refuses a dump that spans more than one tab. Once it starts, this editor's state isn't a
 ---session: `save_session` refuses, and no records are written.
 ---
 ---@param path string The dump's file
@@ -290,6 +332,8 @@ function M.run(path)
 		vim.notify("cavediver: a dump replays once cavediver is set up, and setup() hasn't run in this editor.", vim.log.levels.WARN)
 		return nil
 	end
+	local settle = require('cavediver.settle')
+	settle.drain() -- the start buffer's arrival, still queued when the replay runs straight from startup
 	if not fresh() then
 		vim.notify("cavediver: a dump replays into a fresh editor, started in its project with cavediver set up and no"
 			.. " session loaded, and this one tracks buffers already.", vim.log.levels.WARN)
@@ -298,8 +342,8 @@ function M.run(path)
 	local storage = require('cavediver.domains.storage')
 	storage.data.replayed = true
 	storage.routines.write_records_on(false)
+	forget_start()
 
-	local settle = require('cavediver.settle')
 	local plant = planter(replay.files or {})
 	if replay.snapshot then
 		plant_snapshot(replay.snapshot, plant)

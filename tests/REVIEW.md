@@ -1,6 +1,6 @@
 # Test review sheet
 
-534 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+535 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -492,7 +492,7 @@ spec: Q17, the only window: `:help`, `:only`, `<M-.>`. The help buffer is closed
 spec: Q17, a running terminal: `<M-.>` on a `:terminal` whose job is still running refuses with a message, and the terminal stays.  
 `tests/test_closing.lua:314`
 
-## tests/test_cycling.lua (42 cases: 42 char)
+## tests/test_cycling.lua (43 cases: 43 char)
 
 **T69 [char]** <M-m> from normal starts cycling and leaves the current slot  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -826,21 +826,28 @@ spec: (A26) A replay runs no code a command line chains or carries: a dump holdi
 spec: (A26) A replay's editor isn't saved: after T201's replay, `save_session()` throws the replay's message and writes no session file.  
 `tests/test_cycling.lua:908`
 
+**T471 [char]** a replay goes into an editor that has taken in the empty buffer it started on  
+`:e a`, `:doautocmd BufEnter` → `eq({ registered = child.lua('return require("cavediver.domains.history").data.hash_buffer_registry.hashes[...] ~= nil', { start }),`  
+→ `eq({`  
+note: as a config that calls setup() at startup has it: the start buffer entered once cavediver is set up  
+spec: (A26) A replay goes into an editor that has taken in the empty buffer it started on, as one whose config calls `setup()` at startup has: T468's dump, a fresh editor in its project whose empty start buffer is entered once cavediver is set up, so it's registered and its window has …  
+`tests/test_cycling.lua:926`
+
 **T469 [char]** a dump that spans more than one tab isn't replayed  
 `:e a`, `:tabnew`, `:e b` → `eq({ said = Extra.has(child.messages(), 'spans more than one tab'), windows = child.lua('return #vim.api.nvim_list_wins()'),`  
 spec: (A26) A dump that spans more than one tab isn't replayed: a dump made with a second tab open, replayed, gives the WARN and leaves the fresh editor as it was.  
-`tests/test_cycling.lua:926`
+`tests/test_cycling.lua:952`
 
 **T463 [char]** an export called from a user's mapping runs the cancel first too  
 → `eq({ ok = ok, dumps = #Extra.new_files(before, child.dumps()), split = child.shown(split), first = child.slots(first) },`  
 note: A user's own Lua mapping: a window jump and an export, in one function.  
 spec: (A12) An export called from a user's mapping runs the cancel first too: T461's setup, then `vim.cmd.wincmd('w')` and `require('cavediver').jump_to_primary()` in one function: nothing throws and nothing dumps, the split shows c again, and the other window is `⦉b⦊ [a] ⟦-⟧`.  
-`tests/test_cycling.lua:945`
+`tests/test_cycling.lua:971`
 
 **T462 [char]** a jump's cancel says so  
 `:wincmd w` → `eq(#said, 1)`  
 spec: (A12) A jump's cancel says so: T461's setup, `<M-m>` in the split, then `<C-w>w` alone, settled, gives one INFO, "Cycling cancelled. Window 1 returned to cycling origin buffer: c.txt", the split being window 1 with `'splitright'` off, as the harness runs.  
-`tests/test_cycling.lua:957`
+`tests/test_cycling.lua:983`
 
 ## tests/test_decisions.lua (52 cases: 52 char)
 

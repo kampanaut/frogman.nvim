@@ -923,6 +923,32 @@ T['T468 [char] a replay\'s editor isn\'t saved'] = function()
 		{ ok = false, said = true, files = 0 })
 end
 
+T['T471 [char] a replay goes into an editor that has taken in the empty buffer it started on'] = function()
+	local root = Misc.make_project()
+	Misc.start(child, { root = root })
+	child.steps({ ':e a' })
+	local before = child.dumps()
+	child.lua([[pcall(require('cavediver.domains.ledger').never, 'planted for T471')]])
+	child.settle(200)
+	local path = the_dump(before)
+	Misc.start(child, { root = root })
+	-- as a config that calls setup() at startup has it: the start buffer entered once cavediver is set up
+	child.cmd('doautocmd BufEnter')
+	child.settle(200)
+	local start = child.lua('return vim.api.nvim_get_current_buf()')
+	eq({ registered = child.lua('return require("cavediver.domains.history").data.hash_buffer_registry.hashes[...] ~= nil', { start }),
+		triquetras = child.lua('return vim.tbl_count(require("cavediver.domains.window").data.crux)') },
+		{ registered = true, triquetras = 1 })
+	child.messages()
+	local r = replay(path)
+	eq({
+		replayed = type(r) == "table",
+		refused = Extra.has(child.messages(), 'tracks buffers already'),
+		start = child.lua('return require("cavediver.domains.history").data.hash_buffer_registry.hashes[...] ~= nil', { start }),
+		shows = child.lua('return vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":t")'),
+	}, { replayed = true, refused = false, start = false, shows = 'a.txt' })
+end
+
 T['T469 [char] a dump that spans more than one tab isn\'t replayed'] = function()
 	local root = Misc.make_project()
 	Misc.start(child, { root = root })
