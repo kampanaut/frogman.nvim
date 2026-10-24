@@ -833,6 +833,7 @@ function M.open(query)
 	map(keys.act_and_stay, function()
 		-- it can change the editor, so it's a step, as the closed lists' keys are; the rest only move the view
 		require('cavediver.domains.ledger').begin("keymap", keys.act_and_stay, view and view.from or vim.api.nvim_get_current_win())
+		require('cavediver.domains.navigation').cancel_cycle_elsewhere()
 		M.act_and_stay()
 	end, "Act on the name under the cursor, and stay")
 	map(keys.search, M.ask, "Search the trail")

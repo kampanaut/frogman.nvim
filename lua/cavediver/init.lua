@@ -515,6 +515,18 @@ M.set_primary = function()
 	window.set_primary_buffer(winid)
 end
 
+-- Each key's export ends a cycle running in another window first: keys in one batch (a macro, a
+-- mapping, cavediver's own or a user's) can reach that window before the jump's cancel has run.
+for _, name in ipairs({ "reopen_last_closed", "toggle_secondary", "toggle_ternary", "jump_to_primary",
+	"restore_ternary", "restore_secondary", "cycle_left", "cycle_right", "toggle_window", "cycle_select",
+	"open_primary_buffer_history", "open_closed_lists", "toggle_primary", "delete_buffer", "set_primary" }) do
+	local export = M[name]
+	M[name] = function(...)
+		navigation.cancel_cycle_elsewhere()
+		return export(...)
+	end
+end
+
 M.get_storage_state = function()
 	return storage.sm:state()
 end

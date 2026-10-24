@@ -35,6 +35,20 @@ function M.is_cycling()
     return NavigationSM:state() == states.CYCLING
 end
 
+---End a cycle running in another window, now rather than once the window jump settles.
+---
+---Keys that arrive in one batch, from a macro or a mapping, can reach another window
+---before the jump's cancel has run. Each of cavediver's keys calls this first, so it acts
+---as if the editor had settled between the two.
+---
+---@return nil
+function M.cancel_cycle_elsewhere()
+    local cycling_window = data.cycling_window
+    if M.is_cycling() and cycling_window and cycling_window ~= vim.api.nvim_get_current_win() then
+        routines.cancel_cycle(cycling_window)
+    end
+end
+
 ---Check if currently in file picker mode.
 ---
 ---@return boolean file_picker True if in file picker mode

@@ -48,33 +48,7 @@ navigationSM:on(states.CYCLING, states.CYCLING, "cancel_cycle_on_window_jump", f
 		return
 	end
 	vim.schedule(function()
-		if navigationSM:state() ~= states.CYCLING or data.cycling_window ~= cycling_window then
-			return -- picked or cancelled already
-		end
-		-- the start is the cycling window's current slot, live: a swap made mid-cycle moves it.
-		local triquetra = require('cavediver.domains.window.data').crux[cycling_window]
-		if triquetra and vim.api.nvim_win_is_valid(cycling_window) then
-			local start_bufnr = history.get_buffer_from_hash(triquetra.current_slot)
-			if start_bufnr and vim.api.nvim_win_get_buf(cycling_window) ~= start_bufnr then
-				vim.api.nvim_win_set_buf(cycling_window, start_bufnr)
-			end
-		end
-		data.cycling_window = nil
-		local ledger = require('cavediver.domains.ledger')
-		ledger.move("cancelled", { subject = tostring(cycling_window), name = ledger.window_name(cycling_window),
-			words = "cycle cancelled; back on " .. ((triquetra and ledger.name_of(triquetra.current_slot)) or "its start") })
-		navigationSM:to(states.NORMAL) -- no mode, so this isn't a pick
-		-- history attaches on the landed window's own current slot, so no slot moves; what the window
-		-- shows, if that's something else, is then an ordinary visit.
-		local landed = require('cavediver.domains.window.data').crux[vim.api.nvim_get_current_win()]
-		local current_bufnr = landed and history.get_buffer_from_hash(landed.current_slot)
-		local shown_bufnr = vim.api.nvim_get_current_buf()
-		history.sm:to(history.states.ATTACHED, { buf = current_bufnr or shown_bufnr }, history.states.mode.UPDATE)
-		if current_bufnr and current_bufnr ~= shown_bufnr then
-			history.sm:to(history.states.ATTACHED, { buf = shown_bufnr }, history.states.mode.UPDATE)
-		end
-		local ui = require('cavediver.domains.ui')
-		ui.sm.loop:to(ui.states.LOOP.SELF)
+		routines.cancel_cycle(cycling_window)
 	end)
 end, 2, true, states.mode.WINENTER)
 
