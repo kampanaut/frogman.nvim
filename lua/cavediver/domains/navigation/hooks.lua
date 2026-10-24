@@ -44,8 +44,8 @@ end, 1, true, states.mode.CYCLE)
 -- counts as an ordinary visit (even when neovim fires no BufEnter there).
 navigationSM:on(states.CYCLING, states.CYCLING, "cancel_cycle_on_window_jump", function()
 	local cycling_window = data.cycling_window
-	if cycling_window == nil or cycling_window == vim.api.nvim_get_current_win() then
-		return
+	if cycling_window == nil or cycling_window == vim.api.nvim_get_current_win() or vim.fn.getcmdwintype() ~= "" then
+		return -- the command-line window is no jump
 	end
 	require('cavediver.settle').later("cycle cancel", function()
 		routines.cancel_cycle(cycling_window)

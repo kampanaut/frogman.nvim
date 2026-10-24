@@ -830,6 +830,66 @@ T['T467 [char] a dump lists the settle work still queued'] = function()
 	eq(text:match('\npending: ([^\n]*)'), 'arrival b.txt')
 end
 
+T['T510 [char] a cycle key in a window with no triquetra starts nothing'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('help')
+	child.settle()
+	child.messages()
+	local dumps = child.dumps()
+	child.steps({ '<M-m>' })
+	local said = Extra.has(child.messages(), 'Window with unregistered buffer.')
+	local state, help = child.state(), child.lua('return vim.bo.buftype')
+	child.step('<M-;><M-f>')
+	child.settle(200)
+	eq({ said = said, state = state, help = help, dumps = #Extra.new_files(dumps, child.dumps()) },
+		{ said = true, state = NORMAL, help = 'help', dumps = 0 })
+end
+
+T['T511 [char] the command-line window doesn\'t cancel a cycle'] = function()
+	child.steps({ ':e a', ':e b', ':e c', '<M-m>' })
+	eq(child.state(), CYCLING)
+	child.messages()
+	child.type_keys('q:')
+	child.lua('vim.wait(300)')
+	child.type_keys('<C-c>')
+	child.lua('vim.wait(300)')
+	eq({ errors = Extra.at_least(child.messages()), state = child.state() }, { errors = {}, state = CYCLING })
+end
+
+T['T512 [char] a tab session\'s load into a tab cycling there ends the cycle'] = function()
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.steps({ ':e d', '<M-n>' })
+	eq(child.state(), CYCLING)
+	child.lua('require("cavediver").load_session("t", { tab = vim.api.nvim_get_current_tabpage() })')
+	child.settle(200)
+	local state = child.state()
+	local before = child.slots()
+	child.steps({ '<M-n>' })
+	eq({ state = state, slots = child.slots() }, { state = NORMAL, slots = before })
+end
+
+-- The cycle runs in the first tab, and the session loads into a second one from there.
+T['T512 [char] a tab session\'s load into another tab ends a cycle running elsewhere'] = function()
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.steps({ ':e d', '<M-n>' })
+	eq(child.state(), CYCLING)
+	child.lua([[
+		local here = vim.api.nvim_get_current_win()
+		vim.cmd('noautocmd tabnew')
+		local tab = vim.api.nvim_get_current_tabpage()
+		vim.cmd('noautocmd tabprevious')
+		vim.api.nvim_set_current_win(here)
+		require('cavediver').load_session('t', { tab = tab })
+	]])
+	child.settle(200)
+	local state = child.state()
+	local before = child.slots()
+	child.steps({ '<M-n>' })
+	eq({ state = state, slots = child.slots() }, { state = NORMAL, slots = before })
+end
+
 -- The replay (A26). A project made by the runner outlives the editors: one makes the dump,
 -- a fresh one in the same project replays it, since a dump opens only from its directory.
 

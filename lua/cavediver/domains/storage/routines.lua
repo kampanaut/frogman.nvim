@@ -1239,6 +1239,18 @@ end
 ---@param tabpage integer The tab it loads into, the hint's or the current one
 ---@return WinId[] matched The windows that took an entry
 local function load_tab_session(saved_data, key, file_path, directory, name, tabpage)
+	local navigation = require('cavediver.domains.navigation')
+	local cycling = navigation.data.cycling_window
+	if cycling and vim.api.nvim_win_is_valid(cycling) then
+		if vim.api.nvim_win_get_tabpage(cycling) == tabpage then
+			-- a cycle running in the tab ends with nothing picked, as at a whole-editor load
+			navigation.sm.current_state = navigation.states.NORMAL
+			navigation.data.cycling_window = nil
+		else
+			-- one running elsewhere is cancelled, as a window jump cancels it: the load attaches history
+			require('cavediver.domains.navigation.routines').cancel_cycle(cycling)
+		end
+	end
 	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
 		if window.data.crux[winid] then
 			window.data.unregister_triquetra(winid)
