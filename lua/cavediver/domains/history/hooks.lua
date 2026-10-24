@@ -88,24 +88,28 @@ local noname_deleted = {}
 ---The disk decides whether it was a copy or a move (see `routines.settle_rename()`), and the
 ---trail records which. A copy closes the old name. The buffer is then taken in under its new
 ---name, as an arrival in the window that shows it, or just registered when no window does. A
----new name that isn't on disk yet is marked as unwritten. A buffer that's gone, or left with
----no name, was deleted rather than renamed, and is left alone.
+---new name that isn't on disk yet is marked as unwritten. No name at all (`:0file`) is a new name
+---too, a No Name buffer's. A buffer that's gone was deleted rather than renamed, and one given its
+---own name again wasn't renamed: both are left alone.
 ---
 ---@param bufnr Bufnr The renamed buffer
 ---@param rename { hash: Filehash, history: table } Its old hash, and its history if kept
 ---@return nil
 local function settle_rename(bufnr, rename)
-	if not vim.api.nvim_buf_is_valid(bufnr) or vim.api.nvim_buf_get_name(bufnr) == "" then
+	if not vim.api.nvim_buf_is_valid(bufnr) then
 		return -- deleted for good (a No Name buffer closed), not renamed.
 	end
 	local new_name = vim.api.nvim_buf_get_name(bufnr)
-	if vim.fn.filereadable(new_name) == 0 then
+	if routines.get_filehash(new_name ~= "" and new_name or routines.noname_name(bufnr)) == rename.hash then
+		return -- its own name again: nothing was renamed
+	end
+	if new_name ~= "" and vim.fn.filereadable(new_name) == 0 then
 		data.unwritten[routines.get_filehash(new_name)] = true -- a name that isn't on disk yet
 	end
 	local ledger = require('cavediver.domains.ledger')
 	local old_name = ledger.name_of(rename.hash)
 	local moved_from = routines.settle_rename(bufnr, rename.hash, rename.history)
-	local new_label = vim.fs.basename(new_name)
+	local new_label = new_name ~= "" and vim.fs.basename(new_name) or "[No Name]"
 	if moved_from then
 		ledger.move("moved", { subject = rename.hash, name = old_name, words = moved_from:match("^NONAME_") and
 			"written as " .. new_label .. ": a move" or "renamed to " .. new_label .. ": a move" })
@@ -203,8 +207,16 @@ function M.init_autocmds(group)
 					return
 				end
 
-				-- Only process normal file buffers with valid filenames
-				historySM:to(historySM:state(), { buf = args.buf }, states.mode.UPDATE)
+				-- Only process normal file buffers with valid filenames: an arrival in the window that shows
+				-- it, or just registered when none does, so a write of buffers never entered moves no slots
+				local winid = vim.fn.bufwinid(args.buf)
+				if winid ~= -1 then
+					vim.api.nvim_win_call(winid, function()
+						historySM:to(historySM:state(), { buf = args.buf }, states.mode.UPDATE)
+					end)
+				elseif routines.is_trackable(args.buf) then
+					routines.register_buffer(args.buf)
+				end
 			end)
 		end
 	})

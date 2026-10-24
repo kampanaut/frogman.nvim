@@ -1,6 +1,6 @@
 # Test review sheet
 
-544 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+549 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -9,7 +9,7 @@
 
 ## Look at these first
 
-**State set by hand** (65): T184 (keep_older), T192 (keep_older), T107 (cleanup), T108 (cleanup), T113 (cleanup), T163 (cleanup), T91 (closing), T203 (cycling), T204 (cycling), T205 (cycling), T251 (decisions), T257 (decisions), T263 (decisions), T263 (decisions), T264 (decisions), T265 (decisions), T267 (decisions), T271 (decisions), T271 (decisions), T273 (decisions), T275 (decisions), T276 (decisions), T280 (decisions), T285 (decisions), T287 (decisions), T20 (history), T12 (identity), T157 (invariants), T398 (ledger), T403 (ledger), T406 (ledger), T25 (lifecycle), T34 (navigation), T35 (navigation), T219 (negative), T241 (negative), T242 (negative), T243 (negative), T243 (negative), T243 (negative), T247 (negative), T66 (restores), T68 (restores), T296 (s2), T298 (s2), T299 (s2), T315 (s2), T316 (s2), T322 (s2), T351 (s2), T352 (s2), T354 (s2), T357 (s2), T358 (s2), T366 (s2), T369 (s2), T383 (s2), T387 (s2), T367 (s2), T138 (sessions), T146 (sessions), T147 (sessions), T148 (sessions), T425 (trail), T445 (trail)
+**State set by hand** (67): T184 (keep_older), T192 (keep_older), T107 (cleanup), T483 (cleanup), T484 (cleanup), T108 (cleanup), T113 (cleanup), T163 (cleanup), T91 (closing), T203 (cycling), T204 (cycling), T205 (cycling), T251 (decisions), T257 (decisions), T263 (decisions), T263 (decisions), T264 (decisions), T265 (decisions), T267 (decisions), T271 (decisions), T271 (decisions), T273 (decisions), T275 (decisions), T276 (decisions), T280 (decisions), T285 (decisions), T287 (decisions), T20 (history), T12 (identity), T157 (invariants), T398 (ledger), T403 (ledger), T406 (ledger), T25 (lifecycle), T34 (navigation), T35 (navigation), T219 (negative), T241 (negative), T242 (negative), T243 (negative), T243 (negative), T243 (negative), T247 (negative), T66 (restores), T68 (restores), T296 (s2), T298 (s2), T299 (s2), T315 (s2), T316 (s2), T322 (s2), T351 (s2), T352 (s2), T354 (s2), T357 (s2), T358 (s2), T366 (s2), T369 (s2), T383 (s2), T387 (s2), T367 (s2), T138 (sessions), T146 (sessions), T147 (sessions), T148 (sessions), T425 (trail), T445 (trail)
 
 **Random walk** (24): T190 (keep_older), T190 (keep_older), T190 (keep_older), T190 (keep_older), T335 (keep_older), T335 (keep_older), T171 (cycling), T279 (decisions), T281 (decisions), T282 (decisions), T283 (decisions), T149 (history), T149 (history), T128 (invariants), T129 (invariants), T130 (invariants), T131 (invariants), T132 (invariants), T133 (invariants), T334 (invariants), T154 (invariants), T249 (negative), T249 (negative), T299 (s2)
 
@@ -206,7 +206,7 @@ note: <M-f> (f graduates), <M-f> (to f), :e e, <M-f> (to b). :bdelete f, delete 
 spec: (D9) The missing-file rule on the secondary map: `:e f`, `:e b`, `<M-f>` (f graduates), `<M-f>` (to f), `:e e`, `<M-f>` (to b) give `⦉f⦊ [b] ⟦e⟧` with `dsm{b-swap>f b>f}`. After `:bdelete f` and deleting f.txt on disk, `<M-;><M-t>` on b says the file is missing, changes no slot, …  
 `tests/test_keep_older.lua:274`
 
-## tests/test_cleanup.lua (15 cases: 15 char)
+## tests/test_cleanup.lua (20 cases: 20 char)
 
 **T102 [char]** :bdelete of the ternary keeps it as a closed hash  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -260,56 +260,91 @@ note: b is the ternary, the primary and a note's key; it's moved on disk to g.tx
 spec: After a rename whose old file is gone, every reference to the old hash follows to the new one, and nothing is pushed on the closed stack.  
 `tests/test_cleanup.lua:93`
 
+**T481 [char]** (A20, I12) :0file on a modified file keeps its edits through a close  
+`:e a`, `:e b`, `:0file`, `<M-.>`, `<M-S-w>` → `eq(holding('the edit'), 1)`  
+note: b.txt stays on disk, so taking b's name away is a copy: b is closed, and the buffer goes on as a No Name buffer, the edit in it.  
+spec: (A20, I12) `:0file` on a modified file keeps its edits through a close: `:e a`, `:e b`, an edit, `:0file`, `<M-.>`, then `<M-S-w>` reopens a No Name buffer holding the edit.  
+`tests/test_cleanup.lua:125`
+
+**T482 [char]** (A20, M3) a write of buffers never entered moves no window's slots  
+`:e a`, `:e b` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
+`:wall` → `eq({ slots = child.slots(), registered = registered }, { slots = '⦉a⦊ [b] ⟦-⟧', registered = { true, true } })`  
+note: c.txt and d.txt are loaded and edited the way a workspace edit does it, without being entered, then written together.  
+spec: (A20, M3, I8) A write of buffers never entered moves no window's slots: `:e a`, `:e b` give `⦉a⦊ [b] ⟦-⟧`; c.txt and d.txt loaded and edited without being entered, then `:wall`, leave `⦉a⦊ [b] ⟦-⟧`, with c and d registered.  
+`tests/test_cleanup.lua:139`
+
+**T483 [char]** (A20, I1) a move onto a file the ternary holds leaves no file in two slots ⚑ state set by hand  
+`:e a`, `:e b`, `:bwipeout ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/a.txt")` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
+→ `eq({ slots = child.slots(), dump = child.dumped_since(dumps) }, { slots = '⦉-⦊ [a] ⟦-⟧', dump = nil })`  
+note: a's buffer is wiped, so the ternary holds a closed; b.txt then goes over a.txt on disk and b's buffer takes a's name, as an LSP or oil rename does.  
+spec: (A20, I1) A move onto a file the ternary holds leaves no file in two slots: `:e a`, `:e b`, `:bwipeout a.txt` give `⦉a⦊ [b] ⟦-⟧` with a closed; b.txt moved over a.txt on disk and b's buffer renamed to a.txt give `⦉-⦊ [a] ⟦-⟧`, with no dump.  
+`tests/test_cleanup.lua:165`
+
+**T484 [char]** (A20, I2) a rename to the same name renames nothing ⚑ state set by hand  
+`:e a`, `:e new.txt`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
+→ `eq(kept, { history = true, path = true })`  
+`:bdelete! ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/new.txt")` → `eq({ errors = errors, dump = child.dumped_since(dumps) }, { errors = {}, dump = nil })`  
+note: new.txt isn't on disk, so a rename of it would be a move; its own name again is no rename at all. It's hidden by then, out of every slot, kept known by its history alone, so no arrival takes it in again after the rename.  
+spec: (A20, I2) A rename to the same name renames nothing: `:e a`, `:e new.txt`, not on disk, `:e b`, `:e c`, then new's hidden buffer given its own name again, keeps new's history and its path, and `:bdelete new.txt` then raises nothing and writes no dump.  
+`tests/test_cleanup.lua:183`
+
+**T485 [char]** (A20, I2) :0file on a file never written moves it to a No Name buffer, its references with it  
+`:e a`, `:edit brandnew.txt`, `:0file` → `eq({ healed = #healed, pathless = pathless }, { healed = 0, pathless = {} })`  
+`<M-.>`, `<M-S-w>` → `eq(holding('unwritten line'), 1)`  
+note: brandnew.txt was never written, so taking its name away is a move: every reference follows to the No Name buffer the buffer now is.  
+spec: (A20, I2) `:0file` on a file never written moves it to a No Name buffer, its references with it: `:e a`, `:e brandnew.txt`, a line, `:0file` give no "Healed" notice and leave no slot holding a hash with no path, and `<M-.>`, then `<M-S-w>`, bring the line back.  
+`tests/test_cleanup.lua:204`
+
 **T108 [char]** cleanup re-points the current slot to the registered buffer the window shows ⚑ state set by hand  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 `:noautocmd buffer a.txt`, `:bwipeout c.txt` → `eq(current(), 'a')`  
 note: The window is put on a without a BufEnter, then c's buffer goes: cleanup finds the current slot's buffer gone and the window showing a.  
 spec: When a window shows registered buffer X while its current slot's buffer is gone, cleanup sets `c := X`.  
-`tests/test_cleanup.lua:112`
+`tests/test_cleanup.lua:233`
 
 **T109 [char]** a new unsaved file keeps its buffer, text and tracking after :e a (I12)  
 `:edit brandnew.txt`, `:e a` → `eq(buffer_state('brandnew.txt'), { valid = true, lines = { 'hello' }, registered = true, in_history = true })`  
 spec: `:e brandnew.txt`, type a line, `:e a.txt`: the brandnew buffer still exists with its text and stays tracked (I12).  
-`tests/test_cleanup.lua:121`
+`tests/test_cleanup.lua:242`
 
 **T110 [char]** a file deleted on disk while shown stays shown and tracked after 4.6 s  
 `:e a`, `:e b` → `shown = 'b'`  
 → `slots = '⦉a⦊ [b] ⟦-⟧'`  
 → `eq({ st.valid, st.registered, st.in_history }, { true, true, true })`  
 spec: A file deleted on disk while shown stays shown and tracked after a 4.6 s wait.  
-`tests/test_cleanup.lua:130`
+`tests/test_cleanup.lua:251`
 
 **T111 [char]** :bdelete of the shown buffer lands the window on its ternary ⚑ route changed so it fails for the right reason (the first route passed by luck)  
 `:e a`, `:e b`, `:e c`, `:e d`, `:e c`, `<M-;><M-r>` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 `:bdelete c.txt` → `shown = 'b'`  
 note: The ternary restore puts b in the ternary while the buffer last left is d, which is where Neovim's own pick (the jumplist) goes. Neovim closes any other window that shows the deleted buffer, so this is the one-window case.  
 spec: `:bdelete` of the shown buffer lands that window, not the focused one, on ternary → secondary → primary → most recent.  
-`tests/test_cleanup.lua:143`
+`tests/test_cleanup.lua:264`
 
 **T112 [char]** opening a closed file again with :e takes it off the closed stack  
 `:e a`, `:e b`, `:e c`, `:bdelete b.txt` → `closed = 'b'`  
 `:e b` → `closed = ''`  
 spec: Opening a closed file again with `:e` takes it off the closed stack (`track_buffer`).  
-`tests/test_cleanup.lua:151`
+`tests/test_cleanup.lua:272`
 
 **T113 [char]** a stale registration re-points to a copy reloaded under noautocmd and wipes nothing ⚑ state set by hand  
 `:e a`, `:e b`, `:e c` → `eq(got, { copy_open = true, points_at_copy = true })`  
 note: b's buffer is wiped without events and a copy of b.txt loaded the same way, so the registry still holds the old buffer number. Then the timer's pass.  
 spec: A stale registration with a copy reloaded under `noautocmd` re-points to the copy and wipes nothing.  
-`tests/test_cleanup.lua:162`
+`tests/test_cleanup.lua:283`
 
 **T114 [char]** a closed entry whose file is gone from disk stays on the stack  
 `:e a`, `:e b`, `:e c`, `:bdelete b.txt` → `closed = 'b'`  
 → `closed = 'b'`  
 spec: A closed entry whose file is gone from disk stays on the stack, after a `cleanup_system` pass (A22).  
-`tests/test_cleanup.lua:182`
+`tests/test_cleanup.lua:303`
 
 **T163 [char]** a re-point to the shown buffer moves the old current into the ternary (Q18) ⚑ state set by hand  
 `:e d`, `:e b`, `:e c`, `<M-f>`, `:e a` → `slots = '⦉c⦊ [a] ⟦b⟧'`  
 `:noautocmd buffer d.txt`, `:bwipeout a.txt` → `slots = '⦉a⦊ [d] ⟦b⟧'`  
 note: {c=A s=S t=T} is {c=a s=b t=c}; X is d, outside the slots. The window is put on d without a BufEnter, then a's buffer is wiped (A21 step 1 re-points).  
 spec: When cleanup re-points a window's current slot to the registered buffer X the window shows (A21 step 1), with X outside the slots, `{c=A s=S t=T}` becomes `{c=X s=S t=A}`, as plain navigation would. Set it up by showing X without a `BufEnter` (`noautocmd`) after A's buffer is gon…  
-`tests/test_cleanup.lua:195`
+`tests/test_cleanup.lua:316`
 
 ## tests/test_closing.lua (21 cases: 21 char)
 

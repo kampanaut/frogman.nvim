@@ -107,6 +107,127 @@ T['T107 [char] a rename whose old file is gone moves every reference and pushes 
 	eq(child.closed(), '')
 end
 
+-- How many loaded buffers hold a line that reads exactly `text`.
+local function holding(text)
+	return child.lua([[
+		local n = 0
+		for _, b in ipairs(vim.api.nvim_list_bufs()) do
+			if vim.api.nvim_buf_is_loaded(b) and vim.tbl_contains(vim.api.nvim_buf_get_lines(b, 0, -1, false), ...) then
+				n = n + 1
+			end
+		end
+		return n
+	]], { text })
+end
+
+-- b.txt stays on disk, so taking b's name away is a copy: b is closed, and the
+-- buffer goes on as a No Name buffer, the edit in it.
+T['T481 [char] (A20, I12) :0file on a modified file keeps its edits through a close'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "the edit" })')
+	child.cmd('0file')
+	child.settle(300)
+	child.steps({ '<M-.>' })
+	child.settle(300)
+	child.steps({ '<M-S-w>' })
+	child.settle(300)
+	eq(holding('the edit'), 1)
+end
+
+-- c.txt and d.txt are loaded and edited the way a workspace edit does it,
+-- without being entered, then written together.
+T['T482 [char] (A20, M3) a write of buffers never entered moves no window\'s slots'] = function()
+	child.steps({ ':e a', ':e b' })
+	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
+	child.lua([[
+		for _, f in ipairs({ 'c.txt', 'd.txt' }) do
+			local b = vim.fn.bufadd(_G.CDV_TEST.root .. '/' .. f)
+			vim.bo[b].buflisted = true
+			vim.fn.bufload(b)
+			vim.api.nvim_buf_set_lines(b, 0, -1, false, { 'edited ' .. f })
+		end
+	]])
+	child.cmd('wall')
+	child.settle(300)
+	local registered = child.lua([[
+		local H = require('cavediver.domains.history')
+		local out = {}
+		for _, f in ipairs({ 'c.txt', 'd.txt' }) do
+			table.insert(out, H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/' .. f)) ~= nil)
+		end
+		return out
+	]])
+	eq({ slots = child.slots(), registered = registered }, { slots = '⦉a⦊ [b] ⟦-⟧', registered = { true, true } })
+end
+
+-- a's buffer is wiped, so the ternary holds a closed; b.txt then goes over
+-- a.txt on disk and b's buffer takes a's name, as an LSP or oil rename does.
+T['T483 [char] (A20, I1) a move onto a file the ternary holds leaves no file in two slots'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('bwipeout ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/a.txt")'))
+	child.settle(300)
+	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
+	local dumps = child.dump_files()
+	child.lua([[
+		local root = _G.CDV_TEST.root
+		os.rename(root .. '/b.txt', root .. '/a.txt')
+		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/b.txt'), root .. '/a.txt')
+	]])
+	child.settle(300)
+	eq({ slots = child.slots(), dump = child.dumped_since(dumps) }, { slots = '⦉-⦊ [a] ⟦-⟧', dump = nil })
+end
+
+-- new.txt isn't on disk, so a rename of it would be a move; its own name again
+-- is no rename at all. It's hidden by then, out of every slot, kept known by
+-- its history alone, so no arrival takes it in again after the rename.
+T['T484 [char] (A20, I2) a rename to the same name renames nothing'] = function()
+	child.steps({ ':e a', ':e new.txt', ':e b', ':e c' })
+	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
+	child.lua('local b = vim.fn.bufnr(_G.CDV_TEST.root .. "/new.txt"); vim.api.nvim_buf_set_name(b, vim.api.nvim_buf_get_name(b))')
+	child.settle(300)
+	local kept = child.lua([[
+		local H = require('cavediver.domains.history')
+		local h = H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/new.txt'))
+		return { history = h ~= nil and H.data.crux_internals.global[h] ~= nil, path = h ~= nil and H.get_filepath_from_hash(h) ~= nil }
+	]])
+	eq(kept, { history = true, path = true })
+	child.messages()
+	local dumps = child.dump_files()
+	child.cmd('bdelete! ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/new.txt")'))
+	child.settle(300)
+	local errors = vim.tbl_filter(function(m) return m.level == 4 end, child.messages())
+	eq({ errors = errors, dump = child.dumped_since(dumps) }, { errors = {}, dump = nil })
+end
+
+-- brandnew.txt was never written, so taking its name away is a move: every
+-- reference follows to the No Name buffer the buffer now is.
+T['T485 [char] (A20, I2) :0file on a file never written moves it to a No Name buffer, its references with it'] = function()
+	child.steps({ ':e a' })
+	child.cmd('edit brandnew.txt')
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "unwritten line" })')
+	child.settle()
+	child.messages()
+	child.cmd('0file')
+	child.settle(300)
+	local healed = vim.tbl_filter(function(m) return m.msg:find('Healed', 1, true) ~= nil end, child.messages())
+	local pathless = child.lua([[
+		local H = require('cavediver.domains.history')
+		local out = {}
+		for _, t in pairs(require('cavediver.domains.window').data.crux) do
+			for _, h in ipairs({ t.current_slot, t.secondary_slot, t.ternary_slot }) do
+				if h and not H.get_filepath_from_hash(h) then table.insert(out, h) end
+			end
+		end
+		return out
+	]])
+	eq({ healed = #healed, pathless = pathless }, { healed = 0, pathless = {} })
+	child.steps({ '<M-.>' })
+	child.settle(300)
+	child.steps({ '<M-S-w>' })
+	child.settle(300)
+	eq(holding('unwritten line'), 1)
+end
+
 -- The window is put on a without a BufEnter, then c's buffer goes: cleanup
 -- finds the current slot's buffer gone and the window showing a.
 T['T108 [char] cleanup re-points the current slot to the registered buffer the window shows'] = function()
