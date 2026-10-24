@@ -802,7 +802,7 @@ end
 ---
 ---A file opens in the window the trail came from, a list shows in the closed lists with the
 ---cursor on its header, and a window becomes the current one. A No Name text, a file with no
----path, or one whose window is gone can't be opened, and the trail says so.
+---path, or any file once the window the trail came from is gone, isn't opened, and it says so.
 ---
 ---@return nil
 function M.act_and_stay()
