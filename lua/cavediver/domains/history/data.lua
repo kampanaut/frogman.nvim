@@ -14,16 +14,16 @@
 ---@field closed_buffers Filehash[] Stack of closed buffer filehashes that can be reopened via hash_filepath_registry
 ---@field noname_content table<Filepath, NoNameBufferContent> Content storage for [No Name] buffers
 
----@class Pool One session's own closed stack, close times and visits
----@field id string "" for the editor's pool, a tab session's name and directory otherwise
+---@class Pool A session's own closed stack, close times and visits
+---@field id string Pool id: "" for the editor's, or the tab session's name and directory
 ---@field name string|nil The tab session's name
 ---@field directory string|nil The tab session's directory
----@field closed Filehash[] Its closed stack, newest last
----@field times table<Filehash, number> When each entry was closed, in seconds to the microsecond
----@field visits table<Filehash, integer> Its own visits, ranked above the editor's history in its tab
----@field tabs table<integer, boolean> The tabs it's loaded in (tabpage → true); none when its tab closed unsaved
----@field saved_at integer|nil When it was last saved (vim.uv.hrtime())
----@field changed_at integer|nil When it last changed (vim.uv.hrtime())
+---@field closed Filehash[] Closed buffer filehashes, newest last
+---@field times table<Filehash, number> File hash → close time, in seconds to the microsecond
+---@field visits table<Filehash, integer> Its own visits, ranked above the editor's in its tab
+---@field tabs table<integer, boolean> Tabs it's in (tabpage → true), none if its last tab closed unsaved
+---@field saved_at integer|nil Time of its last save (vim.uv.hrtime())
+---@field changed_at integer|nil Time of its last change (vim.uv.hrtime())
 
 ---@class BufferCruxInternals
 ---@field window table<WinId, table<Filehash, integer>> -- Window-specific crux: winid → file_hash → access_time. Can be partial

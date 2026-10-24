@@ -66,10 +66,13 @@ end, 4, true, navigation.states.mode.WINENTER)
 
 local M = {}
 
----Create the ui domain's autocmds in cavediver's augroup. setup() calls this, so nothing
----runs at require, and calling it again after the group is cleared replaces them cleanly.
+---Create the ui domain's autocmds in cavediver's augroup.
+---
+---Called by setup(), so nothing runs at require. Calling it again after the group is cleared
+---replaces them cleanly.
 ---
 ---@param group integer The cavediver augroup
+---@return nil
 function M.init_autocmds(group)
 	-- Clear display name cache on buffer changes for accurate basename display
 	vim.api.nvim_create_autocmd({ "BufAdd", "BufDelete", "BufFilePost", "BufWritePost" }, {

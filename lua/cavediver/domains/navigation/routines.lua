@@ -115,13 +115,13 @@ function M.find_most_recent_tracked_window()
 	return M.get_the_previous_window_traverse_chain(cwin)
 end
 
----Cancel a cycle running in a window, sending that window back to the cycle's start.
+---Cancel a cycle running in a window, and send that window back to the cycle's start.
 ---
 ---The start is the window's current slot, read live, since a swap made mid-cycle moves it.
----Navigation goes back to normal with no mode, so nothing is picked, and history attaches on
----the current window's own current slot: no slot moves there, and its buffer counts as an
----ordinary visit. It says so in one line. Does nothing when the cycle was picked or
----cancelled already.
+---Navigation goes back to normal with no mode, so nothing is picked. History then attaches on
+---the current window's own current slot, so no slot moves there, and what that window shows
+---counts as an ordinary visit. Says so in one message, and records the cancel in the ledger.
+---Does nothing when the cycle was picked or cancelled already.
 ---
 ---@param cycling_window WinId The window the cycle runs in
 ---@return nil

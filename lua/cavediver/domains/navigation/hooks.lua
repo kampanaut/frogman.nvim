@@ -68,10 +68,13 @@ end, 1, true, states.mode.WINENTER)
 
 local M = {}
 
----Create the navigation domain's autocmds in cavediver's augroup. setup() calls this, so nothing
----runs at require, and calling it again after the group is cleared replaces them cleanly.
+---Create the navigation domain's autocmds in cavediver's augroup.
+---
+---Called by setup(), so nothing runs at require. Calling it again after the group is cleared
+---replaces them cleanly.
 ---
 ---@param group integer The cavediver augroup
+---@return nil
 function M.init_autocmds(group)
 	vim.api.nvim_create_autocmd("WinEnter", {
 		group = group,

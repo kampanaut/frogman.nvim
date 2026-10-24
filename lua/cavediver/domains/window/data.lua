@@ -19,13 +19,13 @@ local M = {}
 ---@type table<number, WindowTriquetra>
 M.crux = {}
 
----Windows whose buffer got deleted and that land once the delete is over: the buffer being
----deleted, and neovim's own pick once it's entered.
+---Windows whose buffer got deleted, waiting to land once the delete is over (window → the buffer
+---being deleted, and Neovim's own pick once it's entered)
 ---@type table<WinId, { deleted: Bufnr, pick: Bufnr|nil }>
 M.landing = {}
 
----Each window's last arrival: the buffer, and its triquetra just before and just after, so the arrival
----can be undone when that buffer turns into something we don't track.
+---Each window's last arrival (window → the buffer, and its triquetra just before and just after),
+---so the arrival can be undone when that buffer turns into something cavediver doesn't track
 ---@type table<WinId, { hash: Filehash, before: WindowTriquetra, after: WindowTriquetra|nil }>
 M.arrivals = {}
 
@@ -96,10 +96,12 @@ function M.get_window_triquetra(winid)
     return M.crux[winid]
 end
 
----Take a hash out of every triquetra's secondary and ternary slots and primary queue. The current
----slot is left to whatever lands the window.
+---Take a hash out of every triquetra's secondary and ternary slots and primary queue.
 ---
----@param hash Filehash
+---The current slot is left to whatever lands the window.
+---
+---@param hash Filehash The hash to take out
+---@return nil
 function M.forget_hash_in_slots(hash)
 	for _, triquetra in pairs(M.crux) do
 		if triquetra.secondary_slot == hash then

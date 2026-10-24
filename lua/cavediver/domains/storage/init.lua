@@ -17,11 +17,13 @@ local M = {
 	sm = storageSM,
 }
 
----Save current session to file. The session's directory is read here: the global one for the
----whole editor, or the tab's for a tab session.
+---Save current session to file.
 ---
----@param name string|nil The session's name, as the session manager passes it; nil for a nameless save
----@param opts {tab: integer|nil}|nil `tab` is the tabpage of a tab session
+---The session's directory is read here, the global one for the whole editor or the tab's for a
+---tab session. Throws when the editor replayed a dump, since its state isn't a session.
+---
+---@param name string|nil The session's name as the session manager passes it (nil for a nameless save)
+---@param opts {tab: integer|nil}|nil Options (`tab` is the tabpage of a tab session)
 ---@return nil
 function M.save_session(name, opts)
 	if data.replayed then
@@ -43,13 +45,15 @@ function M.save_session(name, opts)
 	storageSM:to(states.IDLE, { name = name, directory = directory, tab = tab })
 end
 
----Load a session, whether or not one is loaded already. From idle, every domain tears its own
----state down first (idle -> bare), so the load starts as it does at startup; a tab session's file
----loads into one tab instead, the hint's or the one you're in, with nothing torn down.
+---Load a session, whether or not one is loaded already.
 ---
----@param name string|nil
----@param opts {tab: integer|nil}|nil `tab` says it's a tab session, for when its file can't say so
----@param restart boolean|nil It's the load run again after Neovim's :restart session
+---From idle, every domain tears its own state down first (idle -> bare), so the load starts as it
+---does at startup. A tab session's file loads into one tab instead, the one `opts.tab` names or
+---the current one, with nothing torn down. The file is read first, since its scope decides that.
+---
+---@param name string|nil The session's name (nil for a nameless load)
+---@param opts {tab: integer|nil}|nil Options (`tab` says it's a tab session, for a file that can't say so)
+---@param restart boolean|nil Whether it's the load run again after Neovim's :restart session
 ---@return nil
 local function load(name, opts, restart)
 	local hint = opts ~= nil and opts.tab ~= nil
@@ -92,11 +96,13 @@ local function load(name, opts, restart)
 	storageSM:to(states.IDLE, session)
 end
 
----Load session from file. A repeat inside one restore (a native session calls this once per
----loaded buffer) is skipped.
+---Load session from file.
 ---
----@param name string|nil The session's name, as the session manager passes it; nil for a nameless save
----@param opts {tab: integer|nil}|nil `tab` is the tabpage of a tab session, for when its file can't say so
+---A repeat inside one restore is skipped, since a native session calls this once per loaded
+---buffer.
+---
+---@param name string|nil The session's name as the session manager passes it (nil for a nameless load)
+---@param opts {tab: integer|nil}|nil Options (`tab` is a tab session's tabpage, for a file that can't say so)
 ---@return nil
 function M.load_session(name, opts)
 	if data.loading_batch then
@@ -105,10 +111,12 @@ function M.load_session(name, opts)
 	load(name, opts)
 end
 
----Create the storage domain's autocmds in cavediver's augroup. setup() calls this, so nothing
----runs at require.
+---Create the storage domain's autocmds in cavediver's augroup.
+---
+---Called by setup(), so nothing runs at require. Also turns on the writing of records.
 ---
 ---@param group integer The cavediver augroup
+---@return nil
 function M.init_autocmds(group)
 	-- Neovim's :restart restores its own session after the startup's, and rebuilds the windows, so
 	-- whatever was loaded in this startup is loaded again once that settles, repeat or not.

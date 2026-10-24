@@ -1,14 +1,13 @@
 ---Ledger domain replay of a flight recorder's dump.
 ---
----This module replays a dump into a fresh editor started in the dump's own project. It plants
----the snapshot the dump starts from, then takes the dump's steps in order. Keys and the commands
----that only move windows and buffers are driven, and their rows compared with the recorded ones.
----Every other step has its recorded row planted instead, so a replay writes no file and runs no
----code of the dump's.
+---This module replays a dump into a fresh editor in its project. It plants the snapshot,
+---then takes the steps in order. A step from cavediver's keys, or a command that only moves
+---windows and buffers, is driven and checked against its recorded row. Any other step has
+---its recorded row planted, so a replay writes no file and runs none of the dump's code.
 
 local M = {}
 
----Commands a replay runs, by their full names: they move windows and buffers, and nothing else
+---Commands a replay runs, by their full names (they only move windows and buffers)
 ---@type table<string, boolean>
 local DRIVEN = {
 	edit = true, buffer = true, bdelete = true, bwipeout = true, split = true, vsplit = true,
@@ -21,7 +20,7 @@ local DRIVEN = {
 ---after it by `|`, no `+cmd` argument and no backtick in a file name. It runs as parsed, with
 ---no file expansion.
 ---
----@param trigger string The command line as the ledger recorded it, `:e b.txt`
+---@param trigger string The command line as the ledger recorded it (`:e b.txt`)
 ---@return table|nil cmd The command for `nvim_cmd`, or nil when the step is planted
 local function driven_command(trigger)
 	local ok, cmd = pcall(vim.api.nvim_parse_cmd, (trigger or ""):gsub("^:", ""), {})
@@ -40,8 +39,10 @@ end
 
 ---Check if a recorded key is one of cavediver's own keymaps.
 ---
+---A view's keys aren't counted.
+---
 ---@param lhs string The key, as the step's trigger
----@return boolean own True if cavediver maps it (a view's keys aren't counted)
+---@return boolean own True if cavediver maps it
 local function own_key(lhs)
 	for _, key in pairs(require('cavediver.configs').keymaps or {}) do
 		if type(key) == "string" and key == lhs then
@@ -62,7 +63,10 @@ end
 
 ---Check if this editor tracks nothing yet but the buffer it started on.
 ---
----@return boolean fresh True if every registered buffer is an empty No Name buffer, and every triquetra holds one alone
+---Every registered buffer must be an empty No Name buffer, and every triquetra must hold one
+---alone, in its current slot.
+---
+---@return boolean fresh True if it tracks nothing else
 local function fresh()
 	local history = require('cavediver.domains.history')
 	for bufnr, _ in pairs(history.data.hash_buffer_registry.hashes) do
@@ -79,10 +83,10 @@ local function fresh()
 	return true
 end
 
----Forget what a fresh editor tracks, its empty No Name buffers and their triquetras.
+---Forget the empty No Name buffers a fresh editor tracks, and their triquetras.
 ---
----A config that calls `setup()` at startup takes in the empty buffer Neovim starts on. The
----snapshot is planted over nothing, so that buffer is forgotten first. It stays open.
+---The snapshot is planted over nothing, so the buffer Neovim starts on is forgotten first when
+---`setup()` took it in at startup. It stays open.
 ---
 ---@return nil
 local function forget_start()
@@ -146,9 +150,9 @@ local function same(got, want)
 		and vim.deep_equal(got.dsm or {}, want.dsm or {})
 end
 
----Write a row in the trail's brackets, for a mismatch's report.
+---Format a row in the trail's brackets, for a mismatch's report.
 ---
----@param row table|nil
+---@param row table|nil The row to format
 ---@return string text `⦉t⦊ [c] ⟦s⟧`, by file name
 local function text_of(row)
 	local name = function(hash)
@@ -161,12 +165,12 @@ end
 ---Make the planting functions for one replay.
 ---
 ---@param files table<Filehash, {path: string|nil}> The dump's files
----@return table plant `known`, `open`, `closed` and `row`
+---@return table plant The planting functions (`known`, `open`, `closed` and `row`)
 local function planter(files)
 	local history = require('cavediver.domains.history')
 	local plant = {}
 
-	---Register a hash's path, so cavediver knows the file.
+	---Register the path the dump has for a hash, so cavediver knows the file.
 	function plant.known(hash)
 		if hash == nil then
 			return
@@ -183,7 +187,7 @@ local function planter(files)
 		return vim.tbl_contains(history.data.closed_buffers, hash)
 	end
 
-	---Open a hash's buffer and register it, firing no events.
+	---Open a hash's buffer and register it, loading it without autocmds.
 	function plant.open(hash)
 		local path = files[hash] and files[hash].path
 		if not path then
@@ -202,7 +206,7 @@ local function planter(files)
 		return bufnr
 	end
 
-	---Plant a recorded row on a window: what it shows, its files and its triquetra.
+	---Plant a recorded row on a window, with what it shows, its files and its triquetra.
 	function plant.row(winid, row)
 		if not row or not winid or not vim.api.nvim_win_is_valid(winid) then
 			return
@@ -243,8 +247,10 @@ end
 
 ---Plant the snapshot a dump starts from.
 ---
----Makes as many windows as it holds and matches them by number to this tab's windows in order.
----Every list's closed files go on the editor's list, a replay having no tab sessions.
+---Splits this tab until it has as many windows as the snapshot numbers, and matches them by
+---number in order. Every list's closed files go on the editor's list, since a replay has no
+---tab sessions. The histories, the missing tags, the history view and a cycle under way are
+---planted too.
 ---
 ---@param snapshot table The dump's snapshot
 ---@param plant table The planting functions
@@ -307,12 +313,14 @@ end
 
 ---Replay a dump into this editor.
 ---
----Runs from the directory the dump was written in, into an editor that tracks nothing yet but
----the empty buffer it started on, and refuses a dump that spans more than one tab. Once it starts, this editor's state isn't a
----session: `save_session` refuses, and no records are written.
+---Runs from the directory the dump was written in, in an editor with cavediver set up that
+---tracks nothing yet but the empty buffer it started on. A dump that spans more than one tab
+---is refused. Once a replay starts, this editor's state isn't a session, so `save_session`
+---refuses and no records are written. The result holds `steps`, `driven`, `matched`,
+---`mismatches`, `failure` and `snapshot`.
 ---
 ---@param path string The dump's file
----@return table|nil result `steps`, `driven`, `matched`, `mismatches`, `failure`, `snapshot`; nil when refused
+---@return table|nil result What the replay found, or nil if it was refused
 function M.run(path)
 	path = vim.fn.fnamemodify(vim.fn.expand(path), ":p")
 	local text, problem = require('cavediver.domains.ledger.dump').read(path)

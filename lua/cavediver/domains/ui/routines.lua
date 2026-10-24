@@ -17,10 +17,14 @@ local update_timer = vim.loop:new_timer()
 
 local M = {}
 
----What a window visits, as its winbar names it: the buffer's id and its buftype, or its filetype when
----it looks like a file (oil's acwrite), and a terminal's command, from its term:// name.
----@param bufnr Bufnr
----@return string
+---Get the label a winbar names a visited buffer by.
+---
+---It's the buffer's number and its buftype, or its filetype when the buffer looks like a file
+---(oil's acwrite). A terminal adds its command, from its term:// name. A `%` is escaped for the
+---winbar.
+---
+---@param bufnr Bufnr The visited buffer
+---@return string label The buffer's number and what it is
 local function visit_label(bufnr)
 	local buftype = vim.bo[bufnr].buftype
 	local visited = (buftype == "" or buftype == "acwrite") and vim.bo[bufnr].filetype or buftype
@@ -36,10 +40,13 @@ end
 -- the primary pop-up's decoration: the switch, a closed entry's glyph, a missing file's tag
 local primary_ns = vim.api.nvim_create_namespace("cavediver_primary_popup")
 
----The picker the primary pop-up adds files through: config's `primary_picker`, a function given a
----callback that it calls with the picked files' paths; with none set, telescope's find_files when
----telescope is installed, its selection or the entry under the cursor.
----@return fun(add: fun(paths: string[]))|nil
+---Get the picker the primary pop-up adds files through.
+---
+---It's the config's `primary_picker` when set, a function given a callback that it calls with
+---the picked files' paths. With none set, it's telescope's find_files when telescope is
+---installed, which picks the selected entries, or the entry under the cursor when none are.
+---
+---@return fun(add: fun(paths: string[]))|nil picker The picker, or nil when there's none
 local function primary_picker()
 	local configured = require('cavediver.configs').primary_picker
 	if type(configured) == "function" then
@@ -74,9 +81,13 @@ local function primary_picker()
 	end
 end
 
----Add files to the primary pop-up through the picker: on the cursor's line when it's empty, otherwise
----after it. Nothing is saved until `:w`.
+---Add files to the primary pop-up through the picker.
+---
+---The picked paths go on the cursor's line when it's empty, otherwise after it. Nothing is
+---saved until `:w`. With no picker, it says how to get one.
+---
 ---@param dbuf Bufnr The pop-up's buffer
+---@return nil
 function M.pick_into_primary_popup(dbuf)
 	local picker = primary_picker()
 	if not picker then
@@ -267,8 +278,12 @@ local closed_ns = vim.api.nvim_create_namespace("cavediver_closed_lists")
 local closed_pickers = {}
 
 
----The glyphs cavediver's views draw with: config's set, with any glyph it names in that glyph's place.
----@return table<string, string>
+---Get the glyphs cavediver's views draw with.
+---
+---They're the config's chosen set (unicode by default), with any glyph the config names on its
+---own in that glyph's place.
+---
+---@return table<string, string> glyphs Glyph name → glyph
 function M.glyphs()
 	local configured = require('cavediver.configs').glyphs or {}
 	local glyphs = vim.deepcopy(configured[configured.set] or configured.unicode or {})
@@ -280,9 +295,9 @@ function M.glyphs()
 	return glyphs
 end
 
----A close time, short when it's today.
----@param time number|nil
----@return string
+---Format a close time, with the time of day alone when it's the current day.
+---@param time number|nil The close time, in seconds
+---@return string text The close time, or "" with none
 local function close_time_text(time)
 	if time == nil then
 		return ""
@@ -292,12 +307,16 @@ local function close_time_text(time)
 	return os.date("%a %d %b %H:%M", math.floor(time))
 end
 
----A closed entry's name, as its line holds it: the path from the cwd, or a No Name text's first line.
----@param filehash Filehash
----@param glyphs table
+---Get a closed entry's name, as its line holds it.
+---
+---A file's name is its path from the cwd. A No Name text's is its first line, cut at 24
+---characters. A text still in the session file is read once to show it, and kept.
+---
+---@param filehash Filehash The closed entry
+---@param glyphs table The views' glyphs
 ---@param file table|nil A list in the file alone: its `paths` and `texts` ({first, filetype})
----@return string name
----@return string|nil filetype A No Name text's
+---@return string name The entry's line text
+---@return string|nil filetype A No Name text's filetype
 local function closed_entry_name(filehash, glyphs, file)
 	local filepath = history.get_filepath_from_hash(filehash) or (file and file.paths[filehash]) or filehash
 	if not filepath:match("^NONAME_") then
@@ -328,13 +347,16 @@ local function closed_entry_name(filehash, glyphs, file)
 	return '[No Name] "' .. first .. '"', filetype
 end
 
----The time an entry is drawn and written with under a list: the list's own, when it held the file;
----otherwise the newest of the lists that held it, since the line came from one of them.
----@param picker table
----@param pool Pool
----@param filehash Filehash
+---Get the close time an entry is drawn and written with under a list.
+---
+---It's the list's own time when the list held the file. Otherwise it's the newest of the lists
+---that held it, since the line came from one of them.
+---
+---@param picker table The closed-lists buffer's state
+---@param pool Pool The list the entry is under
+---@param filehash Filehash The entry
 ---@param own boolean Whether to take the list's own time when it has one
----@return number|nil
+---@return number|nil time The close time, or nil when no list held the file
 local function closed_entry_time(picker, pool, filehash, own)
 	if own and picker.times[pool] and picker.times[pool][filehash] then
 		return picker.times[pool][filehash]
@@ -349,10 +371,14 @@ local function closed_entry_time(picker, pool, filehash, own)
 	return newest
 end
 
----The virtual text after an entry: a No Name text's filetype, the close time, a missing file's tag.
----@param entry CavediverClosedEntry
----@param glyphs table
----@return table[]
+---Build the virtual text after an entry.
+---
+---It shows a No Name text's filetype, the close time and a missing file's tag. It's the default
+---`closed_entry` formatter.
+---
+---@param entry CavediverClosedEntry The entry, as the formatter gets it
+---@param glyphs table The views' glyphs
+---@return table[] chunks The virtual text's { text, group } chunks
 local function closed_entry_text(entry, glyphs)
 	local after = {}
 	if entry.filetype then
@@ -365,8 +391,12 @@ local function closed_entry_text(entry, glyphs)
 	return after
 end
 
----Draw the virtual text around each line, from what the line's text names.
----@param dbuf Bufnr
+---Draw the virtual text around each line of the closed lists.
+---
+---It's drawn from what each line's text names. A header gets its list's tabs, and an entry its
+---closed glyph and what the `closed_entry` formatter gives it.
+---
+---@param dbuf Bufnr The closed-lists buffer
 ---@return nil
 local function decorate_closed_lists(dbuf)
 	local picker = closed_pickers[dbuf]
@@ -404,9 +434,13 @@ local function decorate_closed_lists(dbuf)
 	end
 end
 
----Draw the closed lists into a buffer: each list a header with its closed entries under it, newest
----first; the editor's list first, then the tab sessions' with a tab, then any with none.
----@param dbuf Bufnr
+---Draw the closed lists into a buffer.
+---
+---Each list is a header with its closed entries under it, newest first. The editor's list comes
+---first, then the tab sessions' lists that have a tab, then those with none, then the lists in
+---the whole editor's file alone.
+---
+---@param dbuf Bufnr The closed-lists buffer
 ---@return nil
 local function draw_closed_lists(dbuf)
 	local picker = closed_pickers[dbuf]
@@ -486,13 +520,20 @@ local function draw_closed_lists(dbuf)
 	decorate_closed_lists(dbuf)
 end
 
----Write a closed-lists buffer back: each list becomes its lines, newest first. A line moved under
----another header moves to that list; a file twice in one list is kept once, with the newer close; a
----deleted line is discarded, a No Name text only once you confirm, since it exists nowhere else. Each
----list keeps its own close times for the files it held. A line that names no list or entry refuses
----the whole write, and so does a No Name text kept at the question.
----@param dbuf Bufnr
----@return boolean written
+---Write a closed-lists buffer back to the lists.
+---
+---Each list becomes the lines under its header, newest first. A line moved under another header
+---moves to that list, and a file twice in one list is kept once, with the newer close. Each list
+---keeps its own close times for the files it held, and a file closed onto a list since it was
+---drawn is kept as its newest. A deleted line is discarded, and a No Name text only once it's
+---confirmed, since it exists nowhere else.
+---
+---A line that names no list or entry refuses the whole write, and so does a No Name text kept at
+---the question. When the lists in the whole editor's file alone can't be written, it says so and
+---returns false, with the other lists already written.
+---
+---@param dbuf Bufnr The closed-lists buffer
+---@return boolean written True if every list was written
 local function write_closed_lists(dbuf)
 	local picker = closed_pickers[dbuf]
 	local current, new, count, errors = nil, {}, {}, {}
@@ -606,8 +647,8 @@ local function write_closed_lists(dbuf)
 	return true
 end
 
----Close a closed-lists window; its buffer goes with it.
----@param dbuf Bufnr
+---Close a closed-lists window, and its buffer with it.
+---@param dbuf Bufnr The closed-lists buffer
 ---@return nil
 local function close_closed_lists(dbuf)
 	local dwin = vim.b[dbuf].display_window
@@ -616,9 +657,11 @@ local function close_closed_lists(dbuf)
 	end
 end
 
----Leave the closed lists, writing them first when they were edited. A write that's refused leaves
----the window open, so the lines can be fixed.
----@param dbuf Bufnr
+---Leave the closed lists, writing them first when they were edited.
+---
+---A write that's refused leaves the window open, so the lines can be fixed.
+---
+---@param dbuf Bufnr The closed-lists buffer
 ---@return nil
 function M.leave_closed_lists(dbuf)
 	if vim.bo[dbuf].modified and not write_closed_lists(dbuf) then
@@ -627,10 +670,15 @@ function M.leave_closed_lists(dbuf)
 	close_closed_lists(dbuf)
 end
 
----Reopen the entry under the cursor in the window the closed lists were opened from, writing the
----lists first when they were edited; then leave, or stay with the lists drawn again.
----@param dbuf Bufnr
----@param stay boolean
+---Reopen the entry under the cursor in the window the closed lists were opened from.
+---
+---The lists are written first when they were edited, and a refused write reopens nothing.
+---Then it leaves, or stays with the lists drawn again. A file that isn't on disk stays on its
+---list, and an entry of a list in the whole editor's file alone is taken off that list as it's
+---reopened.
+---
+---@param dbuf Bufnr The closed-lists buffer
+---@param stay boolean Whether to stay in the closed lists after reopening
 ---@return nil
 function M.reopen_from_closed_lists(dbuf, stay)
 	local picker = closed_pickers[dbuf]
@@ -697,9 +745,9 @@ function M.reopen_from_closed_lists(dbuf, stay)
 	end
 end
 
----Go to the next list's header (step 1) or the previous one's (step -1).
----@param dbuf Bufnr
----@param step integer
+---Go to the next list's header or the previous one's.
+---@param dbuf Bufnr The closed-lists buffer
+---@param step integer Which way to go, 1 for the next header and -1 for the previous
 ---@return nil
 function M.closed_lists_section(dbuf, step)
 	local picker = closed_pickers[dbuf]
@@ -714,8 +762,11 @@ function M.closed_lists_section(dbuf, step)
 	end
 end
 
----The fold of a line in the closed lists: each list folds under its header.
----@return string
+---Get the fold level of a line in the closed lists, for 'foldexpr'.
+---
+---Each list folds under its header.
+---
+---@return string level ">1" on a header, "1" under one, "0" outside the closed lists
 function M.closed_lists_fold()
 	local picker = closed_pickers[vim.api.nvim_get_current_buf()]
 	if picker and picker.headers[vim.trim(vim.fn.getline(vim.v.lnum))] then
@@ -724,10 +775,13 @@ function M.closed_lists_fold()
 	return picker and "1" or "0"
 end
 
----Open the closed lists in a floating window: every list of closed files, the editor's, each tab
----session's, the detached ones and those in the whole editor's file alone, to reorder, merge, discard
----or reopen from.
----@param opts {focus: Pool|nil}|nil `focus`: the list whose header the cursor starts on
+---Open the closed lists in a floating window.
+---
+---It holds the editor's list of closed files, each tab session's, the detached ones and those in
+---the whole editor's file alone, to reorder, merge, discard or reopen from. Opened from a float,
+---it reopens into the last tracked window.
+---
+---@param opts {focus: Pool|nil}|nil Options, with `focus` the list whose header the cursor starts on
 ---@return nil
 function M.show_closed_lists(opts)
 	local cwin = vim.api.nvim_get_current_win()
@@ -920,6 +974,13 @@ end
 
 local derive_cache_lock = {}
 
+---Build a window's display cache from its triquetra.
+---
+---Resolves each slot to its buffer and display name, and runs the cleanup first when a slot's
+---buffer died without events. When the current slot has no buffer, and isn't a closed slot the
+---window is visiting from, the triquetras are cleaned up and it tries once more. Returns nil for
+---a window with no triquetra.
+---
 ---@param again boolean|nil True on the one retry after a cleanup
 local function derive_cache_from_window_triquetra(winid, again)
 	local window_triquetra = window.get_triquetra(winid)
@@ -1117,16 +1178,18 @@ local function windows_overlap_horizontally(winid1, winid2)
 end
 
 
----@param winid WinId
----@param theme UITriquetraTheme
 -- each window's triquetra segment, as the winbar last drew it, for require('cavediver').winbar_segment
 local winbar_segments = {}
 
----Put a window's winbar, unless cavediver doesn't own the winbar (config's `winbar.own`), and empty
----while it's hidden. The segment is kept for the component either way.
----@param winid WinId
+---Put a window's winbar, and keep its triquetra segment.
+---
+---Nothing is put when cavediver doesn't own the winbar (config's `winbar.own`), and the winbar
+---is empty while it's hidden. The segment is kept for `M.winbar_segment()` either way.
+---
+---@param winid WinId The window
 ---@param winbar string The whole winbar
 ---@param segment string|nil The triquetra's segment, without the rule and the padding
+---@return nil
 local function put_winbar(winid, winbar, segment)
 	winbar_segments[winid] = segment
 	if require('cavediver.configs').winbar.own == false then
@@ -1135,9 +1198,12 @@ local function put_winbar(winid, winbar, segment)
 	vim.wo[winid].winbar = require('cavediver.domains.ui').is_hidden("winbar") and "" or winbar
 end
 
----A window's triquetra segment, `""` while the winbar is hidden or the window has none.
----@param winid WinId|nil The current window when nil
----@return string
+---Get a window's triquetra segment, as the winbar last drew it.
+---
+---It's `""` while the winbar is hidden or when the window has none.
+---
+---@param winid WinId|nil The window (the current one when nil or 0)
+---@return string segment The segment, with its highlight groups
 function M.winbar_segment(winid)
 	winid = (winid == nil or winid == 0) and vim.api.nvim_get_current_win() or winid
 	if require('cavediver.domains.ui').is_hidden("winbar") then
@@ -1146,6 +1212,8 @@ function M.winbar_segment(winid)
 	return winbar_segments[winid] or ""
 end
 
+---@param winid WinId
+---@param theme UITriquetraTheme
 local function construct_winbar_string(winid, theme)
 	local triquetra = data.get_or_create_window_display_cache(winid)
 
@@ -1404,12 +1472,15 @@ function M.is_real_file(bufnr, win_id)
 	return value
 end
 
----Whether a window shows something we don't track (help, a terminal), so its triquetra's winbar shows
----the visit. Floats and the skipped filetypes get none, as for files.
+---Check if a window is visiting something cavediver doesn't track.
 ---
----@param bufnr Bufnr
----@param win_id WinId
----@return boolean
+---A loaded buffer with no file hash (help, a terminal) is visited, so the window's winbar shows
+---the visit. Floats and the skipped filetypes never visit, as they get no winbar for files
+---either.
+---
+---@param bufnr Bufnr The buffer the window shows
+---@param win_id WinId The window
+---@return boolean visiting True if the window is visiting the buffer
 function M.is_visiting(bufnr, win_id)
 	return history.get_hash_from_buffer(bufnr) == nil
 		and vim.api.nvim_buf_is_loaded(bufnr)
@@ -1430,8 +1501,14 @@ end
 -- the visit bars cavediver wrote, by window: it writes only where the winbar is empty or one of these
 local visit_bars = {}
 
----A window with no current slot, born untracked (a :help split, :copen, a terminal split), shows what
----it visits alone, centred, in its own colour, unless another plugin set its winbar.
+---Draw the visit bars of the windows with no triquetra.
+---
+---A window born untracked (a :help split, :copen, a terminal split) has no current slot, so its
+---bar shows what it visits alone, centred, in its own colour. A bar is written only where the
+---winbar is empty or still holds the bar written before, so another plugin's winbar stays. A bar
+---whose window stops visiting goes.
+---
+---@return nil
 local function update_visit_bars()
 	local own = require('cavediver.configs').winbar.own ~= false
 	local hidden = require('cavediver.domains.ui').is_hidden("winbar")

@@ -12,13 +12,15 @@ local loop_states = require('cavediver.domains.ui.states').LOOP
 
 local M = {}
 
----Keep the older one, for the ternary memory. When a buffer becomes current by anything but plain
----navigation onto it (which has its own check in displacement_mangement), and its plain ternary note
----names the buffer now in the ternary, the note is stale: restoring it would throw. It's rewritten to
----the buffer from before, the way navigation's check does it:
---- - the buffer left went into the ternary: the pre-jump stored ternary when the arriving buffer was
----   the ternary, otherwise the pre-jump ternary;
---- - the ternary stayed put: the ternary's own plain note.
+---Rewrite the arriving buffer's ternary note when it has gone stale.
+---
+---When a buffer becomes current by anything but plain navigation onto it (displacement_mangement
+---checks that route itself), its plain ternary note can name the buffer now in the ternary, and
+---restoring it would throw. The note is rewritten to the buffer from before, as navigation's check
+---does it:
+--- - the buffer left went into the ternary: the pre-jump stored ternary if the arriving buffer was
+---   the ternary, otherwise the pre-jump ternary
+--- - the ternary stayed put: the ternary's own plain note
 ---It's dropped when that would name the arriving buffer or the ternary itself.
 ---
 ---@param triquetra WindowTriquetra
@@ -26,6 +28,7 @@ local M = {}
 ---@param left Filehash The buffer it replaced
 ---@param ternary_before Filehash|nil The ternary before the arrival
 ---@param ternary_after Filehash|nil The ternary after the arrival
+---@return nil
 function M.keep_older_ternary_note(triquetra, arrived, left, ternary_before, ternary_after)
 	local dtm = triquetra.displacement_ternary_map
 	if arrived == nil or ternary_after == nil or dtm[arrived] ~= ternary_after then
@@ -44,13 +47,15 @@ function M.keep_older_ternary_note(triquetra, arrived, left, ternary_before, ter
 	dtm[arrived] = older
 end
 
----Keep the older one, for the secondary memory. When the current buffer's plain secondary note names
----the window's secondary, it's stale: it's rewritten to the buffer's swap note when that's an older
----partner, otherwise dropped.
+---Rewrite the current buffer's secondary note when it has gone stale.
+---
+---A plain secondary note that names the window's secondary would make the restore throw. It's
+---rewritten to the buffer's swap note when that names another buffer, otherwise it's dropped.
 ---
 ---@param triquetra WindowTriquetra
 ---@param current Filehash|nil The current buffer
 ---@param secondary Filehash|nil The window's secondary
+---@return nil
 function M.keep_older_secondary_note(triquetra, current, secondary)
 	local dsm = triquetra.displacement_secondary_map
 	if current == nil or secondary == nil or dsm[current] ~= secondary then
@@ -65,12 +70,15 @@ function M.keep_older_secondary_note(triquetra, current, secondary)
 	require('cavediver.domains.ledger').note("secondary", current, secondary, dsm[current], "stale")
 end
 
----The notes a swap onto the secondary writes, whatever route it takes there (<M-f>, its <M-;><M-f>
----fallback, plain navigation onto the secondary): the buffer left gets swap notes for its secondary
----and its ternary. The secondary's own swap note, when it names an older partner, becomes its plain
----note; a plain note naming the buffer left is cleared, so the round trip can't leave it stale.
+---Write the notes of a swap onto the secondary.
+---
+---Every route onto the secondary writes them: <M-f>, its <M-;><M-f> fallback, and plain navigation
+---onto the secondary. The buffer left gets swap notes for its secondary and its ternary. The
+---secondary's own swap note becomes its plain note when it names another buffer, and a plain note
+---naming the buffer left is cleared, so a round trip can't leave it stale.
 ---
 ---@param triquetra WindowTriquetra
+---@return nil
 function M.write_secondary_swap_notes(triquetra)
 	local current, secondary, ternary = triquetra.current_slot, triquetra.secondary_slot, triquetra.ternary_slot
 	local dsm = triquetra.displacement_secondary_map
@@ -86,12 +94,15 @@ function M.write_secondary_swap_notes(triquetra)
 	end
 end
 
----The stale-note check where a slot changes under the current buffer without a buffer becoming
----current: the restores' exchanges, graduation, the history fill, a cleanup pass that moved slots.
----A ternary note naming the ternary becomes the ternary's own plain note (dropped when that names the
----current buffer or the ternary); a secondary note naming the secondary keeps the older one.
+---Check the current buffer's notes after a slot changed under it.
+---
+---Runs where a slot changes with no buffer becoming current: the restores' exchanges, graduation,
+---the history fill, and a cleanup pass that moved slots. A ternary note naming the ternary becomes
+---the ternary's own plain note, or is dropped when that names the current buffer or the ternary. A
+---secondary note naming the secondary is rewritten as `M.keep_older_secondary_note()` does it.
 ---
 ---@param triquetra WindowTriquetra
+---@return nil
 function M.check_notes_under_current(triquetra)
 	local current, ternary = triquetra.current_slot, triquetra.ternary_slot
 	if current == nil then
@@ -109,20 +120,25 @@ function M.check_notes_under_current(triquetra)
 	M.keep_older_secondary_note(triquetra, current, triquetra.secondary_slot)
 end
 
----Remember a window's triquetra from just before a buffer arrives in it (see `M.undo_arrival()`).
+---Remember a window's triquetra from just before a buffer arrives in it.
+---
+---Used by `M.undo_arrival()` to put the window back.
 ---
 ---@param winid WinId
 ---@param triquetra WindowTriquetra
 ---@param filehash Filehash The arriving buffer
+---@return nil
 function M.remember_arrival(winid, triquetra, filehash)
 	data.arrivals[winid] = { hash = filehash, before = vim.deepcopy(triquetra) }
 end
 
----Remember the triquetra just after the arrival too: an arrival is undone only while nothing else has
----changed the triquetra since.
+---Remember a window's triquetra from just after a buffer arrived in it.
+---
+---An arrival is undone only while nothing else has changed the triquetra since.
 ---
 ---@param winid WinId
 ---@param triquetra WindowTriquetra
+---@return nil
 function M.seal_arrival(winid, triquetra)
 	local arrival = data.arrivals[winid]
 	if arrival and arrival.hash == triquetra.current_slot then
@@ -130,12 +146,15 @@ function M.seal_arrival(winid, triquetra)
 	end
 end
 
----Undo a buffer's arrival once it turned into something we don't track (its buftype changed after it was
----slotted). A window it just arrived in gets back the slots and notes it had before, and is visiting it. A
----window whose current slot it was otherwise takes the next slot in line, as a landing does. It leaves every
----other slot, and is no longer tracked.
+---Undo a buffer's arrival once it turned into something cavediver doesn't track.
+---
+---Runs when the buffer's buftype changed after it was slotted. A window it just arrived in gets back
+---the slots and notes it had before, and is visiting it. A window whose current slot it was otherwise
+---takes the next slot in line, as a landing does. The buffer then leaves every other slot, and is no
+---longer tracked.
 ---
 ---@param bufnr Bufnr
+---@return nil
 function M.undo_arrival(bufnr)
 	local filehash = history.get_hash_from_buffer(bufnr)
 	if not filehash then
@@ -266,10 +285,12 @@ local function remove_from_closed_buffers(filehash)
 	history.routines.open_out_of_pools(filehash) -- open again, it's closed nowhere
 end
 
----Whether a slot's file is closed and gone from disk. Its pointer is kept, since the file may come
----back, and using it says so instead.
+---Check if a slot's file is closed and gone from disk.
+---
+---Its pointer is kept, since the file may come back, and using it says so instead.
+---
 ---@param filehash Filehash|nil
----@return boolean
+---@return boolean missing True if the file has no buffer and isn't readable
 local function is_missing(filehash)
 	local filepath = filehash and history.get_filepath_from_hash(filehash)
 	return filepath ~= nil and
@@ -280,7 +301,7 @@ end
 
 ---Say that a slot's file is gone from disk, and that the slot keeps it.
 ---@param filehash Filehash
----@param slot string
+---@param slot string The slot's name, as the message says it ("secondary slot")
 local function say_missing(filehash, slot)
 	vim.notify(require('cavediver.domains.ui').routines.get_smart_basename(filehash) ..
 		" isn't on disk right now; the " .. slot .. " keeps it.", vim.log.levels.WARN)
@@ -289,7 +310,7 @@ end
 ---A function used to handle conflicts of slot allocations in the triquetra.
 ---@param winid WinId
 ---@param new_bufnr Bufnr
----@param is_pick boolean|nil True when a cycling pick lands here (<M-v>), not a load or a cancel
+---@param is_pick boolean|nil Whether a cycling pick (<M-v>) lands here, rather than a load or a cancel
 function M.reconcile_triquetra(winid, new_bufnr, is_pick)
 	local new_filehash = history.get_hash_from_buffer(new_bufnr)
 
@@ -368,11 +389,11 @@ function M.reconcile_triquetra(winid, new_bufnr, is_pick)
 	end
 end
 
----Land a window whose buffer got deleted, once the delete is over. It goes to the ternary,
----then the secondary, then the primary, then the most recent buffer. With nothing to land on
----it keeps the empty buffer Neovim gave it, and only makes one if Neovim showed something else.
+---Land a window whose buffer got deleted, once the delete is over.
 ---
----Neovim's own pick in between isn't recorded as a visit (see `M.is_landing_pick()`).
+---It goes to the ternary, then the secondary, then the primary, then the most recent buffer. With
+---nothing to land on it keeps the empty buffer Neovim gave it, and only makes one if Neovim showed
+---something else. Neovim's own pick in between isn't recorded as a visit (see `M.is_landing_pick()`).
 ---
 ---@param winid WinId The window that was showing the deleted buffer
 ---@param deleted_bufnr Bufnr The buffer being deleted
@@ -466,12 +487,13 @@ function M.land_after_delete(winid, deleted_bufnr)
 	end)
 end
 
----Whether this BufEnter is neovim's own pick for a window whose buffer is being deleted. Only
----the first one counts, and only once the buffer has left the buffer list (a rename keeps it).
+---Check if this BufEnter is Neovim's own pick for a window whose buffer is being deleted.
+---
+---Only the first one counts, and only once the buffer has left the buffer list (a rename keeps it).
 ---
 ---@param winid WinId
 ---@param bufnr Bufnr The buffer being entered
----@return boolean
+---@return boolean pick True if it's Neovim's pick, which isn't recorded as a visit
 function M.is_landing_pick(winid, bufnr)
 	local landing = data.landing[winid]
 	if
@@ -561,7 +583,8 @@ function M.cleanup_triquetras(bufnr_ondelete)
 				end
 				if cbufhash == triquetra.current_slot or vim.bo[cbufnr].buftype == "acwrite" then -- it means that the buffer didn't evolved to anything new. it was still deleted, so we fallback.
 					-- Part 1: Try Heal triquetra with self
-					---@type boolean If true then a slot took the current slot's place.
+					---Whether a slot took the current slot's place
+					---@type boolean
 					local resolved = false
 					local bufnr
 					if triquetra.ternary_slot and history.get_buffer_from_hash(triquetra.ternary_slot) then
