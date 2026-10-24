@@ -169,6 +169,7 @@ function M.init_autocmds(group)
 					if type(fn) == "function" then
 						act = function()
 							require('cavediver.domains.ledger').begin("keymap", lhs, vim.api.nvim_get_current_win())
+							require('cavediver.domains.navigation').cancel_cycle_elsewhere()
 							fn()
 						end
 					end

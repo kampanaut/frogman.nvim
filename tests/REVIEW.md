@@ -1,6 +1,6 @@
 # Test review sheet
 
-522 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+525 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -492,7 +492,7 @@ spec: Q17, the only window: `:help`, `:only`, `<M-.>`. The help buffer is closed
 spec: Q17, a running terminal: `<M-.>` on a `:terminal` whose job is still running refuses with a message, and the terminal stays.  
 `tests/test_closing.lua:314`
 
-## tests/test_cycling.lua (30 cases: 30 char)
+## tests/test_cycling.lua (33 cases: 33 char)
 
 **T69 [char]** <M-m> from normal starts cycling and leaves the current slot  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -775,6 +775,26 @@ spec: (A26) A dump opens its scratch buffer only once the editor settles, and na
 note: T200's route. The file on disk is sealed, and :CavediverDump opens it from the directory it was written in only.  
 spec: (A26) A dump is sealed: on T200's route the file starts with `CDV1` and holds none of its text in clear (no `c.txt`, no `<M-;><M-t>`, no `cavediver:`); `:CavediverDump <file>` opens it in a buffer holding the failing row and the `replay:` part; after `:cd sub`, the same command s…  
 `tests/test_cycling.lua:698`
+
+**T461 [char]** a key that comes before the cancel runs it first, then does its job  
+→ `eq({ dumps = #Extra.new_files(before, child.dumps()), nav = child.state().nav, split = child.shown(split) },`  
+→ `eq(#said, 1)`  
+→ `slots = '⦉b⦊ [a] ⟦-⟧'`  
+→ `eq(child.lua([[`  
+note: Keys in one batch, as a macro or a mapping sends them: <M-;><M-f> reaches the first window before the jump's cancel has settled. a throw in the batch doesn't come back through feedkeys: the dump count is what shows one said once: the cancel the jump scheduled finds the cycle over and does nothing th  
+spec: (A12) A key that comes before the cancel runs it first: `:e a`, `<M-;><M-c>`, `:e b` give `⦉a⦊ [b] ⟦-⟧` with `p=[a]on`; `:vsplit`, `:e c` give the split `⦉b⦊ [c] ⟦-⟧`; `<M-m>` there, then `<C-w>w<M-;><M-f>` in one batch: nothing throws and nothing dumps, the split shows c again w…  
+`tests/test_cycling.lua:752`
+
+**T463 [char]** an export called from a user's mapping runs the cancel first too  
+→ `eq({ ok = ok, dumps = #Extra.new_files(before, child.dumps()), split = child.shown(split), first = child.slots(first) },`  
+note: A user's own Lua mapping: a window jump and an export, in one function.  
+spec: (A12) An export called from a user's mapping runs the cancel first too: T461's setup, then `vim.cmd.wincmd('w')` and `require('cavediver').jump_to_primary()` in one function: nothing throws and nothing dumps, the split shows c again, and the other window is `⦉b⦊ [a] ⟦-⟧`.  
+`tests/test_cycling.lua:780`
+
+**T462 [char]** a jump's cancel says so  
+`:wincmd w` → `eq(#said, 1)`  
+spec: (A12) A jump's cancel says so: T461's setup, `<M-m>` in the split, then `<C-w>w` alone, settled, gives one INFO, "Cycling cancelled. Window 1 returned to cycling origin buffer: c.txt".  
+`tests/test_cycling.lua:792`
 
 ## tests/test_decisions.lua (52 cases: 52 char)
 

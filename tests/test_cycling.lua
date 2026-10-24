@@ -731,4 +731,73 @@ T['T460 [char] a dump is sealed, and :CavediverDump opens it from the directory 
 	eq(Extra.has(child.messages(), "doesn't open here"), true)
 end
 
+-- T461 and T462's setup: the first window at ⦉a⦊ [b] ⟦-⟧ with p=[a]on, and a split,
+-- focused, at ⦉b⦊ [c] ⟦-⟧, cycling there (<M-m>).
+local function cycling_in_split()
+	child.steps({ ':e a', '<M-;><M-c>', ':e b' })
+	local first = child.win()
+	eq(child.slots(first), '⦉a⦊ [b] ⟦-⟧')
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e c' })
+	local split = child.win()
+	eq(child.slots(split), '⦉b⦊ [c] ⟦-⟧')
+	child.steps({ '<M-m>' })
+	eq(child.state(), CYCLING)
+	return first, split
+end
+
+-- Keys in one batch, as a macro or a mapping sends them: <M-;><M-f> reaches the first
+-- window before the jump's cancel has settled.
+T['T461 [char] a key that comes before the cancel runs it first, then does its job'] = function()
+	local first, split = cycling_in_split()
+	local before = child.dumps()
+	child.messages()
+	-- a throw in the batch doesn't come back through feedkeys: the dump count is what shows one
+	child.lua([[pcall(vim.api.nvim_feedkeys, vim.api.nvim_replace_termcodes('<C-w>w<M-;><M-f>', true, false, true), 'x', false)]])
+	child.settle(200)
+	eq({ dumps = #Extra.new_files(before, child.dumps()), nav = child.state().nav, split = child.shown(split) },
+		{ dumps = 0, nav = 'normal', split = 'c' })
+	-- said once: the cancel the jump scheduled finds the cycle over and does nothing
+	local said = vim.tbl_filter(function(m)
+		return m.msg == 'Cycling cancelled. Window 1 returned to cycling origin buffer: c.txt'
+	end, child.messages())
+	eq(#said, 1)
+	eq(child.slots(first), '⦉b⦊ [a] ⟦-⟧')
+	-- the cancel is a move on the key's own step
+	eq(child.lua([[
+		for _, step in ipairs(require('cavediver').ledger.steps()) do
+			if step.trigger == '<M-;><M-f>' then
+				for _, move in ipairs(step.moves) do
+					if move.kind == 'cancelled' then return step.cause end
+				end
+			end
+		end
+	]]), 'keymap')
+end
+
+-- A user's own Lua mapping: a window jump and an export, in one function.
+T['T463 [char] an export called from a user\'s mapping runs the cancel first too'] = function()
+	local first, split = cycling_in_split()
+	local before = child.dumps()
+	local ok = child.lua([[return (pcall(function()
+		vim.cmd.wincmd('w')
+		require('cavediver').jump_to_primary()
+	end))]])
+	child.settle(200)
+	eq({ ok = ok, dumps = #Extra.new_files(before, child.dumps()), split = child.shown(split), first = child.slots(first) },
+		{ ok = true, dumps = 0, split = 'c', first = '⦉b⦊ [a] ⟦-⟧' })
+end
+
+T['T462 [char] a jump\'s cancel says so'] = function()
+	cycling_in_split()
+	child.messages()
+	child.cmd('wincmd w')
+	child.settle(200)
+	local said = vim.tbl_filter(function(m)
+		return m.msg == 'Cycling cancelled. Window 1 returned to cycling origin buffer: c.txt' and m.level == vim.log.levels.INFO
+	end, child.messages())
+	eq(#said, 1)
+end
+
 return T
