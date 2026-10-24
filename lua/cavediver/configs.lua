@@ -358,7 +358,7 @@ local defaults = {
 	toggle_window = {
 		skip_filetypes = { "minimap", "neominimap" },
 	},
-	cleanup_interval = 4000,              -- seconds
+	cleanup_interval = 4000,              -- milliseconds
 	winbar_refresh_interval = 140         -- milliseconds
 }
 

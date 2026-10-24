@@ -25,10 +25,10 @@ This is the kind of problem this plugin solves for you. We introduce mainly **Tr
         - Or just delete, to really remove it.
         - Type up a filereadable filepath and just save.
             - The system validates if it is readable. If it is readable, it registers it.
-            - If not, then vim.notify() an error, nothing is saved.
+            - If not, then vim.notify() an error for that line, the other lines still get saved.
         - If you press enter while under a line (in normal mode), that line will be put on top which will be promoted as the current primary buffer.
     - The default keybind `<m-;><m-f>` will now just always select the first element `primary_buffers[1]`
-    - If you disable primary buffer, you can still use the pop-up window to set a primary buffer from the queue, but `<m-;><m-f>` won't do anything at all, until you set it to active again..
+    - If you disable primary buffer, you can still use the pop-up window to set a primary buffer from the queue, but `<m-;><m-f>` will just act like `<m-f>`, until you set it to active again..
     - You can open the popup floating window with `<m-;>F`
 
 
@@ -41,10 +41,12 @@ You can also see that the two windows have their own history. You can turn this 
 
 ## Requirements
 
-- resession.nvim
+- neovim 0.12+
 - nvim-cokeline
-- harpoon (harpoon feature still coupled with the plugin, working on togglable option)
-- openssl (system installed, used for hashing file names and  directories)
+- openssl 3 (system installed, its libcrypto is used for encrypting the session files. Hashing is done with neovim's built-in `vim.fn.sha256`)
+- harpoon (optional, harpooned buffers are marked in the bufferline)
+- telescope.nvim (optional, used for adding files in the primary buffer pop-up)
+- a session manager (optional, resession.nvim is used in the examples below)
 
 ## Installation
 
@@ -56,18 +58,24 @@ This works for all plugin managers.
 {
     "kampanaut/cavediver",
     -- dir = "~/Projects/nvim/cavediver",
-    config = true
+    config = true,
         dependencies = {
-            "ThePrimeagen/harpoon",
-            -- resession.nvim and nvim-cokeline, requires this plugin.
+            "willothy/nvim-cokeline",
         }
 }
 ```
 
-### Resession.nvim setup
+### Session manager setup
 
-You have to add a hook for the session manager, to allow this plugin to have persistence. 
+You have to add hooks for the session manager, to allow this plugin to have persistence.
 This cavediver plugin saves the session state in your neovim's `data` directory by default.
+It doesn't care which session manager you use, it just needs these to happen:
+- `save_session(name)` is called before the editor is torn down
+- `load_session(name)` is called after the session manager restored your buffers and windows
+- the session you are leaving gets saved before you switch to another one
+- for tab sessions, the tab's session gets saved before its tab closes
+
+#### resession.nvim
 
 ```lua
 {
@@ -90,13 +98,27 @@ This cavediver plugin saves the session state in your neovim's `data` directory 
             end,
             -- your configurations....
         })
-        resession.add_hook("pre_save", function()
-            require('cavediver').save_session(vim.loop.cwd())
+        resession.add_hook("pre_save", function(name, opts, target_tabpage)
+            require('cavediver').save_session(name, { tab = target_tabpage })
         end)
 
-        resession.add_hook("post_load", function()
-            require('cavediver').load_session(vim.loop.cwd())
+        resession.add_hook("post_load", function(name, opts)
+            -- a tab session (a load that kept the other tabs) fills only its tab
+            require('cavediver').load_session(name, { tab = not opts.reset and vim.api.nvim_get_current_tabpage() or nil })
         end)
+
+        resession.add_hook("pre_load", function()
+            resession.save_all({ notify = false })
+        end)
+
+        vim.api.nvim_create_autocmd("TabClosedPre", {
+            callback = function()
+                local info = resession.get_current_session_info()
+                if info and info.tab_scoped and not resession.is_loading() then
+                    resession.save_tab(info.name, { dir = info.dir, notify = false })
+                end
+            end,
+        })
     end,
     dependencies = {
         "kampanaut/cavediver"
@@ -104,10 +126,19 @@ This cavediver plugin saves the session state in your neovim's `data` directory 
 },
 ```
 
+#### Native sessions (`:mksession`)
+
+`save_session(vim.v.this_session)` on `SessionWritePost`, `load_session(vim.v.this_session)` on `SessionLoadPost`,
+and `:mksession!` before you `:source` another one.
+
+#### No session manager
+
+Call `save_session()` yourself, like on `VimLeavePre`, and `load_session()` when you want it back.
+
 ### nvim-cokeline setup
 
-The cavediver plugin can work without the bufferline, but it would be nice to visualise the 
-visit history of all your browsers in a bufferline, so that you can now how you can end up 
+The cavediver plugin can work without the bufferline, but it reduces the experience a lot. 
+Cokeline is what lets you visualise the visit history of all your buffers, so that you can know how you can end up 
 to your current buffer.
 
 ```lua 
@@ -225,75 +256,175 @@ local defaults = {
     bufferline = {
         history_view = "global" -- "global" | "window"
     },
+    primary_buffer_history_popup = {
+        height = 0.2, -- can be a ratio or a whole number
+        width = 0.7, -- can be a ratio or a whole number
+    },
+    closed_lists_popup = {
+        height = 0.5, -- can be a ratio or a whole number
+        width = 0.7, -- can be a ratio or a whole number
+    },
+    trail_popup = {
+        height = 0.8, -- can be a ratio or a whole number
+        width = 0.8, -- can be a ratio or a whole number
+    },
+    -- the trail's header: its tally of the day's moves, its gauge of the days, its fill shaded by depth
+    trail = {
+        header = { tally = true, gauge = true, shade = true },
+    },
+    glyphs = {
+        set = "unicode", -- "unicode" | "ascii"; a glyph named here, outside the sets, replaces the set's
+        unicode = {
+            list = "≡", closed = "↓", tag = "⎇", more = "…",
+            -- the trail's: its title, fills by depth (and unshaded), gauge, marks, branches, folds, arrows, and a
+            -- search's mark and life line
+            title = "⦉ trail ⦊", shade0 = "≋", shade1 = "░", shade2 = "▒", shade3 = "▓", rule = "─",
+            bars = "▁▂▃▄▅▆▇█", now_left = "❬", now_right = "❭", dot = " · ", older = "<<<", newer = ">>>",
+            branch = "├ ", last = "└ ", stem = "│ ", folded = "▸", unfolded = "▾", arrow = " → ", ring = "┊",
+            row_t = { "⦉", "⦊" }, row_c = { "[", "]" }, row_s = { "⟦", "⟧" }, search = "⌕", life = "┃",
+            -- what set a step off
+            keymap = "⌨", command = "⌨", event = "⚡", timer = "⏲", load = "◆", save = "◇", restart = "↻", label = "⎇",
+            -- a move's family
+            reopened = "↑", forgotten = "∅", note_dropped = "⌫", gone = "✗", back = "✓", repair = "⚒", repointed = "⟲",
+            landed = "⤳", undone = "↶", dropped = "⊘", cleared = "⊘", rewritten = "✎", cancelled = "⇤", loaded = "◆",
+            fresh = "◆", saved = "◇", refreshed = "◇", tab_closed = "◇", copied = "⧉", moved = "⇢", detached = "≡",
+            detached_left = "≡",
+        },
+        ascii = {
+            list = "#", closed = "v", tag = "@", more = "...",
+            title = "[ trail ]", shade0 = "~", shade1 = ".", shade2 = ":", shade3 = "#", rule = "-",
+            bars = "_.-=+*#", now_left = "(", now_right = ")", dot = " - ", older = "<<<", newer = ">>>",
+            branch = "|- ", last = "`- ", stem = "|  ", folded = "+", unfolded = "-", arrow = " -> ", ring = ":",
+            row_t = { "<", ">" }, row_c = { "[", "]" }, row_s = { "{", "}" }, search = "?", life = "|",
+            keymap = "K", command = ":", event = "E", timer = "T", load = "L", save = "S", restart = "R", label = "@",
+            reopened = "^", forgotten = "0", note_dropped = "x", gone = "X", back = "+", repair = "!", repointed = "~",
+            landed = ">", undone = "<", dropped = "/", cleared = "/", rewritten = "*", cancelled = "|", loaded = "L",
+            fresh = "L", saved = "S", refreshed = "S", tab_closed = "S", copied = "=", moved = ">", detached = "#",
+            detached_left = "#",
+        },
+    },
+    formatters = {}, -- closed_entry, trail_step, trail_move, trail_header: each gives {text, highlight} chunks, or nil for cavediver's own
     colors = {
         base = {
             focused = {
-                fg = "#D5C4A1",
-                bg = "#151515",
+                fg = "#B7B5AC", -- base-300
+                bg = "#151515", -- your bg
             },
             unfocused = {
-                fg = "#504945",
+                fg = "#575653", -- base-700
                 bg = "#151515"
             },
         },
         current = {
             focused = {
-                filename = "#A9B665",
-                bufnr = "#A9B665",
+                filename = "#879A39", -- green-400
+                bufnr = "#879A39",
             },
             unfocused = {
-                filename = "#504945",
-                bufnr = "#504945",
+                filename = "#575653",
+                bufnr = "#575653",
             }
         },
         secondary = {
             focused = {
-                filename = "#A9B665",
-                bufnr = "#D8A657"
+                filename = "#879A39",
+                bufnr = "#DA702C" -- orange-400
             },
             unfocused = {
-                filename = "#504945",
-                bufnr = "#504945",
+                filename = "#575653",
+                bufnr = "#575653",
             },
         },
         ternary = {
             focused = {
-                filename = "#8d965e",
-                bufnr = "#8d965e"
+                filename = "#9F9D96", -- base-400
+                bufnr = "#9F9D96"
             },
             unfocused = {
-                filename = "#504945",
-                bufnr = "#504945",
+                filename = "#575653",
+                bufnr = "#575653",
             },
         },
         primary = {
             active = "#FFAF00",
-            inactive = "#504945",
-            unfocused = "#504945"
+            inactive = "#575653",
+            unfocused = "#575653"
         },
         harpooned = {
             unfocused = {
-                fg = "#5d6699",
+                fg = "#8B7EC8", -- purple-400
             }
         },
         both_way_arrow = {
-            focused = "#5F87AF",
-            unfocused = "#5F87AF"
+            focused = "#4385BE", -- blue-400
+            unfocused = "#4385BE"
+        },
+        trail = {
+            list = "#8B7EC8", -- purple-400
+            closed = "#DA702C", -- orange-400
+            time = "#878580", -- base-500
+            tag = "#6F6E69", -- base-600
+            dim = "#575653", -- base-700
+            -- the trail's own
+            wave = { "#4385BE", "#205EA6", "#1A4F8C", "#163B66" }, -- the fill: today, a week, a month, older
+            title = "#879A39", -- green-400
+            date = "#B7B5AC", -- base-300
+            depth = "#DA702C", -- orange-400
+            count = "#878580", -- base-500
+            gauge = "#4385BE", -- blue-400
+            gauge_now = "#FFAF00",
+            key_on = "#8B7EC8", -- purple-400
+            key_off = "#575653", -- base-700
+            gutter = "#575653", -- base-700
+            trigger = "#878580", -- base-500
+            name = "#B7B5AC", -- base-300
+            words = "#878580", -- base-500
+            ring = "#6F6E69", -- base-600
+            fold = "#8B7EC8", -- purple-400
+            reopened = "#879A39", -- green-400
+            forgot = "#6F6E69", -- base-600
+            gone = "#D14D41", -- red-400
+            back = "#879A39", -- green-400
+            repair = "#D0A215", -- yellow-400
+            slot = "#3AA99F", -- cyan-400
+            note = "#CE5D97", -- magenta-400
+            cycle = "#4385BE", -- blue-400
+            session = "#4385BE", -- blue-400
+            rename = "#4385BE", -- blue-400
+            row_t = "#9F9D96", -- base-400
+            row_c = "#879A39", -- green-400
+            row_s = "#DA702C", -- orange-400
+            -- a search's life line: the name open, closed, gone from disk
+            life_open = "#879A39", -- green-400
+            life_closed = "#DA702C", -- orange-400
+            life_gone = "#D14D41", -- red-400
+        },
+        -- a window with no current slot: its visit alone
+        visit_bar = {
+            focused = "#3AA99F", -- cyan-400
+            unfocused = "#575653", -- base-700
         },
         cokeline = {
-            is_picking_close = "#a05959",
-            is_picking_focus = "#d7d7a5",
+            is_picking_close = "#D14D41", -- red-400
+            is_picking_focus = "#4385BE", -- blue-400
+            active = "#FFAF00",
             bg = {
                 detached = {
-                    focused = "#2B2A33",
-                    unfocused = "#020202",
+                    focused = "#282726", -- base-900
+                    unfocused = "#100F0F", -- black
                 },
                 attached = "#151515"
             },
             fg = {
-                focused = "#988E75",
-                unfocused = "#6c6c6c"
+                focused = "#878580", -- base-500
+                unfocused = "#6F6E69" -- base-600
             },
+            diagnostics = {
+                error = "#D14D41", -- red-400
+                warning = "#D0A215", -- yellow-400
+                info = "#3AA99F", -- cyan-400
+                hint = "#879A39" -- green-400
+            }
         }
     },
     keymaps = {
@@ -316,12 +447,68 @@ local defaults = {
         cycle_select = "<M-v>", -- Quit cycling mode and attach history with cycling buffer
 
         -- Primary buffer management
-        toggle_primary = "<M-;><M-c>", -- Toggle current buffer as primary
-        set_primary = "<M-;><M-x>",
+        toggle_primary = "<M-;><M-x>", -- Toggle current buffer as primary
+        set_primary = "<M-;><M-c>",
         close_buffer = "<M-.>",
+
+        open_primary_buffer_history = "<M-;>F", -- Open primary buffer history
+        open_closed_lists = "<M-;>W", -- Open the closed lists
+
+        -- Inside cavediver's own views
+        views = {
+            leave = "q",
+            leave_too = "<C-c>",
+            act = "<CR>",
+            act_and_stay = "gf",
+            fold = "za",
+            previous_section = "H",
+            next_section = "L",
+            pick = "<M-e>", -- the primary pop-up's: add files through the picker
+            search = "s", -- the trail's: search every page for a name
+            search_word = "*", -- the trail's: search for the name under the cursor
+        },
     },
-    cleanup_interval = 8000,    -- seconds
-    winbar_refresh_interval = 140 -- milliseconds
+    -- the ledger: `ring`, how many of the last steps are kept in memory, and `dump`, whether something
+    -- that shouldn't happen writes them to a file under stdpath("state")/cavediver/ and a window
+    ledger = {
+        ring = 1000,
+        dump = true,
+    },
+    -- label_provider: where you are, for tagging files that go missing: nil reads .git/HEAD, a
+    -- function returning a string gives the label, false turns labels off (the tag is then the time).
+    -- primary_picker: the primary pop-up's file picker, a function given a callback it calls with the
+    -- picked files' paths: nil uses telescope's find_files when telescope is installed.
+    -- marks_provider: the marked files, for the bufferline's marks: nil reads harpoon's list when it's
+    -- installed, a function returning their paths in order gives them, false marks nothing.
+    -- the winbar: `own`, whether cavediver writes it (otherwise `require('cavediver').winbar_segment()`
+    -- gives its segment to place yourself); `skip_filetypes`, windows of these filetypes get none
+    winbar = {
+        own = true,
+        skip_filetypes = {
+            "neo-tree-popup",
+            "neo-tree",
+            "notify",
+            "neominimap",
+            "Avante",
+            "AvanteInput",
+            "dropbar_menu",
+            "dropbar_menu_fzf",
+            "DressingInput",
+            "cmp_docs",
+            "cmp_menu",
+            "noice",
+            "prompt",
+            "TelescopePrompt",
+            "blink_menu",
+            "blink_docs",
+        },
+    },
+    -- <M-,> (toggle_window) skips a previous window of these filetypes
+    toggle_window = {
+        skip_filetypes = { "minimap", "neominimap" },
+    },
+    cleanup_interval = 4000,              -- milliseconds
+    winbar_refresh_interval = 140         -- milliseconds
 }
 ```
 
@@ -383,3 +570,8 @@ Window-specific history is a recent addition and is really nice on seeing the bu
 
 You will notice that no matter how you cycle, the current slot buffer doesn't change. It is because during cycling mode, the cavediver plugin has stopped tracking visits. You need to do `<m-v>` to select the buffer you are currently and quit cycling mode. 
 
+## When something shouldn't happen
+
+Cavediver keeps its last steps in memory. When something that shouldn't happen fires (an assertion, a hook failing, a broken rule), it writes them to a file under `stdpath("state")/cavediver/` and shows them in a window, and a warning says where the file is. The file is encrypted like the session files, so it only opens from the directory it was written in: `:CavediverDump <file>`.
+
+To replay one, start Neovim in that directory with cavediver set up, open no file and load no session, then run `:lua require('cavediver').replay_dump('<file>')`. If your config loads a session when Neovim starts, start it with a minimal init that only sets cavediver up instead (`nvim -u minimal.lua`). An editor that replayed a dump doesn't save its session.
