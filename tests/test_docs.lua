@@ -44,12 +44,12 @@ local README = 'README.md'
 
 -- README --------------------------------------------------------------------
 
-T['D1 [target] README has toggle_primary and set_primary the right way round'] = function()
+T['D1 [char] README has toggle_primary and set_primary the right way round'] = function()
 	local r = read(README)
 	eq({ has(r, 'toggle_primary = "<M-;><M-x>"'), has(r, 'set_primary = "<M-;><M-c>"') }, { true, true })
 end
 
-T['D2 [target] README\'s defaults block copies configs.lua, missing keys included'] = function()
+T['D2 [char] README\'s defaults block copies configs.lua, missing keys included'] = function()
 	local readme = {}
 	for _, line in ipairs(vim.fn.readfile(README)) do
 		local a = assignment(line)
@@ -68,7 +68,7 @@ T['D2 [target] README\'s defaults block copies configs.lua, missing keys include
 	eq(missing, {})
 end
 
-T['D2 [target] README\'s cleanup_interval says milliseconds'] = function()
+T['D2 [char] README\'s cleanup_interval says milliseconds'] = function()
 	local found = false
 	for _, line in ipairs(vim.fn.readfile(README)) do
 		if line:find('cleanup_interval%s*=') and line:find('milliseconds', 1, true) then found = true end
@@ -76,7 +76,7 @@ T['D2 [target] README\'s cleanup_interval says milliseconds'] = function()
 	eq(found, true)
 end
 
-T['D5 [target] README says a disabled primary makes <M-;><M-f> act like <M-f>'] = function()
+T['D5 [char] README says a disabled primary makes <M-;><M-f> act like <M-f>'] = function()
 	local r = read(README)
 	local says = false
 	for _, line in ipairs(vim.fn.readfile(README)) do
@@ -86,7 +86,7 @@ T['D5 [target] README says a disabled primary makes <M-;><M-f> act like <M-f>'] 
 	eq({ has(r, "won't do anything at all"), says }, { false, true })
 end
 
-T['D6 [target] README says a pop-up save keeps the good lines and reports the bad ones'] = function()
+T['D6 [char] README says a pop-up save keeps the good lines and reports the bad ones'] = function()
 	eq(has(read(README), 'nothing is saved'), false)
 end
 
@@ -98,7 +98,7 @@ T['D26 [char] README\'s triquetra sentence follows the visiting rule, and "tique
 	eq({ has(r, new), has(r, 'it will clean the triquetra'), has(r, 'tiquetra') }, { true, false, false })
 end
 
-T['D27 [target] README\'s requirements (D4, D27)'] = function()
+T['D27 [char] README\'s requirements (D4, D27)'] = function()
 	local req = section(read(README), '## Requirements')
 	local items = {
 		'- neovim 0.12+',
@@ -115,7 +115,7 @@ T['D27 [target] README\'s requirements (D4, D27)'] = function()
 	eq(missing, {})
 end
 
-T['D27 [target] README\'s lazy.nvim example depends on cokeline, not harpoon, with no comment'] = function()
+T['D27 [char] README\'s lazy.nvim example depends on cokeline, not harpoon, with no comment'] = function()
 	local block = section(read(README), '### lazy.nvim')
 	eq({
 		has(block, 'nvim-cokeline'),
@@ -124,7 +124,7 @@ T['D27 [target] README\'s lazy.nvim example depends on cokeline, not harpoon, wi
 	}, { true, false, false })
 end
 
-T['D27 [target] README\'s cokeline paragraph'] = function()
+T['D27 [char] README\'s cokeline paragraph'] = function()
 	local r = flat(read(README))
 	local new = 'The cavediver plugin can work without the bufferline, but it reduces the experience a lot. '
 		.. 'Cokeline is what lets you visualise the visit history of all your buffers, so that you can know how '
@@ -132,7 +132,7 @@ T['D27 [target] README\'s cokeline paragraph'] = function()
 	eq({ has(r, new), has(r, 'visit history of all your browsers') }, { true, false })
 end
 
-T['D28 [target] README has "Session manager setup" with resession, native sessions and no manager'] = function()
+T['D28 [char] README has "Session manager setup" with resession, native sessions and no manager'] = function()
 	local r = read(README)
 	local s = section(r, 'Session manager setup', '## ')
 	eq({
@@ -197,7 +197,7 @@ T['D21 [char] navigation/states.lua says nothing enters file_picker yet'] = func
 	eq({ says, has(line, 'where explorer controls navigation') }, { true, false })
 end
 
-T['D21 [target] the old spec marks file-picker mode as not built'] = function()
+T['D21 [char] the old spec marks file-picker mode as not built'] = function()
 	local s = section(read('WINDOW_BUFFER_RELATIONSHIP_SPECIFICATION.md'), '#### File Picker Mode')
 	eq(has(s:lower(), 'not built'), true)
 end

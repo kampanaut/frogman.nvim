@@ -1227,28 +1227,28 @@ spec: (D18, D22, D24) STATUS and the old project `CLAUDE.md` live in `archive/`,
 
 **T291 [char]** (D8, D13) README:15 and README:355 stay as written  
 → `eq({`  
-spec: (D8, D13) README:15 ("Closed buffers reopen when accessed through relationships") and README:355 ("Every time you jump to secondary…") stay as written. A doc check, matched by text. It holds today already, so it's [char]: a guard that stays true when the decided code lands.  
+spec: (D8, D13) README:15 ("Closed buffers reopen when accessed through relationships") and README:542 ("Every time you jump to secondary…") stay as written. A doc check, matched by text. It holds today already, so it's [char]: a guard that stays true when the decided code lands.  
 `tests/test_decisions.lua:881`
 
-## tests/test_docs.lua (24 cases: 14 char, 10 target)
+## tests/test_docs.lua (24 cases: 24 char)
 
-**D1 [target]** README has toggle_primary and set_primary the right way round  
+**D1 [char]** README has toggle_primary and set_primary the right way round  
 → `eq({ has(r, 'toggle_primary = "<M-;><M-x>"'), has(r, 'set_primary = "<M-;><M-c>"') }, { true, true })`  
 `tests/test_docs.lua:47`
 
-**D2 [target]** README's defaults block copies configs.lua, missing keys included  
+**D2 [char]** README's defaults block copies configs.lua, missing keys included  
 → `eq(missing, {})`  
 `tests/test_docs.lua:52`
 
-**D2 [target]** README's cleanup_interval says milliseconds  
+**D2 [char]** README's cleanup_interval says milliseconds  
 → `eq(found, true)`  
 `tests/test_docs.lua:71`
 
-**D5 [target]** README says a disabled primary makes <M-;><M-f> act like <M-f>  
+**D5 [char]** README says a disabled primary makes <M-;><M-f> act like <M-f>  
 → `eq({ has(r, "won't do anything at all"), says }, { false, true })`  
 `tests/test_docs.lua:79`
 
-**D6 [target]** README says a pop-up save keeps the good lines and reports the bad ones  
+**D6 [char]** README says a pop-up save keeps the good lines and reports the bad ones  
 → `eq(has(read(README), 'nothing is saved'), false)`  
 `tests/test_docs.lua:89`
 
@@ -1256,19 +1256,19 @@ spec: (D8, D13) README:15 ("Closed buffers reopen when accessed through relation
 → `eq({ has(r, new), has(r, 'it will clean the triquetra'), has(r, 'tiquetra') }, { true, false, false })`  
 `tests/test_docs.lua:93`
 
-**D27 [target]** README's requirements (D4, D27)  
+**D27 [char]** README's requirements (D4, D27)  
 → `eq(missing, {})`  
 `tests/test_docs.lua:101`
 
-**D27 [target]** README's lazy.nvim example depends on cokeline, not harpoon, with no comment  
+**D27 [char]** README's lazy.nvim example depends on cokeline, not harpoon, with no comment  
 → `eq({`  
 `tests/test_docs.lua:118`
 
-**D27 [target]** README's cokeline paragraph  
+**D27 [char]** README's cokeline paragraph  
 → `eq({ has(r, new), has(r, 'visit history of all your browsers') }, { true, false })`  
 `tests/test_docs.lua:127`
 
-**D28 [target]** README has "Session manager setup" with resession, native sessions and no manager  
+**D28 [char]** README has "Session manager setup" with resession, native sessions and no manager  
 → `eq({`  
 `tests/test_docs.lua:135`
 
@@ -1296,7 +1296,7 @@ spec: (D8, D13) README:15 ("Closed buffers reopen when accessed through relation
 → `eq({ says, has(line, 'where explorer controls navigation') }, { true, false })`  
 `tests/test_docs.lua:191`
 
-**D21 [target]** the old spec marks file-picker mode as not built  
+**D21 [char]** the old spec marks file-picker mode as not built  
 → `eq(has(s:lower(), 'not built'), true)`  
 `tests/test_docs.lua:200`
 
@@ -2415,7 +2415,7 @@ spec: With an empty queue it acts as `<M-f>`.
 → `eq(jump[1].slots, '⦉-⦊ [c] ⟦b⟧')`  
 → `eq(jump[2].slots, '⦉-⦊ [b] ⟦c⟧')`  
 note: x is the primary, switched off, and in no slot.  
-spec: With a disabled primary it acts as `<M-f>` (Q10; README:31 changes).  
+spec: With a disabled primary it acts as `<M-f>` (Q10; README:31 says so).  
 `tests/test_primary_jump.lua:70`
 
 **T55 [char]** while cycling away from the start, it returns to the start, keeps navigation cycling, and changes no slot  
