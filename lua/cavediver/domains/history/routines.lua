@@ -1310,13 +1310,25 @@ function M.settle_rename(bufnr, old_hash, old_history)
 	then
 		return nil
 	end
-	local new_hash = M.get_filehash(vim.api.nvim_buf_get_name(bufnr))
+	local new_name = vim.api.nvim_buf_get_name(bufnr)
+	local new_hash = M.get_filehash(new_name ~= "" and new_name or M.noname_name(bufnr)) -- no name: a No Name buffer's
 	M.discard_from_pools(old_hash)
 	data.noname_content[old_hash] = nil -- a No Name buffer's text is in its file now.
 	if data.hash_buffer_registry.hashes[bufnr] == old_hash then
 		M.unregister_buffer(bufnr) -- the buffer is registered under its new name next.
 	end
-	require('cavediver.domains.window.data').rename_hash_in_triquetras(old_hash, new_hash)
+	local window_data = require('cavediver.domains.window.data')
+	-- a triquetra holding both names would hold one file twice: the renamed buffer keeps its slot,
+	-- and the other slot lets the file go, unless that's the current slot, which keeps it
+	for _, triquetra in pairs(window_data.crux) do
+		local gone = triquetra.current_slot == new_hash and old_hash or new_hash
+		if triquetra.current_slot == old_hash or triquetra.current_slot == new_hash or
+			triquetra.secondary_slot == old_hash or triquetra.ternary_slot == old_hash then
+			if triquetra.secondary_slot == gone then triquetra.secondary_slot = nil end
+			if triquetra.ternary_slot == gone then triquetra.ternary_slot = nil end
+		end
+	end
+	window_data.rename_hash_in_triquetras(old_hash, new_hash)
 	M.rename_hash_in_history(old_hash, new_hash)
 	if old_history then
 		data.crux[new_hash] = data.crux[new_hash] or old_history.crux
