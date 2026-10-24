@@ -210,6 +210,9 @@ local function compose(what, failing)
 	local function number(winid)
 		return winid and vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_number(winid) or nil
 	end
+	local function tab_number(winid)
+		return winid and vim.api.nvim_win_is_valid(winid) and vim.api.nvim_tabpage_get_number(vim.api.nvim_win_get_tabpage(winid)) or nil
+	end
 	local function map(m)
 		local out = {}
 		for k, v in pairs(m or {}) do
@@ -219,7 +222,7 @@ local function compose(what, failing)
 	end
 	local function slots(r)
 		return r and { c = file(r.c), s = file(r.s), t = file(r.t), p = vim.tbl_map(file, r.p or {}), on = r.on,
-			dtm = map(r.dtm), dsm = map(r.dsm) }
+			dtm = map(r.dtm), dsm = map(r.dsm), shows = file(r.shows) }
 	end
 	local function stem(hash)
 		if hash == nil then
@@ -273,7 +276,7 @@ local function compose(what, failing)
 			step.cause, step.trigger or "", n and ("win " .. n) or "win -", row(step.row_before), row(after), notes(after),
 			step == failing and "   ← fired here" or ""))
 		table.insert(replay_steps, {
-			seq = step.seq, cause = step.cause, trigger = step.trigger, window = n, winid = step.win,
+			seq = step.seq, cause = step.cause, trigger = step.trigger, window = n, winid = step.win, tab = tab_number(step.win),
 			before = slots(step.row_before), after = slots(after), events = step.events or {},
 		})
 	end
@@ -285,7 +288,7 @@ local function compose(what, failing)
 		for _, w in ipairs(snap.windows) do
 			local history_ = {}
 			for k, v in pairs(w.history) do history_[file(k)] = v end
-			table.insert(windows, { window = number(w.win), winid = w.win, shows = file(w.shows), c = file(w.c), s = file(w.s),
+			table.insert(windows, { window = number(w.win), winid = w.win, tab = tab_number(w.win), shows = file(w.shows), c = file(w.c), s = file(w.s),
 				t = file(w.t), p = vim.tbl_map(file, w.p), on = w.on, dtm = map(w.dtm), dsm = map(w.dsm), history = history_ })
 		end
 		local global, missing, lists = {}, {}, {}

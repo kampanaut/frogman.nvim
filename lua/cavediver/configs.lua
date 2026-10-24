@@ -68,6 +68,7 @@
 ---@field on boolean Whether the primary is switched on
 ---@field dtm table<string, Filehash> The ternary notes, `-swap` keys included
 ---@field dsm table<string, Filehash> The secondary notes, `-swap` keys included
+---@field shows Filehash|nil What the window shows, when cavediver tracks it (a replay plants it)
 
 ---What set things off, and what cavediver did then.
 ---@class CavediverLedgerStep

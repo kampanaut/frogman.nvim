@@ -347,7 +347,7 @@ local function ring_lines(glyphs, own, before, key)
 		local r = { { "        " .. glyphs.ring .. " " .. os.date("%H:%M:%S", math.floor(ringed.time)) .. "  ", "CavediverTrailRing" },
 			{ string.format("%-15s", ringed.trigger or ""), "CavediverTrailTrigger" },
 			{ (ringed.win and ledger.window_name(ringed.win) or "") .. "   ", "CavediverTrailRing" } }
-		if ringed.row_before and ringed.row_after and not vim.deep_equal(ringed.row_before, ringed.row_after) then
+		if ringed.row_before and ringed.row_after and not require('cavediver.domains.ledger.routines').same_row(ringed.row_before, ringed.row_after) then
 			vim.list_extend(r, row_segs(glyphs, ringed.names or {}, ringed.row_before))
 			table.insert(r, { glyphs.arrow, "CavediverTrailDim" })
 			vim.list_extend(r, row_segs(glyphs, ringed.names or {}, ringed.row_after))

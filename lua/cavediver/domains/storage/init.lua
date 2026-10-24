@@ -24,6 +24,10 @@ local M = {
 ---@param opts {tab: integer|nil}|nil `tab` is the tabpage of a tab session
 ---@return nil
 function M.save_session(name, opts)
+	if data.replayed then
+		-- a replay planted another editor's state: it isn't this project's session, and it isn't saved
+		error("cavediver: this editor replayed a dump, so its state isn't a session, and it isn't saved.", 0)
+	end
 	local directory = vim.fn.getcwd(-1, -1)
 	if opts and opts.tab then
 		directory = vim.fn.getcwd(-1, vim.api.nvim_tabpage_get_number(opts.tab))

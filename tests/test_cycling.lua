@@ -7,6 +7,7 @@
 -- oldest), <M-m> is by_step(1), toward older.
 local Helpers = dofile('tests/helpers.lua')
 local Extra = dofile('tests/helpers_cycling.lua')
+local Misc = dofile('tests/helpers_misc.lua')
 local eq = Helpers.eq
 local child = Helpers.new_child()
 Extra.attach(child)
@@ -827,6 +828,117 @@ T['T467 [char] a dump lists the settle work still queued'] = function()
 	eq(#files, 1)
 	local text = child.lua('return require("cavediver.domains.ledger.dump").read(...) or ""', { files[1] })
 	eq(text:match('\npending: ([^\n]*)'), 'arrival b.txt')
+end
+
+-- The replay (A26). A project made by the runner outlives the editors: one makes the dump,
+-- a fresh one in the same project replays it, since a dump opens only from its directory.
+
+-- Keys and a typed command line in one batch: the ledger records the command line as a step.
+local function typed(keys)
+	child.lua([[pcall(vim.api.nvim_feedkeys, vim.api.nvim_replace_termcodes(..., true, false, true), 'x', false)]], { keys })
+	child.settle(200)
+end
+
+-- The one dump written since `before`.
+local function the_dump(before)
+	local files = Extra.new_files(before, child.dumps())
+	eq(#files, 1)
+	return files[1]
+end
+
+local function replay(path)
+	return child.lua('return require("cavediver").replay_dump(...)', { path })
+end
+
+-- T200's route, the stale note planted by a typed :lua line and <M-;><M-t> in the same batch,
+-- so the :lua step closes at once and the restore's assertion is the one dump.
+local STALE = ":lua _G.CDV_PLANTED = true; local t = require('cavediver.domains.window').data.crux[vim.api.nvim_get_current_win()];"
+	.. " t.displacement_secondary_map[t.current_slot .. '-swap'] = nil; t.displacement_secondary_map[t.current_slot] = t.secondary_slot<CR>"
+
+T['T201 [char] a dumped file replays to the same assertion'] = function()
+	local root = Misc.make_project()
+	Misc.start(child, { root = root })
+	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
+	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')
+	local before = child.dumps()
+	typed(STALE .. '<M-;><M-t>')
+	local path = the_dump(before)
+	Misc.start(child, { root = root })
+	local r = replay(path)
+	eq({
+		error = r.failure ~= nil and r.failure.error:find('Remembered secondary is the same as current secondary', 1, true) ~= nil,
+		mismatches = #r.mismatches,
+		ran = child.lua('return _G.CDV_PLANTED == true'),
+	}, { error = true, mismatches = 0, ran = false })
+end
+
+T['T202 [char] replaying the snapshot and the steps reproduces every driven step\'s row'] = function()
+	local root = Misc.make_project()
+	Misc.start(child, { root = root })
+	child.steps({ ':e a', ':e b', ':e c' })
+	local keys = {}
+	for _ = 1, 110 do table.insert(keys, '<M-S-f>') end
+	child.steps(keys)
+	local before = child.dumps()
+	child.lua([[pcall(require('cavediver.domains.ledger').never, 'planted for T202')]])
+	child.settle(200)
+	local path = the_dump(before)
+	Misc.start(child, { root = root })
+	local r = replay(path)
+	eq({ snapshot = r.snapshot, enough = r.driven >= 50, matched = r.matched == r.driven, mismatches = #r.mismatches },
+		{ snapshot = true, enough = true, matched = true, mismatches = 0 })
+end
+
+T['T470 [char] a replay runs no code a command line chains or carries'] = function()
+	local root = Misc.make_project()
+	Misc.start(child, { root = root })
+	child.steps({ ':e a' })
+	typed(':e b.txt | lua _G.CDV_PLANTED = true<CR>')
+	typed(':e +lua\\ _G.CDV_PLANTED=true c.txt<CR>')
+	eq(child.lua('return _G.CDV_PLANTED'), true) -- they ran here, in the editor that made the dump
+	local before = child.dumps()
+	child.lua([[pcall(require('cavediver.domains.ledger').never, 'planted for T470')]])
+	child.settle(200)
+	local path = the_dump(before)
+	Misc.start(child, { root = root })
+	local r = replay(path)
+	eq({ ran = child.lua('return _G.CDV_PLANTED == true'), failure = r.failure == nil }, { ran = false, failure = true })
+end
+
+T['T468 [char] a replay\'s editor isn\'t saved'] = function()
+	local root = Misc.make_project()
+	Misc.start(child, { root = root })
+	child.steps({ ':e a' })
+	local before = child.dumps()
+	child.lua([[pcall(require('cavediver.domains.ledger').never, 'planted for T468')]])
+	child.settle(200)
+	local path = the_dump(before)
+	Misc.start(child, { root = root })
+	replay(path)
+	local res = child.lua([[
+		local ok, err = pcall(require('cavediver').save_session)
+		return { ok = ok, err = tostring(err), files = #vim.fn.globpath(require('cavediver.configs').session_dir, '*', false, true) }
+	]])
+	eq({ ok = res.ok, said = res.err:find("this editor replayed a dump", 1, true) ~= nil, files = res.files },
+		{ ok = false, said = true, files = 0 })
+end
+
+T['T469 [char] a dump that spans more than one tab isn\'t replayed'] = function()
+	local root = Misc.make_project()
+	Misc.start(child, { root = root })
+	child.steps({ ':e a' })
+	child.cmd('tabnew')
+	child.steps({ ':e b' })
+	local before = child.dumps()
+	child.lua([[pcall(require('cavediver.domains.ledger').never, 'planted for T469')]])
+	child.settle(200)
+	local path = the_dump(before)
+	Misc.start(child, { root = root })
+	child.messages()
+	local r = replay(path)
+	eq({ said = Extra.has(child.messages(), 'spans more than one tab'), windows = child.lua('return #vim.api.nvim_list_wins()'),
+		triquetras = child.lua('return vim.tbl_count(require("cavediver.domains.window").data.crux)') },
+		{ said = true, windows = 1, triquetras = 0 })
 end
 
 -- A user's own Lua mapping: a window jump and an export, in one function.

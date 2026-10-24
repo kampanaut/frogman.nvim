@@ -508,6 +508,9 @@ M.cycle_select = navigation.select_buffer
 
 M.open_primary_buffer_history = ui.routines.show_primary_buffer_history
 M.open_closed_lists = ui.routines.show_closed_lists
+M.replay_dump = function(path)
+	return require('cavediver.domains.ledger.replay').run(path)
+end
 M.open_trail = function(name)
 	require('cavediver.domains.ui.trail').open(name)
 end

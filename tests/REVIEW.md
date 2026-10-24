@@ -1,6 +1,6 @@
 # Test review sheet
 
-529 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+534 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -492,7 +492,7 @@ spec: Q17, the only window: `:help`, `:only`, `<M-.>`. The help buffer is closed
 spec: Q17, a running terminal: `<M-.>` on a `:terminal` whose job is still running refuses with a message, and the terminal stays.  
 `tests/test_closing.lua:314`
 
-## tests/test_cycling.lua (37 cases: 37 char)
+## tests/test_cycling.lua (42 cases: 42 char)
 
 **T69 [char]** <M-m> from normal starts cycling and leaves the current slot  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -501,54 +501,54 @@ spec: Q17, a running terminal: `<M-.>` on a `:terminal` whose job is still runni
 → `shown = 'b'`  
 → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 spec: `<M-m>` from normal sets navigation `cycling` and history `detached`, notifies "Checkpoint saved", moves the window to another buffer, and leaves `c` unchanged.  
-`tests/test_cycling.lua:48`
+`tests/test_cycling.lua:49`
 
 **T70 [char]** further steps change neither the slots nor the history order  
 `:e a`, `:e b`, `:e c`, `<M-m>` → `eq({ child.slots(), child.notes(), child.ordered() }, { slots, notes, ordered })`  
 → `eq(child.state(), CYCLING)`  
 spec: Further steps change neither the slots nor the history order.  
-`tests/test_cycling.lua:59`
+`tests/test_cycling.lua:60`
 
 **T71 [char]** with one buffer in history, <M-m> enters cycling without moving  
 `:e a`, `<M-m>` → `eq(child.state(), CYCLING)`  
 → `shown = 'a'`  
 → `slots = '⦉-⦊ [a] ⟦-⟧'`  
 spec: With one buffer in history, `<M-m>` enters cycling without moving.  
-`tests/test_cycling.lua:69`
+`tests/test_cycling.lua:70`
 
 **T72 [char]** a pick of an outside buffer: the start leaves, the ternary stays  
 `<M-n>`, `<M-n>` → `shown = 'b'`  
 `<M-v>` → `slots = '⦉d⦊ [b] ⟦c⟧'`  
 → `eq(child.state(), NORMAL)`  
 spec: `{c=e s=c t=d}`, cycle to b, `<M-v>` → `{c=b s=c t=d}`. The ternary isn't updated by the pick (Q9); the note it adds is T155.  
-`tests/test_cycling.lua:77`
+`tests/test_cycling.lua:78`
 
 **T73 [char]** a pick of the secondary swaps them, with no map writes  
 `<M-m>`, `<M-m>` → `shown = 'c'`  
 `<M-v>` → `slots = '⦉d⦊ [c] ⟦e⟧'`  
 → `notes = notes`  
 spec: Cycling to the secondary and pressing `<M-v>` swaps them, with no map writes.  
-`tests/test_cycling.lua:86`
+`tests/test_cycling.lua:87`
 
 **T74 [char]** a pick of the ternary swaps them, with the start's swap note  
 `<M-m>` → `shown = 'd'`  
 `<M-v>` → `slots = '⦉e⦊ [d] ⟦c⟧'`  
 → `eq(child.note('dtm', 'e-swap'), 'd')`  
 spec: Cycling to the ternary and pressing `<M-v>` swaps them, with `dtm{start-swap→ternary}`.  
-`tests/test_cycling.lua:96`
+`tests/test_cycling.lua:97`
 
 **T75 [char]** <M-v> on the start changes no slot and ends the cycle  
 `<M-m>`, `<M-n>` → `shown = 'e'`  
 `<M-v>` → `slots = '⦉d⦊ [e] ⟦c⟧'`  
 → `eq(child.state(), NORMAL)`  
 spec: Pressing `<M-v>` on the cycle's start changes no slot; navigation goes back to `normal` and history to `attached`.  
-`tests/test_cycling.lua:105`
+`tests/test_cycling.lua:106`
 
 **T76 [char]** <M-v> in normal mode does nothing  
 `<M-v>` → `eq({ child.slots(), child.notes(), child.shown(), child.ordered() }, before)`  
 → `eq(child.state(), NORMAL)`  
 spec: `<M-v>` in normal mode does nothing.  
-`tests/test_cycling.lua:114`
+`tests/test_cycling.lua:115`
 
 **T77 [char]** <M-f> while cycled away switches back to the start and stays cycling  
 `<M-m>` → `shown = 'd'`  
@@ -556,7 +556,7 @@ spec: `<M-v>` in normal mode does nothing.
 → `slots = '⦉d⦊ [e] ⟦c⟧'`  
 → `eq(child.state(), CYCLING)`  
 spec: `<M-f>` while cycled away from the start switches back to the start and stays `cycling` (Q7).  
-`tests/test_cycling.lua:124`
+`tests/test_cycling.lua:125`
 
 **T78 [char]** <M-S-f> while cycling, on the current slot, swaps the ternary and stays cycling  
 `<M-m>`, `<M-f>` → `shown = 'e'`  
@@ -566,7 +566,7 @@ spec: `<M-f>` while cycled away from the start switches back to the start and st
 → `eq(child.state(), CYCLING)`  
 note: Cycle away, then <M-f> back onto the current slot.  
 spec: `<M-S-f>` while cycling, with the window on its current slot, swaps the ternary and stays `cycling` (Q7).  
-`tests/test_cycling.lua:134`
+`tests/test_cycling.lua:135`
 
 **T195 [char]** the cycle's start is the window's current slot, live  
 `<M-n>`, `<M-S-f>` → `shown = 'c'`  
@@ -575,7 +575,7 @@ spec: `<M-S-f>` while cycling, with the window on its current slot, swaps the te
 `<M-;><M-f>` → `shown = 'd'`  
 → `eq(child.state(), CYCLING)`  
 spec: (D15) The cycle's start is the window's current slot, live: `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:e c` give `⦉d⦊ [c] ⟦b⟧`. `<M-n>`, `<M-S-f>` (back to the start), `<M-S-f>` again (a real swap on the start: `⦉c⦊ [d] ⟦b⟧`), `<M-n>`, then `<M-;><M-f>` returns the window to d, t…  
-`tests/test_cycling.lua:146`
+`tests/test_cycling.lua:147`
 
 **T196 [char]** while cycling, on the current slot, <M-f> and <M-;><M-r> do their normal job  
 `<M-n>` → `eq(child.state(), CYCLING)`  
@@ -589,7 +589,7 @@ spec: (D15) The cycle's start is the window's current slot, live: `:e a`, `:e b`
 … and 1 more  
 note: c's secondary note names b: <M-f> writes the swap note (D8, T191).  
 spec: (P18) While cycling, with the window back on its current slot, `<M-f>` and `<M-;><M-r>` do their normal job, notes included: set up with `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:e c` (`⦉d⦊ [c] ⟦b⟧`, with b's note `b>a`), then `<M-n>` and a first `<M-f>` that only takes the wind…  
-`tests/test_cycling.lua:159`
+`tests/test_cycling.lua:160`
 
 **T175 [char]** jumping to another window cancels the cycle  
 `:e a`, `:e b`, `:vsplit`, `:e x`, `:wincmd p`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -603,7 +603,7 @@ spec: (P18) While cycling, with the window back on its current slot, `<M-f>` and
 … and 3 more  
 note: win1: ⦉b⦊ [c] ⟦-⟧; win2: ⦉b⦊ [x] ⟦-⟧. Nothing was recorded for a, the cycled-to buffer: it's still the oldest.  
 spec: (A12) Cycling in win1, then `<C-w>p` to win2: win1 shows its start again, navigation is `normal`, history is attached, and nothing was recorded for the cycled-to buffer. Then `:e d` in win2 moves win2's slots and records d.  
-`tests/test_cycling.lua:177`
+`tests/test_cycling.lua:178`
 
 **T176 [char]** <M-f> fills an empty secondary from the ordered list, asserting its first entry  
 `:e a`, `:e b`, `:vsplit` → `slots = '⦉-⦊ [b] ⟦-⟧'`  
@@ -612,12 +612,12 @@ spec: (A12) Cycling in win1, then `<C-w>p` to win2: win1 shows its start again, 
 `:e a`, `:e b`, `:vsplit`, `<M-f> (via _G.CDV_TEST.press)` → `eq(res[1], false)`  
 note: A fresh split: an empty secondary and no ternary. Again from a fresh split, with the ordered list's first two entries swapped by hand, so its first entry isn't the window's current buffer.  
 spec: (D11) With an empty secondary and no ternary, `<M-f>` fills from the ordered list's second entry, and throws if the first entry isn't the window's current buffer.  
-`tests/test_cycling.lua:208`
+`tests/test_cycling.lua:209`
 
 **T197 [char]** under the window view the ordered list never ties after two splits  
 `:e a`, `:e b`, `:vsplit`, `:wincmd p`, `:e c`, `:vsplit`, `<M-f>` → `eq(runs[i], { first_is_shown = true, ok = true, errors = {}, distinct = true })`  
 spec: (D11) Under `history_view = "window"`, after `:e a`, `:e b`, `:vsplit`, `<C-w>p`, `:e c`, `:vsplit`, the ordered list's first entry is the window's current buffer on every run (no tie), and `<M-f>` doesn't trip the fill assertion.  
-`tests/test_cycling.lua:232`
+`tests/test_cycling.lua:233`
 
 **T198 [char]** a jump away from a cycle records the landing, and <M-f> there fills  
 `:e a`, `:vsplit`, `:e c` → `slots = '⦉a⦊ [c] ⟦-⟧'`  
@@ -630,7 +630,7 @@ spec: (D11) Under `history_view = "window"`, after `:e a`, `:e b`, `:vsplit`, `<
 → `slots = '⦉-⦊ [a] ⟦c⟧'`  
 note: The cycle in the second window is cancelled. The landing in the first window is recorded.  
 spec: (A12) `:e a`, `:vsplit`, `:e c`, `<M-m>`, `<C-w>p`: the cycle in the second window is cancelled (it's back on c), the landing in the first window is recorded (the ordered list starts with a), and `<M-f>` there fills c without tripping the fill assertion.  
-`tests/test_cycling.lua:262`
+`tests/test_cycling.lua:263`
 
 **T206 [char]** the secondary restore's exchange rewrites b's stale note to e's own note  
 `:e a`, `:e e`, `:e d`, `<M-S-f>`, `:e b`, `:e d`, `<M-n>`, `<M-v>`, `<M-f>`, `:e b`, `<M-f>`, `:e e`, `<M-m>`, `<M-m>`, `<M-v>` → `slots = '⦉a⦊ [b] ⟦e⟧'`  
@@ -642,7 +642,7 @@ spec: (A12) `:e a`, `:vsplit`, `:e c`, `<M-m>`, `<C-w>p`: the cycle in the secon
 `<M-;><M-r>` → `eq({ ok, err }, { true, nil })`  
 → `slots = '⦉e⦊ [b] ⟦a⟧'`  
 spec: (I23) `:e a`, `:e e`, `:e d`, `<M-S-f>`, `:e b`, `:e d`, `<M-n> <M-v>`, `<M-f>`, `:e b`, `<M-f>`, `:e e`, `<M-m> <M-m> <M-v>`, `<M-;><M-t>`: b's stale note becomes e's own note, d; `<M-;><M-r>` gives `⦉d⦊ [b] ⟦a⟧`, and again `⦉e⦊ [b] ⟦a⟧`.  
-`tests/test_cycling.lua:286`
+`tests/test_cycling.lua:287`
 
 **T171 [char]** with no cokeline, <M-n> and <M-m> step through the ordered history as with it ⚑ random walk  
 → `eq(with_cokeline.shown, { 'c', 'b', 'c' })`  
@@ -652,7 +652,7 @@ spec: (I23) `:e a`, `:e e`, `:e d`, `<M-S-f>`, `:e b`, `:e d`, `<M-n> <M-v>`, `<
 → `eq(cycle_walk(), with_cokeline)`  
 note: d,c,b,a: <M-m> twice to b, <M-n> back to c, then <M-v> picks c, the ternary.  
 spec: (A12) With no cokeline installed, `<M-n>` and `<M-m>` step through cavediver's ordered history in the same directions as with cokeline, and `<M-v>` picks as usual. **[run s21]** recorded the step only printing, before the fallback, and navigation staying in `cycling`.  
-`tests/test_cycling.lua:317`
+`tests/test_cycling.lua:318`
 
 **T79 [char]** <M-n> steps left, toward newer buffers, and <M-m> right, toward older  
 `:e a`, `:e b`, `:e c` → `eq(cmp, { c_before_b = true, b_before_a = true, a_before_c = false })`  
@@ -662,7 +662,7 @@ spec: (A12) With no cokeline installed, `<M-n>` and `<M-m>` step through cavediv
 → `eq(child.lua('return _G.CDV_STEPS'), { 1, 1, -1 })`  
 note: Runs against the stub, not the real cokeline: checks the step each key asks cokeline for, and that cavediver's bufferline order puts the newer buffer on the left.  
 spec: Through the real cokeline order, `<M-n>` steps left, toward newer buffers, and `<M-m>` steps right, toward older ones (Q19).  
-`tests/test_cycling.lua:329`
+`tests/test_cycling.lua:330`
 
 **T152 [char]** a cycling pick of the secondary rewrites the ternary's note to the start  
 `:e a`, `:e b`, `:e c`, `:e b`, `<M-f>`, `:e a`, `<M-f>` → `slots = '⦉b⦊ [c] ⟦a⟧'`  
@@ -672,7 +672,7 @@ spec: Through the real cokeline order, `<M-n>` steps left, toward newer buffers,
 → `eq(child.note('dtm', 'b'), 'c')`  
 note: {c=c s=a t=b} with dtm[b] = a.  
 spec: Q6 on a cycling pick of the secondary: with `{c=A s=S t=T}` and `dtm[T] = S`, cycling to S and pressing `<M-v>` gives `{c=S s=A t=T}` and rewrites `dtm[T]` to A. The guard's warning comes with the rewrite: the conflict is real and the warning isn't spurious (A6). With the guard a…  
-`tests/test_cycling.lua:365`
+`tests/test_cycling.lua:366`
 
 **T172 [char]** a pick of an outside buffer writes its plain note and clears its swap note  
 `:e a`, `:e b`, `<M-S-f>` → `eq(child.note('dtm', 'b-swap'), 'a')`  
@@ -685,7 +685,7 @@ spec: Q6 on a cycling pick of the secondary: with `{c=A s=S t=T}` and `dtm[T] = 
 `<M-;><M-r>` → `slots = '⦉d⦊ [b] ⟦-⟧'`  
 … and 1 more  
 spec: (Q9) `:e a`, `:e b`, `<M-S-f>` (b gets `dtm[b-swap]=a`), `:e c`, `:e d`, `:e e`, cycle to b, `<M-v>`: `dtm[b] = e` and no `dtm[b-swap]`; `<M-;><M-r>` gives `t=e`, again `t=d`, again `t=e`.  
-`tests/test_cycling.lua:378`
+`tests/test_cycling.lua:379`
 
 **T155 [char]** a pick of an outside buffer notes the start, and <M-;><M-r> brings it back  
 → `eq(child.note('dtm', 'b-swap'), '-')`  
@@ -695,13 +695,13 @@ spec: (Q9) `:e a`, `:e b`, `<M-S-f>` (b gets `dtm[b-swap]=a`), `:e c`, `:e d`, `
 `<M-;><M-r>` → `slots = '⦉e⦊ [b] ⟦c⟧'`  
 → `eq(child.note('dtm', 'b'), 'd')`  
 spec: `{c=e s=c t=d}` with no `dtm[b-swap]`: cycle to b, `<M-v>` → `{c=b s=c t=d}` and `dtm[b] = e`. Then `<M-;><M-r>` brings the start back: `{c=b s=c t=e}`, with `dtm{b→d}` by the flip-flop (Q9).  
-`tests/test_cycling.lua:397`
+`tests/test_cycling.lua:398`
 
 **T199 [char]** with no assertion, the recorder writes no file and opens no buffer, and the ring never holds more than N steps  
 `:e a`, `:e b`, `:e c`, `:e d`, `<M-f>`, `<M-f>`, `<M-S-f>`, `:e a`, `<M-;><M-r>`, `<M-f>`, `:e b`, `<M-S-f>`, `<M-f>`, `:e c` → `eq({`  
 note: N, the ring's length, is ledger.ring (A26, A27); set to 5 here, so ten actions overflow it.  
 spec: (A26) With no assertion, the recorder writes no file and opens no buffer, and the ring never holds more than N steps.  
-`tests/test_cycling.lua:451`
+`tests/test_cycling.lua:452`
 
 **T200 [char]** the restore assertion dumps the last steps to a file and a scratch buffer  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
@@ -712,14 +712,14 @@ spec: (A26) With no assertion, the recorder writes no file and opens no buffer, 
 → `eq(found, true)`  
 note: A file whose last row is the failing step, on c's slots. A scratch buffer holds the same rows.  
 spec: (A26) When the restore assertion fires, a file appears under `stdpath("state")/cavediver/` and a scratch buffer opens, both holding the last steps as rows: action or event, window, `⦉t⦊ [c] ⟦s⟧` and notes, ending at the failing step.  
-`tests/test_cycling.lua:464`
+`tests/test_cycling.lua:465`
 
 **T203 [char]** a planted rule break dumps at the next step ⚑ state set by hand  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 `:vsplit`, `:e d`, `:e e`, `:e x` → `eq(#Extra.new_files(before, child.dumps()), 1)`  
 note: A planted stale note, not a real route: every real route into a rule break is one the decided fixes remove, so the recorder is tested on its own. The note is planted in the other window, so the step taken in this window can't repair it first. Plant in the first window: c's ternary note names b, whic  
 spec: (A26) A planted rule break dumps at the next step: with c current in one window and b its ternary, c's ternary note is set to b by hand, and a step in the other window (`:e x`) produces one dump. The break is planted because every real route into one is a route the decided fixes …  
-`tests/test_cycling.lua:500`
+`tests/test_cycling.lua:501`
 
 **T204 [char]** a session load and a cleanup re-point appear in the dump, tagged load and timer ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
@@ -731,7 +731,7 @@ spec: (A26) A planted rule break dumps at the next step: with c current in one w
 → `eq(tagged, true)`  
 note: Save a session from this child... ...and load it in a second one, with the files open as a session manager would leave them.  
 spec: (A26) A session load and a cleanup re-point appear in the dump as steps tagged `load` and `timer`.  
-`tests/test_cycling.lua:515`
+`tests/test_cycling.lua:516`
 
 **T205 [char]** a failure that repeats gives one dump, and the dump window is nofile, unlisted, untracked and unrecorded ⚑ state set by hand  
 → `eq(errs, 10)`  
@@ -745,7 +745,7 @@ spec: (A26) A session load and a cleanup re-point appear in the dump as steps ta
 … and 2 more  
 note: Nothing tracked yet, so the bufferline's colour callback throws on every call, as it would on every redraw. Entering the dump window isn't recorded: after a visit there, a second,  
 spec: (A26) A failure that repeats (a highlight callback throwing on every redraw) gives one dump, and the dump window is neither recorded nor tracked: its buffer is `nofile` and unlisted, with no hash, no triquetra and no place in the bufferline, and after a visit to its window, a sec…  
-`tests/test_cycling.lua:578`
+`tests/test_cycling.lua:579`
 
 **T333 [char]** a dump opens after the editor settles, and names files by their paths  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
@@ -756,13 +756,13 @@ spec: (A26) A failure that repeats (a highlight callback throwing on every redra
 → `eq({ path = text:find(root .. '/c.txt', 1, true) ~= nil, hash = text:find(c, 1, true) ~= nil }, { path = true, hash = true })`  
 note: T200's route. The scratch buffer isn't opened inside the failing call, only once the editor settles; and files are named by their full path and hash, in the file and in the scratch buffer alike: the file is sealed.  
 spec: (A26) A dump opens its scratch buffer only once the editor settles, and names files by their paths: on T200's route, no buffer is added inside the failing call, the scratch buffer is there once it settles, and both it and the file name `c.txt` by its full path, and give its hash.…  
-`tests/test_cycling.lua:642`
+`tests/test_cycling.lua:643`
 
 **T333 [char]** a hook failure's dump, with a list named by the cwd, holds the hook and the session  
 `:e a`, `:e b`, `:e c` → `eq(#texts >= 2, true)`  
 → `eq({ session = text:find(root, 1, true) ~= nil, hook = text:find('t333_breaks', 1, true) ~= nil },`  
 spec: (A26) A dump opens its scratch buffer only once the editor settles, and names files by their paths: on T200's route, no buffer is added inside the failing call, the scratch buffer is there once it settles, and both it and the file name `c.txt` by its full path, and give its hash.…  
-`tests/test_cycling.lua:672`
+`tests/test_cycling.lua:673`
 
 **T460 [char]** a dump is sealed, and :CavediverDump opens it from the directory it was written in  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `eq(child.step('<M-;><M-t>'), false)`  
@@ -774,46 +774,73 @@ spec: (A26) A dump opens its scratch buffer only once the editor settles, and na
 → `eq(Extra.has(child.messages(), "doesn't open here"), true)`  
 note: T200's route. The file on disk is sealed, and :CavediverDump opens it from the directory it was written in only.  
 spec: (A26) A dump is sealed: on T200's route the file starts with `CDV1` and holds none of its text in clear (no `c.txt`, no `<M-;><M-t>`, no `cavediver:`); `:CavediverDump <file>` opens it in a buffer holding the failing row and the `replay:` part; after `:cd sub`, the same command s…  
-`tests/test_cycling.lua:698`
+`tests/test_cycling.lua:699`
 
 **T461 [char]** a key that comes before the cancel runs it first, then does its job  
 spec: (A12) A key that comes before the cancel runs it first: `:e a`, `<M-;><M-c>`, `:e b` give `⦉a⦊ [b] ⟦-⟧` with `p=[a]on`; `:vsplit`, `:e c` give the split `⦉b⦊ [c] ⟦-⟧`; `<M-m>` there, then `<C-w>w<M-;><M-f>` in one batch: nothing throws and nothing dumps, the split shows c again w…  
-`tests/test_cycling.lua:784`
+`tests/test_cycling.lua:785`
 
 **T464 [char]** a cycle started before its window's arrival has settled starts from it  
 → `eq({ hooks = Extra.has(child.messages(), "Hook '"), dumps = #Extra.new_files(before, child.dumps()),`  
 note: From a fresh editor: the empty start buffer picked, then reused for b.txt, then a cycle.  
 spec: (M11, A12) A cycle started before its window's arrival has settled starts from it: from a fresh editor, `<M-m><M-m><M-v>:e b.txt<CR><M-m>` in one batch gives no hook failure and no dump, navigation `cycling`, and the window's current slot b. **[run 2026-10-24]** recorded, before …  
-`tests/test_cycling.lua:796`
+`tests/test_cycling.lua:797`
 
 **T465 [char]** a key in a macro acts on the buffer the macro just opened  
 `:e a`, `:e c` → `slots = '⦉a⦊ [c] ⟦-⟧'`  
 → `eq({ shown = child.shown(), slots = child.slots() }, { shown = 'b', slots = '⦉-⦊ [b] ⟦c⟧' })`  
 spec: (A1, M11) A key in a macro acts on the buffer the macro just opened: from `⦉a⦊ [c] ⟦-⟧`, `:e b.txt<CR><M-f>` in one batch shows b with `⦉-⦊ [b] ⟦c⟧`, as typed by hand. **[run 2026-10-24]** recorded it ending on c, `⦉a⦊ [c] ⟦-⟧`, "Jumped back to windows current buffer.", b never r…  
-`tests/test_cycling.lua:804`
+`tests/test_cycling.lua:805`
 
 **T466 [char]** keys in one batch keep their order  
 `:e e`, `:e a`, `<M-f>`, `:e c` → `slots = '⦉a⦊ [c] ⟦e⟧'`  
 → `slots = '⦉e⦊ [d] ⟦b⟧'`  
 spec: (M11) The batch keeps its order: from `⦉a⦊ [c] ⟦e⟧`, `:e b.txt<CR><M-f>:e d.txt<CR>` in one batch gives `⦉e⦊ [d] ⟦b⟧`, as typed by hand.  
-`tests/test_cycling.lua:811`
+`tests/test_cycling.lua:812`
 
 **T467 [char]** a dump lists the settle work still queued  
 `:e a` → `eq(#files, 1)`  
 → `eq(text:match('\npending: ([^\n]*)'), 'arrival b.txt')`  
 spec: (A26, M11) A dump lists the settle work still queued: `:edit b.txt` and a planted `never` in one call give a dump whose heading names `arrival b.txt` as pending.  
-`tests/test_cycling.lua:818`
+`tests/test_cycling.lua:819`
+
+**T201 [char]** a dumped file replays to the same assertion  
+`:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
+`<M-;><M-t> (via typed)` → `eq({`  
+spec: (A26) A dumped file replays to the same assertion: on T200's route in a project kept across editors, with the stale note planted by a typed `:lua` line, the dump replayed in a fresh editor in that project raises "Remembered secondary is the same as current secondary" at `<M-;><M-…  
+`tests/test_cycling.lua:858`
+
+**T202 [char]** replaying the snapshot and the steps reproduces every driven step's row  
+`:e a`, `:e b`, `:e c`, `keys` → `eq({ snapshot = r.snapshot, enough = r.driven >= 50, matched = r.matched == r.driven, mismatches = #r.mismatches },`  
+spec: (A26) A dump starts with a snapshot of the state at its first step, and replaying snapshot plus steps reproduces every driven step's row: `:e a`, `:e b`, `:e c`, then 110 `<M-S-f>`, so the dump starts from a snapshot that holds them (A26 What a dump holds), then a planted `never`…  
+`tests/test_cycling.lua:875`
+
+**T470 [char]** a replay runs no code a command line chains or carries  
+`:e a` → `eq(child.lua('return _G.CDV_PLANTED'), true) -- they ran here, in the editor that made the dump`  
+→ `eq({ ran = child.lua('return _G.CDV_PLANTED == true'), failure = r.failure == nil }, { ran = false, failure = true })`  
+spec: (A26) A replay runs no code a command line chains or carries: a dump holding `:e b.txt | lua _G.CDV_PLANTED = true` and `:e +lua\ _G.CDV_PLANTED=true c.txt`, typed in the editor that made it, replayed in a fresh editor in its project, leaves `CDV_PLANTED` unset there, both steps'…  
+`tests/test_cycling.lua:892`
+
+**T468 [char]** a replay's editor isn't saved  
+`:e a` → `eq({ ok = res.ok, said = res.err:find("this editor replayed a dump", 1, true) ~= nil, files = res.files },`  
+spec: (A26) A replay's editor isn't saved: after T201's replay, `save_session()` throws the replay's message and writes no session file.  
+`tests/test_cycling.lua:908`
+
+**T469 [char]** a dump that spans more than one tab isn't replayed  
+`:e a`, `:tabnew`, `:e b` → `eq({ said = Extra.has(child.messages(), 'spans more than one tab'), windows = child.lua('return #vim.api.nvim_list_wins()'),`  
+spec: (A26) A dump that spans more than one tab isn't replayed: a dump made with a second tab open, replayed, gives the WARN and leaves the fresh editor as it was.  
+`tests/test_cycling.lua:926`
 
 **T463 [char]** an export called from a user's mapping runs the cancel first too  
 → `eq({ ok = ok, dumps = #Extra.new_files(before, child.dumps()), split = child.shown(split), first = child.slots(first) },`  
 note: A user's own Lua mapping: a window jump and an export, in one function.  
 spec: (A12) An export called from a user's mapping runs the cancel first too: T461's setup, then `vim.cmd.wincmd('w')` and `require('cavediver').jump_to_primary()` in one function: nothing throws and nothing dumps, the split shows c again, and the other window is `⦉b⦊ [a] ⟦-⟧`.  
-`tests/test_cycling.lua:833`
+`tests/test_cycling.lua:945`
 
 **T462 [char]** a jump's cancel says so  
 `:wincmd w` → `eq(#said, 1)`  
 spec: (A12) A jump's cancel says so: T461's setup, `<M-m>` in the split, then `<C-w>w` alone, settled, gives one INFO, "Cycling cancelled. Window 1 returned to cycling origin buffer: c.txt", the split being window 1 with `'splitright'` off, as the harness runs.  
-`tests/test_cycling.lua:845`
+`tests/test_cycling.lua:957`
 
 ## tests/test_decisions.lua (52 cases: 52 char)
 
