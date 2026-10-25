@@ -54,7 +54,7 @@ T['T94 [char] <M-,> skips a previous window whose filetype is minimap'] = functi
 end
 
 T['T449 [char] (A17) <M-,>\'s skip list is configurable'] = function()
-	child.lua('require("cavediver").setup({ toggle_window = { skip_filetypes = { "mything" } } })')
+	child.lua('_G.CDV_TEST.setup({ toggle_window = { skip_filetypes = { "mything" } } })')
 	child.steps({ ':e a' })
 	local w1 = child.win()
 	child.cmd('vsplit')

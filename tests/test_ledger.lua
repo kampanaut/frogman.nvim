@@ -102,7 +102,7 @@ end
 T['T392 [char] (A27, A26) the ring keeps the last N steps, N from ledger.ring, 1,000 by default'] = function()
 	child.setup()
 	eq(child.lua('return require("cavediver.configs").ledger.ring'), 1000)
-	child.lua('require("cavediver").setup({ ledger = { ring = 5 } })')
+	child.lua('_G.CDV_TEST.setup({ ledger = { ring = 5 } })')
 	child.steps({ ':e a', ':e b' })
 	for _ = 1, 8 do
 		child.steps({ '<M-f>' })
@@ -192,7 +192,7 @@ end
 
 T['T397 [char] (A27) a step that changes no row and makes no move is not kept'] = function()
 	child.setup()
-	child.lua('require("cavediver").setup({ cleanup_interval = 100 })')
+	child.lua('_G.CDV_TEST.setup({ cleanup_interval = 100 })')
 	child.steps({ ':e a', ':e b' })
 	local n = #steps()
 	child.settle(500)
@@ -207,7 +207,7 @@ end
 -- timer's tick or the UI's refresh repairs it, whichever comes first.
 T['T398 [char] (A27, A22) the cleanup says nothing, and its repair is a move'] = function()
 	child.setup()
-	child.lua('require("cavediver").setup({ cleanup_interval = 100 })')
+	child.lua('_G.CDV_TEST.setup({ cleanup_interval = 100 })')
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.messages()
 	child.lua('vim.cmd("noautocmd bwipeout " .. vim.fn.bufnr("b.txt"))')

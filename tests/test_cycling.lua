@@ -450,7 +450,7 @@ end
 
 -- N, the ring's length, is ledger.ring (A26, A27); set to 5 here, so ten actions overflow it.
 T['T199 [char] with no assertion, the recorder writes no file and opens no buffer, and the ring never holds more than N steps'] = function()
-	child.lua('require("cavediver").setup({ ledger = { ring = 5 } })')
+	child.lua('_G.CDV_TEST.setup({ ledger = { ring = 5 } })')
 	child.steps({ ':e a', ':e b', ':e c', ':e d' })
 	local files_before, bufs_before = child.dumps(), bufs()
 	child.steps({ '<M-f>', '<M-f>', '<M-S-f>', ':e a', '<M-;><M-r>', '<M-f>', ':e b', '<M-S-f>', '<M-f>', ':e c' })

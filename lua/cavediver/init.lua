@@ -17,6 +17,8 @@ local settle = require('cavediver.settle')
 local engine = require('cavediver.engine')
 
 local settings = require('cavediver.configs')
+-- the defaults as they are before any setup(), which every setup() starts from
+local defaults = vim.deepcopy(settings)
 
 -- Export domains for direct access (backward compatibility)
 M.navigation = navigation
@@ -39,9 +41,20 @@ local function begin_key(lhs)
 	ledger.begin("keymap", lhs, vim.api.nvim_get_current_win())
 end
 
+-- The keys the last setup mapped, each with its callback, so the next one takes off those that are
+-- still cavediver's
+local mapped = {}
+
 ---Setup keymaps for cavediver operations
 ---@param keymaps CavediverKeymaps Keymap configuration
 local function setup_keymaps(keymaps)
+	-- the last setup's keys go first, those another mapping hasn't replaced since
+	for lhs, callback in pairs(mapped) do
+		if vim.fn.maparg(lhs, 'n', false, true).callback == callback then
+			vim.keymap.del('n', lhs)
+		end
+	end
+	mapped = {}
 	if not keymaps then return end
 
 	-- Buffer lifecycle
@@ -152,6 +165,12 @@ local function setup_keymaps(keymaps)
 			M.open_closed_lists()
 		end, { desc = "Open the closed lists" })
 	end
+
+	for action, lhs in pairs(keymaps) do
+		if type(lhs) == "string" and type(defaults.keymaps[action]) == "string" then
+			mapped[lhs] = vim.fn.maparg(lhs, 'n', false, true).callback
+		end
+	end
 end
 
 local setup_debug_commands
@@ -159,13 +178,31 @@ local setup_debug_commands
 ---Initialize cavediver plugin with configuration.
 ---
 ---Nothing runs at require, so this creates the autocmds (in the cavediver augroup), the commands
----and the timers, and calling it again replaces them cleanly. It also sets the keymaps. A list in
----the user configuration replaces the default list whole, and a table given where the default
----isn't one (or the other way round) throws.
+---and the timers, and calling it again replaces them, the last call's keys too. Each call starts
+---from the defaults. A list replaces the default list whole, a key the defaults lack takes the
+---user's value, and a table given where the default is something else (or the other way) throws.
 ---
 ---@param user_config? CavediverConfig User configuration (merged with defaults)
 ---@return nil
 function M.setup(user_config)
+	-- Start from the defaults, put back in place, since the domains hold this table
+	local function reset_into(current, default)
+		for key in pairs(current) do
+			if default[key] == nil then
+				current[key] = nil
+			end
+		end
+		for key, value in pairs(default) do
+			if type(value) == "table" and type(current[key]) == "table" and not vim.islist(value) then
+				reset_into(current[key], value)
+			else
+				current[key] = vim.deepcopy(value)
+			end
+		end
+	end
+
+	reset_into(settings, defaults)
+
 	-- Merge user configuration with defaults
 	
 	local function deep_merge_into(default, user_config)
@@ -176,6 +213,8 @@ function M.setup(user_config)
 				default[key] = vim.deepcopy(value) -- a list replaces the default list whole
 			elseif type(value) == "table" and type(default[key]) == "table" then 
 				deep_merge_into(default[key], value)
+			elseif type_default == "nil" then
+				default[key] = vim.deepcopy(value) -- a key the defaults don't have takes the user's value
 			elseif type_value ~= "table" and type_default ~= "table" then
 				default[key] = value
 			else

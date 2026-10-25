@@ -73,4 +73,31 @@ T['T127 [char] calling setup() twice leaves one set of autocmds and timers'] = f
 	eq(counts(), once)
 end
 
+-- What a key maps to: its description, or nil when it maps nothing.
+local function maps(lhs)
+	return child.lua('local m = vim.fn.maparg(..., "n", false, true); return m.desc or vim.NIL', { lhs })
+end
+
+T['T520 [char] (M13, A25) setup() again starts from the defaults'] = function()
+	child.lua([[require('cavediver').setup({ session_dir = _G.CDV_ROOT .. '/sessions/' })]])
+	local first = { close = maps('<M-.>') }
+	child.lua([[require('cavediver').setup({ cleanup_interval = 123, keymaps = { close_buffer = '<M-q>' } })]])
+	local moved = { q = maps('<M-q>'), close = maps('<M-.>'), interval = child.lua('return require("cavediver.configs").cleanup_interval') }
+	child.lua([[require('cavediver').setup()]])
+	local again = { q = maps('<M-q>'), close = maps('<M-.>'), interval = child.lua('return require("cavediver.configs").cleanup_interval') }
+	eq({ first = first, moved = moved, again = again }, {
+		first = { close = 'Close the current buffer' },
+		moved = { q = 'Close the current buffer', close = vim.NIL, interval = 123 },
+		again = { q = vim.NIL, close = 'Close the current buffer', interval = 4000 },
+	})
+end
+
+T['T521 [char] (M13) a bracket pair named at the top of glyphs is taken'] = function()
+	local got = child.lua([[
+		local ok, err = pcall(require('cavediver').setup, { session_dir = _G.CDV_ROOT .. '/sessions/', glyphs = { row_t = { '<', '>' } } })
+		return { ok = ok, err = err and tostring(err) or vim.NIL, row_t = ok and require('cavediver.domains.ui.routines').glyphs().row_t or vim.NIL }
+	]])
+	eq(got, { ok = true, err = vim.NIL, row_t = { '<', '>' } })
+end
+
 return T
