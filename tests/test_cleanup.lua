@@ -177,6 +177,39 @@ T['T483 [char] (A20, I1) a move onto a file the ternary holds leaves no file in 
 	eq({ slots = child.slots(), dump = child.dumped_since(dumps) }, { slots = '⦉-⦊ [a] ⟦-⟧', dump = nil })
 end
 
+-- b is typed into the pop-up, so it's queued with no buffer; then a.txt is moved onto b.txt on
+-- disk, as a file manager moves it, and a's buffer takes b's name.
+T['T554 [char] (A20, I18) a move onto a file the primary queue holds keeps it there once'] = function()
+	child.steps({ ':e a', '<M-;><M-c>' })
+	child.lua([[
+		require('cavediver').open_primary_buffer_history()
+		vim.api.nvim_buf_set_lines(0, 1, 1, false, { 'b.txt' })
+		vim.cmd('write')
+		vim.cmd('close')
+	]])
+	child.settle(300)
+	eq(child.primary(), '[a,b]on')
+	child.lua([[
+		local H = require('cavediver.domains.history')
+		local t = require('cavediver.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		t.displacement_ternary_map[t.current_slot] = H.get_hash_from_filepath(_G.CDV_TEST.root .. '/b.txt')
+		os.rename(_G.CDV_TEST.root .. '/a.txt', _G.CDV_TEST.root .. '/b.txt')
+		vim.cmd('file ' .. vim.fn.fnameescape(_G.CDV_TEST.root .. '/b.txt'))
+	]])
+	child.settle(300)
+	local self_notes = child.lua([[
+		local t = require('cavediver.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local n = 0
+		for _, map in ipairs({ t.displacement_ternary_map, t.displacement_secondary_map }) do
+			for key, value in pairs(map) do
+				if key:gsub('%-swap$', '') == value then n = n + 1 end
+			end
+		end
+		return n
+	]])
+	eq({ queue = child.primary(), self_notes = self_notes }, { queue = '[b]on', self_notes = 0 })
+end
+
 -- new.txt isn't on disk, so a rename of it would be a move; its own name again
 -- is no rename at all. It's hidden by then, out of every slot, kept known by
 -- its history alone, so no arrival takes it in again after the rename.

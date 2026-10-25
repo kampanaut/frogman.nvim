@@ -329,8 +329,8 @@ end
 ---Begin a step at what set it off.
 ---
 ---An event while a step is open is one of that step's follow-ups, so it's listed under it and
----begins none. A save or a load takes no events, since what follows one in the same call is a
----step of its own. Anything else closes the open step and begins a new one, held open for a
+---begins none. A save or a load, `:restart`'s reload included, takes no events, since what
+---follows one in the same call is a step of its own. Anything else closes the open step and begins a new one, held open for a
 ---few settles.
 ---
 ---@param cause "keymap"|"command"|"event"|"load"|"save"|"restart"|"label" The kind of trigger
@@ -339,7 +339,7 @@ end
 ---@return CavediverLedgerStep step The step begun, or the open one an event went under
 function M.begin(cause, trigger, winid)
 	local open = data.open
-	if cause == "event" and open and open.cause ~= "save" and open.cause ~= "load" then
+	if cause == "event" and open and open.cause ~= "save" and open.cause ~= "load" and open.cause ~= "restart" then
 		table.insert(open.events, trigger)
 		return open
 	end

@@ -572,7 +572,7 @@ function M.cleanup_triquetras(bufnr_ondelete)
 				if vim.api.nvim_win_is_valid(winid) then
 					cbufnr = vim.api.nvim_win_get_buf(winid)
 					cbufname = vim.api.nvim_buf_get_name(cbufnr)
-					if cbufname == "" then
+					if cbufname == "" and vim.b[cbufnr].cavediver_noname ~= nil then -- one with no id was never tracked
 						cbufname = history.routines.noname_name(cbufnr)
 					end
 					cbufhash = history.routines.get_filehash(cbufname)
@@ -609,20 +609,20 @@ function M.cleanup_triquetras(bufnr_ondelete)
 						triquetra.current_slot = triquetra.ternary_slot
 						triquetra.ternary_slot = nil
 						bufnr = history.get_buffer_from_hash(triquetra.current_slot)
-						resolved = history.routines.update_buffer_history(bufnr)
+						resolved = history.routines.is_trackable(bufnr) -- no visit: the window doesn't go to it
 						-- print("#1")
 					end
 					if not resolved and triquetra.secondary_slot and history.get_buffer_from_hash(triquetra.secondary_slot) then
 						triquetra.current_slot = triquetra.secondary_slot
 						triquetra.secondary_slot = nil
 						bufnr = history.get_buffer_from_hash(triquetra.current_slot)
-						resolved = history.routines.update_buffer_history(bufnr)
+						resolved = history.routines.is_trackable(bufnr) -- no visit: the window doesn't go to it
 						-- print("#2")
 					end
 					if not resolved and triquetra.primary_buffer[1] and history.get_buffer_from_hash(triquetra.primary_buffer[1]) then
 						triquetra.current_slot = triquetra.primary_buffer[1]
 						bufnr = history.get_buffer_from_hash(triquetra.current_slot)
-						resolved = history.routines.update_buffer_history(bufnr)
+						resolved = history.routines.is_trackable(bufnr) -- no visit: the window doesn't go to it
 						-- print("#3")
 					end
 
@@ -861,11 +861,15 @@ function M.swap_with_secondary(winid)
 			M.check_notes_under_current(triquetra)
 			vim.notify("Secondary buffer set to ternary slot. Ternary slot graduated.", vim.log.levels.INFO)
 		elseif #history.data.ordered.crux >= 2 then
-			-- the ordered list's first entry is the window's current buffer, or the second one could be it too.
-			if history.get_hash_from_buffer(history.data.ordered.crux[1].buf) ~= triquetra.current_slot then
-				require('cavediver.domains.ledger').never("This is impossible. The most recent buffer in the history must be the window's current buffer.")
+			-- the newest buffer that isn't the current one: a visit in another window, made without
+			-- the focus, can rank above the window's own current buffer.
+			for _, entry in ipairs(history.data.ordered.crux) do
+				local filehash = history.get_hash_from_buffer(entry.buf)
+				if filehash and filehash ~= triquetra.current_slot then
+					triquetra.secondary_slot = filehash
+					break
+				end
 			end
-			triquetra.secondary_slot = history.get_hash_from_buffer(history.data.ordered.crux[2].buf)
 			M.check_notes_under_current(triquetra)
 			vim.notify("Secondary buffer populated from history.", vim.log.levels.INFO)
 		else

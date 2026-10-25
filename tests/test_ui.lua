@@ -388,6 +388,21 @@ T['T456 [char] (M12) the indicators by kind'] = function()
 	})
 end
 
+-- Every winbar write fires OptionSet; nothing changes on screen while the refreshes run.
+T['T560 [char] (M12) a refresh writes no winbar that hasn\'t changed'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('help')
+	child.settle(300)
+	child.lua([[
+		_G.CDV_WINBAR_SETS = 0
+		vim.api.nvim_create_autocmd('OptionSet', { pattern = 'winbar', callback = function()
+			_G.CDV_WINBAR_SETS = _G.CDV_WINBAR_SETS + 1
+		end })
+	]])
+	child.settle(600)
+	eq(child.lua('return _G.CDV_WINBAR_SETS'), 0)
+end
+
 T['T457 [char] (M12) a window with no current slot shows its visit alone'] = function()
 	child.steps({ ':e a' })
 	child.cmd('help')

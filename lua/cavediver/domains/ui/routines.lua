@@ -111,7 +111,16 @@ function M.pick_into_primary_popup(dbuf)
 		if not vim.api.nvim_buf_is_valid(dbuf) or #paths == 0 then
 			return
 		end
-		local lines = vim.tbl_map(function(path) return vim.fn.fnamemodify(path, ":.") end, paths)
+		local names = vim.b[dbuf].cavediver_names or {}
+		local lines = vim.tbl_map(function(path)
+			local line = vim.fn.fnamemodify(path, ":.")
+			-- a line the pop-up would read as another file's short name goes in as a path of its own
+			local named = names[line]
+			if named and vim.fn.fnamemodify(named, ":p") ~= vim.fn.fnamemodify(path, ":p") then
+				line = "./" .. line
+			end
+			return line
+		end, paths)
 		local current = vim.api.nvim_buf_get_lines(dbuf, row - 1, row, false)[1] or ""
 		if vim.trim(current) == "" then
 			vim.api.nvim_buf_set_lines(dbuf, row - 1, row, false, lines)
@@ -158,6 +167,7 @@ function M.show_primary_buffer_history()
 	vim.bo[dbuf].buftype = "acwrite"
 	vim.bo[dbuf].swapfile = false
 	vim.bo[dbuf].bufhidden = "wipe" -- gone once no window shows it, so its name is free for the next one
+	vim.b[dbuf].cavediver_names = basename_filepath_mapping -- what each short name stands for, for the picker
 
 	local function to_display(hash)
 		local basename = M.get_smart_basename(hash)
@@ -743,8 +753,13 @@ function M.reopen_from_closed_lists(dbuf, stay)
 	if not filehash then
 		return
 	end
-	if vim.bo[dbuf].modified and not write_closed_lists(dbuf) then
-		return
+	if vim.bo[dbuf].modified then
+		-- only the write into the whole editor's file failed: the lists in memory are written, so it
+		-- goes on, as leaving does
+		local written, why = write_closed_lists(dbuf)
+		if not written and why ~= "file" then
+			return
+		end
 	end
 	-- the list the line is under; one in the file alone gives the entry up as it's reopened
 	local section
@@ -1263,7 +1278,10 @@ local function put_winbar(winid, winbar, segment)
 	if require('cavediver.configs').winbar.own == false then
 		return
 	end
-	vim.wo[winid].winbar = require('cavediver.domains.ui').is_hidden("winbar") and "" or winbar
+	local value = require('cavediver.domains.ui').is_hidden("winbar") and "" or winbar
+	if vim.wo[winid].winbar ~= value then -- each write redraws, so only a winbar that changed is written
+		vim.wo[winid].winbar = value
+	end
 end
 
 ---Get a window's triquetra segment, as the winbar last drew it.
@@ -1613,7 +1631,9 @@ local function update_visit_bars()
 					bar = "%#" .. group .. "#" .. string.rep("─", left) .. " " .. M.escape_renderline(label) .. " "
 						.. string.rep("─", math.max(0, free - left)) -- the label's `%`, doubled once, as it goes in
 				end
-				vim.wo[winid].winbar = bar
+				if current ~= bar then -- each write redraws, so only a bar that changed is written
+					vim.wo[winid].winbar = bar
+				end
 				visit_bars[winid] = bar
 			end
 		end

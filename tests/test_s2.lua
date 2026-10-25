@@ -437,6 +437,23 @@ T['T304 [char] (S2) every write is atomic: a new file is renamed over the old on
 		{ regular_files = 1, same_inode = false })
 end
 
+-- Two temporary files beside the main file, as another editor's writes leave them: one in flight,
+-- one left by a crash two minutes ago.
+T['T552 [char] (S2) a save leaves another editor\'s write in flight alone, and sweeps an old one'] = function()
+	child.setup()
+	child.steps({ ':e a' })
+	eq(Misc.save(child), { true })
+	local file = S2.only_file(session_dir())
+	local fresh, old = file .. '.tmp1', file .. '.tmp2'
+	vim.fn.writefile({ 'in flight' }, fresh)
+	vim.fn.writefile({ 'left by a crash' }, old)
+	local ago = os.time() - 120
+	vim.uv.fs_utime(old, ago, ago)
+	child.steps({ ':e b' })
+	eq(Misc.save(child), { true })
+	eq({ fresh = vim.uv.fs_stat(fresh) ~= nil, old = vim.uv.fs_stat(old) ~= nil }, { fresh = true, old = false })
+end
+
 -- A No Name text closed with <M-.>, another open, and an empty one shown.
 T['T305 [char] (S2) one scratch file per No Name text in <main>.d/, each in mode 0600'] = function()
 	child.setup()
@@ -637,6 +654,36 @@ T['T473 [char] (S2) a closed No Name text read from another session\'s file is k
 	child.settle(300)
 	child.steps({ '<M-S-w>' })
 	eq(S2.holding(child, 'carried text'), 1)
+end
+
+-- T473's route, with A's text files removed before B's first save, so the text, held unread from
+-- A's file, can't be read when B's save needs it.
+T['T556 [char] (S2) a held text that can\'t be read at a write is lost there, and said once'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	S2.noname(child, { 'carried text' })
+	child.steps({ '<M-.>' })
+	eq(S2.save(child, 'A'), { true })
+
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child, 'A'), { true })
+	child.settle(300)
+	local a = S2.main_file(s.session_dir, S2.cwd(child), 'A')
+	vim.fn.delete(s.session_dir .. a .. '.d', 'rf')
+	child.messages()
+	eq(S2.save(child, 'B'), { true })
+	eq(S2.save(child, 'B'), { true })
+	local warns = vim.tbl_filter(function(m) return m.msg:find('integrity check', 1, true) ~= nil end, child.messages())
+	local listed = child.lua([[
+		local H = require('cavediver.domains.history')
+		for _, h in ipairs(H.data.closed_buffers) do
+			if (H.get_filepath_from_hash(h) or ''):match('^NONAME_') then return true end
+		end
+		return false
+	]])
+	eq({ warns = #warns, listed = listed }, { warns = 1, listed = false })
 end
 
 -- The No Name text is in a second tab, its cursor on its third line; the
@@ -2409,6 +2456,36 @@ T['T542 [char] (S2) q leaves the closed lists when only the write into the whole
 	local got = { warned = #S2.notices(child.messages()), open = child.lua('return vim.api.nvim_win_is_valid(...)', { p.win }) }
 	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
 	eq(got, { warned = 1, open = false })
+end
+
+-- T542's edit, left unwritten, then <CR> on x, closed onto the editor's list, a list in memory.
+T['T555 [char] (S2) <CR> in the closed lists reopens when only the write into the whole editor\'s file fails'] = function()
+	local s = S2.shared()
+	local w1 = file_only_state(s)
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	child.cmd('bdelete x.txt')
+	child.settle()
+	local p = S2.picker(child)
+	local _, e = under_detached(p.lines)
+	eq(e ~= nil, true)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, e)
+	local x
+	for i, l in ipairs(lines) do
+		if l:find('x.txt', 1, true) then x = i end
+	end
+	eq(x ~= nil, true)
+	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
+	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
+	child.messages()
+	child.lua('vim.api.nvim_buf_set_lines(...)', { p.buf, 0, -1, false, lines })
+	child.lua('vim.api.nvim_set_current_win(...)', { p.win })
+	child.lua('vim.api.nvim_win_set_cursor(0, { ..., 0 })', { x })
+	child.type_keys('<CR>')
+	child.settle()
+	local got = { warned = #S2.notices(child.messages()), shown = child.shown(w1) }
+	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+	eq(got, { warned = 1, shown = 'x' })
 end
 
 -- From the first tab, the hint names another tab: u has no file, so the tab

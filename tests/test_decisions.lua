@@ -617,22 +617,6 @@ local function dumps_after(fn)
 	return Extra.new_files(before, child.dumps())
 end
 
-T['T275 [char] (A26) the fill assertion dumps'] = function()
-	child.steps({ ':e a', ':e b' })
-	child.cmd('vsplit')
-	child.settle()
-	-- The ordered list's first two entries swapped by hand, so its first entry
-	-- isn't the window's current buffer (T176).
-	local files = dumps_after(function()
-		child.lua([[
-			local ord = require('cavediver.domains.history').data.ordered.crux
-			ord[1], ord[2] = ord[2], ord[1]
-			_G.CDV_TEST.press('<M-f>')
-		]])
-	end)
-	eq(#files > 0, true)
-end
-
 T['T275 [char] (A26) "Duplicates detected" dumps'] = function()
 	child.steps({ ':e a', ':e b', ':e c', ':e d' })
 	-- s = t, set directly (T34).

@@ -593,6 +593,18 @@ T['T415 [char] (A27, S1) :restart\'s reload is a step of its own'] = function()
 	eq({ causes = causes, before = before }, { causes = { 'load', 'restart' }, before = { cause = 'event', torn = true, moves = 0 } })
 end
 
+-- The reload's step begun by hand, as storage begins it, then an event while it's held open.
+T['T559 [char] (A27) an event while :restart\'s reload is held open begins a step of its own'] = function()
+	child.setup()
+	local got = child.lua([[
+		local L = require('cavediver.domains.ledger')
+		local reload = L.begin('restart', 'session')
+		local event = L.begin('event', 'BufEnter c.txt')
+		return { own = event ~= reload, under_reload = #reload.events, under_event = #event.events }
+	]])
+	eq(got, { own = true, under_reload = 0, under_event = 0 })
+end
+
 T['T416 [char] (A27) a tab session\'s tab closed is a move'] = function()
 	local s = S2.shared()
 	tab_session(s)

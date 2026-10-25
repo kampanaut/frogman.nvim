@@ -206,7 +206,7 @@ T['T175 [char] jumping to another window cancels the cycle'] = function()
 	eq(child.ordered():match('^[^,]*'), 'd')
 end
 
-T['T176 [char] <M-f> fills an empty secondary from the ordered list, asserting its first entry'] = function()
+T['T176 [char] <M-f> fills an empty secondary with the newest buffer that isn\'t the current one'] = function()
 	-- A fresh split: an empty secondary and no ternary.
 	child.steps({ ':e a', ':e b' })
 	child.cmd('vsplit')
@@ -217,7 +217,8 @@ T['T176 [char] <M-f> fills an empty secondary from the ordered list, asserting i
 	eq(child.slots(), '⦉-⦊ [b] ⟦a⟧')
 
 	-- Again from a fresh split, with the ordered list's first two entries
-	-- swapped by hand, so its first entry isn't the window's current buffer.
+	-- swapped by hand, so its first entry isn't the window's current buffer:
+	-- the fill takes that first entry.
 	child.setup()
 	child.steps({ ':e a', ':e b' })
 	child.cmd('vsplit')
@@ -227,7 +228,30 @@ T['T176 [char] <M-f> fills an empty secondary from the ordered list, asserting i
 		ord[1], ord[2] = ord[2], ord[1]
 		return { _G.CDV_TEST.press('<M-f>') }
 	]])
-	eq(res[1], false)
+	eq({ ok = res[1], slots = child.slots() }, { ok = true, slots = '⦉-⦊ [b] ⟦a⟧' })
+end
+
+-- A plugin switches another window's buffer without focusing it, as nvim_win_call does: that
+-- visit is the newest, so the focused window's current buffer is no longer first.
+T['T551 [char] (D11) a buffer switched in another window from outside it doesn\'t stop the fill'] = function()
+	local runs = {}
+	for _, view in ipairs({ 'global', 'window' }) do
+		child.setup({ history_view = view })
+		child.steps({ ':e a' })
+		local A = child.win()
+		child.cmd('vsplit')
+		child.settle()
+		child.steps({ ':e c', ':e b' })
+		local B = child.win()
+		child.lua('vim.api.nvim_set_current_win(...)', { A })
+		child.settle()
+		child.lua('local w = ...; vim.api.nvim_win_call(w, function() vim.cmd("buffer c.txt") end)', { B })
+		child.settle()
+		local dumps = child.dump_files()
+		local ok = child.step('<M-f>')
+		table.insert(runs, { ok = ok, slots = child.slots(A), dump = child.dumped_since(dumps) })
+	end
+	eq(runs, { { ok = true, slots = '⦉-⦊ [a] ⟦c⟧' }, { ok = true, slots = '⦉-⦊ [a] ⟦c⟧' } })
 end
 
 T['T197 [char] under the window view the ordered list never ties after two splits'] = function()
