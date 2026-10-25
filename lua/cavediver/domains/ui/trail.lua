@@ -141,7 +141,12 @@ local function in_set(glyphs, text)
 	for name, recorded in pairs(RECORDED) do
 		local now = glyphs[name]
 		if type(now) == "string" and now ~= recorded then
-			text = text:gsub(vim.pesc(recorded), (now:gsub("%%", "%%%%")))
+			if name == "none" then
+				-- the dash only where it's the whole trigger: a name or a command keeps its own
+				text = text == recorded and now or text
+			else
+				text = text:gsub(vim.pesc(recorded), (now:gsub("%%", "%%%%")))
+			end
 		end
 	end
 	return text

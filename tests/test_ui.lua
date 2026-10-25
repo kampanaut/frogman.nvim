@@ -439,6 +439,69 @@ T['T498 [char] (M12) a % in a file name doesn\'t break the winbar'] = function()
 	eq({ errors = errors(), named = bar:find('50%% off.txt', 1, true) ~= nil }, { errors = {}, named = true })
 end
 
+-- Every text the bufferline's components give, for buffers named with a %: cokeline puts them into
+-- the tabline as they are, so the tabline they make has to evaluate cleanly.
+T['T535 [char] (M12) a % in a file name doesn\'t break the bufferline'] = function()
+	child.lua([[
+		local root = _G.CDV_TEST.root
+		vim.fn.writefile({ "x" }, root .. "/100%done.txt")
+		vim.fn.mkdir(root .. "/sub/50%", "p")
+		vim.fn.writefile({ "x" }, root .. "/sub/50%/c.txt")
+	]])
+	child.steps({ ':e a', ':e c' })
+	child.lua('vim.cmd.edit(vim.fn.fnameescape(_G.CDV_TEST.root .. "/100%done.txt"))')
+	child.lua('vim.cmd.edit(vim.fn.fnameescape(_G.CDV_TEST.root .. "/sub/50%/c.txt"))')
+	child.settle(300)
+	local out = child.lua([[
+		package.preload['cokeline.hlgroups'] = function() -- the components read Comment's colour from it
+			return { get_hl_attr = function() return '#808080' end }
+		end
+		local components = require('cavediver').bufferline.cokeline.create_buffer_components()
+		local line, texts = "", {}
+		for _, b in ipairs(vim.api.nvim_list_bufs()) do
+			local name = vim.api.nvim_buf_get_name(b)
+			if name:find("%", 1, true) then
+				local buffer = { number = b, filename = vim.fn.fnamemodify(name, ":t"),
+					unique_prefix = name:find("/sub/", 1, true) and "50%/" or "", is_focused = false, is_modified = false,
+					is_last = false, index = 2, pick_letter = "a", devicon = { icon = "", color = "#ffffff" },
+					diagnostics = { errors = 0, warnings = 0, infos = 0, hints = 0 } }
+				for _, component in ipairs(components) do
+					local ok, text = pcall(component.text, buffer)
+					if ok and type(text) == "string" then
+						line = line .. text
+						if text:find("%", 1, true) then table.insert(texts, text) end
+					end
+				end
+			end
+		end
+		local ok, drawn = pcall(vim.api.nvim_eval_statusline, line, { use_tabline = true })
+		return { texts = texts, ok = ok, drawn = ok and drawn.str or tostring(drawn) }
+	]])
+	local undoubled = vim.tbl_filter(function(t) return (t:gsub("%%%%", "")):find("%", 1, true) ~= nil end, out.texts)
+	eq({ undoubled = undoubled, ok = out.ok, name = out.drawn:find("100%done.txt", 1, true) ~= nil,
+		prefix = out.drawn:find("50%/", 1, true) ~= nil },
+		{ undoubled = {}, ok = true, name = true, prefix = true })
+end
+
+-- A terminal whose command's first word has a %, visited from a tracked window, and run in a split
+-- of its own, a window born untracked. Neovim takes no % in a filetype, so a command is the way in.
+T['T536 [char] (M12) a % in a visited buffer\'s label is doubled once'] = function()
+	child.lua([[
+		local script = _G.CDV_TEST.root .. "/50%x"
+		vim.fn.writefile({ "#!/bin/sh", "sleep 30" }, script)
+		vim.fn.setfperm(script, "rwx------")
+	]])
+	child.steps({ ':e a' })
+	child.lua('vim.cmd.terminal(vim.fn.fnameescape(_G.CDV_TEST.root .. "/50%x"))')
+	child.settle(300)
+	local slot = child.lua('return vim.wo.winbar')
+	child.lua('vim.cmd("split"); vim.cmd.terminal(vim.fn.fnameescape(_G.CDV_TEST.root .. "/50%x"))')
+	child.settle(300)
+	local alone = child.lua('return vim.wo.winbar')
+	local function once(bar) return bar:find("50%%x", 1, true) ~= nil and bar:find("50%%%%x", 1, true) == nil end
+	eq({ slot = once(slot), alone = once(alone) }, { slot = true, alone = true })
+end
+
 -- b, the ternary, is wiped without events; :e d then clears the display names, so the next
 -- refresh reads b's dead buffer, unless the repair has run.
 T['T499 [char] (M12) a dead ternary is repaired on the spot, whatever the secondary holds'] = function()

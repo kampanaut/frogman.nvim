@@ -184,21 +184,11 @@ function M.is_filehash_referenced(filehash)
 	return false
 end
 
----Check if cavediver still knows a hash.
----
----A hash is known while an open buffer, a slot, a primary queue or a closed stack holds it.
----Notes and history never keep a hash known. They follow along instead.
----
----@param filehash Filehash
----@return boolean known True if cavediver still knows the hash
-function M.is_filehash_known(filehash)
-	return M.known_filehashes()[filehash] == true
-end
-
 ---Get every hash cavediver still knows, as a set.
 ---
----Used for a pass over many hashes, so the set is built once. A hash is known as
----`M.is_filehash_known()` says.
+---A hash is known while an open buffer, a slot, a primary queue or a closed stack holds it.
+---Notes and history never keep a hash known. They follow along instead. It's built once for a pass
+---over many hashes.
 ---
 ---@return table<Filehash, boolean> known File hash → true for every known hash
 function M.known_filehashes()
@@ -978,8 +968,11 @@ function M.track_buffer(filehash, time)
 		data.crux_internals.window[winid][filehash] = data.history_index - 1
 	end
 
-	-- open again, it's closed nowhere: it leaves every pool, which remember it for its next close.
-	M.open_out_of_pools(filehash)
+	-- open again, it's closed nowhere: it leaves every pool, which remember it for its next close. A
+	-- load's entry, given its time, opens nothing: the load fills the closed lists from its file.
+	if time == nil then
+		M.open_out_of_pools(filehash)
+	end
 	-- a visit in a tab session's tab is the session's own too.
 	local pool = M.pool_of_tab(winid and vim.api.nvim_win_get_tabpage(winid) or vim.api.nvim_get_current_tabpage())
 	if time == nil and pool.id ~= "" then
@@ -1225,16 +1218,23 @@ function M.reopen_filehash(filehash)
 		return nil -- a file gone from disk keeps its place on the closed stack: it may come back
 	end
 
-	M.open_out_of_pools(filehash)
-	local bufnr
+	local cache
 	if filepath:match("^NONAME_") then
-		local cache = data.noname_content[filehash]
+		cache = data.noname_content[filehash]
 		if cache and cache.lines == nil and cache.read then
 			cache = cache.read() -- a text from the session file is read only when it's reopened
 		end
 		if cache == nil then
-			return nil -- a No Name buffer with nothing cached (it was empty) can't be brought back.
+			-- a No Name buffer with nothing cached (it was empty, or its text is lost) can't be brought
+			-- back: it leaves every list with nothing remembered, and wasn't reopened
+			M.discard_from_pools(filehash)
+			data.noname_content[filehash] = nil
+			return nil
 		end
+	end
+	M.open_out_of_pools(filehash)
+	local bufnr
+	if filepath:match("^NONAME_") then
 		bufnr = M.buffer_from_text(cache)
 		vim.bo[bufnr].buftype = ""
 		data.noname_content[filehash] = nil

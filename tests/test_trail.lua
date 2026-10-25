@@ -233,6 +233,25 @@ T['T431 [char] (A27) with the ascii set, the trail draws no character outside AS
 	eq({ lines = #lines() > 2, wide = wide }, { lines = true, wide = {} })
 end
 
+-- A command whose file has an em dash in its name, typed under the ascii set: only a trigger that is
+-- the dash alone is drawn in the set.
+T['T543 [char] (A27) under the ascii set, a name with a dash in it keeps it'] = function()
+	child.setup()
+	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" } })')
+	child.lua('vim.fn.writefile({ "x" }, _G.CDV_TEST.root .. "/notes—draft.txt")')
+	child.steps({ ':e a' })
+	child.lua('vim.cmd.edit(vim.fn.fnameescape(_G.CDV_TEST.root .. "/notes—draft.txt"))')
+	child.steps({ ':e b' })
+	child.type_keys(':bdelete notes—draft.txt<CR>')
+	child.settle(300)
+	open_trail()
+	local kept = false
+	for _, l in ipairs(lines()) do
+		if l:find(':bdelete notes—draft.txt', 1, true) then kept = true end
+	end
+	eq(kept, true)
+end
+
 T['T526 [char] (A27) under the ascii set, what a move or a trigger was recorded with is drawn in it'] = function()
 	child.setup()
 	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" } })')

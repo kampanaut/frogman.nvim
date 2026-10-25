@@ -146,16 +146,27 @@ function M.init_autocmds(group)
 			-- Quick save
 			vim.keymap.set("n", "<C-s>", "<cmd>write<cr>", { buffer = args.buf, desc = "Save queue" })
 
+			-- a view key set to false isn't mapped, as in every view
 			-- Save and close
-			vim.keymap.set("n", keys.leave_too or "<C-c>", close_window, { buffer = args.buf, desc = "Save and close" })
+			if keys.leave_too then
+				vim.keymap.set("n", keys.leave_too, close_window, { buffer = args.buf, desc = "Save and close" })
+			end
 
-			vim.keymap.set("n", keys.leave or "q", close_window, { buffer = args.buf, desc = "Save and close" })
+			if keys.leave then
+				vim.keymap.set("n", keys.leave, close_window, { buffer = args.buf, desc = "Save and close" })
+			end
 
-			vim.keymap.set("n", keys.act or "<cr>", function() promote_to_primary_and_quit(false) end, { buffer = args.buf, desc = "Promote file under cursor and quit floating window"})
+			if keys.act then
+				vim.keymap.set("n", keys.act, function() promote_to_primary_and_quit(false) end, { buffer = args.buf, desc = "Promote file under cursor and quit floating window"})
+			end
 
-			vim.keymap.set("n", keys.act_and_stay or "gf", function() promote_to_primary_and_quit(true) end, { buffer = args.buf, desc = "Promote file under cursor and stay" })
+			if keys.act_and_stay then
+				vim.keymap.set("n", keys.act_and_stay, function() promote_to_primary_and_quit(true) end, { buffer = args.buf, desc = "Promote file under cursor and stay" })
+			end
 
-			vim.keymap.set("n", keys.pick or "<M-e>", function() routines.pick_into_primary_popup(args.buf) end, { buffer = args.buf, desc = "Add files through the picker" })
+			if keys.pick then
+				vim.keymap.set("n", keys.pick, function() routines.pick_into_primary_popup(args.buf) end, { buffer = args.buf, desc = "Add files through the picker" })
+			end
 		end
 	})
 

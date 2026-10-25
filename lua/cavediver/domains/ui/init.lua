@@ -503,7 +503,7 @@ function M.bufferline.cokeline.create_buffer_components()
 		},
 		unique_prefix = {
 			text = function(buffer)
-				return buffer.unique_prefix
+				return (buffer.unique_prefix:gsub("%%", "%%%%")) -- the tabline's own `%`, doubled
 			end,
 			fg = comment,
 			style = 'italic',
@@ -517,10 +517,11 @@ function M.bufferline.cokeline.create_buffer_components()
 				return get_theme_fg_by_slot(buffer.number)
 			end,
 			text = function(buffer)
+				local filename = buffer.filename:gsub("%%", "%%%%") -- the tabline's own `%`, doubled
 				if bufferline_state.harpooned_buffers[buffer.number] and not M.is_hidden("indicators", "harpoon") then
-					return buffer.filename .. " ⥤ {" .. bufferline_state.harpooned_lookup[buffer.number] .. "}"
+					return filename .. " ⥤ {" .. bufferline_state.harpooned_lookup[buffer.number] .. "}"
 				else
-					return buffer.filename
+					return filename
 				end
 			end,
 			bold = function(buffer)

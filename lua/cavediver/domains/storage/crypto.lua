@@ -57,6 +57,10 @@ local function crypto()
 		local names = { "libcrypto.so.3", "libcrypto.3.dylib" }
 		if ffi.os ~= "OSX" then
 			table.insert(names, "crypto")
+		else
+			-- Homebrew's openssl@3 and MacPorts' sit outside dlopen's own search on macOS
+			vim.list_extend(names, { "/opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib",
+				"/usr/local/opt/openssl@3/lib/libcrypto.3.dylib", "/opt/local/lib/libcrypto.3.dylib" })
 		end
 		for _, name in ipairs(names) do
 			local ok, lib = pcall(ffi.load, name)
