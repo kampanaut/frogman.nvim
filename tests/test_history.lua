@@ -164,9 +164,9 @@ T['T149 [char] random visits across windows, global view: the visited buffer is 
 	eq(walks('global'), nil)
 end
 
--- Under the window view the rebuild gives every buffer its own time (history/routines.lua:271,
--- :274; T197), on a window jump and on :close alike, e.g. after :e a, :e b, :vsplit, :close,
--- :e a, a and b don't share one.
+-- Under the window view the rebuild gives every buffer its own time (construct_crux,
+-- history/routines.lua; T197), on a window jump and on :close alike, e.g. after :e a, :e b,
+-- :vsplit, :close, :e a, a and b don't share one.
 T['T149 [char] random visits across windows, window view: the visited buffer is leftmost'] = function()
 	eq(walks('window'), nil)
 end

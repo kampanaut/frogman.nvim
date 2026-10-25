@@ -145,8 +145,8 @@ T['T507 [char] (A15, P2) the close key\'s delete leaves a buffer a later command
 		{ shown = 'c', slots = '⦉b⦊ [c] ⟦-⟧', closed = '', errmsg = '' })
 end
 
--- delete_buffer keeps the cursor before it switches the window away (history/routines.lua:709),
--- so the cache doesn't fall back to {1,0}.
+-- delete_buffer keeps the cursor before it switches the window away (history/routines.lua), so the
+-- cache doesn't fall back to {1,0}.
 T['T83 [char] <M-.> on a modified No Name buffer closes it and caches its lines, filetype and cursor'] = function()
 	child.steps({ ':e a' })
 	local buf = noname({ 'one', 'two', 'three' }, 'lua', { 2, 1 })
