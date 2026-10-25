@@ -1,6 +1,6 @@
 # Test review sheet
 
-595 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+596 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -352,7 +352,7 @@ note: as a config that calls setup() at startup has it: the start buffer entered
 spec: (A21, M5) The first `:e` after the start buffer was taken in leaves that buffer in no slot: in a fresh editor, the empty buffer it starts on entered once cavediver is set up, as a config that calls `setup()` at startup has it, then `:e a`, give `⦉-⦊ [a] ⟦-⟧` with no "Healed the t…  
 `tests/test_cleanup.lua:325`
 
-## tests/test_closing.lua (24 cases: 24 char)
+## tests/test_closing.lua (25 cases: 25 char)
 
 **T80 [char]** <M-.> on the newest lands on the next, closes it, and keeps it in the ternary  
 `:e d`, `:e e`, `:e f` → `ordered = 'f,e,d'`  
@@ -474,13 +474,19 @@ spec: A No Name buffer closed with text comes back with the same lines and filet
 spec: (A16, M5, M14) `<M-S-w>` opens a never-written file again as the new file it was, and the entries under it stay within reach: `:e a`, `:e c`, `<M-.>`, then `:e brandnew.txt` with nothing typed and `<M-.>`; `<M-S-w>` shows brandnew.txt, empty, and `<M-S-w>` again shows c.  
 `tests/test_closing.lua:220`
 
+**T532 [char]** (A7, M5, M14) a slot key opens a never-written closed file as the new file it was  
+`:e a`, `:e notes.txt`, `:e b`, `:bdelete notes.txt`, `<M-S-f>`, `:CavediverTrail` → `eq({ before = before, after = after, shown = shown, lines = lines, disk = disk, new = words, drawn = drawn },`  
+note: and the trail draws it so  
+spec: (A7, M5, M14) A slot key opens a never-written closed file as the new file it was: `:e a`, `:e notes.txt` with nothing typed, `:e b`, `:bdelete notes.txt` give `⦉notes⦊ [b] ⟦-⟧`; `<M-S-f>` shows notes.txt, empty, with `⦉b⦊ [notes] ⟦-⟧`, says nothing about the disk, and its step's…  
+`tests/test_closing.lua:232`
+
 **T89 [char]** <M-S-w> on a missing file says so and leaves the entry on the stack  
 `:e d`, `:e e`, `:e f`, `<M-.>` → `closed = 'f'`  
 `<M-S-w>` → `eq({ ok, err }, { true, nil })`  
 → `eq(said, true)`  
 → `closed = 'f'`  
 spec: `<M-S-w>` on a missing file says so and leaves the entry on the stack.  
-`tests/test_closing.lua:232`
+`tests/test_closing.lua:267`
 
 **T90 [char]** a reopened No Name buffer gets its cursor in its own window  
 `:e a`, `<M-.>` → `shown = 'a'`  
@@ -490,7 +496,7 @@ spec: `<M-S-w>` on a missing file says so and leaves the entry on the stack.
 → `eq(child.lua('return vim.api.nvim_win_get_cursor(0)'), { 3, 2 })`  
 note: Cursor on line 3; a.txt, where <M-.> lands, has one line.  
 spec: A reopened No Name buffer gets its cursor in its own window, with no "Invalid cursor line".  
-`tests/test_closing.lua:247`
+`tests/test_closing.lua:282`
 
 **T91 [char]** after a No Name buffer is reopened, its old hash is renamed everywhere ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-.>` → `shown = 'c'`  
@@ -502,13 +508,13 @@ spec: A reopened No Name buffer gets its cursor in its own window, with no "Inva
 → `eq(child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()].displacement_ternary_map[...]', { child.hash_of('b'`  
 note: b is left while the No Name buffer is its ternary, so dtm[b] names it; then the No Name buffer is closed from c, where it lands in the ternary.  
 spec: After a No Name buffer is reopened, every slot and map entry that held its old hash holds the new one.  
-`tests/test_closing.lua:261`
+`tests/test_closing.lua:296`
 
 **T162 [char]** pushing a hash already on the closed stack keeps one copy, as the newest  
 `:e a` → `eq(got, true)`  
 → `closed = 't,x'`  
 spec: (Q15) I22: pushing a hash that's already on the closed stack (for example, `track_closing_filehash_force` on x, t, then x again) leaves it on the stack once, as the newest entry: `t,x`. With pools: closing `notes.md` in two tabs' pools and merging both entries leaves one, the new…  
-`tests/test_closing.lua:283`
+`tests/test_closing.lua:318`
 
 **T164 [char]** <M-.> in a window visiting an untracked buffer closes it and lands on the current slot  
 `:e b`, `:e a`, `<M-f>` → `slots = '⦉-⦊ [a] ⟦b⟧'`  
@@ -520,7 +526,7 @@ spec: (Q15) I22: pushing a hash that's already on the closed stack (for example,
 → `slots = '⦉-⦊ [a] ⟦b⟧'`  
 note: Visit a nofile scratch in the same window.  
 spec: Q17, a visiting window: in a window with `{c=a s=b}` that's visiting an untracked buffer (a `nofile` scratch, or help shown with `:buffer`), `<M-.>` closes the visited buffer, and the window shows a with `{c=a s=b}` intact (A2, A15, T27).  
-`tests/test_closing.lua:301`
+`tests/test_closing.lua:336`
 
 **T165 [char]** <M-.> in a help window closes the help buffer and leaves a alone  
 `:e a`, `:help` → `eq(child.lua('return vim.bo.buftype'), 'help')`  
@@ -531,7 +537,7 @@ spec: Q17, a visiting window: in a window with `{c=a s=b}` that's visiting an un
 → `shown = 'a'`  
 → `slots = '⦉-⦊ [a] ⟦-⟧'`  
 spec: Q17, a window born untracked: `:e a`, `:help`, then `<M-.>` in the help window. The help buffer is closed, Neovim closes the help window, nothing throws, and a's window and triquetra are unchanged.  
-`tests/test_closing.lua:321`
+`tests/test_closing.lua:356`
 
 **T166 [char]** <M-.> on help in the only window closes the help buffer  
 `:help`, `:only` → `eq(child.lua('return vim.bo.buftype'), 'help')`  
@@ -540,7 +546,7 @@ spec: Q17, a window born untracked: `:e a`, `:help`, then `<M-.>` in the help wi
 → `eq(#child.lua('return vim.api.nvim_list_wins()'), 1)`  
 → `eq(Extra.at_least(child.messages()), {})`  
 spec: Q17, the only window: `:help`, `:only`, `<M-.>`. The help buffer is closed, nothing throws, and the window shows what Neovim picks.  
-`tests/test_closing.lua:338`
+`tests/test_closing.lua:373`
 
 **T167 [char]** <M-.> on a running terminal refuses with a message  
 `:e a`, `:e b`, `:terminal sleep 1000` → `eq(child.lua('return vim.bo.buftype'), 'terminal')`  
@@ -549,7 +555,7 @@ spec: Q17, the only window: `:help`, `:only`, `<M-.>`. The help buffer is closed
 → `eq(#Extra.at_least(child.messages(), vim.log.levels.WARN) > 0, true)`  
 → `eq(child.lua('return vim.api.nvim_buf_is_valid(...) and vim.api.nvim_get_current_buf() == ...', { term }), true)`  
 spec: Q17, a running terminal: `<M-.>` on a `:terminal` whose job is still running refuses with a message, and the terminal stays.  
-`tests/test_closing.lua:352`
+`tests/test_closing.lua:387`
 
 ## tests/test_cycling.lua (58 cases: 58 char)
 

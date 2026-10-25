@@ -98,6 +98,7 @@
 ---@field words string|nil What happened, in words
 ---@field lists string[]|nil The lists it names, the tab's own first
 ---@field dim boolean|nil Whether it's bookkeeping of the key's own result, shown dim
+---@field new boolean|nil For a reopen, whether the file was never written, so it came back as a new one
 ---@field state "open"|"closed"|nil Where it left its file, when its kind doesn't say (a repair's)
 
 

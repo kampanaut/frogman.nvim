@@ -103,7 +103,8 @@ local function move_words(glyphs, names, move)
 	if move.kind == "closed" and not words then
 		words = "closed"
 	elseif move.kind == "reopened" and not words then
-		words = "reopened" .. ((move.lists and #move.lists > 0) and (glyphs.dot .. "off ") or "")
+		words = "reopened" .. (move.new and (glyphs.dot .. "never written, a new file") or "")
+			.. ((move.lists and #move.lists > 0) and (glyphs.dot .. "off ") or "")
 		return words .. lists_text(glyphs, move.lists)
 	elseif move.note then
 		local by = ({ guard = "Q6's guard: ", navigation = "navigation's check: ", ["no path"] = "no path: " })[move.by] or "stale "

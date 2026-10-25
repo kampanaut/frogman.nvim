@@ -287,16 +287,18 @@ end
 
 ---Check if a slot's file is closed and gone from disk.
 ---
----Its pointer is kept, since the file may come back, and using it says so instead.
+---Its pointer is kept, since the file may come back, and using it says so instead. A file never
+---written isn't gone: it reopens as the new file it was.
 ---
 ---@param filehash Filehash|nil
----@return boolean missing True if the file has no buffer and isn't readable
+---@return boolean missing True if the file has no buffer, isn't readable and was written once
 local function is_missing(filehash)
 	local filepath = filehash and history.get_filepath_from_hash(filehash)
 	return filepath ~= nil and
 		history.get_buffer_from_hash(filehash) == nil and
 		not filepath:match("^NONAME_") and
-		vim.fn.filereadable(filepath) == 0
+		vim.fn.filereadable(filepath) == 0 and
+		not history.data.unwritten[filehash]
 end
 
 ---Say that a slot's file is gone from disk, and that the slot keeps it.
