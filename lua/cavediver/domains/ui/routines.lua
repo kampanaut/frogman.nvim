@@ -20,8 +20,8 @@ local M = {}
 ---Get the label a winbar names a visited buffer by.
 ---
 ---It's the buffer's number and its buftype, or its filetype when the buffer looks like a file
----(oil's acwrite). A terminal adds its command, from its term:// name. A `%` is escaped for the
----winbar.
+---(oil's acwrite). A terminal adds its command, from its term:// name. It's given as it is: where
+---it goes into a winbar, its `%` is doubled there.
 ---
 ---@param bufnr Bufnr The visited buffer
 ---@return string label The buffer's number and what it is
@@ -34,7 +34,7 @@ local function visit_label(bufnr)
 			visited = visited .. ": " .. vim.fs.basename(command)
 		end
 	end
-	return ((bufnr .. " " .. visited):gsub("%%", "%%%%"))
+	return bufnr .. " " .. visited
 end
 
 -- the primary pop-up's decoration: the switch, a closed entry's glyph, a missing file's tag
@@ -568,8 +568,11 @@ end
 ---returns false, with the other lists already written.
 ---
 ---@param dbuf Bufnr The closed-lists buffer
+---@param leaving boolean|nil True when the window is left after the write, so the message says the
+---lists in memory keep their edits rather than that they're still on screen
 ---@return boolean written True if every list was written
-local function write_closed_lists(dbuf)
+---@return string|nil why "file" when only the write into the whole editor's file failed
+local function write_closed_lists(dbuf, leaving)
 	local picker = closed_pickers[dbuf]
 	local current, new, count, errors = nil, {}, {}, {}
 	for _, line in ipairs(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) do
@@ -665,12 +668,14 @@ local function write_closed_lists(dbuf)
 			end
 		end
 	end
+	local written = true
 	if file_changes then
 		local ok, problem = storage.write_file_only_lists(file_changes)
 		if not ok then
 			vim.notify("cavediver: the closed lists' edits to the lists in the whole editor's file alone weren't written, since " ..
-				(problem == "missing" and "there's no whole-editor session file" or problem) .. "; they're still on screen.", vim.log.levels.WARN)
-			return false
+				(problem == "missing" and "there's no whole-editor session file" or problem) ..
+				(leaving and "; the lists in memory keep their edits." or "; they're still on screen."), vim.log.levels.WARN)
+			written = false
 		end
 	end
 	for filehash, _ in pairs(gone) do
@@ -679,7 +684,7 @@ local function write_closed_lists(dbuf)
 			history.data.came_from[filehash] = nil
 		end
 	end
-	return true
+	return written, not written and "file" or nil
 end
 
 ---Close a closed-lists window, and its buffer with it.
@@ -694,13 +699,18 @@ end
 
 ---Leave the closed lists, writing them first when they were edited.
 ---
----A write that's refused leaves the window open, so the lines can be fixed.
+---A write that's refused for a line leaves the window open, so the line can be fixed. One the whole
+---editor's file can't take leaves anyway: no edit to the lines could fix that, and the lists in
+---memory keep their edits.
 ---
 ---@param dbuf Bufnr The closed-lists buffer
 ---@return nil
 function M.leave_closed_lists(dbuf)
-	if vim.bo[dbuf].modified and not write_closed_lists(dbuf) then
-		return
+	if vim.bo[dbuf].modified then
+		local written, why = write_closed_lists(dbuf, true)
+		if not written and why ~= "file" then
+			return
+		end
 	end
 	close_closed_lists(dbuf)
 end
@@ -1589,9 +1599,10 @@ local function update_visit_bars()
 				if not hidden then
 					local group = vim.api.nvim_get_current_win() == winid and "WinbarVisit" or "WinbarVisitNC"
 					local label = "[" .. visit_label(bufnr) .. "]"
-					local free = vim.api.nvim_win_get_width(winid) - vim.api.nvim_strwidth((label:gsub("%%%%", "%%"))) - 2
+					local free = vim.api.nvim_win_get_width(winid) - vim.api.nvim_strwidth(label) - 2
 					local left = math.max(0, math.floor(free / 2))
-					bar = "%#" .. group .. "#" .. string.rep("─", left) .. " " .. label .. " " .. string.rep("─", math.max(0, free - left))
+					bar = "%#" .. group .. "#" .. string.rep("─", left) .. " " .. (label:gsub("%%", "%%%%")) .. " "
+						.. string.rep("─", math.max(0, free - left)) -- the label's `%`, doubled once, as it goes in
 				end
 				vim.wo[winid].winbar = bar
 				visit_bars[winid] = bar

@@ -509,6 +509,21 @@ T['T412 [char] (A27, S1) a load\'s moves: windows matched, references closed'] =
 		{ loaded = '1 window matched', loaded_by = 'load', closed = 'load' })
 end
 
+-- a.txt is closed in the fresh editor before the load, whose saved history holds it.
+T['T538 [char] (M4, A27) a load records no reopen for the files its history holds'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	child.steps({ ':e c', ':e a', '<M-.>' })
+	eq(child.closed():find('a') ~= nil, true)
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local reopened = found('reopened', 'a.txt')
+	eq(reopened and reopened.cause or nil, nil)
+end
+
 T['T413 [char] (A27, S1) a load with no file is a fresh start'] = function()
 	child.setup()
 	child.steps({ ':e a' })

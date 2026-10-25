@@ -16,17 +16,18 @@
 ---@field open_closed_lists string Open the closed lists
 ---@field views CavediverViewKeymaps Keys inside cavediver's own views (the same keys in each)
 
+---Keys inside cavediver's own views, the same in each. A key set to false isn't mapped.
 ---@class CavediverViewKeymaps
----@field leave string Write the view and leave it (the trail backs out of a search first)
----@field leave_too string Second key that writes and leaves the view (in the trail, even from a search)
----@field act string Run the view's main action on the line under the cursor, then leave
----@field act_and_stay string Run the view's main action, staying in the view
----@field fold string Fold or unfold what's under the cursor
----@field previous_section string Go to the previous section (the older day in the trail)
----@field next_section string Go to the next section (the newer day in the trail)
----@field pick string Add files through the picker, in the primary pop-up
----@field search string Search every page for a name, in the trail
----@field search_word string Search for the name under the cursor, in the trail
+---@field leave string|false Write the view and leave it (the trail backs out of a search first)
+---@field leave_too string|false Second key that writes and leaves the view (in the trail, even from a search)
+---@field act string|false Run the view's main action on the line under the cursor, then leave
+---@field act_and_stay string|false Run the view's main action, staying in the view
+---@field fold string|false Fold or unfold what's under the cursor
+---@field previous_section string|false Go to the previous section (the older day in the trail)
+---@field next_section string|false Go to the next section (the newer day in the trail)
+---@field pick string|false Add files through the picker, in the primary pop-up
+---@field search string|false Search every page for a name, in the trail
+---@field search_word string|false Search for the name under the cursor, in the trail
 
 ---@class CavediverGlyphs
 ---@field set "unicode"|"ascii" The glyph set (a glyph named here, outside the sets, replaces the set's own)

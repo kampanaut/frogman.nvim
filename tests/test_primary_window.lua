@@ -265,6 +265,21 @@ T['T453 [char] (A18) the pop-up\'s keys are keymaps.views\''] = function()
 end
 
 
+-- leave_too and pick set to false: the pop-up maps neither, as the closed lists and the trail don't.
+T['T539 [char] (A18) a view key set to false isn\'t mapped in the pop-up'] = function()
+	child.lua('_G.CDV_TEST.setup({ keymaps = { views = { leave_too = false, pick = false } } })')
+	queue_ba()
+	open()
+	local mapped = child.lua([[
+		local out = {}
+		for _, lhs in ipairs({ "<C-c>", "<M-e>", "q" }) do
+			out[lhs] = vim.fn.maparg(lhs, "n", false, true).buffer == 1
+		end
+		return out
+	]])
+	eq(mapped, { ["<C-c>"] = false, ["<M-e>"] = false, q = true })
+end
+
 T['T454 [char] (A18, P9) a save keeps a queue entry whose file is gone from disk'] = function()
 	local w = queue_ba()
 	child.lua('os.remove(_G.CDV_TEST.root .. "/b.txt")') -- after the start, which writes the project's files

@@ -882,6 +882,25 @@ T['T466 [char] keys in one batch keep their order'] = function()
 	eq(child.slots(), '⦉e⦊ [d] ⟦b⟧')
 end
 
+-- The job waits at getchar() for a key a timer sends; Neovim runs scheduled callbacks meanwhile, so
+-- the item's own turn comes while the job is still running.
+T['T540 [char] (M11) an item\'s own turn waits while a key\'s job waits at a prompt'] = function()
+	child.lua_notify([[
+		_G.CDV_ORDER = {}
+		local settle = require('cavediver.settle')
+		settle.now(function()
+			settle.later("probe", function() table.insert(_G.CDV_ORDER, "item") end)
+			local t = vim.uv.new_timer()
+			t:start(100, 0, function() vim.api.nvim_input("y") end)
+			vim.fn.getchar()
+			table.insert(_G.CDV_ORDER, "job done")
+		end)
+	]])
+	child.settle(500) -- this wait runs inside the waiting getchar(), so the job ends once it's over
+	child.settle(100)
+	eq(child.lua('return _G.CDV_ORDER'), { "job done", "item" })
+end
+
 T['T467 [char] a dump lists the settle work still queued'] = function()
 	child.steps({ ':e a' })
 	local before = child.dumps()

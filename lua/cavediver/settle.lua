@@ -55,7 +55,8 @@ end
 ---Queue settle work, to run once the editor settles.
 ---
 ---The work runs by itself on `vim.schedule`, as it would without the queue, unless a key runs
----it first.
+---it first. Its own turn waits while a key's job or an item is running, as one can be while it
+---waits at a prompt, which lets the event loop run.
 ---
 ---@param name string Name of the work, as the dump lists it ("arrival b.txt")
 ---@param fn function The work to run
@@ -63,9 +64,14 @@ end
 function M.later(name, fn)
 	local item = { name = name, fn = fn, done = false }
 	table.insert(queue, item)
-	vim.schedule(function()
+	local function own_turn()
+		if not item.done and working_count > 0 then
+			vim.defer_fn(own_turn, 10) -- a job is still running: the item runs once it's done
+			return
+		end
 		run(item)
-	end)
+	end
+	vim.schedule(own_turn)
 end
 
 ---Run all the settle work still queued, oldest first.

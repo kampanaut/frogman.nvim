@@ -605,6 +605,44 @@ T['T475 [char] (S2) a closed file shown again through its unlisted buffer is not
 		{ errors = {}, dump = nil, triquetra = true })
 end
 
+-- The text is held unread after the load; its file then goes, so <M-S-w> can't bring it back.
+T['T537 [char] (A16, M5) a closed No Name text that can\'t be read is lost, not reopened'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	S2.noname(child, { 'lost text' })
+	child.steps({ '<M-.>' })
+	eq(Misc.save(child), { true })
+
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq(child.closed():match('NONAME_') ~= nil, true)
+	vim.fn.delete(S2.scratch_dir(s.session_dir) or '', 'rf')
+	child.messages()
+	child.step('<M-S-w>')
+	child.settle(1500) -- the records are written on the next tick, and again a second later
+	local lost = vim.tbl_filter(function(m) return m.msg:find('so that text is lost', 1, true) ~= nil end, child.messages())
+	local reopened = child.lua([[
+		for _, st in ipairs(require('cavediver').ledger.steps()) do
+			for _, m in ipairs(st.moves or {}) do
+				if m.kind == 'reopened' then return true end
+			end
+		end
+		return false
+	]])
+	eq({ lost = #lost, reopened = reopened, closed = child.closed():match('NONAME_') ~= nil,
+		cached = child.lua('return vim.tbl_count(require("cavediver.domains.history").data.noname_content)') },
+		{ lost = 1, reopened = false, closed = false, cached = 0 })
+
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq(child.closed():match('NONAME_') ~= nil, false)
+end
+
 -- x.txt is first shown through a nofile buffer of that name, an outsider at the save; once it's a
 -- file closed since, the records write puts it on the closed list.
 T['T533 [char] (S1 Records, S2) a records write leaves out of the outsiders a file it puts on the closed list'] = function()
@@ -2269,6 +2307,28 @@ T['T391 [char] (S2) an edit to a list in the file alone that can\'t be written s
 	local got = { warned = #S2.notices(child.messages()) > 0, modified = child.lua('return vim.bo[...].modified', { p.buf }) }
 	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
 	eq(got, { warned = true, modified = true })
+end
+
+-- T391's edit, left unwritten, and q: the file can't take it, so q leaves anyway and says so.
+T['T542 [char] (S2) q leaves the closed lists when only the write into the whole editor\'s file fails'] = function()
+	local s = S2.shared()
+	local w1 = file_only_state(s)
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	local p = S2.picker(child)
+	local _, e = under_detached(p.lines)
+	eq(e ~= nil, true)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, e)
+	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
+	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
+	child.messages()
+	child.lua('vim.api.nvim_buf_set_lines(...)', { p.buf, 0, -1, false, lines })
+	child.lua('vim.api.nvim_set_current_win(...)', { p.win })
+	child.type_keys('q')
+	child.settle()
+	local got = { warned = #S2.notices(child.messages()), open = child.lua('return vim.api.nvim_win_is_valid(...)', { p.win }) }
+	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+	eq(got, { warned = 1, open = false })
 end
 
 -- From the first tab, the hint names another tab: u has no file, so the tab
