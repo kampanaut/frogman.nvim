@@ -175,6 +175,13 @@ return res
 Neg.self_walk = function(child, seed, nkeys, multi)
 	local dumps = child.dump_files()
 	local res = child.lua(SELF_WALK, { seed, nkeys, multi or false })
+	-- its keys come back to back, so the queue is checked once, after the editor settles at the end
+	child.settle(50)
+	local queued = child.lua('return require("cavediver.settle").pending()')
+	if #queued > 0 then
+		error(string.format('walk (seed %d) left the settle queue not empty once settled: %s\n  keys: %s', seed,
+			table.concat(queued, ', '), table.concat(res.actions, ', ')), 0)
+	end
 	local fired = child.dumped_since(dumps)
 	if fired then
 		error(string.format('walk (seed %d) dumped: %s\n  keys: %s', seed, fired, table.concat(res.actions, ', ')), 0)

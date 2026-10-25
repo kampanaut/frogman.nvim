@@ -279,6 +279,12 @@ for _ = 1, nkeys do
 	vim.wait(10) -- the editor settles between keys, as when they're typed
 	table.insert(res.actions, label)
 	res.steps = res.steps + 1
+	-- once the editor has settled, nothing is left on the settle queue
+	local queued = require('cavediver.settle').pending()
+	if #queued > 0 then
+		res.queued = table.concat(queued, ', ')
+		return res
+	end
 	for _, n in ipairs(_G.CDV_NOTES) do
 		if n.msg:match("^Hook '") then res.hook_failures = res.hook_failures + 1 end
 	end
@@ -298,6 +304,10 @@ K.walk = function(child, seed, nkeys, multi)
 	local fired = child.dumped_since(dumps)
 	if fired then
 		error(string.format('walk (seed %d) dumped: %s\n  keys: %s', seed, fired, table.concat(res.actions, ', ')), 0)
+	end
+	if res.queued then
+		error(string.format('walk (seed %d) left the settle queue not empty once settled: %s\n  keys: %s', seed, res.queued,
+			table.concat(res.actions, ', ')), 0)
 	end
 	return res
 end

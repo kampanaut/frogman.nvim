@@ -132,6 +132,12 @@ local function walk(view, seed)
 		end
 		table.insert(keys, key)
 		child.step(key)
+		-- once the editor has settled, nothing is left on the settle queue
+		local queued = child.lua('return require("cavediver.settle").pending()')
+		if #queued > 0 then
+			return string.format('seed %d, step %d: the settle queue is not empty once settled: %s after %s', seed, #keys,
+				table.concat(queued, ', '), table.concat(keys, ', '))
+		end
 		if key:match('^:e ') then
 			local why = X.leftmost(child)
 			if why ~= nil then
