@@ -83,53 +83,14 @@ local function row_segs(glyphs, names, row)
 	}
 end
 
----Join lists into the trail's text for them, `≡editor, ≡t`.
-local function lists_text(glyphs, lists)
-	local out = {}
-	for _, list in ipairs(lists or {}) do
-		table.insert(out, glyphs.list .. list)
-	end
-	return table.concat(out, ", ")
-end
-
----Get what a move says, from its own words or its fields.
----
----A move without words of its own is told from its kind and fields, such as a note's change or
----where a landing came from. The lists it names come last.
----
----@return string words The move's words, in the trail's language
-local function move_words(glyphs, names, move)
-	local words = move.words
-	if move.kind == "closed" and not words then
-		words = "closed"
-	elseif move.kind == "reopened" and not words then
-		words = "reopened" .. (move.new and (glyphs.dot .. "never written, a new file") or "")
-			.. ((move.lists and #move.lists > 0) and (glyphs.dot .. "off ") or "")
-		return words .. lists_text(glyphs, move.lists)
-	elseif move.note then
-		local by = ({ guard = "Q6's guard: ", navigation = "navigation's check: ", ["no path"] = "no path: " })[move.by] or "stale "
-		local function n(h) return stem(names, h) end
-		local owner = n(move.subject)
-		words = by .. move.note.map .. " note " .. (move.note.after and "rewritten" or "dropped") .. "   " ..
-			owner .. ">" .. n(move.note.before) .. glyphs.arrow .. owner .. ">" .. (move.note.after and n(move.note.after) or "-")
-	elseif move.kind == "landed" and move.from then
-		words = "landed" .. (move.from == "empty" and " on an empty buffer" or (", from the " .. move.from))
-	end
-	words = words or move.kind:gsub("_", " ")
-	if move.notes and move.notes > 0 and move.kind == "forgotten" then
-		words = words .. glyphs.dot .. move.notes .. (move.notes == 1 and " note" or " notes") .. " dropped"
-	end
-	if move.lists and #move.lists > 0 then
-		words = words .. glyphs.dot .. lists_text(glyphs, move.lists)
-	end
-	return words
-end
-
 -- What moves and triggers are recorded with: the unicode set's tag, dot and arrow, and a dash for a
--- step with no trigger, as the pages keep them
+-- step with no trigger or a missing label, as the pages keep them
 local RECORDED = { tag = "⎇", dot = " · ", arrow = " → ", none = "—" }
 
 ---Put what a move or a trigger was recorded with in the glyph set in use.
+---
+---Used for a label step or a loaded move that a page holds without its parts apart, where the
+---glyphs are only in its text. Every recorded glyph in it is put in the set in use.
 ---
 ---@param glyphs table The glyphs in use
 ---@param text string|nil What was recorded
@@ -141,49 +102,106 @@ local function in_set(glyphs, text)
 	for name, recorded in pairs(RECORDED) do
 		local now = glyphs[name]
 		if type(now) == "string" and now ~= recorded then
-			if name == "none" then
-				-- the dash only where it's the whole trigger: a name or a command keeps its own
-				text = text == recorded and now or text
-			else
-				text = text:gsub(vim.pesc(recorded), (now:gsub("%%", "%%%%")))
-			end
+			text = text:gsub(vim.pesc(recorded), (now:gsub("%%", "%%%%")))
 		end
 	end
 	return text
 end
 
----Split words into coloured pieces, with each `≡list` and `⎇tag` picked out.
+---Get a step's trigger as the trail draws it, in the glyph set in use.
 ---
----A list's piece carries its target, so the keys can act on it.
-local function word_segs(glyphs, text, group)
-	text = in_set(glyphs, text)
-	local out = {}
-	local i = 1
-	while i <= #text do
-		local s, e, mark
-		for _, m in ipairs({ glyphs.list, glyphs.tag }) do
-			local ms, me = text:find(vim.pesc(m) .. "[^%s,]+", i)
-			if ms and (s == nil or ms < s) then
-				s, e, mark = ms, me, m
-			end
-		end
-		if not s then
-			table.insert(out, { text:sub(i), group })
-			break
-		end
-		if s > i then
-			table.insert(out, { text:sub(i, s - 1), group })
-		end
-		local token = text:sub(s, e)
-		if mark == glyphs.list then
-			table.insert(out, { token, "CavediverTrailList", target = { kind = "list", value = token:sub(#glyphs.list + 1) } })
-		else
-			table.insert(out, { token, "CavediverTrailTag" })
-		end
-		i = e + 1
+---A label step's is made from the labels it went from and to, a missing one drawn as the set's
+---dash. A step with no trigger is the set's dash. Any other trigger is drawn as it was recorded,
+---so a name or a command keeps every character of its own. A label step a page holds without its
+---labels is put in the set by its text.
+---
+---@param glyphs table The glyphs in use
+---@param step CavediverLedgerStep The step
+---@return string|nil trigger Its trigger as drawn, nil if it has none
+local function trigger_of(glyphs, step)
+	local function glyph(name)
+		return type(glyphs[name]) == "string" and glyphs[name] or RECORDED[name]
 	end
-	return out
+	if step.cause == "label" and step.labels then
+		return (step.labels.from or glyph("none")) .. glyph("arrow") .. (step.labels.to or glyph("none"))
+	elseif step.cause == "label" then
+		return in_set(glyphs, step.trigger)
+	end
+	return step.trigger == RECORDED.none and glyph("none") or step.trigger
 end
+
+---Build lists as coloured pieces, `≡editor, ≡t`.
+---
+---Each list's piece is its whole name, and carries that name as its target, so the keys can act
+---on it.
+---
+---@param glyphs table The glyphs in use
+---@param lists string[]|nil The lists' names
+---@param group string The highlight group between them
+---@return table[] segs The lists' pieces
+local function list_segs(glyphs, lists, group)
+	local segs = {}
+	for i, list in ipairs(lists or {}) do
+		if i > 1 then
+			table.insert(segs, { ", ", group })
+		end
+		table.insert(segs, { glyphs.list .. list, "CavediverTrailList", target = { kind = "list", value = list } })
+	end
+	return segs
+end
+
+---Build what a move says as coloured pieces, from its own words or its fields.
+---
+---A move without words of its own is told from its kind and fields, such as a note's change or
+---where a landing came from. A gone move's tag is a piece of its own, and the lists it names come
+---last, a piece each. Each piece is made from its part, so a name's characters are only words.
+---
+---@param glyphs table The glyphs in use
+---@param names table<string, string> File hash → basename, as the step keeps them
+---@param move CavediverLedgerMove The move
+---@param group string The highlight group of its words
+---@return table[] segs The move's pieces, in the trail's language
+local function move_segs(glyphs, names, move, group)
+	local words, tag = move.words, nil
+	if move.kind == "closed" and not words then
+		words = "closed"
+	elseif move.kind == "reopened" and not words then
+		words = "reopened" .. (move.new and (glyphs.dot .. "never written, a new file") or "")
+			.. ((move.lists and #move.lists > 0) and (glyphs.dot .. "off ") or "")
+		return vim.list_extend({ { words, group } }, list_segs(glyphs, move.lists, group))
+	elseif move.note then
+		local by = ({ guard = "Q6's guard: ", navigation = "navigation's check: ", ["no path"] = "no path: " })[move.by] or "stale "
+		local function n(h) return stem(names, h) end
+		local owner = n(move.subject)
+		words = by .. move.note.map .. " note " .. (move.note.after and "rewritten" or "dropped") .. "   " ..
+			owner .. ">" .. n(move.note.before) .. glyphs.arrow .. owner .. ">" .. (move.note.after and n(move.note.after) or "-")
+	elseif move.kind == "landed" and move.from then
+		words = "landed" .. (move.from == "empty" and " on an empty buffer" or (", from the " .. move.from))
+	elseif move.kind == "loaded" then
+		-- its parts joined by the set's dot; a page's load without them is put in the set by its text
+		words = move.parts and table.concat(move.parts, glyphs.dot) or in_set(glyphs, words)
+	elseif move.kind == "gone" and words then
+		-- the tag is all that follows its glyph, its own characters kept
+		local before, after = words:match("^(gone from disk )" .. vim.pesc(RECORDED.tag) .. "(.*)$")
+		if before then
+			words, tag = before, after
+		end
+	end
+	words = words or move.kind:gsub("_", " ")
+	if move.notes and move.notes > 0 and move.kind == "forgotten" then
+		words = words .. glyphs.dot .. move.notes .. (move.notes == 1 and " note" or " notes") .. " dropped"
+	end
+	local segs = { { words, group } }
+	if tag then
+		table.insert(segs, { glyphs.tag .. tag, "CavediverTrailTag" })
+	end
+	if move.lists and #move.lists > 0 then
+		table.insert(segs, { glyphs.dot, group })
+		vim.list_extend(segs, list_segs(glyphs, move.lists, group))
+	end
+	return segs
+end
+
 
 ---Get a day's depth, how many calendar days ago it was.
 ---@param day string The day, as `YYYY-MM-DD`
@@ -450,7 +468,7 @@ local function ring_lines(glyphs, own, before, key)
 	for i = hidden + 1, #earlier do
 		local ringed = earlier[i]
 		local r = { { "        " .. glyphs.ring .. " " .. os.date("%H:%M:%S", math.floor(ringed.time)) .. "  ", "CavediverTrailRing" },
-			{ string.format("%-15s", in_set(glyphs, ringed.trigger) or ""), "CavediverTrailTrigger" },
+			{ string.format("%-15s", trigger_of(glyphs, ringed) or ""), "CavediverTrailTrigger" },
 			{ (ringed.win and ledger.window_name(ringed.win) or "") .. "   ", "CavediverTrailRing" } }
 		if ringed.row_before and ringed.row_after and not require('cavediver.domains.ledger.routines').same_row(ringed.row_before, ringed.row_after) then
 			vim.list_extend(r, row_segs(glyphs, ringed.names or {}, ringed.row_before))
@@ -486,7 +504,7 @@ local function day_lines(glyphs, winwidth)
 		if not segs then
 			segs = {
 				{ time .. " ", "CavediverTrailTime" }, { (glyphs[step.cause] or "?") .. " ", "CavediverTrailCause" },
-				{ in_set(glyphs, step.trigger) or "", "CavediverTrailTrigger" },
+				{ trigger_of(glyphs, step) or "", "CavediverTrailTrigger" },
 			}
 			if own then
 				local pad = winwidth - width(segs) - 2
@@ -538,7 +556,7 @@ local function day_lines(glyphs, winwidth)
 				local segs = { indent, { branch, "CavediverTrailGutter" },
 					{ (glyphs[item.kind] or "?") .. " ", "CavediverTrail" .. (FAMILY[item.kind] or "Words") },
 					{ string.format("%-14s", #item.fold .. " " .. (PLURAL[item.kind] or item.kind)), "CavediverTrailName" } }
-				vim.list_extend(segs, word_segs(glyphs, lists_text(glyphs, item.lists), "CavediverTrailWords"))
+				vim.list_extend(segs, list_segs(glyphs, item.lists, "CavediverTrailWords"))
 				local pad = winwidth - width(segs) - 2
 				table.insert(segs, { string.rep(" ", math.max(1, pad)), nil })
 				table.insert(segs, { open and glyphs.unfolded or glyphs.folded, "CavediverTrailFold" })
@@ -559,7 +577,7 @@ local function day_lines(glyphs, winwidth)
 				if not segs then
 					segs = { indent, { branch, "CavediverTrailGutter" }, { (glyphs[move.kind] or "?") .. " ", family },
 						{ string.format("%-14s", move.name or ""), dim and "CavediverTrailDim" or "CavediverTrailName", target = target_of(move, step) } }
-					vim.list_extend(segs, word_segs(glyphs, move_words(glyphs, names, move), dim and "CavediverTrailDim" or "CavediverTrailWords"))
+					vim.list_extend(segs, move_segs(glyphs, names, move, dim and "CavediverTrailDim" or "CavediverTrailWords"))
 				end
 				table.insert(lines, { segs = segs, move = move, step = step })
 				if move.row then
@@ -632,7 +650,7 @@ local function search_lines(glyphs, winwidth)
 	local lines = { { segs = frame(l, r, mid, ch, group, winwidth) }, { segs = { { "", nil } } } }
 	local trigger_width = 0
 	for _, result in ipairs(view.results) do
-		trigger_width = math.max(trigger_width, vim.api.nvim_strwidth(result.step.trigger or ""))
+		trigger_width = math.max(trigger_width, vim.api.nvim_strwidth(trigger_of(glyphs, result.step) or ""))
 	end
 	-- a result opens into the ring as its step does on its day: since the trail's line before it
 	local in_ring = ring_index()
@@ -644,7 +662,7 @@ local function search_lines(glyphs, winwidth)
 			day = tonumber(result.day:sub(9, 10)), hour = 12 })
 		local label = result.day ~= last_day and os.date("%a %d", stamp) or string.rep(" ", #os.date("%a %d", stamp))
 		last_day = result.day
-		local trigger = in_set(glyphs, step.trigger) or ""
+		local trigger = trigger_of(glyphs, step) or ""
 		local segs = {
 			{ label .. " " .. os.date("%H:%M", math.floor(step.time or 0)) .. "  ", "CavediverTrailTime" },
 			{ glyphs.life .. " ", "CavediverTrailLife" .. result.state },
@@ -652,7 +670,7 @@ local function search_lines(glyphs, winwidth)
 			{ trigger .. string.rep(" ", trigger_width - vim.api.nvim_strwidth(trigger) + 2), "CavediverTrailTrigger" },
 			{ (glyphs[move.kind] or "?") .. " ", "CavediverTrail" .. (FAMILY[move.kind] or "Words") },
 		}
-		vim.list_extend(segs, word_segs(glyphs, move_words(glyphs, step.names or {}, move), "CavediverTrailWords"))
+		vim.list_extend(segs, move_segs(glyphs, step.names or {}, move, "CavediverTrailWords"))
 		-- a step with two results opens under the first
 		local own = not expanded[step] and own_of(in_ring, step)
 		local key = own and ring_key(result.day, step)

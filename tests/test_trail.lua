@@ -252,6 +252,109 @@ T['T543 [char] (A27) under the ascii set, a name with a dash in it keeps it'] = 
 	eq(kept, true)
 end
 
+-- A tab session named like a directory with a space: its list's name is one piece, and gf on its
+-- second word acts on the whole name.
+T['T544 [char] (A27) a list\'s name is one piece, whole'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 'My Project'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(S2.load_tab_session(child, 'My Project'), { true })
+	child.steps({ ':e a', ':e d' })
+	child.cmd('tabprevious')
+	child.settle()
+	child.steps({ ':e a', '<M-.>' })
+	child.settle(100)
+	open_trail()
+	local row = line_with('↓ a.txt', '≡My Project')
+	local piece = row and group_of(row, '≡My Project')
+	local col = row and lines()[row]:find('Project', 1, true) - 1
+	child.lua('local r, c = ...; vim.api.nvim_win_set_cursor(0, { r, c })', { row or 1, col or 0 })
+	type_in('gf')
+	local list = child.lua('return { ft = vim.bo.filetype, line = vim.api.nvim_get_current_line() }')
+	eq({ piece = piece, ft = list.ft, header = list.line:find('My Project', 1, true) ~= nil },
+		{ piece = 'CavediverTrailList', ft = 'cavediver-closed-lists', header = true })
+end
+
+-- The label comes from a provider: none, then a label with a dot in it, then main. Each change finds
+-- a closed file gone: b under no label, c under sprint · 4.
+T['T545 [char] (A27) under the ascii set, a label keeps its own characters, and a missing label is the set\'s dash'] = function()
+	child.setup()
+	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" }, label_provider = function() return _G.CDV_LABEL end })')
+	child.steps({ ':e a', ':e b', ':e c', ':e d' })
+	child.cmd('bdelete b.txt')
+	child.cmd('bdelete c.txt')
+	child.settle()
+	child.cmd('doautocmd FocusGained')
+	child.settle()
+	child.lua('os.remove(_G.CDV_TEST.root .. "/b.txt"); _G.CDV_LABEL = "sprint · 4"; vim.cmd("doautocmd FocusGained")')
+	child.settle(300)
+	child.lua('os.remove(_G.CDV_TEST.root .. "/c.txt"); _G.CDV_LABEL = "main"; vim.cmd("doautocmd FocusGained")')
+	child.settle(300)
+	open_trail()
+	local row = line_with('@sprint · 4')
+	local drawn = { first = line_with('- -> sprint · 4') ~= nil, second = line_with('sprint · 4 -> main') ~= nil,
+		tag = row and group_of(row, '@sprint · 4') }
+	type_in('q')
+	child.cmd('CavediverTrail c.txt')
+	child.settle(100)
+	drawn.search = line_with('sprint · 4 -> main  X') ~= nil
+	eq(drawn, { first = true, second = true, tag = 'CavediverTrailTag', search = true })
+end
+
+T['T546 [char] (A27) under the ascii set, a name holding the list\'s or the tag\'s glyph is words'] = function()
+	child.setup()
+	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" } })')
+	child.steps({ ':e a' })
+	child.lua('vim.cmd.saveas(vim.fn.fnameescape(_G.CDV_TEST.root .. "/issue#12.md"))')
+	child.settle(300)
+	child.lua('vim.cmd.saveas(vim.fn.fnameescape(_G.CDV_TEST.root .. "/logo@2x.png"))')
+	child.settle(300)
+	open_trail()
+	local rows = { line_with('issue#12.md: a copy'), line_with('logo@2x.png: a copy') }
+	local pieces = {}
+	for _, row in ipairs(rows) do
+		for _, g in ipairs(groups(row)) do
+			if g.group == 'CavediverTrailList' or g.group == 'CavediverTrailTag' then table.insert(pieces, g.text) end
+		end
+	end
+	eq({ rows = #rows, pieces = pieces }, { rows = 2, pieces = {} })
+end
+
+-- T541's route, the outsider that's also a record named with a dot: the policy's line names it.
+T['T547 [char] (A27, S2) under the ascii set, a loaded move\'s file name keeps its own dot'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(Misc.save(child), { true })
+
+	S2.start(child, s)
+	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" } })')
+	child.lua([[
+		local crypto = require('cavediver.domains.storage.crypto')
+		local dir, name = vim.fn.getcwd(-1, -1), vim.fn.getcwd()
+		local path = require('cavediver.configs').session_dir .. vim.fn.sha256(dir .. "\n" .. name)
+		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
+		local salt = bytes:sub(5, 4 + crypto.salt_length)
+		local data = require('cavediver.domains.storage.routines').read_session(dir, name)
+		local x = _G.CDV_TEST.root .. '/notes · v2.md'
+		local h = vim.fn.sha256(x .. "\n"):sub(1, 16)
+		data.paths[h] = x
+		data.outsiders = data.outsiders or {}
+		table.insert(data.outsiders, h)
+		table.insert(data.closed, h)
+		local header = "CDV1" .. salt
+		local out = header .. crypto.seal(crypto.derive_key(dir, salt), vim.json.encode(data), header)
+		fh = assert(io.open(path, 'wb')); fh:write(out); fh:close()
+	]])
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	open_trail()
+	eq({ name = line_with('notes · v2.md was both an outsider and a record') ~= nil,
+		joined = line_with(' - its file broke its own rules: ') ~= nil }, { name = true, joined = true })
+end
+
 T['T526 [char] (A27) under the ascii set, what a move or a trigger was recorded with is drawn in it'] = function()
 	child.setup()
 	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" } })')

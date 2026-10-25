@@ -14,6 +14,7 @@ M.routines = routines
 M.begin = routines.begin
 M.within = routines.within
 M.move = routines.move
+M.step_fields = routines.step_fields
 M.tell = routines.tell
 M.drop_batch = routines.drop_batch
 M.name_of = routines.name_of

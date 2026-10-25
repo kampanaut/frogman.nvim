@@ -1,6 +1,6 @@
 # Test review sheet
 
-608 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+612 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -4077,7 +4077,7 @@ note: The desk's 1.txt and 2.txt are a and b here.
 spec: The desk's sequence (`:e 1.txt`, `:e 2.txt`, `<M-n>`, `:bdelete`, `<M-S-f>`, `<M-S-f>`) throws nothing and leaves no duplicate slot. The reopen's `BufEnter` is slotted once the editor settles, so cleanup doesn't clear the ternary before the rename; the rename's missing guard for …  
 `tests/test_ternary_key.lua:44`
 
-## tests/test_trail.lua (28 cases: 28 char)
+## tests/test_trail.lua (32 cases: 32 char)
 
 **T425 [char]** (A27) :CavediverTrail opens the trail, untracked, on today's page ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-.>`, `<M-.> (via line_with)` → `eq({`  
@@ -4120,106 +4120,133 @@ note: A command whose file has an em dash in its name, typed under the ascii set
 spec: (A27) Under the ascii set, a name with a dash in it keeps it: with a file named `notes—draft.txt` opened and then closed by `:bdelete notes—draft.txt` typed on the command line, the trail draws that command as typed.  
 `tests/test_trail.lua:238`
 
+**T544 [char]** (A27) a list's name is one piece, whole  
+→ `eq(S2.save_tab_session(child, s, 'My Project'), { true })`  
+`:e x`, `:e t` → `eq(S2.load_tab_session(child, 'My Project'), { true })`  
+`:e a`, `:e d`, `:tabprevious`, `:e a`, `<M-.>` → `eq({ piece = piece, ft = list.ft, header = list.line:find('My Project', 1, true) ~= nil },`  
+note: A tab session named like a directory with a space: its list's name is one piece, and gf on its second word acts on the whole name.  
+spec: (A27) A list's name is one piece, whole: with a tab session saved as `My Project` and loaded into a second tab, a.txt open in both tabs, and `<M-.>` on it in the first, the close's line draws `≡My Project` as one list piece, and `gf` on its `Project` shows the closed lists with t…  
+`tests/test_trail.lua:257`
+
+**T545 [char]** (A27) under the ascii set, a label keeps its own characters, and a missing label is the set's dash  
+`:e a`, `:e b`, `:e c`, `:e d`, `:bdelete b.txt`, `:bdelete c.txt`, `:doautocmd FocusGained`, `:CavediverTrail c.txt` → `eq(drawn, { first = true, second = true, tag = 'CavediverTrailTag', search = true })`  
+note: The label comes from a provider: none, then a label with a dot in it, then main. Each change finds a closed file gone: b under no label, c under sprint · 4.  
+spec: (A27) Under the ascii set, a label keeps its own characters, and a missing label is the set's dash: with a label provider giving no label, then `sprint · 4`, then `main`, and a closed file gone from disk at each change, the first change's trigger is drawn `- -> sprint · 4` and th…  
+`tests/test_trail.lua:281`
+
+**T546 [char]** (A27) under the ascii set, a name holding the list's or the tag's glyph is words  
+`:e a` → `eq({ rows = #rows, pieces = pieces }, { rows = 2, pieces = {} })`  
+spec: (A27) Under the ascii set, a name holding the list's or the tag's glyph is words: `:saveas` of a.txt to `issue#12.md`, and of that to `logo@2x.png`, give two copies' lines with no list piece and no tag piece.  
+`tests/test_trail.lua:305`
+
+**T547 [char]** (A27, S2) under the ascii set, a loaded move's file name keeps its own dot  
+`:e a`, `:e b` → `eq(Misc.save(child), { true })`  
+→ `eq(Misc.load(child), { true })`  
+→ `eq({ name = line_with('notes · v2.md was both an outsider and a record') ~= nil,`  
+note: T541's route, the outsider that's also a record named with a dot: the policy's line names it.  
+spec: (A27, S2) Under the ascii set, a loaded move's file name keeps its own dot: T541's route with the outsider named `notes · v2.md` gives a load's line holding `notes · v2.md was both an outsider and a record`, its parts joined by ` - `.  
+`tests/test_trail.lua:325`
+
 **T526 [char]** (A27) under the ascii set, what a move or a trigger was recorded with is drawn in it  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:bdelete b.txt`, `:doautocmd FocusGained` → `eq({ wide = wide, label = line_with('feature -> main') ~= nil, tag = line_with('@feature') ~= nil, moved = line_with('x.txt') ~= nil },`  
 note: T418's route: a change of label from feature to main tags b.txt gone a move with no step open begins one with no trigger the step with no trigger is drawn (its dash among the lines the ASCII check reads)  
 spec: (A27) Under the ascii set, what a move or a trigger was recorded with is drawn in it: T418's route, a change of label from feature to main tagging b.txt gone, and a move recorded by hand with no step open, give a trail with no character outside ASCII, the move with no step drawn …  
-`tests/test_trail.lua:255`
+`tests/test_trail.lua:358`
 
 **T432 [char]** (A27) q and <C-c> leave, back in the window the trail came from  
 `:e a`, `:e b`, `:e c`, `<M-.>` → `eq(left, { { view = true, buf = false, back = true }, { view = true, buf = false, back = true } })`  
 spec: (A27) `q` and `<C-c>` leave: either closes the float, its buffer goes, and the focus is back in the window the trail was opened from.  
-`tests/test_trail.lua:284`
+`tests/test_trail.lua:387`
 
 **T433 [char]** (A27) opening the trail reads only what it shows  
 `:e a`, `:e b`, `:e c`, `<M-.>` → `eq(S2.save(child), { true })`  
 → `eq(S2.load(child), { true })`  
 → `eq({ listed = listed >= 21, opened = view() ~= vim.NIL, few = reads <= 15 }, { listed = true, opened = true, few = true })`  
 spec: (A27) Opening the trail reads only what it shows: with steps kept on 20 earlier days and the session saved, a fresh process opening the trail reads at most 15 pages, the gauge's days around the one shown.  
-`tests/test_trail.lua:321`
+`tests/test_trail.lua:424`
 
 **T434 [char]** (A27) a fold opened on one day stays that day's  
 `:e a`, `:e b`, `:e c`, `:e d`, `:e e`, `:e f`, `:bdelete a.txt b.txt c.txt d.txt` → `eq({ open_today = open_today, older = line_with('4 closed', '▸') ~= nil, older_open = line_with('4 closed', '▾') ~= nil },`  
 spec: (A27) A fold opened on one day stays that day's: a fold opened today, then `H` to an older day with a fold at the same place, shows that one closed, `▸`.  
-`tests/test_trail.lua:341`
+`tests/test_trail.lua:444`
 
 **T435 [char]** (A27) za on a step opens the ring's steps since the trail's line before  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `<M-.>`, `<M-.> (via line_with)`, `<M-f> (via line_with)`, `<M-.> (via line_with)` → `eq({ step = step ~= nil, opened = opened, closed = line_with('<M-f>') == nil }, { step = true, opened = true, closed = true })`  
 `<M-f> (via line_with)`  
 spec: (A27) `za` on a step opens the ring's steps since the trail's line before: after `:e a`, `:e b`, `:e c`, `<M-f>` and `<M-.>`, the `<M-.>` line shows `▸`, and `za` there opens the steps before it, the `<M-f>` among them with its row, `⦉b⦊ [c] ⟦-⟧ → ⦉-⦊ [c] ⟦b⟧`; `za` again closes …  
-`tests/test_trail.lua:372`
+`tests/test_trail.lua:475`
 
 **T436 [char]** (A27) the ring's steps open 20 at a time  
 `:e a`, `<M-.>`, `<M-.> (via line_with)` → `eq({ first = first, all = count_with('BufEnter'), earlier = line_with('earlier steps') == nil },`  
 spec: (A27) The ring's steps open 20 at a time: with 25 steps since the trail's line before, `za` opens the 20 nearest and a line "… 5 earlier steps", and `za` on that line opens the other 5.  
-`tests/test_trail.lua:386`
+`tests/test_trail.lua:489`
 
 **T437 [char]** (A27) a line from before this editor doesn't expand  
 `:e a`, `:e b`, `:e c`, `<M-.>` → `eq(S2.save(child), { true })`  
 → `eq(S2.load(child), { true })`  
 `:e a`, `:e b`, `:e a`, `:e b`, `:e a`, `:bdelete b.txt`, `<M-.> (via line_with)` → `eq({ row = row ~= nil, mark = row and lines()[row]:find('▸', 1, true) == nil, same = #lines() == before, own = own },`  
 spec: (A27) A line from before this editor doesn't expand: a step an earlier editor wrote into today's page, its seq the same as one in this editor's ring, shows no `▸`, and `za` on it opens nothing, while this editor's own line beside it does show `▸`.  
-`tests/test_trail.lua:403`
+`tests/test_trail.lua:506`
 
 **T438 [char]** (A27) a search is a name's life line across every page, oldest first  
 `:CavediverTrail c.txt` → `eq({`  
 spec: (A27) A search is a name's life line across every page: with c.txt closed three days ago and again today, `s` and `c.txt` give a header holding `c.txt` and "2 moves over 2 days", and a line for each, oldest first, its gutter bar in the closed state's colour; `:CavediverTrail c.tx…  
-`tests/test_trail.lua:441`
+`tests/test_trail.lua:544`
 
 **T439 [char]** (A27) <CR> on a result opens its day on its step, and q goes back  
 `<CR> (via type_in)` → `eq({ day = header:find('3 days down', 1, true) ~= nil, step = at:find('<M-.>', 1, true) ~= nil, back = lines()[1]:find('today', 1, true) ~= nil },`  
 spec: (A27) `<CR>` on a result opens its day with the cursor on its step, and `q` in a search goes back to the day it came from.  
-`tests/test_trail.lua:465`
+`tests/test_trail.lua:568`
 
 **T440 [char]** (A27) * searches the name under the cursor  
 → `eq({ search = header:find('⌕', 1, true) ~= nil, named = header:find('c.txt', 1, true) ~= nil }, { search = true, named = true })`  
 spec: (A27) `*` searches the name under the cursor: on c.txt's close, `*` gives c.txt's life line.  
-`tests/test_trail.lua:484`
+`tests/test_trail.lua:587`
 
 **T441 [char]** (A27) gf acts on the name under the cursor and stays  
 `:e a`, `:e b`, `:e c`, `<M-.>`, `:e a`, `:e b`, `:vsplit`, `:e x`, `:wincmd p`, `:e c`, `<M-n>`, `:wincmd p`, `:e a`, `:e d`, `:tabprevious`, `:e a`, `<M-.>` → `eq({ file = file, window = window, list = list.ft == 'cavediver-closed-lists' and list.line:find('t', 1, true) ~= nil },`  
 note: a file a window: T411's cancel, a move on the window that cycled, the trail opened from the split a list  
 spec: (A27) `gf` acts on the name under the cursor and stays: on c.txt's close it opens c.txt in the window the trail came from, the trail still open; on `≡t` in a close onto t's list it opens the closed lists on t; on a move about a window, T411's cancel, it goes to the window that cy…  
-`tests/test_trail.lua:493`
+`tests/test_trail.lua:596`
 
 **T442 [char]** (A27) the formatters replace a line's look  
 `:e a`, `:e b`, `:e c`, `:e d`, `:e c`, `<M-;><M-r>`, `:bdelete c.txt` → `eq({ header = lines()[1], step = line_with('STEP BufDelete c.txt') ~= nil, move = line_with('MOVE closed') ~= nil,`  
 spec: (A27) The formatters replace a line's look: `formatters.trail_move`, given the move, the glyphs and the step, gives a move's line; `formatters.trail_step` a step's; `formatters.trail_header` the header's; a formatter that gives nothing leaves cavediver's own.  
-`tests/test_trail.lua:541`
+`tests/test_trail.lua:644`
 
 **T443 [char]** (A27) za opens a step in a search too  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `<M-.>`, `:CavediverTrail c.txt`, `<M-.> (via line_with)`, `<M-f> (via line_with)`, `<CR> (via type_in)` → `eq({ today = today ~= nil, old = old_row and lines()[old_row]:find('▸', 1, true) == nil, opened = opened,`  
 `<M-.> (via line_with)`, `<M-f> (via line_with)`  
 spec: (A27) `za` opens a step in a search too (the author: "Expand in search too"): with c.txt closed three days ago and, after `:e a`, `:e b`, `:e c` and `<M-f>`, again today, the search for c.txt shows `▸` on today's result and not on the older one, and `za` on today's opens the ring…  
-`tests/test_trail.lua:558`
+`tests/test_trail.lua:661`
 
 **T444 [char]** (A27) * on a file follows that file, and a typed name every file of that name  
 `:e a`, `:e sub/c.txt`, `<M-.>`, `:e c`, `<M-.>` → `eq({ closes = #closes, star = star:find('1 move over 1 day', 1, true) ~= nil, typed = typed:find('2 moves over 1 day', 1, true) ~= nil },`  
 spec: (A27) `*` on a file follows that file, and a typed name every file of that name: with `sub/c.txt` closed and then c.txt, both drawn `c.txt`, `*` on c.txt's close gives "1 move over 1 day", and `s` with `c.txt` "2 moves over 1 day".  
-`tests/test_trail.lua:592`
+`tests/test_trail.lua:695`
 
 **T445 [char]** (A27) a close by a rename or a repair turns the life line closed ⚑ state set by hand  
 `:e a`, `:e b`, `:saveas g.txt`, `:CavediverTrail b.txt`, `:e a`, `:e b`, `:e c`, `:CavediverTrail b.txt` → `eq({ copy = copy, repair = repair }, { copy = 'CavediverTrailLifeClosed', repair = 'CavediverTrailLifeClosed' })`  
 note: the rename: b.txt copied to g.txt, b.txt closed the repair: b's buffer wiped without events, b kept on the editor's list  
 spec: (A27) A close by a rename or a repair turns the life line closed: T417's `:saveas g.txt` gives b.txt's result a bar in the closed state's colour, and so does T398's repair, b.txt kept on the editor's list.  
-`tests/test_trail.lua:616`
+`tests/test_trail.lua:719`
 
 **T455 [char]** (A27) a window's search follows the window  
 `:e a`, `:e b`, `:vsplit`, `:e x`, `:wincmd p`, `:e c`, `<M-n>`, `:wincmd p`, `:CavediverTrail win 2`, `:CavediverTrail win 9` → `eq({ header = header:find('win 2', 1, true) ~= nil and header:find('1 move over 1 day', 1, true) ~= nil, row = row ~= nil,`  
 spec: (A27) A window's search follows the window: on T411's route, the cancel is a move about the window that cycled, window 2; `:CavediverTrail win 2`, opened from the split, lists it, "1 move over 1 day", and `*` on its line gives the same; `:CavediverTrail win 9`, no such window, sa…  
-`tests/test_trail.lua:647`
+`tests/test_trail.lua:750`
 
 **T517 [char]** (A27) a day's first step opens from the trail's line before it on an earlier day  
 `:e a`, `:e b`, `:e c`, `:e d`, `<M-.>`, `<M-f>`, `:e a`, `<M-.>`, `<M-.> (via line_with)`, `<M-f> (via line_with)`, `:CavediverTrail a.txt`, `<M-f> (via line_with)` → `eq({ moved = moved, day = day, search = search }, {`  
 note: the first close and every step before it moved to yesterday, as in an editor open past midnight  
 spec: (A27) A day's first step opens from the trail's line before it on an earlier day: `:e a`, `:e b`, `:e c`, `:e d`, `<M-.>`, `<M-f>`, `:e a`, `<M-.>`, with the first close and the steps before it moved to yesterday, as in an editor open past midnight; `za` on today's close opens `<…  
-`tests/test_trail.lua:674`
+`tests/test_trail.lua:777`
 
 **T518 [char]** (A27) a day that gets its first move while the trail is open is reached  
 `:e a`, `:e b`, `<CR> (via type_in)` → `eq({ opened = opened, meanwhile = meanwhile, l = l, reopened = reopened, day = header:find('today', 1, true) ~= nil,`  
 note: b closed in the window the trail came from, the trail staying open again for a search's <CR>: today's steps set aside by hand while the trail opens, then put back  
 spec: (A27) A day that gets its first move while the trail is open is reached: with a step kept three days ago and none today, the trail opened, then b.txt closed in the window it came from while it stays open; `L` shows today; and with the trail opened again while today's steps are se…  
-`tests/test_trail.lua:712`
+`tests/test_trail.lua:815`
 
 **T519 [char]** (A27) a window's search and gf stay in this editor  
 `:e a`, `:e b`, `:e c`, `:bdelete c.txt` → `eq(S2.save(child), { true })`  
@@ -4227,12 +4254,12 @@ spec: (A27) A day that gets its first move while the trail is open is reached: w
 `:e d`, `:bdelete d.txt`, `:CavediverTrail win` → `eq({ same = first == again, row = row ~= nil, header = header:find('1 move over 1 day', 1, true) ~= nil,`  
 note: typed into s too the earlier editor's landing, on its own page's line  
 spec: (A27) A window's search and `gf` stay in this editor: a landing on the first window in one editor, saved, and a landing on the first window, the same id, in a fresh editor that loads the session; `:CavediverTrail win` gives "1 move over 1 day", and so does `s` with `win 1`, `*` o…  
-`tests/test_trail.lua:743`
+`tests/test_trail.lua:846`
 
 **T458 [char]** (M13) the glyph sets are in the config, and a pair is changed there  
 `:e a`, `:e b`, `:e c`, `:bdelete c.txt` → `eq({ defaults = defaults, row = line_with('<b> [c]') ~= nil, closed = closed },`  
 spec: (M13) The glyph sets are in the config, and a pair is changed there: `glyphs.unicode.row_t` is `{ "⦉", "⦊" }` and `glyphs.ascii.row_t` `{ "<", ">" }`; with `glyphs = { unicode = { row_t = { "<", ">" } } }`, the trail draws a ternary as `<b>`; `glyphs = { closed = "v" }` still rep…  
-`tests/test_trail.lua:790`
+`tests/test_trail.lua:893`
 
 ## tests/test_ui.lua (27 cases: 27 char)
 

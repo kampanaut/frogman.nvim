@@ -77,6 +77,7 @@
 ---@field time number When it began, in seconds since the epoch
 ---@field cause "keymap"|"command"|"event"|"timer"|"load"|"save"|"restart"|"label" Kind of trigger that began it
 ---@field trigger string What set it off, as written (`<M-f>`, `:bdelete c.txt`, `BufDelete c.txt`, `cleanup`)
+---@field labels {from: string|nil, to: string|nil}|nil For a label step, the labels it went from and to (nil for none)
 ---@field win integer|nil The window it's about
 ---@field tab integer|nil That window's tabpage
 ---@field pool string|nil Id of that tab's list then ("" for the editor's, otherwise a session's)
@@ -97,6 +98,7 @@
 ---@field subject Filehash|string|nil What it's about (a file's hash, a list or a window)
 ---@field name string|nil The subject as shown
 ---@field words string|nil What happened, in words
+---@field parts string[]|nil For a load, its words' parts, each on its own
 ---@field lists string[]|nil The lists it names, the tab's own first
 ---@field dim boolean|nil Whether it's bookkeeping of the key's own result, shown dim
 ---@field new boolean|nil For a reopen, whether the file was never written, so it came back as a new one
