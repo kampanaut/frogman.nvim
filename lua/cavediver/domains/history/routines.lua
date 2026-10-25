@@ -1187,6 +1187,30 @@ function M.snapshot_origin(winid)
 	)
 end
 
+---Make a listed buffer holding a saved No Name text.
+---
+---The buffer is shown in no window, and its cursor goes back in the window that shows it, once
+---one does.
+---
+---@param text { lines: string[], filetype: string, cursor: integer[] } The saved text
+---@return Bufnr bufnr The new buffer
+function M.buffer_from_text(text)
+	local bufnr = vim.api.nvim_create_buf(true, false)
+
+	vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, text.lines)
+	vim.bo[bufnr].filetype = text.filetype
+	-- the cursor goes back in the window that shows the buffer, once one does.
+	local cursor = text.cursor
+	vim.api.nvim_create_autocmd("BufWinEnter", {
+		buffer = bufnr,
+		once = true,
+		callback = function()
+			pcall(vim.api.nvim_win_set_cursor, 0, cursor)
+		end,
+	})
+	return bufnr
+end
+
 ---Reopen a filepath derived from a file hash. The file hash
 ---must be registered during this session.
 ---
@@ -1211,20 +1235,8 @@ function M.reopen_filehash(filehash)
 		if cache == nil then
 			return nil -- a No Name buffer with nothing cached (it was empty) can't be brought back.
 		end
-		bufnr = vim.api.nvim_create_buf(true, false)
-
-		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, cache.lines)
-		vim.bo[bufnr].filetype = cache.filetype
+		bufnr = M.buffer_from_text(cache)
 		vim.bo[bufnr].buftype = ""
-		-- the cursor goes back in the window that shows the buffer, once one does.
-		local cursor = cache.cursor
-		vim.api.nvim_create_autocmd("BufWinEnter", {
-			buffer = bufnr,
-			once = true,
-			callback = function()
-				pcall(vim.api.nvim_win_set_cursor, 0, cursor)
-			end,
-		})
 		data.noname_content[filehash] = nil
 		local old_filehash = filehash
 		filehash = M.register_buffer(bufnr)
