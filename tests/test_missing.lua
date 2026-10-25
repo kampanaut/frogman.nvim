@@ -144,4 +144,17 @@ T['T348 [char] a file that was never written isn\'t tagged; once written and del
 	eq(type(tag_of('brandnew')), 'string')
 end
 
+T['T524 [char] a check before a new file is taken in keeps its mark'] = function()
+	child.steps({ ':e a' })
+	-- the check comes between BufNewFile and the arrival, which waits for the editor to settle
+	child.lua([[
+		vim.cmd('edit brandnew.txt')
+		require('cavediver.domains.history').routines.mark_missing()
+	]])
+	child.settle(300)
+	local taken = child.lua('return require("cavediver.domains.history").get_hash_from_buffer(vim.api.nvim_get_current_buf()) ~= nil')
+	child.lua('require("cavediver.domains.history").routines.mark_missing()')
+	eq({ taken = taken, tag = tag_of('brandnew') }, { taken = true, tag = vim.NIL })
+end
+
 return T

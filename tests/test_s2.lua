@@ -2701,4 +2701,36 @@ T['T377 [char] (S2) a typed header that names no list refuses the write'] = func
 	eq({ named = S2.has(child.messages(), 'nowhere'), closed = child.closed() }, { named = true, closed = 'b,c' })
 end
 
+T['T525 [char] (S1 Load) a window entry whose maps are saved as null loads with empty ones'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child), { true })
+	-- the saved maps set to null by hand, as a file written elsewhere may hold them
+	child.lua([[
+		local st = require('cavediver.domains.storage').routines
+		local dir = vim.fn.getcwd(-1, -1)
+		local saved = st.read_session(dir, nil)
+		for _, w in ipairs(saved.windows) do
+			w[5], w[6] = vim.NIL, vim.NIL
+		end
+		st.write_session(dir, nil, saved, {})
+	]])
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	child.messages()
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local failed = false
+	for _, m in ipairs(child.messages()) do
+		if m.msg:find('failed', 1, true) then failed = true end
+	end
+	local maps = child.lua([[
+		local t = require('cavediver.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		return { t = t and type(t.displacement_ternary_map), s = t and type(t.displacement_secondary_map) }
+	]])
+	eq({ failed = failed, maps = maps, slots = child.slots() },
+		{ failed = false, maps = { t = 'table', s = 'table' }, slots = '⦉a⦊ [b] ⟦-⟧' })
+end
+
 return T

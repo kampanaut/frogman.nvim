@@ -104,7 +104,7 @@ local function settle_rename(bufnr, rename)
 		return -- its own name again: nothing was renamed
 	end
 	if new_name ~= "" and vim.fn.filereadable(new_name) == 0 then
-		data.unwritten[routines.get_filehash(new_name)] = true -- a name that isn't on disk yet
+		data.unwritten[routines.get_filehash(new_name)] = bufnr -- a name that isn't on disk yet, marked with its buffer
 	end
 	local ledger = require('cavediver.domains.ledger')
 	local old_name = ledger.name_of(rename.hash)
@@ -162,7 +162,7 @@ function M.init_autocmds(group)
 		callback = function(args)
 			local name = vim.api.nvim_buf_get_name(args.buf)
 			if name ~= "" then
-				data.unwritten[routines.get_filehash(name)] = true
+				data.unwritten[routines.get_filehash(name)] = args.buf -- with its buffer, kept while that's there
 			end
 		end,
 	})

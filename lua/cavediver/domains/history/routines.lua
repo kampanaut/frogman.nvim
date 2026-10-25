@@ -662,8 +662,11 @@ function M.mark_missing(label, limit)
 			data.missing[filehash] = nil
 		end
 	end
-	for filehash, _ in pairs(data.unwritten) do
-		if not known[filehash] then
+	for filehash, mark in pairs(data.unwritten) do
+		-- a mark stays while the buffer it was made with is there under that name, taken in yet or not
+		local waiting = type(mark) == "number" and vim.api.nvim_buf_is_valid(mark)
+			and M.get_filehash(vim.api.nvim_buf_get_name(mark)) == filehash
+		if not known[filehash] and not waiting then
 			data.unwritten[filehash] = nil
 		end
 	end
@@ -1109,11 +1112,12 @@ end
 ---Check if a bufnr is harpooned mark.
 ---
 ---@param bufnr Bufnr
+---@param marked string[] The marked files' full paths, read once for every buffer checked
 ---@return boolean
-local function is_harpooned(bufnr)
+local function is_harpooned(bufnr, marked)
 	if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
 		return vim.tbl_contains(
-			M.marked_paths(),
+			marked,
 			vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":p")
 		)
 	else
@@ -1129,10 +1133,11 @@ end
 ---@return BufferHistoryItem[] ordered Non-harpooned buffers ordered by recency
 function M.update_buffer_history_ordered_nonharpooned()
 	data.ordered.nonharpooned = {}
+	local marked = M.marked_paths() -- once, not for each buffer: a provider or a require can be slow
 	for _, item in pairs(data.ordered.crux) do
 		-- print_table(item)
 		-- Only consider buffers that are valid and loaded
-		if not is_harpooned(item.buf) then
+		if not is_harpooned(item.buf, marked) then
 			table.insert(
 				data.ordered.nonharpooned,
 				{ buf = item.buf, time = item.time }
