@@ -137,9 +137,12 @@ end
 T['T507 [char] (A15, P2) the close key\'s delete leaves a buffer a later command brought back'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
+	child.lua('vim.v.errmsg = ""')
 	child.lua([[pcall(vim.api.nvim_feedkeys, vim.api.nvim_replace_termcodes('<M-.>:e c.txt<CR>', true, false, true), 'x', false)]])
 	child.settle(300)
-	eq({ shown = child.shown(), slots = child.slots(), closed = child.closed() }, { shown = 'c', slots = '⦉b⦊ [c] ⟦-⟧', closed = '' })
+	-- a key's error doesn't come back through feedkeys, but it leaves v:errmsg
+	eq({ shown = child.shown(), slots = child.slots(), closed = child.closed(), errmsg = child.lua('return vim.v.errmsg') },
+		{ shown = 'c', slots = '⦉b⦊ [c] ⟦-⟧', closed = '', errmsg = '' })
 end
 
 -- delete_buffer keeps the cursor before it switches the window away (history/routines.lua:709),

@@ -1191,14 +1191,18 @@ T['T321 [char] (S2) saves are snapshots: a whole-editor save merges the pools by
 		table.insert(live, child.shown(w1))
 	end
 	child.settle(1200)
+	-- e and x are open again, and the file's list follows them
+	local followed = in_file()
 
-	-- e and x are open again, and the file follows them
+	-- a fresh process: e comes back under c, closed at load from the saved window's slot (T337)
 	S2.start(child, s)
 	Misc.restore(child, { 't' }, 't')
 	eq(S2.load(child), { true })
 	child.settle(300)
+	local fresh = child.closed()
 	child.steps({ '<M-S-w>' })
-	eq({ saved = saved, live = live, after = child.shown() }, { saved = 'x,c,e', live = { 'e', 'x' }, after = 'c' })
+	eq({ saved = saved, live = live, followed = followed, fresh = fresh, after = child.shown() },
+		{ saved = 'x,c,e', live = { 'e', 'x' }, followed = 'c', fresh = 'e,c', after = 'c' })
 end
 
 -- No TabClosedPre hook calls save_session here: cavediver writes the session's
@@ -1430,6 +1434,7 @@ T['T356 [char] (S2) a tab session\'s records that can\'t be written as its tab c
 	local s = S2.shared()
 	tab_session(s)
 	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
+	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
 	child.cmd('bdelete c.txt')
 	child.settle(300)
 	child.messages()
@@ -2181,6 +2186,7 @@ T['T391 [char] (S2) an edit to a list in the file alone that can\'t be written s
 	local lines = vim.deepcopy(p.lines)
 	table.remove(lines, e)
 	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
+	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
 	child.messages()
 	S2.write_picker(child, p, lines)
 	local got = { warned = #S2.notices(child.messages()) > 0, modified = child.lua('return vim.bo[...].modified', { p.buf }) }

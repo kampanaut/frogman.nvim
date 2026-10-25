@@ -810,6 +810,7 @@ end
 T['T286 [char] (I21) the critical save hook throws to the caller and leaves storage where it was'] = function()
 	local s = shared()
 	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
+	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
 	start(s)
 	child.steps({ ':e a' })
 	local before = child.lua('return require("cavediver").get_storage_state()')
