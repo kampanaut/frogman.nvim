@@ -419,7 +419,7 @@ function M.bufferline.cokeline.create_buffer_components()
 			text = function(buffer)
 				local filehash = history.get_hash_from_buffer(buffer.number)
 				local tag = filehash and history.data.missing[filehash]
-				return tag and ('⎇' .. tag:gsub("%%", "%%%%") .. ' ') or '' -- the tabline's own `%`, doubled
+				return tag and ('⎇' .. routines.escape_renderline(tag) .. ' ') or '' -- the tabline's own `%`, doubled
 			end,
 			fg = comment,
 			truncation = { priority = 1 }
@@ -503,7 +503,7 @@ function M.bufferline.cokeline.create_buffer_components()
 		},
 		unique_prefix = {
 			text = function(buffer)
-				return (buffer.unique_prefix:gsub("%%", "%%%%")) -- the tabline's own `%`, doubled
+				return routines.escape_renderline(buffer.unique_prefix) -- the tabline's own `%`, doubled
 			end,
 			fg = comment,
 			style = 'italic',
@@ -517,7 +517,7 @@ function M.bufferline.cokeline.create_buffer_components()
 				return get_theme_fg_by_slot(buffer.number)
 			end,
 			text = function(buffer)
-				local filename = buffer.filename:gsub("%%", "%%%%") -- the tabline's own `%`, doubled
+				local filename = routines.escape_renderline(buffer.filename) -- the tabline's own `%`, doubled
 				if bufferline_state.harpooned_buffers[buffer.number] and not M.is_hidden("indicators", "harpoon") then
 					return filename .. " ⥤ {" .. bufferline_state.harpooned_lookup[buffer.number] .. "}"
 				else
