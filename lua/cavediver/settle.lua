@@ -78,7 +78,8 @@ end
 ---Run a key's job once cavediver has settled.
 ---
 ---Drains the queue, then runs the job. No drain starts until the job is done, so the work
----the key queues itself keeps its order. The job's error is raised again as it was raised.
+---the key queues itself keeps its order. The job's error is raised again as it was raised, and
+---a Lua error is dumped first, with its traceback.
 ---
 ---@param fn function The key's job
 ---@param ... any The job's arguments
@@ -86,7 +87,12 @@ end
 function M.guard(fn, ...)
 	M.drain()
 	busy = busy + 1
-	local results = { pcall(fn, ...) } -- the job's error comes back as it was raised
+	-- the job's error comes back as it was raised; at its site, with the stack still whole, the dump
+	-- takes it with its traceback
+	local results = { xpcall(fn, function(err)
+		pcall(require('cavediver.domains.ledger.dump').key_failed, err, debug.traceback("", 2))
+		return err
+	end, ...) }
 	busy = busy - 1
 	if not results[1] then
 		error(results[2], 0)

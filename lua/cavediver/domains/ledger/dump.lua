@@ -552,6 +552,29 @@ function M.hook_failed(name, err)
 	M.fire("hook:" .. name .. ":" .. first, "Hook '" .. name .. "' failed: " .. text, data.scopes[#data.scopes] or data.open)
 end
 
+---Dump a key's error, a plain Lua error raised inside its job.
+---
+---`settle.guard` calls this at the error's site. A Vim error, an `E` number a command or the
+---API gave, which the editor's state can reach, isn't dumped, and neither is a message
+---`ledger.never()` dumped already. Dumps once per distinct error.
+---
+---@param err any The error, as raised
+---@param traceback string The traceback from where it was raised
+---@return nil
+function M.key_failed(err, traceback)
+	local text = tostring(err)
+	if text:match("Vim[^:]*:E%d+") or text:match("^E%d+:") then
+		return
+	end
+	for message, _ in pairs(nevers) do
+		if text:find(message, 1, true) then
+			return
+		end
+	end
+	local first = text:match("[^\n]*"):gsub("^[^:]*:%d+: ", "")
+	M.fire("key:" .. first, "A key failed: " .. text .. "\n" .. traceback, data.scopes[#data.scopes] or data.open)
+end
+
 ---Check the slot rules once a step has been held open its full time.
 ---
 ---Dumps a break only when it's still there after the editor settles, so a break the
