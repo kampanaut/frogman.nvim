@@ -605,6 +605,32 @@ T['T475 [char] (S2) a closed file shown again through its unlisted buffer is not
 		{ errors = {}, dump = nil, triquetra = true })
 end
 
+-- x.txt is first shown through a nofile buffer of that name, an outsider at the save; once it's a
+-- file closed since, the records write puts it on the closed list.
+T['T533 [char] (S1 Records, S2) a records write leaves out of the outsiders a file it puts on the closed list'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	child.cmd('enew | setlocal buftype=nofile | file x.txt')
+	child.settle()
+	eq(Misc.save(child), { true })
+	child.cmd('bwipeout!')
+	child.steps({ ':e x', ':e a', ':bdelete x.txt' })
+	child.settle(1500) -- the records are written on the next tick, and again a second later
+	eq(child.closed():find('x') ~= nil, true)
+
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'a')
+	child.messages()
+	local dumps = child.dump_files()
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq({ errors = Misc.errors(child), dump = child.dumped_since(dumps), closed = child.closed():find('x') ~= nil },
+		{ errors = {}, dump = nil, closed = true })
+	child.step('<M-S-w>')
+	eq(child.shown(), 'x')
+end
+
 -- The text is open in the ternary, the window on b, when the session is saved;
 -- its buffer is then set to nofile, which takes it out of cavediver's hands.
 T['T476 [char] (S2) a saved-open No Name text whose buffer turned nofile is reopened from its file, and the load goes through'] = function()

@@ -1228,18 +1228,6 @@ end
 ---@param tabpage integer The tab it loads into, the hint's or the current one
 ---@return WinId[] matched The windows that took an entry
 local function load_tab_session(saved_data, key, file_path, directory, name, tabpage)
-	local navigation = require('cavediver.domains.navigation')
-	local cycling = navigation.data.cycling_window
-	if cycling and vim.api.nvim_win_is_valid(cycling) then
-		if vim.api.nvim_win_get_tabpage(cycling) == tabpage then
-			-- a cycle running in the tab ends with nothing picked, as at a whole-editor load
-			navigation.sm.current_state = navigation.states.NORMAL
-			navigation.data.cycling_window = nil
-		else
-			-- one running elsewhere is cancelled, as a window jump cancels it: the load attaches history
-			require('cavediver.domains.navigation.routines').cancel_cycle(cycling)
-		end
-	end
 	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
 		if window.data.crux[winid] then
 			window.data.unregister_triquetra(winid)
@@ -1356,6 +1344,22 @@ function M.load_history(cwd, name)
 			words = words .. " · " .. (entries - #matched) .. (entries - #matched == 1 and " entry" or " entries") .. " dropped"
 		end
 		ledger.move("loaded", { name = vim.fn.fnamemodify(name or cwd, ":t"), words = words })
+	end
+	if (saved_data == nil and hint) or (saved_data and saved_data.scope == "tab") then
+		-- either tab route drops the tab's triquetras and attaches history: a cycle ends first
+		local tabpage = hint or vim.api.nvim_get_current_tabpage()
+		local navigation = require('cavediver.domains.navigation')
+		local cycling = navigation.data.cycling_window
+		if cycling and vim.api.nvim_win_is_valid(cycling) then
+			if vim.api.nvim_win_get_tabpage(cycling) == tabpage then
+				-- a cycle running in the tab ends with nothing picked, as at a whole-editor load
+				navigation.sm.current_state = navigation.states.NORMAL
+				navigation.data.cycling_window = nil
+			else
+				-- one running elsewhere is cancelled, as a window jump cancels it: the load attaches history
+				require('cavediver.domains.navigation.routines').cancel_cycle(cycling)
+			end
+		end
 	end
 	if saved_data == nil and hint then
 		start_tab_fresh(cwd, name, hint)
@@ -1823,6 +1827,10 @@ local function write_records(session, changes)
 		for filehash, _ in pairs(noname_content) do
 			saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
 		end
+		-- a file the path registry knows isn't an outsider, as at a save, though one showed it then
+		saved.outsiders = vim.tbl_filter(function(filehash)
+			return not is_known(filehash)
+		end, saved.outsiders or {})
 		-- a file removed meanwhile isn't made again
 		if not vim.uv.fs_stat(file_path) then
 			gone = true

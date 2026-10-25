@@ -956,6 +956,37 @@ T['T512 [char] a tab session\'s load into another tab ends a cycle running elsew
 	eq({ state = state, slots = child.slots() }, { state = NORMAL, slots = before })
 end
 
+-- A session with no file, loaded with the hint: the tab starts fresh, and the cycle ends as at a
+-- tab session's load.
+T['T534 [char] a load with the hint and no file into a tab cycling there ends the cycle'] = function()
+	child.steps({ ':e a', ':e b', ':e c', ':e d', '<M-n>' })
+	eq(child.state(), CYCLING)
+	child.lua('require("cavediver").load_session("u", { tab = vim.api.nvim_get_current_tabpage() })')
+	child.settle(200)
+	local state = child.state()
+	local before = child.slots()
+	child.steps({ '<M-n>' })
+	eq({ state = state, slots = child.slots() }, { state = NORMAL, slots = before })
+end
+
+T['T534 [char] a load with the hint and no file into another tab ends a cycle running elsewhere'] = function()
+	child.steps({ ':e a', ':e b', ':e c', ':e d', '<M-n>' })
+	eq(child.state(), CYCLING)
+	child.lua([[
+		local here = vim.api.nvim_get_current_win()
+		vim.cmd('noautocmd tabnew')
+		local tab = vim.api.nvim_get_current_tabpage()
+		vim.cmd('noautocmd tabprevious')
+		vim.api.nvim_set_current_win(here)
+		require('cavediver').load_session('u', { tab = tab })
+	]])
+	child.settle(200)
+	local state = child.state()
+	local before = child.slots()
+	child.steps({ '<M-n>' })
+	eq({ state = state, slots = child.slots() }, { state = NORMAL, slots = before })
+end
+
 -- The replay (A26). A project made by the runner outlives the editors: one makes the dump,
 -- a fresh one in the same project replays it, since a dump opens only from its directory.
 
