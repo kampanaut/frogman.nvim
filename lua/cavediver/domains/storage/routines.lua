@@ -1383,6 +1383,7 @@ function M.load_history(cwd, name)
 		-- Restore from saved session
 		load_pool = history.routines.pools()[""]
 		data.editor_session, data.unnamed = { name = name, directory = cwd }, nil
+		ledger.set_session(name, cwd)
 		local scratch_dir = file_path .. ".d/"
 		load_buffer_history(saved_data.buffers, load_paths(saved_data.paths, saved_data.outsiders))
 		if saved_data.closed then
@@ -1433,6 +1434,7 @@ function M.load_history(cwd, name)
 	else
 		populate_history()
 		data.editor_session, data.unnamed = { name = name, directory = cwd }, nil
+		ledger.set_session(name, cwd)
 		ledger.move("fresh", { name = vim.fn.fnamemodify(name or cwd, ":t"), words = "the session started fresh: " .. why })
 	end
 	load_pool = nil
@@ -1640,23 +1642,24 @@ end
 
 ---Filter the steps a session's file keeps.
 ---
----The whole editor's session keeps every step while it covers every tab. The unnamed session keeps
----the steps in tabs in no tab session, in detached tabs, and with no tab. A tab session keeps the
----steps in its tab and those whose moves name its pool or its list.
+---The whole editor's session keeps every step made under it while it covers every tab. The unnamed
+---session keeps the steps made under it in tabs in no tab session, in detached tabs, and with no
+---tab. A tab session keeps the steps in its tab and those whose moves name its pool or its list.
 ---
 ---@param owner Pool|nil The session's pool (nil for the whole editor's session)
 ---@param steps CavediverLedgerStep[] The steps to filter
+---@param session string|nil The whole editor's session's key (`ledger.session_of`), nil before the first
 ---@return CavediverLedgerStep[] kept The steps the file keeps, in their order
-local function steps_kept(owner, steps)
-	if owner == nil then
-		return steps
-	end
+local function steps_kept(owner, steps, session)
 	local out = {}
-	local list = history.routines.list_name(owner)
+	local list = owner and history.routines.list_name(owner)
 	for _, step in ipairs(steps) do
 		local kept
-		if owner.id == "" then
-			kept = step.pool == nil or step.pool == "" or step.pool:sub(1, 10) == "\0detached\n"
+		if owner == nil then
+			kept = step.session == session
+		elseif owner.id == "" then
+			kept = step.session == session
+				and (step.pool == nil or step.pool == "" or step.pool:sub(1, 10) == "\0detached\n")
 		else
 			kept = step.pool == owner.id
 			for _, move in ipairs(kept and {} or step.moves) do
@@ -1688,10 +1691,11 @@ local trail_warned = false
 ---@param file_path string The session's main file
 ---@param old_trail table<string, string>|nil The pages the main file lists, day → file name
 ---@param owner Pool|nil The session's pool (nil for the whole editor's session)
+---@param session string The session's own key (`ledger.session_of`), which a whole editor's steps are marked with
 ---@param key string The session's key
 ---@param kept table<string, boolean> The names to keep in `<main>.d/`, which the pages are added to
 ---@return table<string, string>|nil trail The pages the main file lists now (nil if none)
-local function write_trail_pages(file_path, old_trail, owner, key, kept)
+local function write_trail_pages(file_path, old_trail, owner, session, key, kept)
 	local ledger = require('cavediver.domains.ledger')
 	local scratch_dir = file_path .. ".d/"
 	local trail = {}
@@ -1700,7 +1704,7 @@ local function write_trail_pages(file_path, old_trail, owner, key, kept)
 	end
 	pages_written[file_path] = pages_written[file_path] or {}
 	for _, day in ipairs(ledger.trail_days()) do
-		local mine = steps_kept(owner, ledger.trail(day))
+		local mine = steps_kept(owner, ledger.trail(day), session)
 		local moves = 0
 		for _, step in ipairs(mine) do
 			moves = moves + #step.moves
@@ -1835,7 +1839,8 @@ local function write_records(session, changes)
 			gone = true
 			return
 		end
-		saved.trail = write_trail_pages(file_path, saved.trail, session.owner, key, kept) -- today's page rides along
+		saved.trail = write_trail_pages(file_path, saved.trail, session.owner,
+			require('cavediver.domains.ledger').session_of(session.name, session.directory), key, kept) -- today's page rides along
 		commit_session(file_path, key, salt, saved, kept)
 	end)
 	if not ok then
@@ -2365,7 +2370,11 @@ function M.save_history(cwd, name, tab)
 	-- the trail's pages: today's written, earlier days' kept. A page that can't be written doesn't stop
 	-- the save: the pages it had stay.
 	local previous = read_session_file(file_path, cwd)
-	local written, trail = pcall(write_trail_pages, file_path, previous and previous.trail, pool, key, kept)
+	if not pool then
+		require('cavediver.domains.ledger').claim(name, cwd) -- a first whole-editor save takes the steps before it
+	end
+	local written, trail = pcall(write_trail_pages, file_path, previous and previous.trail, pool,
+		require('cavediver.domains.ledger').session_of(name, cwd), key, kept)
 	if written then
 		storage.trail = trail
 	else
@@ -2391,6 +2400,7 @@ function M.save_history(cwd, name, tab)
 	else
 		-- a whole-editor save covers every tab again: tab sessions started after it make it the unnamed one
 		data.editor_session, data.unnamed = { name = name, directory = cwd }, nil
+		require('cavediver.domains.ledger').set_session(name, cwd)
 		dirty[""] = nil
 	end
 	forget_closed_keys()
@@ -2438,6 +2448,7 @@ function M.trail_reader()
 		saved, key = read_session_file(file_path, session.directory)
 	end
 	local trail = saved and saved.trail or {}
+	local whole = session and ledger.session_of(session.name, session.directory)
 	local pages = {}
 	local reader = {}
 	---Get the days the trail has steps of, from its pages and this editor's ledger, oldest first.
@@ -2447,7 +2458,7 @@ function M.trail_reader()
 			days[day] = true
 		end
 		for _, day in ipairs(ledger.trail_days()) do
-			if #steps_kept(owner, ledger.trail(day)) > 0 then
+			if #steps_kept(owner, ledger.trail(day), whole) > 0 then
 				days[day] = true
 			end
 		end
@@ -2468,7 +2479,11 @@ function M.trail_reader()
 			end
 			pages[day] = steps
 		end
-		return vim.list_extend(vim.list_slice(pages[day], 1, #pages[day]), steps_kept(owner, ledger.trail(day)))
+		return vim.list_extend(vim.list_slice(pages[day], 1, #pages[day]), steps_kept(owner, ledger.trail(day), whole))
+	end
+	---Check if a step of this editor's is the trail's, by the rule its pages are written by.
+	function reader.keeps(step)
+		return #steps_kept(owner, { step }, whole) > 0
 	end
 	return reader
 end

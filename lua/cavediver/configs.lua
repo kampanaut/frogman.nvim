@@ -79,6 +79,7 @@
 ---@field win integer|nil The window it's about
 ---@field tab integer|nil That window's tabpage
 ---@field pool string|nil Id of that tab's list then ("" for the editor's, otherwise a session's)
+---@field session string|nil The whole editor's session it was made under, whose file keeps it (in memory only)
 ---@field row_before CavediverLedgerRow|nil The window's row as the step began
 ---@field row_after CavediverLedgerRow|nil The window's row as the step closed
 ---@field names table<Filehash, string> Name of every file in its rows and moves, as it was then

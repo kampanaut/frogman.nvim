@@ -1,6 +1,6 @@
 # Test review sheet
 
-579 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+583 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -1649,7 +1649,7 @@ note: The empty, switched-on queue is set directly (a primary file deleted on di
 spec: (Q14) I19, A9: on an empty queue that's switched on, one `<M-;><M-x>` gives `p=[A]on`. **[run s19]** recorded it giving `p=[A]off`, before the fix. The test sets the empty, switched-on state directly: s19's route, deleting the open primary's file on disk, keeps the primary in the…  
 `tests/test_invariants.lua:99`
 
-## tests/test_ledger.lua (35 cases: 35 char)
+## tests/test_ledger.lua (36 cases: 36 char)
 
 **T392 [char]** (A27, A26) the ring keeps the last N steps, N from ledger.ring, 1,000 by default  
 → `eq(child.lua('return require("cavediver.configs").ledger.ring'), 1000)`  
@@ -1861,6 +1861,18 @@ spec: (A27) Pages outlive the editor that wrote them: a first editor's move and 
 note: t's own steps, its save (in the first editor) and its load, are in its file and not the whole editor's  
 spec: (A27) Each file keeps its own moves: in T318's state with the whole editor saved before t was loaded, `:bdelete x.txt` in the first tab and `:bdelete c.txt` in t's, and a second's wait: t's page holds c's close and not x's, and the whole editor's page, the unnamed session's, x's …  
 `tests/test_ledger.lua:772`
+
+**T516 [char]** (A27, S1) each whole-editor session's file keeps the moves made under it  
+`:e a`, `:e b`, `:e c`, `<M-.>` → `eq(S2.save(child, 'B'), { true })`  
+→ `eq(S2.load(child, 'A'), { true }) -- no file: a fresh start, and A is the whole editor's session`  
+`:e d`, `:e e`, `<M-.>` → `eq(S2.save(child, 'A'), { true })`  
+→ `eq(S2.load(child, 'B'), { true })`  
+→ `eq(S2.save(child, 'B'), { true })`  
+→ `eq(S2.save(child, 'C'), { true })`  
+`:bdelete d.txt` → `eq({`  
+note: a save under another name: its moves from then on are its own C's own save is on C's page, and on no other  
+spec: (A27, S1) Each whole-editor session's file keeps the moves made under it: in one editor, `:e a`, `:e b`, `:e c`, `<M-.>` and `save_session('B')`; then `load_session('A')`, which has no file, `:e d`, `:e e`, `<M-.>` and `save_session('A')`; then `load_session('B')`: B's trail hold…  
+`tests/test_ledger.lua:820`
 
 ## tests/test_lifecycle.lua (10 cases: 10 char)
 
@@ -3930,7 +3942,7 @@ note: The desk's 1.txt and 2.txt are a and b here.
 spec: The desk's sequence (`:e 1.txt`, `:e 2.txt`, `<M-n>`, `:bdelete`, `<M-S-f>`, `<M-S-f>`) throws nothing and leaves no duplicate slot. The reopen's `BufEnter` is slotted once the editor settles, so cleanup doesn't clear the ternary before the rename; the rename's missing guard for …  
 `tests/test_ternary_key.lua:44`
 
-## tests/test_trail.lua (23 cases: 23 char)
+## tests/test_trail.lua (26 cases: 26 char)
 
 **T425 [char]** (A27) :CavediverTrail opens the trail, untracked, on today's page ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-.>`, `<M-.> (via line_with)` → `eq({`  
@@ -4050,10 +4062,30 @@ spec: (A27) A close by a rename or a repair turns the life line closed: T417's `
 spec: (A27) A window's search follows the window: on T411's route, the cancel is a move about the window that cycled, window 2; `:CavediverTrail win 2`, opened from the split, lists it, "1 move over 1 day", and `*` on its line gives the same; `:CavediverTrail win 9`, no such window, sa…  
 `tests/test_trail.lua:599`
 
+**T517 [char]** (A27) a day's first step opens from the trail's line before it on an earlier day  
+`:e a`, `:e b`, `:e c`, `:e d`, `<M-.>`, `<M-f>`, `:e a`, `<M-.>`, `<M-.> (via line_with)`, `<M-f> (via line_with)`, `:CavediverTrail a.txt`, `<M-f> (via line_with)` → `eq({ moved = moved, day = day, search = search }, {`  
+note: the first close and every step before it moved to yesterday, as in an editor open past midnight  
+spec: (A27) A day's first step opens from the trail's line before it on an earlier day: `:e a`, `:e b`, `:e c`, `:e d`, `<M-.>`, `<M-f>`, `:e a`, `<M-.>`, with the first close and the steps before it moved to yesterday, as in an editor open past midnight; `za` on today's close opens `<…  
+`tests/test_trail.lua:626`
+
+**T518 [char]** (A27) a day that gets its first move while the trail is open is reached  
+`:e a`, `:e b`, `<CR> (via type_in)` → `eq({ opened = opened, meanwhile = meanwhile, l = l, reopened = reopened, day = header:find('today', 1, true) ~= nil,`  
+note: b closed in the window the trail came from, the trail staying open again for a search's <CR>: today's steps set aside by hand while the trail opens, then put back  
+spec: (A27) A day that gets its first move while the trail is open is reached: with a step kept three days ago and none today, the trail opened, then b.txt closed in the window it came from while it stays open; `L` shows today; and with the trail opened again while today's steps are se…  
+`tests/test_trail.lua:664`
+
+**T519 [char]** (A27) a window's search and gf stay in this editor  
+`:e a`, `:e b`, `:e c`, `:bdelete c.txt` → `eq(S2.save(child), { true })`  
+→ `eq(S2.load(child), { true })`  
+`:e d`, `:bdelete d.txt`, `:CavediverTrail win` → `eq({ same = first == again, row = row ~= nil, header = header:find('1 move over 1 day', 1, true) ~= nil,`  
+note: typed into s too the earlier editor's landing, on its own page's line  
+spec: (A27) A window's search and `gf` stay in this editor: a landing on the first window in one editor, saved, and a landing on the first window, the same id, in a fresh editor that loads the session; `:CavediverTrail win` gives "1 move over 1 day", and so does `s` with `win 1`, `*` o…  
+`tests/test_trail.lua:695`
+
 **T458 [char]** (M13) the glyph sets are in the config, and a pair is changed there  
 `:e a`, `:e b`, `:e c`, `:bdelete c.txt` → `eq({ defaults = defaults, row = line_with('<b> [c]') ~= nil, closed = closed },`  
 spec: (M13) The glyph sets are in the config, and a pair is changed there: `glyphs.unicode.row_t` is `{ "⦉", "⦊" }` and `glyphs.ascii.row_t` `{ "<", ">" }`; with `glyphs = { unicode = { row_t = { "<", ">" } } }`, the trail draws a ternary as `<b>`; `glyphs = { closed = "v" }` still rep…  
-`tests/test_trail.lua:626`
+`tests/test_trail.lua:742`
 
 ## tests/test_ui.lua (24 cases: 24 char)
 

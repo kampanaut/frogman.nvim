@@ -25,6 +25,9 @@ M.window_name = routines.window_name
 M.note = routines.note
 M.slots_moved = routines.slots_moved
 M.open_step = routines.open_step
+M.session_of = routines.session_of
+M.claim = routines.claim
+M.set_session = routines.set_session
 
 ---Raise an error for something that shouldn't happen, dumping the steps that led there first.
 ---

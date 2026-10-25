@@ -177,6 +177,7 @@ local function new_step(cause, trigger, winid)
 		tab_nr = winid and vim.api.nvim_win_is_valid(winid)
 			and vim.api.nvim_tabpage_get_number(vim.api.nvim_win_get_tabpage(winid)) or nil,
 		pool = nil,
+		session = data.session, -- the whole editor's session then, whose file keeps it
 		names = {},
 		events = {},
 		moves = {},
@@ -469,6 +470,48 @@ function M.slots_moved(kind, winid, before, fields)
 		move[key] = value
 	end
 	M.move(kind, move)
+end
+
+---Get the key a whole-editor session's steps are marked with.
+---
+---@param name string|nil The session's name (nil for a nameless one)
+---@param directory string The session's directory
+---@return string key The session's key
+function M.session_of(name, directory)
+	return (name or "\0") .. "\n" .. directory
+end
+
+---Give a whole-editor session the steps made before any.
+---
+---Those on the trail, the one still open and a running call's go to it, the first saved or
+---loaded. A step made under a session keeps it.
+---
+---@param name string|nil The session's name (nil for a nameless one)
+---@param directory string The session's directory
+---@return nil
+function M.claim(name, directory)
+	local session = M.session_of(name, directory)
+	local unclaimed = vim.list_extend({ data.open }, data.scopes)
+	for _, steps in pairs(data.days) do
+		vim.list_extend(unclaimed, steps)
+	end
+	for _, step in pairs(unclaimed) do
+		if step.session == nil then
+			step.session = session
+		end
+	end
+end
+
+---Mark the steps from now on as the whole editor's session's.
+---
+---It also claims the steps made before any (`claim`).
+---
+---@param name string|nil The session's name (nil for a nameless one)
+---@param directory string The session's directory
+---@return nil
+function M.set_session(name, directory)
+	data.session = M.session_of(name, directory)
+	M.claim(name, directory)
 end
 
 ---Get the step still open.

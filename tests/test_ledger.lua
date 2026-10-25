@@ -797,4 +797,62 @@ T['T424 [char] (A27) each file keeps its own moves'] = function()
 		{ t = { 'closed c.txt' }, editor = { 'closed x.txt' }, t_own = { ['saved t'] = true, ['loaded t'] = true }, editor_own = {} })
 end
 
+-- The current tab's trail today, as its reader gives it: each step's trigger and
+-- its moves, `kind name`.
+local READER = [==[
+local out = {}
+for _, step in ipairs(require('cavediver.domains.storage').routines.trail_reader().steps(os.date('%Y-%m-%d'))) do
+	local moves = {}
+	for _, m in ipairs(step.moves or {}) do table.insert(moves, m.kind .. ' ' .. (m.name or '?')) end
+	table.insert(out, { trigger = step.trigger, moves = moves })
+end
+return out
+]==]
+
+-- Whether any step of a page holds the move `kind name`.
+local function holds(steps, move)
+	for _, st in ipairs(type(steps) == 'table' and steps or {}) do
+		if vim.tbl_contains(st.moves, move) then return true end
+	end
+	return false
+end
+
+T['T516 [char] (A27, S1) each whole-editor session\'s file keeps the moves made under it'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c', '<M-.>' }) -- before any session: c's close goes to the first one
+	child.settle(100)
+	eq(S2.save(child, 'B'), { true })
+	eq(S2.load(child, 'A'), { true }) -- no file: a fresh start, and A is the whole editor's session
+	child.settle(300)
+	child.steps({ ':e d', ':e e', '<M-.>' })
+	child.settle(100)
+	eq(S2.save(child, 'A'), { true })
+	eq(S2.load(child, 'B'), { true })
+	child.settle(300)
+	local trail = child.lua(READER)
+	eq(S2.save(child, 'B'), { true })
+	local b_page, a_page = page('B'), page('A')
+	-- a save under another name: its moves from then on are its own
+	eq(S2.save(child, 'C'), { true })
+	child.cmd('bdelete d.txt')
+	child.settle(1500)
+	local c_page = page('C')
+	-- C's own save is on C's page, and on no other
+	local saved = { c = holds(c_page, 'saved C'), elsewhere = holds(page('B'), 'saved C') or holds(page('A'), 'saved C') }
+	eq({
+		trail = { c = holds(trail, 'closed c.txt'), e = holds(trail, 'closed e.txt') },
+		b = { c = holds(b_page, 'closed c.txt'), e = holds(b_page, 'closed e.txt'), loaded = holds(b_page, 'loaded B') },
+		a = { c = holds(a_page, 'closed c.txt'), e = holds(a_page, 'closed e.txt') },
+		c = closes(c_page),
+		saved = saved,
+	}, {
+		trail = { c = true, e = false },
+		b = { c = true, e = false, loaded = true },
+		a = { c = false, e = true },
+		c = { 'closed d.txt' },
+		saved = { c = true, elsewhere = false },
+	})
+end
+
 return T

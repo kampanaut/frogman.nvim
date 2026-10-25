@@ -623,6 +623,122 @@ T['T455 [char] (A27) a window\'s search follows the window'] = function()
 		{ header = true, row = true, star = true, said = true, searched = true })
 end
 
+T['T517 [char] (A27) a day\'s first step opens from the trail\'s line before it on an earlier day'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b', ':e c', ':e d', '<M-.>', '<M-f>', ':e a', '<M-.>' })
+	child.settle(100)
+	-- the first close and every step before it moved to yesterday, as in an editor open past midnight
+	local moved = child.lua([[
+		local L = require('cavediver').ledger
+		local today = os.date('%Y-%m-%d')
+		local first = L.data.days[today] and L.data.days[today][1]
+		if not first then return vim.NIL end
+		for _, step in ipairs(L.data.ring) do
+			if step.seq <= first.seq then step.time = step.time - 86400 end
+		end
+		table.remove(L.data.days[today], 1)
+		L.data.days[os.date('%Y-%m-%d', math.floor(first.time))] = { first }
+		L.data.started = L.data.started - 2 * 86400
+		local in_ring = false
+		for _, step in ipairs(L.data.ring) do
+			if step == first then in_ring = true end
+		end
+		return { trigger = first.trigger, in_ring = in_ring, today = #L.data.days[today] }
+	]])
+	open_trail()
+	cursor_to(line_with('<M-.>', '▸') or 1)
+	type_in('za')
+	local day = { after = line_with('<M-f>') ~= nil, before = line_with('BufEnter d.txt') ~= nil }
+	type_in('q')
+	child.cmd('CavediverTrail a.txt')
+	child.settle(100)
+	cursor_to(line_with('┃', '▸') or 1)
+	type_in('za')
+	local search = { after = line_with('<M-f>') ~= nil, before = line_with('BufEnter d.txt') ~= nil }
+	eq({ moved = moved, day = day, search = search }, {
+		moved = { trigger = '<M-.>', in_ring = true, today = 1 },
+		day = { after = true, before = false }, search = { after = true, before = false },
+	})
+end
+
+T['T518 [char] (A27) a day that gets its first move while the trail is open is reached'] = function()
+	child.setup()
+	plant_days({ 3 }, 1)
+	child.steps({ ':e a', ':e b' })
+	child.settle(100)
+	local from = child.lua('return vim.api.nvim_get_current_win()')
+	open_trail()
+	local opened = { older = lines()[1]:find('3 days down', 1, true) ~= nil, today = #child.lua('return require("cavediver").ledger.trail()') }
+	-- b closed in the window the trail came from, the trail staying open
+	child.lua('vim.api.nvim_win_call(..., function() vim.cmd("bdelete b.txt") end)', { from })
+	child.settle(300)
+	local meanwhile = { open = view() ~= vim.NIL, today = #child.lua('return require("cavediver").ledger.trail()') > 0 }
+	type_in('L')
+	local l = lines()[1]:find('today', 1, true) ~= nil
+	type_in('q')
+	-- again for a search's <CR>: today's steps set aside by hand while the trail opens, then put back
+	child.lua('local d = require("cavediver").ledger.data.days; _G.CDV_TODAY = d[os.date("%Y-%m-%d")]; d[os.date("%Y-%m-%d")] = nil')
+	open_trail()
+	local reopened = lines()[1]:find('3 days down', 1, true) ~= nil
+	child.lua('require("cavediver").ledger.data.days[os.date("%Y-%m-%d")] = _G.CDV_TODAY')
+	child.lua('require("cavediver.domains.ui.trail").search("b.txt")')
+	child.settle(100)
+	cursor_to(results()[1] or 1)
+	type_in('<CR>')
+	local header = lines()[1]
+	local at = child.lua('return vim.api.nvim_get_current_line()')
+	eq({ opened = opened, meanwhile = meanwhile, l = l, reopened = reopened, day = header:find('today', 1, true) ~= nil,
+		step = at:find('BufDelete b.txt', 1, true) ~= nil },
+		{ opened = { older = true, today = 0 }, meanwhile = { open = true, today = true }, l = true, reopened = true, day = true, step = true })
+end
+
+T['T519 [char] (A27) a window\'s search and gf stay in this editor'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c' })
+	child.cmd('bdelete c.txt') -- a landing on the first window
+	child.settle(300)
+	local first = child.lua('return vim.api.nvim_get_current_win()')
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local again = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e d' })
+	child.cmd('bdelete d.txt') -- a landing on the window of the same id, in this editor
+	child.settle(300)
+	child.cmd('CavediverTrail win')
+	child.settle(100)
+	local header = lines()[1]
+	type_in('q')
+	-- typed into s too
+	child.lua('vim.ui.input = function(_, on_confirm) on_confirm("win 1") end')
+	type_in('s')
+	local typed = lines()[1]
+	-- the earlier editor's landing, on its own page's line
+	open_trail()
+	local function earlier_landing()
+		local step = line_with('BufDelete c.txt')
+		for i = (step or #lines()) + 1, #lines() do
+			if lines()[i]:find('win 1', 1, true) then return i end
+		end
+	end
+	local row = earlier_landing()
+	cursor_to(row or 1, 12)
+	child.messages()
+	type_in('gf')
+	local gf = { stays = view() ~= vim.NIL and child.lua('return vim.api.nvim_get_current_win()') == view().win, said = #child.messages() > 0 }
+	open_trail()
+	cursor_to(earlier_landing() or 1, 12)
+	child.messages()
+	type_in('*')
+	local star = { searched = (lines()[1] or ''):find('⌕', 1, true) ~= nil, said = #child.messages() > 0 }
+	eq({ same = first == again, row = row ~= nil, header = header:find('1 move over 1 day', 1, true) ~= nil,
+		typed = typed:find('1 move over 1 day', 1, true) ~= nil, gf = gf, star = star },
+		{ same = true, row = true, header = true, typed = true, gf = { stays = true, said = true }, star = { searched = false, said = true } })
+end
+
 T['T458 [char] (M13) the glyph sets are in the config, and a pair is changed there'] = function()
 	child.setup()
 	local defaults = child.lua('local g = require("cavediver.configs").glyphs; return { g.unicode and g.unicode.row_t, g.ascii and g.ascii.row_t }')
