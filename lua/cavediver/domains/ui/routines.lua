@@ -146,6 +146,7 @@ function M.show_primary_buffer_history()
 	vim.bo[dbuf].filetype = "cavediver-primary-buffer-history"
 	vim.bo[dbuf].buftype = "acwrite"
 	vim.bo[dbuf].swapfile = false
+	vim.bo[dbuf].bufhidden = "wipe" -- gone once no window shows it, so its name is free for the next one
 
 	local function to_display(hash)
 		local basename = M.get_smart_basename(hash)
