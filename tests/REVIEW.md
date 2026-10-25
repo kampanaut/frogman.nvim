@@ -1,6 +1,6 @@
 # Test review sheet
 
-586 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+587 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -206,7 +206,7 @@ note: <M-f> (f graduates), <M-f> (to f), :e e, <M-f> (to b). :bdelete f, delete 
 spec: (D9) The missing-file rule on the secondary map: `:e f`, `:e b`, `<M-f>` (f graduates), `<M-f>` (to f), `:e e`, `<M-f>` (to b) give `⦉f⦊ [b] ⟦e⟧` with `dsm{b-swap>f b>f}`. After `:bdelete f` and deleting f.txt on disk, `<M-;><M-t>` on b says the file is missing, changes no slot, …  
 `tests/test_keep_older.lua:274`
 
-## tests/test_cleanup.lua (20 cases: 20 char)
+## tests/test_cleanup.lua (21 cases: 21 char)
 
 **T102 [char]** :bdelete of the ternary keeps it as a closed hash  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -345,6 +345,12 @@ spec: A closed entry whose file is gone from disk stays on the stack, after a `c
 note: {c=A s=S t=T} is {c=a s=b t=c}; X is d, outside the slots. The window is put on d without a BufEnter, then a's buffer is wiped (A21 step 1 re-points).  
 spec: When cleanup re-points a window's current slot to the registered buffer X the window shows (A21 step 1), with X outside the slots, `{c=A s=S t=T}` becomes `{c=X s=S t=A}`, as plain navigation would. Set it up by showing X without a `BufEnter` (`noautocmd`) after A's buffer is gon…  
 `tests/test_cleanup.lua:316`
+
+**T523 [char]** (A21, M5) the first :e after the start buffer was taken in leaves that buffer in no slot  
+`:doautocmd BufEnter`, `:e a`, `<M-S-f>` → `eq({ taken = taken, slots = slots, healed = healed, said = said },`  
+note: as a config that calls setup() at startup has it: the start buffer entered once cavediver is set up  
+spec: (A21, M5) The first `:e` after the start buffer was taken in leaves that buffer in no slot: in a fresh editor, the empty buffer it starts on entered once cavediver is set up, as a config that calls `setup()` at startup has it, then `:e a`, give `⦉-⦊ [a] ⟦-⟧` with no "Healed the t…  
+`tests/test_cleanup.lua:325`
 
 ## tests/test_closing.lua (23 cases: 23 char)
 

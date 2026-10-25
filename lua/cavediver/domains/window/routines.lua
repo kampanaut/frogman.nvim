@@ -536,11 +536,24 @@ function M.cleanup_triquetras(bufnr_ondelete)
 			-- hash in the current slot. doesn't make sense.
 			local current_slot_candidate = history.get_hash_from_buffer(vim.api.nvim_win_get_buf(winid))
 			if current_slot_candidate then
-				vim.notify("Healed the triquetra of window " ..
-					winid .. " with current slot: " .. vim.api.nvim_win_get_buf(winid))
+				-- an old current No Name buffer that isn't closed, an empty one whose delete took it out of
+				-- every other slot, goes into none, and the window lost nothing to say so
+				local old_path = history.get_filepath_from_hash(triquetra.current_slot)
+				local gone = old_path ~= nil and old_path:match("^NONAME_") ~= nil
+					and not history.routines.is_filehash_closed(triquetra.current_slot)
+				if not gone then
+					vim.notify("Healed the triquetra of window " ..
+						winid .. " with current slot: " .. vim.api.nvim_win_get_buf(winid))
+				end
 				-- like navigation: the old current goes into the ternary, or trades places with the
 				-- secondary when that's what the window shows now, with the notes navigation writes.
-				if current_slot_candidate == triquetra.secondary_slot then
+				if gone then
+					if current_slot_candidate == triquetra.secondary_slot then
+						triquetra.secondary_slot = nil
+					elseif current_slot_candidate == triquetra.ternary_slot then
+						triquetra.ternary_slot = nil
+					end
+				elseif current_slot_candidate == triquetra.secondary_slot then
 					M.write_secondary_swap_notes(triquetra)
 					triquetra.secondary_slot = triquetra.current_slot
 				else
