@@ -41,6 +41,7 @@ M.name_of = routines.name_of
 M.steps = routines.steps
 M.trail = routines.trail
 M.trail_days = routines.trail_days
+M.forget_day = routines.forget_day
 M.now = routines.now
 M.slot_name = routines.slot_name
 M.draw_row = routines.draw_row

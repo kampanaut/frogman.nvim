@@ -34,8 +34,7 @@ M.engine = engine
 local mapped = {}
 
 -- Each key cavediver maps: its name in the config, the export it runs and its description. The
--- same table wraps the exports, so a key's export can't be left unwrapped; each entry then holds the
--- export's own job too (`job`), which its mapping runs as a step of its own.
+-- same table wraps the exports, so a key's export can't be left unwrapped.
 local keymap_actions = {
 	-- Buffer lifecycle
 	{ "reopen_last_closed", "reopen_last_closed", "Reopen last closed buffer" },
@@ -74,7 +73,8 @@ local function setup_keymaps(keymaps)
 		local lhs, desc = keymaps[action[1]], action[3]
 		if lhs then
 			vim.keymap.set('n', lhs, function()
-				ledger.run_key(lhs, vim.api.nvim_get_current_win(), action.job)
+				-- the export as it is when the key is pressed, so a reassigned one takes the key
+				ledger.run_key(lhs, vim.api.nvim_get_current_win(), M[action[2]])
 			end, { desc = desc })
 		end
 	end
@@ -497,7 +497,6 @@ end
 -- running in another window, which no window entry queued a cancel for, ends too.
 for _, action in ipairs(keymap_actions) do
 	local export = M[action[2]]
-	action.job = export
 	M[action[2]] = function(...)
 		return settle.now(function(...)
 			navigation.cancel_cycle_elsewhere()

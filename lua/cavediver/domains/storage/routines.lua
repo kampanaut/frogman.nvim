@@ -892,6 +892,11 @@ end
 -- dump's, stays.
 local keys, key_of = {}, {}
 
+-- the files in the sessions' `<main>.d/` this editor knows, by path: those the main files it wrote or
+-- read name. A sweep takes one of these at once, and another editor's, written a moment before its own
+-- main file lands, only once it's a minute old.
+local own_files = {}
+
 ---Get a sealed file's key, made once for its directory and salt.
 ---
 ---With a session's file named, the key is noted as that file's last one, so it can go once the
@@ -1052,6 +1057,15 @@ local function read_session_file(file_path, directory, bytes)
 	local ok, saved_data = pcall(vim.json.decode, plaintext or "")
 	if not plaintext or not ok or type(saved_data) ~= "table" then
 		return nil, nil, "integrity"
+	end
+	local scratch_dir = file_path .. ".d/"
+	for _, entry in pairs(type(saved_data.noname_content) == "table" and saved_data.noname_content or {}) do
+		if type(entry) == "table" and type(entry.scratch) == "string" then
+			own_files[scratch_dir .. entry.scratch] = true
+		end
+	end
+	for _, page in pairs(type(saved_data.trail) == "table" and saved_data.trail or {}) do
+		own_files[scratch_dir .. tostring(page)] = true
 	end
 	return saved_data, key, nil, enforce_session_file_policy(saved_data) -- every read keeps the file's policy
 end
@@ -1621,9 +1635,10 @@ end
 ---Write a session's main file, then sweep what it no longer needs.
 ---
 ---The main file is the commit point, so it's written after the texts it names. Then the text files
----nothing references any more are swept, with anything a crash left half-written. A closed No Name
----buffer whose text couldn't be kept leaves the file's closed stacks first, so no load meets a
----closed No Name entry without its text.
+---nothing references any more are swept, this editor's own at once and one it doesn't know, another
+---editor's written a moment ago, once it's a minute old, with anything a crash left half-written. A
+---closed No Name buffer whose text couldn't be kept leaves the file's closed stacks first, so no load
+---meets a closed No Name entry without its text.
 ---
 ---@param file_path string The session's main file
 ---@param key string The session's key
@@ -1636,10 +1651,17 @@ local function commit_session(file_path, key, salt, storage, kept)
 	M.seal_file(file_path, key, salt, vim.json.encode(storage))
 
 	local scratch_dir = file_path .. ".d/"
+	for name, _ in pairs(kept) do
+		own_files[scratch_dir .. name] = true
+	end
 	if vim.fn.isdirectory(scratch_dir) == 1 then
 		for _, entry in ipairs(vim.fn.readdir(scratch_dir)) do
-			if not kept[entry] then
-				vim.uv.fs_unlink(scratch_dir .. entry)
+			local path = scratch_dir .. entry
+			-- this editor's own goes at once; another editor's, written a moment ago, once a minute old
+			local stat = not kept[entry] and not own_files[path] and vim.uv.fs_stat(path)
+			if not kept[entry] and (own_files[path] or (stat and stat.mtime.sec <= os.time() - 60)) then
+				vim.uv.fs_unlink(path)
+				own_files[path] = nil
 			end
 		end
 	end
@@ -1802,17 +1824,21 @@ local function steps_kept(owner, steps, session)
 	return out
 end
 
--- Per session file and day: the steps earlier editors wrote that day, read once, and how many of this
--- editor's steps the page holds already.
+-- Per session file and day: the steps earlier editors wrote that day and this editor's the ledger let go,
+-- read once, and how many of this editor's steps the page holds already.
 local pages_written = {}
 -- A page that couldn't be written at a save is said once.
 local trail_warned = false
 
+---Lets go the past days whose steps are all on their pages (defined further down, with the records)
+---@type fun(file_path: string, steps: CavediverLedgerStep[])
+local settle_days
+
 ---Write the trail pages a session's file keeps.
 ---
----Writes a page for each day the ledger holds steps of the session, with the steps earlier editors
----wrote that day, then this editor's. A day with nothing new isn't written again, and earlier days'
----pages stay as they are.
+---Writes a page for each day the ledger holds steps of the session: the steps earlier editors wrote
+---that day and this editor's the ledger let go (`paged_out`), then this editor's in memory. A day
+---with nothing new isn't written again, and earlier days' pages stay as they are.
 ---
 ---@param file_path string The session's main file
 ---@param old_trail table<string, string>|nil The pages the main file lists, day → file name
@@ -1821,10 +1847,11 @@ local trail_warned = false
 ---@param key string The session's key
 ---@param kept table<string, boolean> The names to keep in `<main>.d/`, which the pages are added to
 ---@return table<string, string>|nil trail The pages the main file lists now (nil if none)
+---@return CavediverLedgerStep[] paged This editor's steps the pages hold now
 local function write_trail_pages(file_path, old_trail, owner, session, key, kept)
 	local ledger = require('cavediver.domains.ledger')
 	local scratch_dir = file_path .. ".d/"
-	local trail = {}
+	local trail, paged = {}, {}
 	for day, name in pairs(old_trail or {}) do
 		trail[day] = name
 	end
@@ -1840,10 +1867,11 @@ local function write_trail_pages(file_path, old_trail, owner, session, key, kept
 		local written = pages_written[file_path][day]
 		if #mine > 0 and not (written and written.key == key and written.count == count and trail[day] == name) then
 			if not (written and written.key == key) then
-				-- what editors before this one wrote that day stays
+				-- what editors before this one wrote that day stays, and so do this editor's the ledger let go
+				local receipt = ledger.data.paged_out[day] or {}
 				local before = {}
 				for _, step in ipairs(trail[day] and read_page(scratch_dir .. trail[day], key, day) or {}) do
-					if type(step.time) == "number" and step.time < ledger.data.started then
+					if type(step.time) == "number" and (step.time < ledger.data.started or receipt[step.seq] == step.time) then
 						table.insert(before, step)
 					end
 				end
@@ -1862,11 +1890,12 @@ local function write_trail_pages(file_path, old_trail, owner, session, key, kept
 			pages_written[file_path][day] = written
 			trail[day] = name
 		end
+		vim.list_extend(paged, #mine > 0 and mine or {})
 	end
 	for _, name in pairs(trail) do
 		kept[name] = true
 	end
-	return next(trail) and trail or nil
+	return next(trail) and trail or nil, paged
 end
 
 ---Get the days a session's file has trail pages for, oldest first.
@@ -1965,9 +1994,11 @@ local function write_records(session, changes)
 			gone = true
 			return
 		end
-		saved.trail = write_trail_pages(file_path, saved.trail, session.owner,
+		local paged
+		saved.trail, paged = write_trail_pages(file_path, saved.trail, session.owner,
 			require('cavediver.domains.ledger').session_of(session.name, session.directory), key, kept) -- today's page rides along
 		commit_session(file_path, key, salt, saved, kept)
+		settle_days(file_path, paged)
 	end)
 	if not ok then
 		return false, "it couldn't be written: " .. tostring(err)
@@ -2180,6 +2211,57 @@ local function known_sessions()
 		end
 	end
 	return sessions
+end
+
+---Note the steps a session's pages now hold, and let go the past days that are all on disk.
+---
+---Runs once a main file that lists the pages has landed. A day before today, but the open step's,
+---goes from the ledger's memory once every step on it is on one page at least, and on the page of
+---every session cavediver knows that keeps it, and none of them is still in the ring. So a session
+---with no file keeps its steps, and so does a step no page has taken. The page cache of a day that
+---goes is dropped, so a step landing on it later is written beside what its page holds.
+---
+---@param file_path string The session's main file, just committed
+---@param steps CavediverLedgerStep[] The steps its pages hold
+---@return nil
+settle_days = function(file_path, steps)
+	local ledger = require('cavediver.domains.ledger')
+	for _, step in ipairs(steps or {}) do
+		step.written_to = step.written_to or {}
+		step.written_to[file_path] = true
+	end
+	local today, open = os.date("%Y-%m-%d"), ledger.data.open
+	local open_day = open and os.date("%Y-%m-%d", math.floor(open.time))
+	local ringed = {}
+	for _, step in ipairs(ledger.steps()) do
+		ringed[step] = true
+	end
+	local sessions = {}
+	for _, session in ipairs(known_sessions()) do
+		table.insert(sessions, { file = get_session_filepath(session.directory, session.name), owner = session.owner,
+			key = ledger.session_of(session.name, session.directory) })
+	end
+	for _, day in ipairs(ledger.trail_days()) do
+		local settled = day < today and day ~= open_day
+		for _, step in ipairs(settled and ledger.trail(day) or {}) do
+			settled = not ringed[step] and step.written_to ~= nil and next(step.written_to) ~= nil
+			for _, session in ipairs(settled and sessions or {}) do
+				if not step.written_to[session.file] and #steps_kept(session.owner, { step }, session.key) > 0 then
+					settled = false
+					break
+				end
+			end
+			if not settled then
+				break
+			end
+		end
+		if settled then
+			ledger.forget_day(day)
+			for _, days in pairs(pages_written) do
+				days[day] = nil
+			end
+		end
+	end
 end
 
 ---Check if the editor is still where a session would be saved from.
@@ -2516,7 +2598,7 @@ function M.save_history(cwd, name, tab)
 	if not pool then
 		require('cavediver.domains.ledger').claim(name, cwd) -- a first whole-editor save takes the steps before it
 	end
-	local written, trail = pcall(write_trail_pages, file_path, previous and previous.trail, pool,
+	local written, trail, paged = pcall(write_trail_pages, file_path, previous and previous.trail, pool,
 		require('cavediver.domains.ledger').session_of(name, cwd), key, kept)
 	if written then
 		storage.trail = trail
@@ -2534,6 +2616,9 @@ function M.save_history(cwd, name, tab)
 
 	-- Write updated data back to file
 	commit_session(file_path, key, salt, storage, kept)
+	if written then
+		settle_days(file_path, paged)
+	end
 	require('cavediver.domains.ledger').move("saved", { name = vim.fn.fnamemodify(name or cwd, ":t"),
 		words = pool and "the tab session" or "the whole editor" })
 	if pool then
@@ -2577,8 +2662,9 @@ end
 ---Make a reader of the current tab's trail.
 ---
 ---The session's main file is read once, and each page once, when it's asked for, so a view reads
----only the pages it shows. A day's steps are the page's steps from editors before this one, then
----this editor's steps that the session's file keeps, by the same rule its pages are written by.
+---only the pages it shows. A day's steps are the page's steps from editors before this one and this
+---editor's the ledger let go (`paged_out`), then this editor's in memory that the session's file
+---keeps, by the same rule its pages are written by.
 ---
 ---@return {days: fun(): string[], steps: fun(day: string): table[]} reader
 function M.trail_reader()
@@ -2611,10 +2697,11 @@ function M.trail_reader()
 	---Get a day's steps, oldest first, reading its page only the first time.
 	function reader.steps(day)
 		if pages[day] == nil then
+			local receipt = ledger.data.paged_out[day] or {}
 			local steps = {}
 			if trail[day] and key then
 				for _, step in ipairs(read_page(file_path .. ".d/" .. trail[day], key, day) or {}) do
-					if type(step.time) == "number" and step.time < ledger.data.started then
+					if type(step.time) == "number" and (step.time < ledger.data.started or receipt[step.seq] == step.time) then
 						table.insert(steps, step)
 					end
 				end

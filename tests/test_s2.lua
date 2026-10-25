@@ -116,6 +116,26 @@ end
 -- Three calls in one batch, then a 30 ms wait (scheduled callbacks run, no
 -- timer anywhere near), then a fourth call. With T145 (three calls, one load),
 -- two loads in all tells vim.schedule apart from a timer and from no flag.
+-- Each session is saved under its own name in one editor; the fresh editor shows d, as B's window did.
+T['T572 [char] (S2) a second session loaded in the same batch loads'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child, 'A'), { true })
+	child.steps({ ':e c', ':e d' })
+	eq(S2.save(child, 'B'), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'c', 'd' }, 'd')
+	child.lua([[
+		local cd = require('cavediver')
+		cd.load_session('A')
+		cd.load_session('B')
+		cd.load_session('B')
+	]])
+	child.settle(300)
+	eq({ loads = S2.loads(child), slots = child.slots() }, { loads = 2, slots = '⦉c⦊ [d] ⟦-⟧' })
+end
+
 T['T297 [char] (S2) the repeat flag is re-armed by vim.schedule: a call after the batch is a full load'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
@@ -563,16 +583,41 @@ T['T307 [char] (S2) the main file is the commit point: a crash before it lands l
 end
 
 -- The crash: the main file landed, the sweep didn't run, so v1's scratch is
--- still there.
-T['T307 [char] (S2) the main file is the commit point: leftovers of a crash after it are swept by the next save'] = function()
+-- still there; the next editor, which didn't write it, sweeps it once it's a minute old.
+T['T307 [char] (S2) the main file is the commit point: leftovers of a crash after it are swept once a minute old'] = function()
 	local s = S2.shared()
 	local v = two_versions(s)
+	pcall(child.lua, 'vim.uv.kill(vim.uv.os_getpid(), "sigkill")') -- the crash: no VimLeavePre
 	S2.write(v.d .. v.v1, v.v1bytes)
-	local both = { v.v1, v.v2 }
-	table.sort(both)
-	eq(S2.scratch_files(s.session_dir), both)
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(Misc.load(child), { true })
 	eq(Misc.save(child), { true })
-	eq(S2.scratch_files(s.session_dir), { v.v2 })
+	local fresh = vim.tbl_contains(S2.scratch_files(s.session_dir), v.v1)
+	local ago = os.time() - 120
+	vim.uv.fs_utime(v.d .. v.v1, ago, ago)
+	eq(Misc.save(child), { true })
+	eq({ fresh = fresh, aged = vim.tbl_contains(S2.scratch_files(s.session_dir), v.v1) }, { fresh = true, aged = false })
+end
+
+-- Another editor's text, written a moment ago, its main file not landed yet.
+T['T573 [char] (S2) a save sweeps its own old text at once and leaves another editor\'s new one alone'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	local n = S2.noname(child, { 'v1 text' })
+	child.steps({ ':e b' })
+	eq(Misc.save(child), { true })
+	local one, d = S2.scratch_files(s.session_dir)
+	vim.fn.writefile({ 'another editor' }, d .. 'in-flight')
+	child.lua('vim.api.nvim_buf_set_lines(..., 0, -1, false, { "v2 text" })', { n })
+	eq(Misc.save(child), { true })
+	local after = S2.scratch_files(s.session_dir)
+	local ago = os.time() - 120
+	vim.uv.fs_utime(d .. 'in-flight', ago, ago)
+	eq(Misc.save(child), { true })
+	eq({ own = vim.tbl_contains(after, one[1]), other = vim.tbl_contains(after, 'in-flight'),
+		aged = vim.tbl_contains(S2.scratch_files(s.session_dir), 'in-flight') }, { own = false, other = true, aged = false })
 end
 
 -- Two No Name texts made in a split, which is then closed: both stay open and
