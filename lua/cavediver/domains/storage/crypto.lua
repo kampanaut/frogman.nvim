@@ -1,6 +1,6 @@
 ---Storage domain encryption for the session files.
 ---
----This module encrypts with AES-256-GCM through OpenSSL 3's libcrypto, called with LuaJIT's FFI.
+---This module encrypts with AES-256-GCM through OpenSSL's libcrypto, 3 or 4, called with LuaJIT's FFI.
 ---The key is stretched from the session's directory with PBKDF2, so a file only decrypts in its
 ---own directory. GCM's tag checks the stored bytes before any decrypted byte is used, so an edited
 ---or corrupted file fails as a whole instead of decrypting into something else.
@@ -43,34 +43,52 @@ for _, declaration in ipairs({
 end
 
 local libcrypto
+-- the libcrypto_path values that didn't load, each said once
+local warned = {}
 
 ---Get libcrypto, loading it the first time it's needed.
 ---
----A missing library is an environment failure, so this throws. A save then fails as a whole,
----and the session manager's save with it.
+---The config's `libcrypto_path` is tried first, then OpenSSL 3's and OpenSSL 4's names. A path that
+---won't load, or loads and isn't libcrypto, is said once, and the names after it are tried. A
+---missing library is an environment failure, so this throws, naming each name tried. A save then
+---fails as a whole, and the session manager's save with it.
 ---
 ---@return ffi.namespace* lib The loaded libcrypto
 local function crypto()
 	if libcrypto == nil then
-		-- the versioned names first: on macOS the bare name loads the system's own libcrypto, which
-		-- stops any program that isn't Apple's own, so it's tried only elsewhere
-		local names = { "libcrypto.so.3", "libcrypto.3.dylib" }
+		local configured = require('cavediver.configs').libcrypto_path
+		local names = {}
+		if type(configured) == "string" and configured ~= "" then
+			table.insert(names, configured)
+		end
+		-- the versioned names first, OpenSSL 3's before 4's: on macOS the bare name loads the system's
+		-- own libcrypto, which stops any program that isn't Apple's own, so it's tried only elsewhere
+		vim.list_extend(names, { "libcrypto.so.3", "libcrypto.3.dylib", "libcrypto.so.4", "libcrypto.4.dylib" })
 		if ffi.os ~= "OSX" then
 			table.insert(names, "crypto")
 		else
-			-- Homebrew's openssl@3 and MacPorts' sit outside dlopen's own search on macOS
+			-- Homebrew's openssl@3 and openssl@4, and MacPorts', sit outside dlopen's own search on macOS
 			vim.list_extend(names, { "/opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib",
-				"/usr/local/opt/openssl@3/lib/libcrypto.3.dylib", "/opt/local/lib/libcrypto.3.dylib" })
+				"/usr/local/opt/openssl@3/lib/libcrypto.3.dylib", "/opt/local/lib/libcrypto.3.dylib",
+				"/opt/homebrew/opt/openssl@4/lib/libcrypto.4.dylib", "/usr/local/opt/openssl@4/lib/libcrypto.4.dylib" })
 		end
-		for _, name in ipairs(names) do
+		for i, name in ipairs(names) do
 			local ok, lib = pcall(ffi.load, name)
-			if ok then
+			-- a library that loads but has no libcrypto in it counts as one that won't load
+			local why = not ok and tostring(lib):match("[^\n]*")
+				or not pcall(function() return lib.EVP_aes_256_gcm end) and "it isn't libcrypto (no EVP_aes_256_gcm)"
+			if not why then
 				libcrypto = lib
 				break
+			elseif i == 1 and name == configured and not warned[name] then
+				warned[name] = true
+				vim.notify("cavediver: libcrypto_path (" .. name .. ") didn't load: " .. why
+					.. "; trying cavediver's own list.", vim.log.levels.WARN)
 			end
 		end
 		if libcrypto == nil then
-			error("cavediver: OpenSSL 3's libcrypto was not found; it encrypts the session files.")
+			error("cavediver: OpenSSL's libcrypto was not found; it encrypts the session files. Tried: "
+				.. table.concat(names, ", ") .. ". Set libcrypto_path to its file.")
 		end
 	end
 	return libcrypto

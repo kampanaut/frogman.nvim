@@ -343,6 +343,86 @@ T['T480 [char] (S2) libcrypto is loaded by its versioned name first'] = function
 	eq(child.lua('return _G.CDV_TRIED[1]'), 'libcrypto.so.3')
 end
 
+-- libcrypto_path names a file that isn't there; every name the loader tries is recorded, the real
+-- loader still doing the loading.
+T['T548 [char] (S2) libcrypto_path is tried first, and one that won\'t load falls back with a WARN'] = function()
+	child.setup()
+	child.lua('_G.CDV_TEST.setup({ libcrypto_path = _G.CDV_TEST.root .. "/nowhere/libcrypto.so.3" })')
+	child.steps({ ':e a' })
+	child.lua([[
+		local ffi = require('ffi')
+		local real = ffi.load
+		_G.CDV_TRIED = {}
+		ffi.load = function(name, ...)
+			table.insert(_G.CDV_TRIED, tostring(name))
+			return real(name, ...)
+		end
+	]])
+	child.messages()
+	local saved = Misc.save(child)
+	local warns = vim.tbl_filter(function(m)
+		return m.msg:find('libcrypto_path (', 1, true) ~= nil and m.msg:find('/nowhere/', 1, true) ~= nil
+	end, child.messages())
+	eq({ saved = saved, first = child.lua('return _G.CDV_TRIED[1]'):find('/nowhere/libcrypto.so.3', 1, true) ~= nil, warns = #warns },
+		{ saved = { true }, first = true, warns = 1 })
+end
+
+-- The loader hands back, for libcrypto_path, a library with no libcrypto in it: looking up any of
+-- its functions fails, as a wrong library's lookup does.
+T['T550 [char] (S2) a libcrypto_path that loads but isn\'t libcrypto counts as one that won\'t load'] = function()
+	child.setup()
+	child.lua('_G.CDV_TEST.setup({ libcrypto_path = _G.CDV_TEST.root .. "/wrong/libnotcrypto.so" })')
+	child.steps({ ':e a' })
+	child.lua([[
+		local ffi = require('ffi')
+		local real = ffi.load
+		ffi.load = function(name, ...)
+			if tostring(name):find('/wrong/', 1, true) then
+				return setmetatable({}, { __index = function(_, key) error('undefined symbol: ' .. key) end })
+			end
+			return real(name, ...)
+		end
+	]])
+	child.messages()
+	local saved = Misc.save(child)
+	local warns = vim.tbl_filter(function(m)
+		return m.msg:find('libcrypto_path (', 1, true) ~= nil and m.msg:find("isn't libcrypto", 1, true) ~= nil
+	end, child.messages())
+	eq({ saved = saved, warns = #warns }, { saved = { true }, warns = 1 })
+end
+
+-- Every load fails, so each save runs the loader again.
+T['T549 [char] (S2) with no libcrypto loading, the error names what was tried, and the WARN comes once'] = function()
+	child.setup()
+	child.lua('_G.CDV_TEST.setup({ libcrypto_path = _G.CDV_TEST.root .. "/nowhere/libcrypto.so.3" })')
+	child.steps({ ':e a' })
+	child.lua([[
+		_G.CDV_TRIED = {}
+		require('ffi').load = function(name)
+			table.insert(_G.CDV_TRIED, tostring(name))
+			error('simulated: ' .. tostring(name) .. ' not found')
+		end
+	]])
+	child.messages()
+	local first, second = Misc.save(child), Misc.save(child)
+	local tried = child.lua('return _G.CDV_TRIED')
+	local err = tostring(first[2])
+	local named = #tried > 0
+	for _, name in ipairs(tried) do
+		if not err:find(name, 1, true) then named = false end
+	end
+	local function at(name)
+		for i, t in ipairs(tried) do
+			if t == name then return i end
+		end
+	end
+	local warns = vim.tbl_filter(function(m) return m.msg:find('libcrypto_path (', 1, true) ~= nil end, child.messages())
+	eq({ first = first[1], second = second[1], named = named, option = err:find('libcrypto_path', 1, true) ~= nil,
+		path_first = (tried[1] or ''):find('/nowhere/', 1, true) ~= nil,
+		four_after_three = (at('libcrypto.so.4') or 0) > (at('libcrypto.so.3') or math.huge), warns = #warns },
+		{ first = false, second = false, named = true, option = true, path_first = true, four_after_three = true, warns = 1 })
+end
+
 T['T304 [char] (S2) every write is atomic: a new file is renamed over the old one, and nothing else is left'] = function()
 	child.setup()
 	child.steps({ ':e a' })

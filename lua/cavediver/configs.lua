@@ -109,6 +109,8 @@
 ---@class CavediverConfig
 local defaults = {
 	session_dir = vim.fn.stdpath("data") .. "/cavediver/sessions/",
+	-- libcrypto_path: OpenSSL's libcrypto, a full path or a name the system finds, tried before
+	-- cavediver's own list (nil tries the list alone); read once, the first time it's needed
 	bufferline = {
 		history_view = "global" -- "global" | "window"
 	},
