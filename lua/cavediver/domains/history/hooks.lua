@@ -174,20 +174,18 @@ function M.init_autocmds(group)
 			-- print("HOOOY")
 			-- print_table(args)
 			-- print("BufUnload"..args.buf .. " - "..vim.api.nvim_buf_get_name(args.buf))
-			if vim.b[args.buf].skip_bufdelete ~= true then
-				-- print("I was ran!" .. args.buf)
-				-- a No Name buffer written under a name is deleted and made again under it: a rename, if the
-				-- write follows in this batch (BufWritePost claims it); otherwise it's dropped once it settles.
-				local hash = routines.get_hash_from_buffer(args.buf)
-				local path = hash and routines.get_filepath_from_hash(hash)
-				if path and path:match("^NONAME_") then
-					noname_deleted[args.buf] = { hash = hash, history = routines.history_of(hash) }
-					require('cavediver.settle').later("No Name note", function()
-						noname_deleted[args.buf] = nil
-					end)
-				end
-				historySM:to(historySM:state(), { buf = args.buf }, states.mode.DELETE)
+			-- print("I was ran!" .. args.buf)
+			-- a No Name buffer written under a name is deleted and made again under it: a rename, if the
+			-- write follows in this batch (BufWritePost claims it); otherwise it's dropped once it settles.
+			local hash = routines.get_hash_from_buffer(args.buf)
+			local path = hash and routines.get_filepath_from_hash(hash)
+			if path and path:match("^NONAME_") then
+				noname_deleted[args.buf] = { hash = hash, history = routines.history_of(hash) }
+				require('cavediver.settle').later("No Name note", function()
+					noname_deleted[args.buf] = nil
+				end)
 			end
+			historySM:to(historySM:state(), { buf = args.buf }, states.mode.DELETE)
 		end,
 	})
 
