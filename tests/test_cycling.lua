@@ -821,9 +821,12 @@ local function key_before_cancel(splitright)
 	local first, split = cycling_in_split(splitright)
 	local before = child.dumps()
 	child.messages()
-	-- a throw in the batch doesn't come back through feedkeys: the dump count is what shows one
+	-- a throw in the batch doesn't come back through feedkeys: the dump count shows an assertion,
+	-- v:errmsg any error
+	child.lua('vim.v.errmsg = ""')
 	child.lua([[pcall(vim.api.nvim_feedkeys, vim.api.nvim_replace_termcodes('<C-w>w<M-;><M-f>', true, false, true), 'x', false)]])
 	child.settle(200)
+	eq(child.lua('return vim.v.errmsg'), '')
 	eq({ dumps = #Extra.new_files(before, child.dumps()), nav = child.state().nav, split = child.shown(split) },
 		{ dumps = 0, nav = 'normal', split = 'c' })
 	-- said once: the cancel the jump scheduled finds the cycle over and does nothing
@@ -849,8 +852,11 @@ end
 
 -- Keys in one batch, through the settle queue (M11): each key first runs what's still queued.
 local function batch(keys)
+	child.lua('vim.v.errmsg = ""')
 	child.lua([[pcall(vim.api.nvim_feedkeys, vim.api.nvim_replace_termcodes(..., true, false, true), 'x', false)]], { keys })
 	child.settle(200)
+	-- a key's error doesn't come back through feedkeys, but it leaves v:errmsg
+	eq(child.lua('return vim.v.errmsg'), '')
 end
 
 -- From a fresh editor: the empty start buffer picked, then reused for b.txt, then a cycle.
