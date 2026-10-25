@@ -233,6 +233,35 @@ T['T431 [char] (A27) with the ascii set, the trail draws no character outside AS
 	eq({ lines = #lines() > 2, wide = wide }, { lines = true, wide = {} })
 end
 
+T['T526 [char] (A27) under the ascii set, what a move or a trigger was recorded with is drawn in it'] = function()
+	child.setup()
+	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" } })')
+	-- T418's route: a change of label from feature to main tags b.txt gone
+	child.lua([[
+		vim.fn.mkdir(_G.CDV_TEST.root .. '/.git', 'p')
+		vim.fn.writefile({ 'ref: refs/heads/feature' }, _G.CDV_TEST.root .. '/.git/HEAD')
+	]])
+	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
+	child.cmd('bdelete b.txt')
+	child.settle()
+	child.cmd('doautocmd FocusGained')
+	child.settle()
+	child.lua('os.remove(_G.CDV_TEST.root .. "/b.txt")')
+	child.lua('vim.fn.writefile({ "ref: refs/heads/main" }, _G.CDV_TEST.root .. "/.git/HEAD")')
+	child.settle(300)
+	-- a move with no step open begins one with no trigger
+	child.lua('require("cavediver").ledger.move("closed", { name = "x.txt", lists = { "editor" } })')
+	child.settle(300)
+	open_trail()
+	local wide = {}
+	for i, l in ipairs(lines()) do
+		if l:find('[\128-\255]') then table.insert(wide, i) end
+	end
+	-- the step with no trigger is drawn (its dash among the lines the ASCII check reads)
+	eq({ wide = wide, label = line_with('feature -> main') ~= nil, tag = line_with('@feature') ~= nil, moved = line_with('x.txt') ~= nil },
+		{ wide = {}, label = true, tag = true, moved = true })
+end
+
 T['T432 [char] (A27) q and <C-c> leave, back in the window the trail came from'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })

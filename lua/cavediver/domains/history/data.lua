@@ -97,7 +97,8 @@ local corpus = {
 	loads = 0,
 	-- Files gone from disk (filehash → tag): where you were when each went missing, or the time
 	missing = {},
-	-- Files never written (filehash → true): a new file isn't missing, it hasn't been written yet
+	-- Files never written (filehash → the buffer it was marked with, or true from a session file): a new
+	-- file isn't missing, it hasn't been written yet
 	unwritten = {},
 	-- The last label seen (a git branch, say), and whether one was looked for yet
 	last_label = nil,

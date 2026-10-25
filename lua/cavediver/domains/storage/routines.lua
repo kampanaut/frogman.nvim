@@ -348,11 +348,11 @@ local function load_window_buffer_relationships(window_buffer, tabpage)
 			tfilehash = triquetra_serialised[4]
 		end
 
-		if triquetra_serialised[5] ~= nil and triquetra_serialised ~= vim.NIL then
+		if triquetra_serialised[5] ~= nil and triquetra_serialised[5] ~= vim.NIL then
 			tdisplacement_map = triquetra_serialised[5]
 		end
 
-		if triquetra_serialised[6] ~= nil and triquetra_serialised ~= vim.NIL then
+		if triquetra_serialised[6] ~= nil and triquetra_serialised[6] ~= vim.NIL then
 			sdisplacement_map = triquetra_serialised[6]
 		end
 

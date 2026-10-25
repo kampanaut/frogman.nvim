@@ -313,6 +313,23 @@ T['T448 [char] (M12) the winbar\'s skip list is configurable, and replaces the d
 	eq({ default = default, skipped = skipped, replaced = replaced }, { default = true, skipped = '', replaced = true })
 end
 
+T['T527 [char] (M4, P26) the unmarked list\'s rebuild reads the marks once'] = function()
+	child.steps({ ':e a', ':e b', ':e c', ':e d', ':e e' })
+	local tries = child.lua([[
+		-- harpoon not installed: the harness's stub taken away, and each try counted
+		package.preload['harpoon'], package.loaded['harpoon'] = nil, nil
+		local real, n = require, 0
+		_G.require = function(name, ...)
+			if name == 'harpoon' then n = n + 1 end
+			return real(name, ...)
+		end
+		require('cavediver.domains.history').routines.update_buffer_history_ordered_nonharpooned()
+		_G.require = real
+		return { n = n, ordered = #require('cavediver.domains.history').data.ordered.crux }
+	]])
+	eq(tries, { n = 1, ordered = 5 })
+end
+
 T['T450 [char] (M12, P26) marked buffers come from the provider'] = function()
 	child.lua([[
 		local root = _G.CDV_TEST.root

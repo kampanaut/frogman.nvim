@@ -124,10 +124,33 @@ local function move_words(glyphs, names, move)
 	return words
 end
 
+-- What moves and triggers are recorded with: the unicode set's tag, dot and arrow, and a dash for a
+-- step with no trigger, as the pages keep them
+local RECORDED = { tag = "⎇", dot = " · ", arrow = " → ", none = "—" }
+
+---Put what a move or a trigger was recorded with in the glyph set in use.
+---
+---@param glyphs table The glyphs in use
+---@param text string|nil What was recorded
+---@return string|nil text The same, in the set in use
+local function in_set(glyphs, text)
+	if type(text) ~= "string" then
+		return text
+	end
+	for name, recorded in pairs(RECORDED) do
+		local now = glyphs[name]
+		if type(now) == "string" and now ~= recorded then
+			text = text:gsub(vim.pesc(recorded), (now:gsub("%%", "%%%%")))
+		end
+	end
+	return text
+end
+
 ---Split words into coloured pieces, with each `≡list` and `⎇tag` picked out.
 ---
 ---A list's piece carries its target, so the keys can act on it.
 local function word_segs(glyphs, text, group)
+	text = in_set(glyphs, text)
 	local out = {}
 	local i = 1
 	while i <= #text do
@@ -421,7 +444,7 @@ local function ring_lines(glyphs, own, before, key)
 	for i = hidden + 1, #earlier do
 		local ringed = earlier[i]
 		local r = { { "        " .. glyphs.ring .. " " .. os.date("%H:%M:%S", math.floor(ringed.time)) .. "  ", "CavediverTrailRing" },
-			{ string.format("%-15s", ringed.trigger or ""), "CavediverTrailTrigger" },
+			{ string.format("%-15s", in_set(glyphs, ringed.trigger) or ""), "CavediverTrailTrigger" },
 			{ (ringed.win and ledger.window_name(ringed.win) or "") .. "   ", "CavediverTrailRing" } }
 		if ringed.row_before and ringed.row_after and not require('cavediver.domains.ledger.routines').same_row(ringed.row_before, ringed.row_after) then
 			vim.list_extend(r, row_segs(glyphs, ringed.names or {}, ringed.row_before))
@@ -457,7 +480,7 @@ local function day_lines(glyphs, winwidth)
 		if not segs then
 			segs = {
 				{ time .. " ", "CavediverTrailTime" }, { (glyphs[step.cause] or "?") .. " ", "CavediverTrailCause" },
-				{ step.trigger or "", "CavediverTrailTrigger" },
+				{ in_set(glyphs, step.trigger) or "", "CavediverTrailTrigger" },
 			}
 			if own then
 				local pad = winwidth - width(segs) - 2
@@ -615,7 +638,7 @@ local function search_lines(glyphs, winwidth)
 			day = tonumber(result.day:sub(9, 10)), hour = 12 })
 		local label = result.day ~= last_day and os.date("%a %d", stamp) or string.rep(" ", #os.date("%a %d", stamp))
 		last_day = result.day
-		local trigger = step.trigger or ""
+		local trigger = in_set(glyphs, step.trigger) or ""
 		local segs = {
 			{ label .. " " .. os.date("%H:%M", math.floor(step.time or 0)) .. "  ", "CavediverTrailTime" },
 			{ glyphs.life .. " ", "CavediverTrailLife" .. result.state },

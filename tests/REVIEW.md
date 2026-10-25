@@ -1,6 +1,6 @@
 # Test review sheet
 
-587 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+591 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -9,7 +9,7 @@
 
 ## Look at these first
 
-**State set by hand** (73): T184 (keep_older), T192 (keep_older), T107 (cleanup), T483 (cleanup), T484 (cleanup), T108 (cleanup), T113 (cleanup), T163 (cleanup), T91 (closing), T203 (cycling), T204 (cycling), T205 (cycling), T512 (cycling), T490 (cycling), T491 (cycling), T251 (decisions), T257 (decisions), T263 (decisions), T263 (decisions), T264 (decisions), T265 (decisions), T267 (decisions), T271 (decisions), T271 (decisions), T273 (decisions), T275 (decisions), T276 (decisions), T280 (decisions), T285 (decisions), T287 (decisions), T20 (history), T12 (identity), T157 (invariants), T398 (ledger), T403 (ledger), T406 (ledger), T25 (lifecycle), T34 (navigation), T35 (navigation), T219 (negative), T241 (negative), T242 (negative), T243 (negative), T243 (negative), T243 (negative), T247 (negative), T495 (primary_window), T66 (restores), T68 (restores), T296 (s2), T298 (s2), T299 (s2), T315 (s2), T316 (s2), T322 (s2), T351 (s2), T352 (s2), T354 (s2), T357 (s2), T358 (s2), T366 (s2), T369 (s2), T383 (s2), T387 (s2), T367 (s2), T138 (sessions), T146 (sessions), T147 (sessions), T148 (sessions), T425 (trail), T445 (trail), T499 (ui), T500 (ui)
+**State set by hand** (74): T184 (keep_older), T192 (keep_older), T107 (cleanup), T483 (cleanup), T484 (cleanup), T108 (cleanup), T113 (cleanup), T163 (cleanup), T91 (closing), T203 (cycling), T204 (cycling), T205 (cycling), T512 (cycling), T490 (cycling), T491 (cycling), T251 (decisions), T257 (decisions), T263 (decisions), T263 (decisions), T264 (decisions), T265 (decisions), T267 (decisions), T271 (decisions), T271 (decisions), T273 (decisions), T275 (decisions), T276 (decisions), T280 (decisions), T285 (decisions), T287 (decisions), T20 (history), T12 (identity), T157 (invariants), T398 (ledger), T403 (ledger), T406 (ledger), T25 (lifecycle), T34 (navigation), T35 (navigation), T219 (negative), T241 (negative), T242 (negative), T243 (negative), T243 (negative), T243 (negative), T247 (negative), T495 (primary_window), T66 (restores), T68 (restores), T296 (s2), T298 (s2), T299 (s2), T315 (s2), T316 (s2), T322 (s2), T351 (s2), T352 (s2), T354 (s2), T357 (s2), T358 (s2), T366 (s2), T369 (s2), T383 (s2), T387 (s2), T367 (s2), T525 (s2), T138 (sessions), T146 (sessions), T147 (sessions), T148 (sessions), T425 (trail), T445 (trail), T499 (ui), T500 (ui)
 
 **Random walk** (24): T190 (keep_older), T190 (keep_older), T190 (keep_older), T190 (keep_older), T335 (keep_older), T335 (keep_older), T171 (cycling), T279 (decisions), T281 (decisions), T282 (decisions), T283 (decisions), T149 (history), T149 (history), T128 (invariants), T129 (invariants), T130 (invariants), T131 (invariants), T132 (invariants), T133 (invariants), T334 (invariants), T154 (invariants), T249 (negative), T249 (negative), T299 (s2)
 
@@ -1958,7 +1958,7 @@ note: Two loads of sessions with no file, the second with a help window focused:
 spec: (M6) A fresh start leaves a window in `last_valid_window`: `:e a`, `:e b`, `:e c`, a load of a session with no file, `:help`, another such load, and `last_valid_window` is a valid window with a triquetra.  
 `tests/test_lifecycle.lua:163`
 
-## tests/test_missing.lua (7 cases: 7 char)
+## tests/test_missing.lua (8 cases: 8 char)
 
 **T343 [char]** files that go missing at a branch switch are tagged with the branch being left, shown in the winbar, and cleared when they come back  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:bdelete b.txt`, `:doautocmd FocusGained` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
@@ -2007,6 +2007,12 @@ spec: (M14, S1) The label at a save is the one being left at the next load: save
 `:write` → `eq(type(tag_of('brandnew')), 'string')`  
 spec: (M14) A file that was never written isn't tagged, since it never went missing: `:e brandnew.txt` with a line typed, and a cleanup pass, leave it untagged, with no `⎇` in the winbar; once it's written and then deleted on disk, the next pass tags it.  
 `tests/test_missing.lua:133`
+
+**T524 [char]** a check before a new file is taken in keeps its mark  
+`:e a` → `eq({ taken = taken, tag = tag_of('brandnew') }, { taken = true, tag = vim.NIL })`  
+note: the check comes between BufNewFile and the arrival, which waits for the editor to settle  
+spec: (M14) A check before a new file is taken in keeps its mark: `:e a`, then `:e brandnew.txt` and a check of every known file in the same call, before the arrival settles; once it has, another check leaves brandnew.txt untagged.  
+`tests/test_missing.lua:147`
 
 ## tests/test_navigation.lua (11 cases: 11 char)
 
@@ -2846,7 +2852,7 @@ note: A hash that no buffer or path has.
 spec: An unknown hash in a map doesn't make a restore throw.  
 `tests/test_restores.lua:122`
 
-## tests/test_s2.lua (110 cases: 110 char)
+## tests/test_s2.lua (111 cases: 111 char)
 
 **T292 [char]** (S2) save_session() and load_session() take no directory: the file is named after getcwd(-1, -1) and a fresh process loads it  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
@@ -3674,6 +3680,14 @@ spec: (S2 Closed-stack picker; DESK:2370) Discarding a No Name entry asks first:
 spec: (S2 Closed-stack picker; DESK:2373) A typed header that names no list refuses the write: with b and c closed, a line `≡nowhere` added and `:w` give an error naming it, and every list stays as it was.  
 `tests/test_s2.lua:2694`
 
+**T525 [char]** (S1 Load) a window entry whose maps are saved as null loads with empty ones ⚑ state set by hand  
+`:e a`, `:e b` → `eq(S2.save(child), { true })`  
+→ `eq(S2.load(child), { true })`  
+→ `eq({ failed = failed, maps = maps, slots = child.slots() },`  
+note: the saved maps set to null by hand, as a file written elsewhere may hold them  
+spec: (S1 Load) A window entry whose maps are saved as `null` loads with empty ones: saved at `⦉a⦊ [b] ⟦-⟧`, its maps set to `null` by hand in the file, as one written elsewhere may hold them, then a fresh process's load gives no hook failure, two empty maps and `⦉a⦊ [b] ⟦-⟧`.  
+`tests/test_s2.lua:2704`
+
 ## tests/test_secondary_key.lua (11 cases: 11 char)
 
 **T36 [char]** graduation: {c=c t=b}, dtm{b→a}, <M-f> gives {c=c s=b}, dsm{b→a}, same buffer, "Ternary slot graduated"  
@@ -3964,7 +3978,7 @@ note: The desk's 1.txt and 2.txt are a and b here.
 spec: The desk's sequence (`:e 1.txt`, `:e 2.txt`, `<M-n>`, `:bdelete`, `<M-S-f>`, `<M-S-f>`) throws nothing and leaves no duplicate slot. The reopen's `BufEnter` is slotted once the editor settles, so cleanup doesn't clear the ternary before the rename; the rename's missing guard for …  
 `tests/test_ternary_key.lua:44`
 
-## tests/test_trail.lua (26 cases: 26 char)
+## tests/test_trail.lua (27 cases: 27 char)
 
 **T425 [char]** (A27) :CavediverTrail opens the trail, untracked, on today's page ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-.>`, `<M-.> (via line_with)` → `eq({`  
@@ -4001,100 +4015,106 @@ spec: (A27) The header's pieces can be turned off: with `trail = { header = { ta
 spec: (A27) With `glyphs = { set = "ascii" }`, the trail draws no character outside ASCII.  
 `tests/test_trail.lua:223`
 
+**T526 [char]** (A27) under the ascii set, what a move or a trigger was recorded with is drawn in it  
+`:e a`, `:e b`, `:e c`, `<M-f>`, `:e d`, `:bdelete b.txt`, `:doautocmd FocusGained` → `eq({ wide = wide, label = line_with('feature -> main') ~= nil, tag = line_with('@feature') ~= nil, moved = line_with('x.txt') ~= nil },`  
+note: T418's route: a change of label from feature to main tags b.txt gone a move with no step open begins one with no trigger the step with no trigger is drawn (its dash among the lines the ASCII check reads)  
+spec: (A27) Under the ascii set, what a move or a trigger was recorded with is drawn in it: T418's route, a change of label from feature to main tagging b.txt gone, and a move recorded by hand with no step open, give a trail with no character outside ASCII, the move with no step drawn …  
+`tests/test_trail.lua:236`
+
 **T432 [char]** (A27) q and <C-c> leave, back in the window the trail came from  
 `:e a`, `:e b`, `:e c`, `<M-.>` → `eq(left, { { view = true, buf = false, back = true }, { view = true, buf = false, back = true } })`  
 spec: (A27) `q` and `<C-c>` leave: either closes the float, its buffer goes, and the focus is back in the window the trail was opened from.  
-`tests/test_trail.lua:236`
+`tests/test_trail.lua:265`
 
 **T433 [char]** (A27) opening the trail reads only what it shows  
 `:e a`, `:e b`, `:e c`, `<M-.>` → `eq(S2.save(child), { true })`  
 → `eq(S2.load(child), { true })`  
 → `eq({ listed = listed >= 21, opened = view() ~= vim.NIL, few = reads <= 15 }, { listed = true, opened = true, few = true })`  
 spec: (A27) Opening the trail reads only what it shows: with steps kept on 20 earlier days and the session saved, a fresh process opening the trail reads at most 15 pages, the gauge's days around the one shown.  
-`tests/test_trail.lua:273`
+`tests/test_trail.lua:302`
 
 **T434 [char]** (A27) a fold opened on one day stays that day's  
 `:e a`, `:e b`, `:e c`, `:e d`, `:e e`, `:e f`, `:bdelete a.txt b.txt c.txt d.txt` → `eq({ open_today = open_today, older = line_with('4 closed', '▸') ~= nil, older_open = line_with('4 closed', '▾') ~= nil },`  
 spec: (A27) A fold opened on one day stays that day's: a fold opened today, then `H` to an older day with a fold at the same place, shows that one closed, `▸`.  
-`tests/test_trail.lua:293`
+`tests/test_trail.lua:322`
 
 **T435 [char]** (A27) za on a step opens the ring's steps since the trail's line before  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `<M-.>`, `<M-.> (via line_with)`, `<M-f> (via line_with)`, `<M-.> (via line_with)` → `eq({ step = step ~= nil, opened = opened, closed = line_with('<M-f>') == nil }, { step = true, opened = true, closed = true })`  
 `<M-f> (via line_with)`  
 spec: (A27) `za` on a step opens the ring's steps since the trail's line before: after `:e a`, `:e b`, `:e c`, `<M-f>` and `<M-.>`, the `<M-.>` line shows `▸`, and `za` there opens the steps before it, the `<M-f>` among them with its row, `⦉b⦊ [c] ⟦-⟧ → ⦉-⦊ [c] ⟦b⟧`; `za` again closes …  
-`tests/test_trail.lua:324`
+`tests/test_trail.lua:353`
 
 **T436 [char]** (A27) the ring's steps open 20 at a time  
 `:e a`, `<M-.>`, `<M-.> (via line_with)` → `eq({ first = first, all = count_with('BufEnter'), earlier = line_with('earlier steps') == nil },`  
 spec: (A27) The ring's steps open 20 at a time: with 25 steps since the trail's line before, `za` opens the 20 nearest and a line "… 5 earlier steps", and `za` on that line opens the other 5.  
-`tests/test_trail.lua:338`
+`tests/test_trail.lua:367`
 
 **T437 [char]** (A27) a line from before this editor doesn't expand  
 `:e a`, `:e b`, `:e c`, `<M-.>` → `eq(S2.save(child), { true })`  
 → `eq(S2.load(child), { true })`  
 `:e a`, `:e b`, `:e a`, `:e b`, `:e a`, `:bdelete b.txt`, `<M-.> (via line_with)` → `eq({ row = row ~= nil, mark = row and lines()[row]:find('▸', 1, true) == nil, same = #lines() == before, own = own },`  
 spec: (A27) A line from before this editor doesn't expand: a step an earlier editor wrote into today's page, its seq the same as one in this editor's ring, shows no `▸`, and `za` on it opens nothing, while this editor's own line beside it does show `▸`.  
-`tests/test_trail.lua:355`
+`tests/test_trail.lua:384`
 
 **T438 [char]** (A27) a search is a name's life line across every page, oldest first  
 `:CavediverTrail c.txt` → `eq({`  
 spec: (A27) A search is a name's life line across every page: with c.txt closed three days ago and again today, `s` and `c.txt` give a header holding `c.txt` and "2 moves over 2 days", and a line for each, oldest first, its gutter bar in the closed state's colour; `:CavediverTrail c.tx…  
-`tests/test_trail.lua:393`
+`tests/test_trail.lua:422`
 
 **T439 [char]** (A27) <CR> on a result opens its day on its step, and q goes back  
 `<CR> (via type_in)` → `eq({ day = header:find('3 days down', 1, true) ~= nil, step = at:find('<M-.>', 1, true) ~= nil, back = lines()[1]:find('today', 1, true) ~= nil },`  
 spec: (A27) `<CR>` on a result opens its day with the cursor on its step, and `q` in a search goes back to the day it came from.  
-`tests/test_trail.lua:417`
+`tests/test_trail.lua:446`
 
 **T440 [char]** (A27) * searches the name under the cursor  
 → `eq({ search = header:find('⌕', 1, true) ~= nil, named = header:find('c.txt', 1, true) ~= nil }, { search = true, named = true })`  
 spec: (A27) `*` searches the name under the cursor: on c.txt's close, `*` gives c.txt's life line.  
-`tests/test_trail.lua:436`
+`tests/test_trail.lua:465`
 
 **T441 [char]** (A27) gf acts on the name under the cursor and stays  
 `:e a`, `:e b`, `:e c`, `<M-.>`, `:e a`, `:e b`, `:vsplit`, `:e x`, `:wincmd p`, `:e c`, `<M-n>`, `:wincmd p`, `:e a`, `:e d`, `:tabprevious`, `:e a`, `<M-.>` → `eq({ file = file, window = window, list = list.ft == 'cavediver-closed-lists' and list.line:find('t', 1, true) ~= nil },`  
 note: a file a window: T411's cancel, a move on the window that cycled, the trail opened from the split a list  
 spec: (A27) `gf` acts on the name under the cursor and stays: on c.txt's close it opens c.txt in the window the trail came from, the trail still open; on `≡t` in a close onto t's list it opens the closed lists on t; on a move about a window, T411's cancel, it goes to the window that cy…  
-`tests/test_trail.lua:445`
+`tests/test_trail.lua:474`
 
 **T442 [char]** (A27) the formatters replace a line's look  
 `:e a`, `:e b`, `:e c`, `:e d`, `:e c`, `<M-;><M-r>`, `:bdelete c.txt` → `eq({ header = lines()[1], step = line_with('STEP BufDelete c.txt') ~= nil, move = line_with('MOVE closed') ~= nil,`  
 spec: (A27) The formatters replace a line's look: `formatters.trail_move`, given the move, the glyphs and the step, gives a move's line; `formatters.trail_step` a step's; `formatters.trail_header` the header's; a formatter that gives nothing leaves cavediver's own.  
-`tests/test_trail.lua:493`
+`tests/test_trail.lua:522`
 
 **T443 [char]** (A27) za opens a step in a search too  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `<M-.>`, `:CavediverTrail c.txt`, `<M-.> (via line_with)`, `<M-f> (via line_with)`, `<CR> (via type_in)` → `eq({ today = today ~= nil, old = old_row and lines()[old_row]:find('▸', 1, true) == nil, opened = opened,`  
 `<M-.> (via line_with)`, `<M-f> (via line_with)`  
 spec: (A27) `za` opens a step in a search too (the author: "Expand in search too"): with c.txt closed three days ago and, after `:e a`, `:e b`, `:e c` and `<M-f>`, again today, the search for c.txt shows `▸` on today's result and not on the older one, and `za` on today's opens the ring…  
-`tests/test_trail.lua:510`
+`tests/test_trail.lua:539`
 
 **T444 [char]** (A27) * on a file follows that file, and a typed name every file of that name  
 `:e a`, `:e sub/c.txt`, `<M-.>`, `:e c`, `<M-.>` → `eq({ closes = #closes, star = star:find('1 move over 1 day', 1, true) ~= nil, typed = typed:find('2 moves over 1 day', 1, true) ~= nil },`  
 spec: (A27) `*` on a file follows that file, and a typed name every file of that name: with `sub/c.txt` closed and then c.txt, both drawn `c.txt`, `*` on c.txt's close gives "1 move over 1 day", and `s` with `c.txt` "2 moves over 1 day".  
-`tests/test_trail.lua:544`
+`tests/test_trail.lua:573`
 
 **T445 [char]** (A27) a close by a rename or a repair turns the life line closed ⚑ state set by hand  
 `:e a`, `:e b`, `:saveas g.txt`, `:CavediverTrail b.txt`, `:e a`, `:e b`, `:e c`, `:CavediverTrail b.txt` → `eq({ copy = copy, repair = repair }, { copy = 'CavediverTrailLifeClosed', repair = 'CavediverTrailLifeClosed' })`  
 note: the rename: b.txt copied to g.txt, b.txt closed the repair: b's buffer wiped without events, b kept on the editor's list  
 spec: (A27) A close by a rename or a repair turns the life line closed: T417's `:saveas g.txt` gives b.txt's result a bar in the closed state's colour, and so does T398's repair, b.txt kept on the editor's list.  
-`tests/test_trail.lua:568`
+`tests/test_trail.lua:597`
 
 **T455 [char]** (A27) a window's search follows the window  
 `:e a`, `:e b`, `:vsplit`, `:e x`, `:wincmd p`, `:e c`, `<M-n>`, `:wincmd p`, `:CavediverTrail win 2`, `:CavediverTrail win 9` → `eq({ header = header:find('win 2', 1, true) ~= nil and header:find('1 move over 1 day', 1, true) ~= nil, row = row ~= nil,`  
 spec: (A27) A window's search follows the window: on T411's route, the cancel is a move about the window that cycled, window 2; `:CavediverTrail win 2`, opened from the split, lists it, "1 move over 1 day", and `*` on its line gives the same; `:CavediverTrail win 9`, no such window, sa…  
-`tests/test_trail.lua:599`
+`tests/test_trail.lua:628`
 
 **T517 [char]** (A27) a day's first step opens from the trail's line before it on an earlier day  
 `:e a`, `:e b`, `:e c`, `:e d`, `<M-.>`, `<M-f>`, `:e a`, `<M-.>`, `<M-.> (via line_with)`, `<M-f> (via line_with)`, `:CavediverTrail a.txt`, `<M-f> (via line_with)` → `eq({ moved = moved, day = day, search = search }, {`  
 note: the first close and every step before it moved to yesterday, as in an editor open past midnight  
 spec: (A27) A day's first step opens from the trail's line before it on an earlier day: `:e a`, `:e b`, `:e c`, `:e d`, `<M-.>`, `<M-f>`, `:e a`, `<M-.>`, with the first close and the steps before it moved to yesterday, as in an editor open past midnight; `za` on today's close opens `<…  
-`tests/test_trail.lua:626`
+`tests/test_trail.lua:655`
 
 **T518 [char]** (A27) a day that gets its first move while the trail is open is reached  
 `:e a`, `:e b`, `<CR> (via type_in)` → `eq({ opened = opened, meanwhile = meanwhile, l = l, reopened = reopened, day = header:find('today', 1, true) ~= nil,`  
 note: b closed in the window the trail came from, the trail staying open again for a search's <CR>: today's steps set aside by hand while the trail opens, then put back  
 spec: (A27) A day that gets its first move while the trail is open is reached: with a step kept three days ago and none today, the trail opened, then b.txt closed in the window it came from while it stays open; `L` shows today; and with the trail opened again while today's steps are se…  
-`tests/test_trail.lua:664`
+`tests/test_trail.lua:693`
 
 **T519 [char]** (A27) a window's search and gf stay in this editor  
 `:e a`, `:e b`, `:e c`, `:bdelete c.txt` → `eq(S2.save(child), { true })`  
@@ -4102,14 +4122,14 @@ spec: (A27) A day that gets its first move while the trail is open is reached: w
 `:e d`, `:bdelete d.txt`, `:CavediverTrail win` → `eq({ same = first == again, row = row ~= nil, header = header:find('1 move over 1 day', 1, true) ~= nil,`  
 note: typed into s too the earlier editor's landing, on its own page's line  
 spec: (A27) A window's search and `gf` stay in this editor: a landing on the first window in one editor, saved, and a landing on the first window, the same id, in a fresh editor that loads the session; `:CavediverTrail win` gives "1 move over 1 day", and so does `s` with `win 1`, `*` o…  
-`tests/test_trail.lua:695`
+`tests/test_trail.lua:724`
 
 **T458 [char]** (M13) the glyph sets are in the config, and a pair is changed there  
 `:e a`, `:e b`, `:e c`, `:bdelete c.txt` → `eq({ defaults = defaults, row = line_with('<b> [c]') ~= nil, closed = closed },`  
 spec: (M13) The glyph sets are in the config, and a pair is changed there: `glyphs.unicode.row_t` is `{ "⦉", "⦊" }` and `glyphs.ascii.row_t` `{ "<", ">" }`; with `glyphs = { unicode = { row_t = { "<", ">" } } }`, the trail draws a ternary as `<b>`; `glyphs = { closed = "v" }` still rep…  
-`tests/test_trail.lua:742`
+`tests/test_trail.lua:771`
 
-## tests/test_ui.lua (24 cases: 24 char)
+## tests/test_ui.lua (25 cases: 25 char)
 
 **T115 [char]** the winbar holds the slots in order, with their highlights  
 `:e c`, `:e d`, `<M-f>`, `:e e` → `slots = '⦉d⦊ [e] ⟦c⟧'`  
@@ -4205,47 +4225,53 @@ spec: (M12) With `winbar = { own = false }`, cavediver writes no winbar: a winba
 spec: (M12) The winbar's skip list is configurable: with `winbar = { skip_filetypes = { 'skipme' } }`, a tracked window whose buffer's filetype is `skipme` gets no winbar; with the defaults, it gets one.  
 `tests/test_ui.lua:304`
 
+**T527 [char]** (M4, P26) the unmarked list's rebuild reads the marks once  
+`:e a`, `:e b`, `:e c`, `:e d`, `:e e` → `eq(tries, { n = 1, ordered = 5 })`  
+note: harpoon not installed: the harness's stub taken away, and each try counted  
+spec: (M4, P26) The unmarked list's rebuild reads the marks once: with harpoon not installed and no `marks_provider`, five files open and the list rebuilt, `require('harpoon')` is tried once.  
+`tests/test_ui.lua:316`
+
 **T450 [char]** (M12, P26) marked buffers come from the provider  
 `:e a`, `:e b`, `:e c`, `:e a` → `eq({ marked = marked, off = off }, { marked = { a = false, b = { true, 1 }, c = false }, off = false })`  
 spec: (M12, P26) Marked buffers come from the provider: with `marks_provider` returning b.txt's path, b is marked in the bufferline (`is_harpooned`) with its index 1, and a and c aren't; with `marks_provider = false`, nothing is marked though harpoon's stub lists b.  
-`tests/test_ui.lua:316`
+`tests/test_ui.lua:333`
 
 **T456 [char]** (M12) the indicators by kind  
 `:e a`, `:e b`, `:CavediverIndicators roles off`, `:CavediverIndicators roles on`, `:CavediverIndicators harpoon off`, `:CavediverIndicators off`, `:CavediverIndicators on` → `eq(got, {`  
 spec: (M12) The indicators by kind: with b marked by `marks_provider` and current, `:CavediverIndicators roles off` draws b's index as its mark alone, `harpoon off` as `[N]` with no mark and its name with no `⥤ {1}`, and `off` with neither; `on` brings both back.  
-`tests/test_ui.lua:343`
+`tests/test_ui.lua:360`
 
 **T457 [char]** (M12) a window with no current slot shows its visit alone  
 `:e a`, `:help`, `:wincmd p`, `:split | terminal` → `eq({ piece = left ~= nil, group = focused:find('%#WinbarVisit#', 1, true) ~= nil,`  
 `:e a`, `:help` → `eq(child.lua('return vim.wo.winbar'), '')`  
 note: a split with a winbar of its own keeps it the help split stops qualifying: a skip-list filetype; its bar goes not owned: none drawn  
 spec: (M12) A window with no current slot shows its visit alone: a `:help` split's winbar is centred and holds `[<help's bufnr> help]` in `WinbarVisit`, unfocused `WinbarVisitNC`; a split whose winbar was set by hand keeps it; the help split, its filetype turned `neo-tree`, a skip-list…  
-`tests/test_ui.lua:374`
+`tests/test_ui.lua:391`
 
 **T498 [char]** (M12) a % in a file name doesn't break the winbar  
 `:e a` → `eq({ errors = errors(), named = bar:find('50%% off.txt', 1, true) ~= nil }, { errors = {}, named = true })`  
 spec: (M12) A `%` in a file name doesn't break the winbar: `:e a`, then `50% off.txt` opened, give no hook failure, and the winbar names it.  
-`tests/test_ui.lua:416`
+`tests/test_ui.lua:433`
 
 **T499 [char]** (M12) a dead ternary is repaired on the spot, whatever the secondary holds ⚑ state set by hand  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 `:noautocmd bwipeout ' .. bufnr('b.txt`, `:e d` → `eq(errors(), {})`  
 note: b, the ternary, is wiped without events; :e d then clears the display names, so the next refresh reads b's dead buffer, unless the repair has run.  
 spec: (M12, T242) A dead ternary is repaired on the spot, whatever the secondary holds: `:e a`, `:e b`, `:e c` give `⦉b⦊ [c] ⟦-⟧`; b's buffer wiped with `noautocmd`, then `:e d`, which clears the display names, give no hook failure over the next refreshes.  
-`tests/test_ui.lua:427`
+`tests/test_ui.lua:444`
 
 **T500 [char]** (A25) a window closed while cavediver was off doesn't break the refresh once it's back on ⚑ state set by hand  
 `:e a`, `:vsplit`, `:e b`, `:close`, `:e c` → `eq({ errors = errors(), kept = child.lua('return require("cavediver.domains.window").data.crux[...] ~= nil', { split }) },`  
 note: The split closes while cavediver is off, so its WinClosed never runs.  
 spec: (A25) A window closed while cavediver was off doesn't break the refresh once it's back on: `:e a`, a split on b, `disable()`, the split closed, `setup()` again, and no hook failure over the next refreshes.  
-`tests/test_ui.lua:438`
+`tests/test_ui.lua:455`
 
 **T501 [char]** (M12) a nowrite buffer on a real file gets its winbar like any file  
 `:e a`, `:e b`, `:setlocal buftype=nowrite`, `:e c`, `:buffer ' .. bufnr('b.txt` → `slots = '⦉c⦊ [b] ⟦-⟧'`  
 → `eq({ current = bar:find('[' .. bufnr('b.txt') .. ']', 1, true) ~= nil, ternary = bar:find('⦉' .. bufnr('c.txt') .. '⦊', 1, true) ~= nil },`  
 note: b is nowrite on a real file, which tracking takes as any file.  
 spec: (M12, M3) A `nowrite` buffer on a real file gets its winbar like any file: `:e a`, `:e b`, b set `nowrite`, `:e c`, back to b give `⦉c⦊ [b] ⟦-⟧`, and the winbar shows b's number as current and c's as the ternary.  
-`tests/test_ui.lua:455`
+`tests/test_ui.lua:472`
 
 **T502 [char]** (M12) after a load with an untracked window focused, the bufferline draws nothing it can't colour  
 `:e a`, `:e c`, `:e b` → `eq(child.lua('return { pcall(require("cavediver").save_session, "s1") }'), { true })`  
@@ -4253,7 +4279,7 @@ spec: (M12, M3) A `nowrite` buffer on a real file gets its winbar like any file:
 `:bdelete ' .. bufnr('a.txt` → `eq({ errors = errors(), dump = child.dumped_since(dumps) }, { errors = {}, dump = nil })`  
 note: A whole-editor load from idle, with a help window focused: the teardown leaves the bufferline with no window's slots to read. what cokeline does for the README's setup: the colour callback for each buffer its filter keeps  
 spec: (M12) After a load with an untracked window focused, the bufferline draws nothing it can't colour: a session saved, `:help` focused, the session loaded from idle, then `:bdelete a.txt` there; the colour callback, called for each buffer the README's filter keeps as cokeline calls …  
-`tests/test_ui.lua:469`
+`tests/test_ui.lua:486`
 
 ## tests/test_windows.lua (6 cases: 6 char)
 
