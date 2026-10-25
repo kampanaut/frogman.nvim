@@ -587,7 +587,7 @@ for _, name in ipairs({ "reopen_last_closed", "toggle_secondary", "toggle_ternar
 	"open_primary_buffer_history", "open_closed_lists", "toggle_primary", "delete_buffer", "set_primary" }) do
 	local export = M[name]
 	M[name] = function(...)
-		return settle.guard(function(...)
+		return settle.now(function(...)
 			navigation.cancel_cycle_elsewhere()
 			return export(...)
 		end, ...)

@@ -175,7 +175,7 @@ function M.init_autocmds(group)
 							settle.drain()
 							-- the step is about the window the lists act on, the one they were opened from
 							require('cavediver.domains.ledger').begin("keymap", lhs, routines.closed_lists_origin(buf) or vim.api.nvim_get_current_win())
-							settle.guard(function()
+							settle.now(function()
 								require('cavediver.domains.navigation').cancel_cycle_elsewhere()
 								fn()
 							end)

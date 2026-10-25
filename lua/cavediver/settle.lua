@@ -4,6 +4,11 @@
 ---knows about the editor. While anything is queued, cavediver isn't settled. A key runs what's
 ---still queued before acting, so keys in one batch (a macro, a mapping) act as if they were
 ---typed by hand.
+---
+---Everything queued ends in `run()`, whichever reaches it first: its own scheduled turn, which
+---`later()` books as it queues it, or a drain that comes sooner. `run()` keeps track of what ran
+---and what's still queued, so each item runs once. `now()` runs everything still queued first,
+---then the key's own job, and no drain starts until that job is done.
 
 local M = {}
 
@@ -11,9 +16,12 @@ local M = {}
 ---@type { name: string, fn: function, done: boolean }[]
 local queue = {}
 
----How many keys or queued items are running now (no drain starts inside one)
+---How many of cavediver's key jobs and queued items are running now. At 0 a drain may run the
+---queue. 1 is one job or one item, the most cavediver's own code reaches. 2 or more is a job
+---running inside another, when code a job calls (a provider, a formatter, an autocmd on an event
+---the job causes) runs a key's job of its own.
 ---@type integer
-local busy = 0
+local working_count = 0
 
 ---Run one item of the queue, once.
 ---
@@ -34,9 +42,9 @@ local function run(item)
 			break
 		end
 	end
-	busy = busy + 1
+	working_count = working_count + 1
 	local ok, err = xpcall(item.fn, debug.traceback)
-	busy = busy - 1
+	working_count = working_count - 1
 	if not ok then
 		vim.schedule(function()
 			error(err, 0)
@@ -63,11 +71,12 @@ end
 ---Run all the settle work still queued, oldest first.
 ---
 ---Work queued while it runs is run too. Does nothing inside a key or a running item, so
----nothing runs out of its order.
+---nothing runs out of its order. A drain skipped that way isn't put off: what's queued still
+---runs on its own turn.
 ---
 ---@return nil
 function M.drain()
-	if busy > 0 then
+	if working_count > 0 then
 		return
 	end
 	while queue[1] do
@@ -84,16 +93,16 @@ end
 ---@param fn function The key's job
 ---@param ... any The job's arguments
 ---@return any ... The job's results
-function M.guard(fn, ...)
+function M.now(fn, ...)
 	M.drain()
-	busy = busy + 1
+	working_count = working_count + 1
 	-- the job's error comes back as it was raised; at its site, with the stack still whole, the dump
 	-- takes it with its traceback
 	local results = { xpcall(fn, function(err)
 		pcall(require('cavediver.domains.ledger.dump').key_failed, err, debug.traceback("", 2))
 		return err
 	end, ...) }
-	busy = busy - 1
+	working_count = working_count - 1
 	if not results[1] then
 		error(results[2], 0)
 	end

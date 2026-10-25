@@ -554,7 +554,7 @@ end
 
 ---Dump a key's error, a plain Lua error raised inside its job.
 ---
----`settle.guard` calls this at the error's site. A Vim error, an `E` number a command or the
+---`settle.now` calls this at the error's site. A Vim error, an `E` number a command or the
 ---API gave, which the editor's state can reach, isn't dumped, and neither is a message
 ---`ledger.never()` dumped already. Dumps once per distinct error.
 ---
