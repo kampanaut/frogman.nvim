@@ -29,21 +29,34 @@ M.storage = storage
 M.ledger = ledger
 M.engine = engine
 
----Begin a key's step, once what's still queued has settled.
----
----Runs the settle work still queued first, so it lands on the step it belongs to, as if the
----key had been typed by hand. Then begins the key's own step, in the current window.
----
----@param lhs string The key, as the step's trigger
----@return nil
-local function begin_key(lhs)
-	settle.drain()
-	ledger.begin("keymap", lhs, vim.api.nvim_get_current_win())
-end
-
 -- The keys the last setup mapped, each with its callback, so the next one takes off those that are
 -- still cavediver's
 local mapped = {}
+
+-- Each key cavediver maps: its name in the config, the export it runs and its description. The
+-- same table wraps the exports, so a key's export can't be left unwrapped; each entry then holds the
+-- export's own job too (`job`), which its mapping runs as a step of its own.
+local keymap_actions = {
+	-- Buffer lifecycle
+	{ "reopen_last_closed", "reopen_last_closed", "Reopen last closed buffer" },
+	-- Core triquetra operations
+	{ "toggle_secondary", "toggle_secondary", "Toggle current ↔ secondary buffer" },
+	{ "toggle_ternary", "toggle_ternary", "Toggle current ↔ ternary buffer" },
+	{ "jump_to_primary", "jump_to_primary", "Bring primary buffer to current" },
+	{ "restore_ternary", "restore_ternary", "Restore ternary relationship" },
+	{ "restore_secondary", "restore_secondary", "Restore secondary relationship" },
+	-- Cycling mode navigation
+	{ "cycle_left", "cycle_left", "Cycle left during cycling mode" },
+	{ "cycle_right", "cycle_right", "Cycle right during cycling mode" },
+	{ "cycle_select", "cycle_select", "Select cycling buffer and attach history" },
+	{ "toggle_window", "toggle_window", "Toggle between current and previous window" },
+	{ "set_primary", "set_primary", "Set current buffer as primary" },
+	-- Primary buffer management
+	{ "toggle_primary", "toggle_primary", "Switch the primary on or off" },
+	{ "close_buffer", "delete_buffer", "Close the current buffer" },
+	{ "open_primary_buffer_history", "open_primary_buffer_history", "Open the primary queue" },
+	{ "open_closed_lists", "open_closed_lists", "Open the closed lists" },
+}
 
 ---Setup keymaps for cavediver operations
 ---@param keymaps CavediverKeymaps Keymap configuration
@@ -57,113 +70,13 @@ local function setup_keymaps(keymaps)
 	mapped = {}
 	if not keymaps then return end
 
-	-- Buffer lifecycle
-	if keymaps.reopen_last_closed then
-		vim.keymap.set('n', keymaps.reopen_last_closed, function()
-			begin_key(keymaps.reopen_last_closed)
-			M.reopen_last_closed()
-		end, { desc = "Reopen last closed buffer" })
-	end
-
-	-- Core triquetra operations
-	if keymaps.toggle_secondary then
-		vim.keymap.set('n', keymaps.toggle_secondary, function()
-			begin_key(keymaps.toggle_secondary)
-			M.toggle_secondary()
-		end, { desc = "Toggle current ↔ secondary buffer" })
-	end
-
-	if keymaps.toggle_ternary then
-		vim.keymap.set('n', keymaps.toggle_ternary, function()
-			begin_key(keymaps.toggle_ternary)
-			M.toggle_ternary()
-		end, { desc = "Toggle current ↔ ternary buffer" })
-	end
-
-	if keymaps.jump_to_primary then
-		vim.keymap.set('n', keymaps.jump_to_primary, function()
-			begin_key(keymaps.jump_to_primary)
-			M.jump_to_primary()
-		end, { desc = "Bring primary buffer to current" })
-	end
-
-	if keymaps.restore_ternary then
-		vim.keymap.set('n', keymaps.restore_ternary, function()
-			begin_key(keymaps.restore_ternary)
-			M.restore_ternary()
-		end, { desc = "Restore ternary relationship" })
-	end
-
-	if keymaps.restore_secondary then
-		vim.keymap.set('n', keymaps.restore_secondary, function()
-			begin_key(keymaps.restore_secondary)
-			M.restore_secondary()
-		end, { desc = "Restore secondary relationship" })
-	end
-
-	-- Cycling mode navigation
-	if keymaps.cycle_left then
-		vim.keymap.set('n', keymaps.cycle_left, function()
-			begin_key(keymaps.cycle_left)
-			M.cycle_left()
-		end, { desc = "Cycle left during cycling mode" })
-	end
-
-	if keymaps.cycle_right then
-		vim.keymap.set('n', keymaps.cycle_right, function()
-			begin_key(keymaps.cycle_right)
-			M.cycle_right()
-		end, { desc = "Cycle right during cycling mode" })
-	end
-
-	if keymaps.cycle_select then
-		vim.keymap.set('n', keymaps.cycle_select, function()
-			begin_key(keymaps.cycle_select)
-			M.cycle_select()
-		end, { desc = "Select cycling buffer and attach history" })
-	end
-
-	if keymaps.toggle_window then
-		vim.keymap.set('n', keymaps.toggle_window, function()
-			begin_key(keymaps.toggle_window)
-			M.toggle_window()
-		end, { desc = "Toggle between current and previous window" })
-	end
-
-	if keymaps.set_primary then
-		vim.keymap.set('n', keymaps.set_primary, function()
-			begin_key(keymaps.set_primary)
-			M.set_primary()
-		end, { desc = "Set current buffer as primary" })
-	end
-
-	-- Primary buffer management
-	if keymaps.toggle_primary then
-		vim.keymap.set('n', keymaps.toggle_primary, function()
-			begin_key(keymaps.toggle_primary)
-			M.toggle_primary()
-		end, { desc = "Switch the primary on or off" })
-	end
-
-	if keymaps.close_buffer then
-		vim.keymap.set('n', keymaps.close_buffer, function()
-			begin_key(keymaps.close_buffer)
-			M.delete_buffer()
-		end, { desc = "Close the current buffer" })
-	end
-
-	if keymaps.open_primary_buffer_history then
-		vim.keymap.set('n', keymaps.open_primary_buffer_history, function()
-			begin_key(keymaps.open_primary_buffer_history)
-			M.open_primary_buffer_history()
-		end, { desc = "Open the primary queue" })
-	end
-
-	if keymaps.open_closed_lists then
-		vim.keymap.set('n', keymaps.open_closed_lists, function()
-			begin_key(keymaps.open_closed_lists)
-			M.open_closed_lists()
-		end, { desc = "Open the closed lists" })
+	for _, action in ipairs(keymap_actions) do
+		local lhs, desc = keymaps[action[1]], action[3]
+		if lhs then
+			vim.keymap.set('n', lhs, function()
+				ledger.run_key(lhs, vim.api.nvim_get_current_win(), action.job)
+			end, { desc = desc })
+		end
 	end
 
 	for action, lhs in pairs(keymaps) do
@@ -582,11 +495,10 @@ end
 -- Each key's export runs once cavediver has settled: keys in one batch (a macro, a mapping,
 -- cavediver's own or a user's) can come before the settle work their events queued. A cycle still
 -- running in another window, which no window entry queued a cancel for, ends too.
-for _, name in ipairs({ "reopen_last_closed", "toggle_secondary", "toggle_ternary", "jump_to_primary",
-	"restore_ternary", "restore_secondary", "cycle_left", "cycle_right", "toggle_window", "cycle_select",
-	"open_primary_buffer_history", "open_closed_lists", "toggle_primary", "delete_buffer", "set_primary" }) do
-	local export = M[name]
-	M[name] = function(...)
+for _, action in ipairs(keymap_actions) do
+	local export = M[action[2]]
+	action.job = export
+	M[action[2]] = function(...)
 		return settle.now(function(...)
 			navigation.cancel_cycle_elsewhere()
 			return export(...)

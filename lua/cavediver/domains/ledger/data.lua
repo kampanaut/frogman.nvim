@@ -20,8 +20,5 @@ return {
 	scopes = {},
 	days = {},
 	session = nil,
-	started = (function()
-		local seconds, microseconds = vim.uv.gettimeofday()
-		return seconds + microseconds / 1e6
-	end)(),
+	started = nil, -- set with the ledger's clock as the routines load
 }

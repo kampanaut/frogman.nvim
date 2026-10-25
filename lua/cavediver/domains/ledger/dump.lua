@@ -35,41 +35,9 @@ local nevers = {}
 ---@type integer
 local count = 0
 
----The header a dump starts with, as a session's file does
----@type string
-local HEADER = "CDV1"
-
 ---The salt this editor's dumps are sealed with, made with its first dump
 ---@type string|nil
 local salt
-
----Keys for the dumps, by directory and salt, each stretched once
----@type table<string, string>
-local keys = {}
-
----Get the key for a directory and a salt.
----
----Stretches it the first time and keeps it, so each directory and salt pays for it once.
----
----@param directory string The directory the key is stretched from
----@param with_salt string The salt
----@return string key The key that seals and opens dumps
-local function key_for(directory, with_salt)
-	local id = directory .. "\0" .. with_salt
-	keys[id] = keys[id] or require('cavediver.domains.storage.crypto').derive_key(directory, with_salt)
-	return keys[id]
-end
-
----Get what a dump's seal covers besides its text.
----
----Returns the header, the salt and the word `dump` together, so a dump can't pass for a
----session's file.
----
----@param with_salt string The dump's salt
----@return string aad The extra data the seal covers
-local function aad(with_salt)
-	return HEADER .. with_salt .. "\ndump"
-end
 
 ---Check if dumps are turned on.
 ---
@@ -250,17 +218,6 @@ local function compose(what, failing)
 		return r and { c = file(r.c), s = file(r.s), t = file(r.t), p = vim.tbl_map(file, r.p or {}), on = r.on,
 			dtm = map(r.dtm), dsm = map(r.dsm), shows = file(r.shows) }
 	end
-	local function stem(hash)
-		if hash == nil then
-			return "-"
-		end
-		local name = ledger.name_of(hash) or "?"
-		return name:match("^%[") and name or vim.fn.fnamemodify(name, ":r")
-	end
-	local function row(r)
-		r = r or {}
-		return "⦉" .. stem(r.t) .. "⦊ [" .. stem(r.c) .. "] ⟦" .. stem(r.s) .. "⟧"
-	end
 	local function notes(r)
 		if not r or not r.c then
 			return ""
@@ -271,7 +228,7 @@ local function compose(what, failing)
 			for _, key in ipairs({ r.c, r.c .. "-swap" }) do
 				local v = (m[2] or {})[key]
 				if v then
-					table.insert(parts, stem(r.c) .. (key:match("%-swap$") and "-swap" or "") .. ">" .. stem(v))
+					table.insert(parts, ledger.slot_name(r.c) .. (key:match("%-swap$") and "-swap" or "") .. ">" .. ledger.slot_name(v))
 				end
 			end
 			if #parts > 0 then
@@ -299,7 +256,7 @@ local function compose(what, failing)
 		local after = step == failing and ledger.row_of(step.win, step.names) or step.row_after
 		local n = step.win_nr or number(step.win)
 		table.insert(rows, string.format("%s  %-7s %-16s %-6s %s → %s  %s%s", os.date("%H:%M:%S", math.floor(step.time)),
-			step.cause, step.trigger or "", n and ("win " .. n) or "win -", row(step.row_before), row(after), notes(after),
+			step.cause, step.trigger or "", n and ("win " .. n) or "win -", ledger.draw_row(step.row_before), ledger.draw_row(after), notes(after),
 			step == failing and "   ← fired here" or ""))
 		table.insert(replay_steps, {
 			seq = step.seq, cause = step.cause, trigger = step.trigger, cut = step.cut, window = n, winid = step.win,
@@ -404,8 +361,9 @@ local function write(path, text)
 		vim.fn.mkdir(dir, "p", tonumber("700", 8))
 	end
 	salt = salt or crypto.random_bytes(crypto.salt_length)
-	local sealed = crypto.seal(key_for(vim.fn.getcwd(-1, -1), salt), text, aad(salt))
-	require('cavediver.domains.storage.routines').write_atomic(path, HEADER .. salt .. sealed)
+	-- sealed as a session's file is, the word `dump` under the seal too, so it can't pass for one
+	local storage = require('cavediver.domains.storage.routines')
+	storage.seal_file(path, storage.key_for(vim.fn.getcwd(-1, -1), salt), salt, text, "dump")
 end
 
 ---Write a dump, once per failure.
@@ -480,7 +438,6 @@ end
 ---@return string|nil text The dump's text, or nil when it can't be read here
 ---@return string|nil problem "missing", "not a dump" or "not here" (another directory, or edited)
 function M.read(path)
-	local crypto = require('cavediver.domains.storage.crypto')
 	local file = io.open(path, "rb")
 	if not file then
 		return nil, "missing"
@@ -488,14 +445,13 @@ function M.read(path)
 	local bytes = file:read("*a")
 	file:close()
 	-- a directory opens, and reads as nothing
-	if type(bytes) ~= "string" or bytes:sub(1, #HEADER) ~= HEADER or #bytes <= #HEADER + crypto.salt_length then
+	if type(bytes) ~= "string" then
 		return nil, "not a dump"
 	end
-	local with_salt = bytes:sub(#HEADER + 1, #HEADER + crypto.salt_length)
-	local opened, text = pcall(function()
-		return crypto.open(key_for(vim.fn.getcwd(-1, -1), with_salt), bytes:sub(#HEADER + crypto.salt_length + 1), aad(with_salt))
-	end)
-	if not opened or text == nil then
+	local opened, text, _, problem = pcall(require('cavediver.domains.storage.routines').open_sealed, bytes, vim.fn.getcwd(-1, -1), "dump")
+	if opened and problem == "not sealed" then
+		return nil, "not a dump"
+	elseif not opened or text == nil then
 		return nil, "not here"
 	end
 	return text

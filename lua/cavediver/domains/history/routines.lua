@@ -352,16 +352,6 @@ function M.join_pool(tabpage, name, directory)
 	return pool
 end
 
----Get the time now, to the microsecond.
----
----Closes within the same second still get an order this way.
----
----@return number time Seconds since the epoch, with the microseconds as the fraction
-local function close_time()
-	local seconds, microseconds = vim.uv.gettimeofday()
-	return seconds + microseconds / 1e6
-end
-
 ---Put a file on a pool's closed stack as its newest entry.
 ---
 ---A pool keeps one copy of each file, so an older entry for it is taken off first. The close
@@ -378,7 +368,7 @@ local function push_closed(pool, filehash, time)
 		end
 	end
 	table.insert(pool.closed, filehash)
-	pool.times[filehash] = time or close_time()
+	pool.times[filehash] = time or require('cavediver.domains.ledger').now() -- to the microsecond, so closes in one second keep their order
 	changed(pool)
 end
 
@@ -416,7 +406,7 @@ end
 ---@param quiet boolean|nil Whether the caller records the close itself
 ---@return table<Pool, boolean> pools The pools it went on (pool → true)
 function M.close_into_pools(filehash, quiet)
-	local time = close_time()
+	local time = require('cavediver.domains.ledger').now()
 	local targets = { [M.current_pool()] = true }
 	for id, _ in pairs(data.came_from[filehash] or {}) do
 		if data.pools[id] then

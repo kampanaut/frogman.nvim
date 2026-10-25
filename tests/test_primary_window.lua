@@ -293,6 +293,16 @@ T['T453 [char] (A18) the pop-up\'s keys are keymaps.views\''] = function()
 end
 
 
+-- A negative width, which the size reads as its size.
+T['T568 [char] (A18, M13) opening the primary pop-up leaves its size setting as it is'] = function()
+	child.lua('_G.CDV_TEST.setup({ primary_buffer_history_popup = { width = -0.5, height = 0.2 } })')
+	queue_ba()
+	open()
+	local got = child.lua([[return { width = vim.api.nvim_win_get_width(0), columns = vim.o.columns,
+		setting = require('cavediver.configs').primary_buffer_history_popup.width }]])
+	eq({ half = got.width == math.floor(got.columns * 0.5), setting = got.setting }, { half = true, setting = -0.5 })
+end
+
 -- leave_too and pick set to false: the pop-up maps neither, as the closed lists and the trail don't.
 T['T539 [char] (A18) a view key set to false isn\'t mapped in the pop-up'] = function()
 	child.lua('_G.CDV_TEST.setup({ keymaps = { views = { leave_too = false, pick = false } } })')

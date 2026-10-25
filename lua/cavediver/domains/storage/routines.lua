@@ -610,6 +610,37 @@ local function serialise_closed_buffers(pools)
 	return copy, times
 end
 
+---Check if a pool owns an open No Name text.
+---
+---A pool owns the texts its tabs visited, those a window of its tabs shows or has in its history.
+---The editor's pool also owns the ones no tab session's tab visited. With no pool, every text is
+---owned, as the whole editor's session holds them all while it covers every tab.
+---
+---@param owner Pool|nil The pool (nil = every text)
+---@param filehash Filehash The No Name buffer's hash
+---@return boolean owned True if the pool owns the text
+local function owned(owner, filehash)
+	if owner == nil then
+		return true
+	end
+	local visited = history.routines.tabs_that_visited(filehash)
+	for tabpage, _ in pairs(visited) do
+		if history.routines.pool_of_tab(tabpage) == owner then
+			return true
+		end
+	end
+	if owner.id ~= "" then
+		return false
+	end
+	for tabpage, _ in pairs(visited) do
+		local pool = history.routines.pool_of_tab(tabpage)
+		if pool.id ~= "" and not pool.detached then
+			return false -- a tab session's text
+		end
+	end
+	return true
+end
+
 ---Serialize [No Name] buffer content for session saving.
 ---
 ---Collects the closed [No Name] texts, with their filetype and cursor position, and
@@ -623,27 +654,6 @@ end
 ---@param owner Pool|nil The pool whose texts are collected (nil = every text)
 ---@return table<Filehash, NoNameBufferContent> texts Each text, by its buffer's hash
 local function serialise_noname_content(owner)
-	local function owned(filehash)
-		if owner == nil then
-			return true
-		end
-		local visited = history.routines.tabs_that_visited(filehash)
-		for tabpage, _ in pairs(visited) do
-			if history.routines.pool_of_tab(tabpage) == owner then
-				return true
-			end
-		end
-		if owner.id ~= "" then
-			return false
-		end
-		for tabpage, _ in pairs(visited) do
-			local pool = history.routines.pool_of_tab(tabpage)
-			if pool.id ~= "" and not pool.detached then
-				return false -- a tab session's text
-			end
-		end
-		return true
-	end
 	local texts = {}
 	for identifier, content in pairs(history.data.noname_content) do
 		-- print("identifier: " .. identifier)
@@ -653,7 +663,7 @@ local function serialise_noname_content(owner)
 	end
 	for filehash, bufnr in pairs(history.data.hash_buffer_registry.buffers) do
 		local filepath = history.get_filepath_from_hash(filehash)
-		if filepath and filepath:match("^NONAME_") and vim.api.nvim_buf_is_loaded(bufnr) and owned(filehash) then
+		if filepath and filepath:match("^NONAME_") and vim.api.nvim_buf_is_loaded(bufnr) and owned(owner, filehash) then
 			local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 			if not (#lines == 0 or (#lines == 1 and lines[1] == "")) then -- empty ones are skipped, as when closed
 				local winid = vim.fn.bufwinid(bufnr)
@@ -876,24 +886,71 @@ local function get_session_filepath(directory, name)
 	return project_filepath
 end
 
--- each session's key once it's made, by directory and salt: another editor's save can give a file a
--- new salt, and a key kept by the file's path would then seal it with the wrong one. Each file's last
--- key is noted, so a session's key can go once the session isn't open.
+-- each key once it's made, by directory and salt, { key, file }: another editor's save can give a file
+-- a new salt, and a key kept by the file's path would then seal it with the wrong one. Each file's last
+-- key is noted, so a session's key can go once the session isn't open; a key taken for no file, a
+-- dump's, stays.
 local keys, key_of = {}, {}
 
----Get a session's key, made once for its directory and salt.
+---Get a sealed file's key, made once for its directory and salt.
 ---
----The key is noted as the file's last one, so it can go once the session isn't open.
+---With a session's file named, the key is noted as that file's last one, so it can go once the
+---session isn't open. With none, as a dump takes one, it stays for the editor's life.
 ---
----@param directory string The session's directory, the secret the key is stretched from
+---@param directory string The directory, the secret the key is stretched from
 ---@param salt string The salt from the file's header
----@param file_path string The session's file, whose key this is now
----@return string key The session's key
+---@param file_path string|nil The session's file, whose key this is now
+---@return string key The key
 local function key_for(directory, salt, file_path)
 	local id = directory .. "\0" .. salt
-	keys[id] = keys[id] or crypto.derive_key(directory, salt)
-	key_of[file_path] = id
-	return keys[id]
+	keys[id] = keys[id] or { key = crypto.derive_key(directory, salt) }
+	if file_path then
+		keys[id].file = true
+		key_of[file_path] = id
+	end
+	return keys[id].key
+end
+M.key_for = key_for
+
+---Write text sealed into a file, atomically.
+---
+---The file is the header, the salt, then the text sealed under the key. The seal covers the header,
+---the salt and the purpose word besides, so a file sealed for one purpose doesn't open as another's.
+---
+---@param path string The file
+---@param key string The key the text is sealed under
+---@param salt string The salt the key was stretched with
+---@param text string The text
+---@param purpose string|nil The word the seal covers besides (nil for a session's file)
+---@return nil
+function M.seal_file(path, key, salt, text, purpose)
+	write_atomic(path, HEADER .. salt .. crypto.seal(key, text, HEADER .. salt .. (purpose and "\n" .. purpose or "")))
+end
+
+---Open a sealed file's bytes.
+---
+---The key comes from the directory and the file's salt, kept once it's made. Gives no text when the
+---bytes aren't sealed this way, or don't open: an edit, a cut, another directory's file or another
+---purpose's.
+---
+---@param bytes string The file's bytes
+---@param directory string The directory the key is stretched from
+---@param purpose string|nil The word the seal covers besides (nil for a session's file)
+---@param file_path string|nil The session's file, whose key this is then
+---@return string|nil text The text, or nil when it doesn't open
+---@return string|nil key The key, when the bytes are sealed this way
+---@return string|nil problem "not sealed" or "integrity", when it doesn't open
+function M.open_sealed(bytes, directory, purpose, file_path)
+	if bytes:sub(1, #HEADER) ~= HEADER or #bytes <= #HEADER + crypto.salt_length then
+		return nil, nil, "not sealed"
+	end
+	local salt = bytes:sub(#HEADER + 1, #HEADER + crypto.salt_length)
+	local key = key_for(directory, salt, file_path)
+	local text = crypto.open(key, bytes:sub(#HEADER + crypto.salt_length + 1), HEADER .. salt .. (purpose and "\n" .. purpose or ""))
+	if text == nil then
+		return nil, key, "integrity"
+	end
+	return text, key, nil
 end
 
 ---Forgets the keys of sessions no longer open (defined further down, with the records)
@@ -991,9 +1048,7 @@ local function read_session_file(file_path, directory, bytes)
 		end
 		return nil, nil, "integrity"
 	end
-	local salt = bytes:sub(#HEADER + 1, #HEADER + crypto.salt_length)
-	local key = key_for(directory, salt, file_path)
-	local plaintext = crypto.open(key, bytes:sub(#HEADER + crypto.salt_length + 1), HEADER .. salt)
+	local plaintext, key = M.open_sealed(bytes, directory, nil, file_path)
 	local ok, saved_data = pcall(vim.json.decode, plaintext or "")
 	if not plaintext or not ok or type(saved_data) ~= "table" then
 		return nil, nil, "integrity"
@@ -1578,7 +1633,7 @@ end
 ---@return nil
 local function commit_session(file_path, key, salt, storage, kept)
 	enforce_session_file_policy(storage) -- whichever writer made the data, the file keeps its rules
-	write_atomic(file_path, HEADER .. salt .. crypto.seal(key, vim.json.encode(storage), HEADER .. salt))
+	M.seal_file(file_path, key, salt, vim.json.encode(storage))
 
 	local scratch_dir = file_path .. ".d/"
 	if vim.fn.isdirectory(scratch_dir) == 1 then
@@ -2155,9 +2210,9 @@ forget_closed_keys = function()
 			open[id] = true
 		end
 	end
-	for id, _ in pairs(keys) do
-		if not open[id] then
-			keys[id] = nil
+	for id, entry in pairs(keys) do
+		if entry.file and not open[id] then
+			keys[id] = nil -- a dump's key, taken for no file, stays
 		end
 	end
 	for file_path, id in pairs(key_of) do
@@ -2286,6 +2341,22 @@ function M.records_changed(id)
 			M.write_records()
 		end
 	end))
+end
+
+---Mark changed the sessions whose files hold an edited No Name text, and no other.
+---
+---A session's file holds the texts its save would write: every text while the whole editor's
+---session covers every tab, and otherwise the texts its list owns. So the edit is written with those
+---sessions' records, and no other session's file is read and written again for it.
+---
+---@param filehash Filehash The No Name buffer's hash
+---@return nil
+function M.enforce_noname_text_policy(filehash)
+	for _, session in ipairs(known_sessions()) do
+		if owned(session.owner, filehash) then
+			M.records_changed(session.id)
+		end
+	end
 end
 
 ---Drop the record writes still waiting, as a load starts.

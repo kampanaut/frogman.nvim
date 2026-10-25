@@ -28,6 +28,26 @@ function M.escape_renderline(text)
 	return (tostring(text):gsub("%%", "%%%%"))
 end
 
+---Work out a float's size and place from its size setting.
+---
+---A width or a height of at most 1 is a share of the editor, and anything bigger is cells, kept
+---within the editor; a negative one is read as its size. The float is centred. The setting itself
+---is left as it is.
+---
+---@param size {width: number, height: number} The pop-up's size setting, as the config has it
+---@return integer width The float's width, in cells
+---@return integer height The float's height, in cells
+---@return integer col The float's column, so it's centred
+---@return integer row The float's row, so it's centred
+function M.resolve_float_geometry(size)
+	local function cells(value, room)
+		value = math.abs(value)
+		return value <= 1 and math.floor(room * value) or math.min(room, math.floor(value))
+	end
+	local width, height = cells(size.width, vim.o.columns), cells(size.height, vim.o.lines)
+	return width, height, math.floor((vim.o.columns - width) / 2), math.floor((vim.o.lines - height) / 2)
+end
+
 ---Get the label a winbar names a visited buffer by.
 ---
 ---It's the buffer's number and its buftype, or its filetype when the buffer looks like a file
@@ -251,28 +271,14 @@ function M.show_primary_buffer_history()
 		desc = "Save primary buffer queue changes"
 	})
 
-	local configs = require('cavediver.configs')
-	local width, height
-	configs.primary_buffer_history_popup.width = math.abs(configs.primary_buffer_history_popup.width)
-	configs.primary_buffer_history_popup.height = math.abs(configs.primary_buffer_history_popup.height)
-
-	if configs.primary_buffer_history_popup.width <= 1 then
-		width = math.floor(vim.o.columns * configs.primary_buffer_history_popup.width)
-	else
-		width = math.min(vim.o.columns, math.floor(configs.primary_buffer_history_popup.width))
-	end
-	if configs.primary_buffer_history_popup.height <= 1 then
-		height = math.floor(vim.o.lines * configs.primary_buffer_history_popup.height)
-	else
-		height = math.min(vim.o.lines, math.floor(configs.primary_buffer_history_popup.height))
-	end
+	local width, height, col, row = M.resolve_float_geometry(require('cavediver.configs').primary_buffer_history_popup)
 
 	dwin = vim.api.nvim_open_win(dbuf, true, {
 		relative = "editor",
 		width = width,
 		height = height,
-		col = math.floor((vim.o.columns - width) / 2),
-		row = math.floor((vim.o.lines - height) / 2),
+		col = col,
+		row = row,
 		style = "minimal",
 		border = "rounded",
 		title = " Primary Buffer Queue (History) ",
@@ -911,15 +917,13 @@ function M.show_closed_lists(opts)
 		end,
 	})
 
-	local size = require('cavediver.configs').closed_lists_popup
-	local width = math.abs(size.width) <= 1 and math.floor(vim.o.columns * math.abs(size.width)) or math.min(vim.o.columns, math.floor(math.abs(size.width)))
-	local height = math.abs(size.height) <= 1 and math.floor(vim.o.lines * math.abs(size.height)) or math.min(vim.o.lines, math.floor(math.abs(size.height)))
+	local width, height, col, row = M.resolve_float_geometry(require('cavediver.configs').closed_lists_popup)
 	local dwin = vim.api.nvim_open_win(dbuf, true, {
 		relative = "editor",
 		width = width,
 		height = height,
-		col = math.floor((vim.o.columns - width) / 2),
-		row = math.floor((vim.o.lines - height) / 2),
+		col = col,
+		row = row,
 		style = "minimal",
 		border = "rounded",
 		title = " Closed lists ",

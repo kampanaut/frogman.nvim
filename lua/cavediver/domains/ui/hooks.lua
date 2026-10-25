@@ -192,14 +192,8 @@ function M.init_autocmds(group)
 					local act = fn
 					if type(fn) == "function" then
 						act = function()
-							local settle = require('cavediver.settle')
-							settle.drain()
 							-- the step is about the window the lists act on, the one they were opened from
-							require('cavediver.domains.ledger').begin("keymap", lhs, routines.closed_lists_origin(buf) or vim.api.nvim_get_current_win())
-							settle.now(function()
-								require('cavediver.domains.navigation').cancel_cycle_elsewhere()
-								fn()
-							end)
+							require('cavediver.domains.ledger').run_key(lhs, routines.closed_lists_origin(buf) or vim.api.nvim_get_current_win(), fn)
 						end
 					end
 					vim.keymap.set("n", lhs, act, { buffer = buf, desc = desc })

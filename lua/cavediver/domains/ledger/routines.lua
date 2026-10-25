@@ -20,11 +20,17 @@ local ALWAYS = { keymap = true, load = true, save = true, restart = true, label 
 local SAYS = { keymap = true, command = true, event = true }
 
 ---Get the time now, to the microsecond.
----@return number seconds Seconds since the epoch
-local function now()
+---
+---Every time cavediver records, a step's, a close's and the ledger's own start, comes from here, so
+---they compare with each other.
+---
+---@return number seconds Seconds since the epoch, with the microseconds as the fraction
+function M.now()
 	local seconds, microseconds = vim.uv.gettimeofday()
 	return seconds + microseconds / 1e6
 end
+
+data.started = M.now()
 
 ---Get a file's name as the trail shows it.
 ---
@@ -44,6 +50,38 @@ function M.name_of(filehash)
 		return "[No Name]"
 	end
 	return vim.fs.basename(path)
+end
+
+---Get a file's name as a row's slot shows it, its basename without the extension.
+---
+---A name in brackets ([No Name]) is kept whole. No file shows as "-", and a file with no name as
+---"?". With `names`, the name is the one the step captured; without, the one cavediver knows now.
+---
+---@param filehash Filehash|nil The file's hash
+---@param names table<Filehash, string>|nil File hash → basename, as a step keeps them
+---@return string name The name to show
+function M.slot_name(filehash, names)
+	if filehash == nil then
+		return "-"
+	end
+	local name
+	if names then
+		name = names[filehash]
+	else
+		name = M.name_of(filehash)
+	end
+	name = name or "?"
+	return name:match("^%[") and name or vim.fn.fnamemodify(name, ":r")
+end
+
+---Draw a row as text, `⦉t⦊ [c] ⟦s⟧`, each slot by its name.
+---
+---@param row table|nil The row (nil reads as empty slots)
+---@param names table<Filehash, string>|nil File hash → basename, as a step keeps them
+---@return string text The row
+function M.draw_row(row, names)
+	row = row or {}
+	return "⦉" .. M.slot_name(row.t, names) .. "⦊ [" .. M.slot_name(row.c, names) .. "] ⟦" .. M.slot_name(row.s, names) .. "⟧"
 end
 
 ---Get a buffer's name as an event names it.
@@ -167,7 +205,7 @@ local function new_step(cause, trigger, winid)
 	data.seq = data.seq + 1
 	local step = {
 		seq = data.seq,
-		time = now(),
+		time = M.now(),
 		cause = cause,
 		trigger = trigger,
 		win = winid,
