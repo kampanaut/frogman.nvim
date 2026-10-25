@@ -54,6 +54,7 @@ end
 
 require("cavediver.configs").session_dir = options.session_dir
 local storage = require("cavediver.domains.storage.routines")
+local filehash = require("cavediver.domains.history").routines.get_filehash -- as the editor hashes a name
 
 ---The XOR the format before encryption used: the cwd repeated as the key, then base64.
 ---@param encoded string
@@ -67,12 +68,6 @@ local function xor_decipher(encoded, key)
 		out[n] = string.char(bit.bxor(text:byte(n), k))
 	end
 	return table.concat(out)
-end
-
----@param name string
----@return string filehash
-local function filehash(name)
-	return vim.fn.sha256(name .. "\n"):sub(1, 16)
 end
 
 ---@param path string
@@ -241,7 +236,6 @@ for _, entry in ipairs(vim.fn.readdir(resession_dir)) do
 				migrated = true
 			end
 		end
-		local new_path = name and options.session_dir .. vim.fn.sha256(directory .. "\n" .. name)
 		if old_path == nil then
 			if migrated then
 				report.already = report.already + 1
@@ -251,7 +245,7 @@ for _, entry in ipairs(vim.fn.readdir(resession_dir)) do
 		elseif name == nil then
 			report.unnamed = report.unnamed + 1
 			io.stdout:write("can't tell the session name of " .. entry .. "; left as it is\n")
-		elseif vim.uv.fs_stat(new_path) and not options.replace then
+		elseif storage.session_exists(directory, name) and not options.replace then
 			-- a session saved on the encrypted format before the script ran: not a conversion
 			report.conflict = report.conflict + 1
 			used[old_path.path] = true

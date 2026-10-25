@@ -454,6 +454,40 @@ T['T552 [char] (S2) a save leaves another editor\'s write in flight alone, and s
 	eq({ fresh = vim.uv.fs_stat(fresh) ~= nil, old = vim.uv.fs_stat(old) ~= nil }, { fresh = true, old = false })
 end
 
+-- Each save runs in one call, with io.open counted on its main file meanwhile.
+T['T563 [char] (S2) a save reads its main file once'] = function()
+	child.setup()
+	child.steps({ ':e a' })
+	child.lua('vim.fn.mkdir(_G.CDV_TEST.root .. "/sub", "p")')
+	local reads_during = function(path, save)
+		return child.lua([[
+			local path, save = ...
+			local open, n = io.open, 0
+			io.open = function(p, mode)
+				if p == path and mode == 'rb' then n = n + 1 end
+				return open(p, mode)
+			end
+			local ok = pcall(loadstring(save))
+			io.open = open
+			return { ok, n }
+		]], { path, save })
+	end
+	local dir = session_dir()
+	eq(Misc.save(child), { true })
+	local whole = dir .. S2.main_file(dir, S2.cwd(child), S2.cwd(child)) -- Misc.save names it after the cwd
+	child.cmd('tabnew')
+	child.cmd('tcd sub')
+	child.cmd('edit ../b.txt')
+	child.settle()
+	local tab_save = 'require("cavediver").save_session("t", { tab = vim.api.nvim_get_current_tabpage() })'
+	eq(child.lua('return { pcall(loadstring(...)) }', { tab_save }), { true })
+	local tab = dir .. S2.main_file(dir, child.lua('return vim.fn.getcwd(-1, 0)'), 't')
+	child.cmd('tabprevious')
+	eq(reads_during(whole, 'require("cavediver").save_session(vim.fn.getcwd())'), { true, 1 })
+	child.cmd('tabnext')
+	eq(reads_during(tab, tab_save), { true, 1 })
+end
+
 -- A No Name text closed with <M-.>, another open, and an empty one shown.
 T['T305 [char] (S2) one scratch file per No Name text in <main>.d/, each in mode 0600'] = function()
 	child.setup()

@@ -99,6 +99,28 @@ local function said(level)
 	return out
 end
 
+T['T565 [char] (A27) a step the ring drops drops its rows'] = function()
+	child.setup()
+	child.lua('_G.CDV_TEST.setup({ ledger = { ring = 5 } })')
+	child.steps({ ':e a', ':e b', ':bdelete b.txt' })
+	for _ = 1, 6 do
+		child.steps({ '<M-f>' })
+	end
+	eq(child.lua([[
+		local ledger = require('cavediver.domains.ledger')
+		local close, ringed = nil, true
+		for _, step in ipairs(ledger.trail(os.date('%Y-%m-%d'))) do
+			for _, move in ipairs(step.moves) do
+				if move.kind == 'closed' then close = step end
+			end
+		end
+		for _, step in ipairs(ledger.steps()) do
+			ringed = ringed and step.row_before ~= nil and step.row_after ~= nil
+		end
+		return { found = close ~= nil, rows = close and (close.row_before ~= nil or close.row_after ~= nil), ringed = ringed }
+	]]), { found = true, rows = false, ringed = true })
+end
+
 T['T392 [char] (A27, A26) the ring keeps the last N steps, N from ledger.ring, 1,000 by default'] = function()
 	child.setup()
 	eq(child.lua('return require("cavediver.configs").ledger.ring'), 1000)

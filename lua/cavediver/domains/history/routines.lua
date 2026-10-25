@@ -236,12 +236,11 @@ M.on_records_change = nil
 
 ---Mark a pool's records as changed.
 ---
----Stamps the pool's change time and tells `M.on_records_change`, when that's set.
+---Tells `M.on_records_change`, when that's set.
 ---
 ---@param pool Pool The pool whose closed list or close times changed
 ---@return nil
 local function changed(pool)
-	pool.changed_at = vim.uv.hrtime()
 	if M.on_records_change then
 		M.on_records_change(pool.id)
 	end
@@ -548,9 +547,10 @@ end
 ---HEAD is read as a file, without running git. Returns the branch, or the first 7 hex
 ---characters of a detached HEAD.
 ---
+---@param git_dir string|nil The git directory, when it's found already
 ---@return string|nil label The label, or nil when there's no HEAD to read
-function M.git_label()
-	local git_dir = M.git_dir()
+function M.git_label(git_dir)
+	git_dir = git_dir or M.git_dir()
 	if not git_dir then
 		return nil
 	end
@@ -567,8 +567,9 @@ end
 ---The `label_provider` config decides it. A function there gives the label, and `false` turns
 ---labels off. With no provider set, it's the git branch (see `M.git_label()`).
 ---
+---@param git_dir string|nil The git directory, when it's found already
 ---@return string|nil label The label, or nil when there's none
-function M.current_label()
+function M.current_label(git_dir)
 	local provider = require('cavediver.configs').label_provider
 	if provider == false then
 		return nil
@@ -576,7 +577,7 @@ function M.current_label()
 		local ok, label = pcall(provider)
 		return ok and type(label) == "string" and label or nil
 	end
-	return M.git_label()
+	return M.git_label(git_dir)
 end
 
 -- files checked for being gone from disk per cleanup tick, besides the ones on screen
@@ -597,11 +598,13 @@ local mark_queue, mark_next = {}, 1
 function M.mark_missing(label, limit)
 	local known = M.known_filehashes()
 	local filepaths = data.hash_filepath_registry.filepaths
+	local checked = {} -- a file open, in a slot and in the slice is checked once all the same
 	local function mark(filehash)
 		local filepath = filepaths[filehash]
-		if not filepath or not known[filehash] or filepath:match("^NONAME_") then
+		if not filepath or not known[filehash] or filepath:match("^NONAME_") or checked[filehash] then
 			return
 		end
+		checked[filehash] = true
 		if vim.fn.filereadable(filepath) == 1 then
 			if data.missing[filehash] ~= nil then
 				require('cavediver.domains.ledger').move("back", { subject = filehash,
@@ -731,12 +734,14 @@ end
 ---
 ---@return boolean checked True if every known file was just checked, for a change of label
 function M.refresh_label()
+	local git_dir
 	if require('cavediver.configs').label_provider == nil and head_watch_on then
-		watch_head(M.git_dir())
+		git_dir = M.git_dir() -- found once, for the watch and the label
+		watch_head(git_dir)
 	else
 		M.stop_head_watch()
 	end
-	local label = M.current_label()
+	local label = M.current_label(git_dir)
 	local checked = false
 	if not data.label_seen then
 		data.label_seen = true
@@ -981,7 +986,6 @@ function M.track_buffer(filehash, time)
 	local pool = M.pool_of_tab(winid and vim.api.nvim_win_get_tabpage(winid) or vim.api.nvim_get_current_tabpage())
 	if time == nil and pool.id ~= "" then
 		pool.visits[filehash] = data.history_index - 1
-		pool.changed_at = vim.uv.hrtime()
 	end
 end
 

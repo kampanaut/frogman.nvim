@@ -22,8 +22,6 @@
 ---@field times table<Filehash, number> File hash → close time, in seconds to the microsecond
 ---@field visits table<Filehash, integer> Its own visits, ranked above the editor's in its tab
 ---@field tabs table<integer, boolean> Tabs it's in (tabpage → true), none if its last tab closed unsaved
----@field saved_at integer|nil Time of its last save (vim.uv.hrtime())
----@field changed_at integer|nil Time of its last change (vim.uv.hrtime())
 ---@field detached boolean|nil Whether it's a detached list: a tab's own once its session moved to another tab
 ---@field of string|nil For a detached list, the id of the session it was detached from
 ---@field merging boolean|nil Whether a detached list waits in memory for the closed lists opened on it to close

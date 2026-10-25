@@ -245,7 +245,8 @@ end
 ---Keep a step in the ring, and in its day's trail when it made moves.
 ---
 ---Both stay in the order of the steps' numbers. The step is counted for the dump's snapshots,
----and the ring then drops its oldest steps past `ledger.ring`.
+---and the ring then drops its oldest steps past `ledger.ring`, with their rows, since only the
+---ring's steps have their rows read again. The step being kept keeps its rows as it closes.
 ---
 ---@param step CavediverLedgerStep The step to keep
 ---@return nil
@@ -259,7 +260,10 @@ local function keep(step)
 	require('cavediver.domains.ledger.dump').kept()
 	local n = math.max(require('cavediver.configs').ledger.ring or 0, 0)
 	while #ring > n do
-		table.remove(ring, 1)
+		local gone = table.remove(ring, 1)
+		if gone ~= step then
+			gone.row_before, gone.row_after = nil, nil
+		end
 	end
 	if #step.moves > 0 then
 		local day = os.date("%Y-%m-%d", math.floor(step.time))

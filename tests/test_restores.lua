@@ -129,4 +129,21 @@ T["T68 [char] an unknown hash in a map doesn't make a restore throw"] = function
 	eq(K.hook_failures(K.messages(child)), {})
 end
 
+-- notes.txt is opened as a new file and closed before it's ever written; a's ternary note names it.
+T['T562 [char] (A11, M14) a restore takes a note naming a never-written closed file as any closed file'] = function()
+	child.steps({ ':e notes.txt', ':e a', ':e b' })
+	child.cmd('bdelete notes.txt')
+	child.settle(300)
+	child.steps({ ':e a' })
+	child.messages()
+	child.step('<M-;><M-r>')
+	child.settle(200)
+	local restored, disk = false, false
+	for _, m in ipairs(child.messages()) do
+		if m.msg:find('Restored ternary slot to', 1, true) then restored = true end
+		if m.msg:find('on disk', 1, true) then disk = true end
+	end
+	eq({ slots = child.slots(), restored = restored, disk = disk }, { slots = '⦉notes⦊ [a] ⟦-⟧', restored = true, disk = false })
+end
+
 return T

@@ -1134,20 +1134,12 @@ local function restore_from_displacement_map(type, triquetra)
 	end
 
 	-- a closed buffer whose file is gone from disk can't come back now. its note stays, it may come back.
-	local function missing_and_closed(filehash)
-		local filepath = history.get_filepath_from_hash(filehash)
-		return filepath ~= nil and
-			not filepath:match("^NONAME_") and
-			vim.fn.filereadable(filepath) == 0 and
-			history.get_buffer_from_hash(filehash) == nil
-	end
-
 	local remembered_relationship = remembered_mapping[triquetra.current_slot .. "-swap"]
 
 	if
 		remembered_relationship == nil or
 		remembered_relationship == current_relationship or
-		missing_and_closed(remembered_relationship)
+		is_missing(remembered_relationship)
 	then
 		remembered_relationship = remembered_mapping[triquetra.current_slot]
 	end
@@ -1160,7 +1152,7 @@ local function restore_from_displacement_map(type, triquetra)
 			type ..
 			" relationship found for restoration. It means you hadn't displaced a current buffer yet to the " ..
 			type .. " slot.", vim.log.levels.WARN)
-	elseif missing_and_closed(remembered_relationship) then
+	elseif is_missing(remembered_relationship) then
 		local ui_get_basename = require('cavediver.domains.ui').routines.get_smart_basename
 		vim.notify("Remembered " .. type .. " isn't on disk right now: " .. ui_get_basename(remembered_relationship) .. ". Nothing changed.", vim.log.levels.WARN)
 	elseif remembered_relationship == current_relationship then
@@ -1184,8 +1176,9 @@ local function restore_from_displacement_map(type, triquetra)
 			end
 		end
 		local restored = "Restored " .. type .. " slot to: " .. remembered_relationship .. " (" .. ui_get_basename(remembered_relationship) .. ")"
-		if not filepath:match("^NONAME_") and vim.fn.filereadable(filepath) == 0 then
-			-- its buffer is still open, so it comes back; the file just isn't on disk right now.
+		if not filepath:match("^NONAME_") and vim.fn.filereadable(filepath) == 0 and not history.data.unwritten[remembered_relationship] then
+			-- its buffer is still open, so it comes back; the file just isn't on disk right now. One never
+			-- written isn't gone.
 			vim.notify(restored .. ", not on disk right now", vim.log.levels.WARN)
 		else
 			vim.notify(restored, vim.log.levels.INFO)
