@@ -322,4 +322,24 @@ T['T163 [char] a re-point to the shown buffer moves the old current into the ter
 	eq(child.slots(), '⦉a⦊ [d] ⟦b⟧')
 end
 
+T['T523 [char] (A21, M5) the first :e after the start buffer was taken in leaves that buffer in no slot'] = function()
+	-- as a config that calls setup() at startup has it: the start buffer entered once cavediver is set up
+	child.cmd('doautocmd BufEnter')
+	child.settle(200)
+	local taken = child.lua('return require("cavediver.domains.history").data.hash_buffer_registry.hashes[vim.api.nvim_get_current_buf()] ~= nil')
+	child.messages()
+	child.steps({ ':e a' })
+	child.settle(300)
+	local slots = child.slots()
+	local healed = false
+	for _, m in ipairs(child.messages()) do
+		if m.msg:find('Healed the triquetra', 1, true) then healed = true end
+	end
+	child.step('<M-S-f>')
+	local said = {}
+	for _, m in ipairs(child.messages()) do table.insert(said, m.msg) end
+	eq({ taken = taken, slots = slots, healed = healed, said = said },
+		{ taken = true, slots = '⦉-⦊ [a] ⟦-⟧', healed = false, said = { 'No ternary buffer to swap with.' } })
+end
+
 return T
