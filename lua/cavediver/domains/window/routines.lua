@@ -279,12 +279,6 @@ function M.update_primary_buffer(primary_filepaths, winid)
 	loop_sm:to(loop_states.SELF)
 end
 
----Remove buffer from closed buffers list by filehash.
----@param filehash Filehash The filehash to remove from closed buffers
-local function remove_from_closed_buffers(filehash)
-	history.routines.open_out_of_pools(filehash) -- open again, it's closed nowhere
-end
-
 ---Check if a slot's file is closed and gone from disk.
 ---
 ---Its pointer is kept, since the file may come back, and using it says so instead. A file never
@@ -900,7 +894,6 @@ function M.swap_with_secondary(winid)
 				loop_sm:to(loop_states.SELF)
 				return
 			else
-				remove_from_closed_buffers(triquetra.secondary_slot)
 				vim.notify("File reopened for secondary slot: " .. old_basename .. " - old: " .. old_secondary_filehash,
 					vim.log.levels.INFO)
 			end
@@ -978,7 +971,6 @@ function M.swap_with_ternary(winid)
 			loop_sm:to(loop_states.SELF)
 			return
 		else
-			remove_from_closed_buffers(triquetra.ternary_slot)
 			vim.notify("File reopened for ternary slot: " .. old_basename .. " - old: " .. old_ternary_filehash,
 				vim.log.levels
 				.INFO)
@@ -1052,8 +1044,6 @@ function M.jump_to_primary(winid)
 			table.remove(triquetra.primary_buffer, 1)
 			loop_sm:to(loop_states.SELF)
 			return
-		else
-			remove_from_closed_buffers(triquetra.primary_buffer[1])
 		end
 	end
 	if triquetra.current_slot ~= triquetra.primary_buffer[1] then -- We only do displacment if we are not already in the primary buffer.
