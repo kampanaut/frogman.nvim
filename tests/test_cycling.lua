@@ -767,6 +767,31 @@ T['T529 [char] (A26) a failure inside a cleanup tick is dumped on the tick\'s st
 		{ files = 1, open_dumped = false, row = true })
 end
 
+T['T531 [char] (A26, M11) a plain Lua error inside a key is dumped with its traceback, and raised as it was'] = function()
+	child.steps({ ':e a', ':e b' })
+	local files_before = child.dumps()
+	local pressed = child.lua([[
+		-- the routine <M-S-f> calls, replaced by one with a bug in it
+		local function planted_for_t531()
+			local t = nil
+			return t.x
+		end
+		require('cavediver.domains.window').swap_with_ternary = function()
+			local result = planted_for_t531() -- not a tail call, so its frame stays in the traceback
+			return result
+		end
+		local ok, err = _G.CDV_TEST.press('<M-S-f>')
+		return { ok = ok, err = err }
+	]])
+	child.settle(300)
+	local files = Extra.new_files(files_before, child.dumps())
+	local text = #files == 1 and child.lua('return require("cavediver.domains.ledger.dump").read(...)', { files[1] }) or ''
+	eq({ ok = pressed.ok, index = (pressed.err or ''):find('attempt to index', 1, true) ~= nil,
+		traceback = (pressed.err or ''):find('stack traceback', 1, true) ~= nil, files = #files,
+		named = text:find('planted_for_t531', 1, true) ~= nil },
+		{ ok = false, index = true, traceback = false, files = 1, named = true })
+end
+
 -- T461 and T462's setup: the first window at ⦉a⦊ [b] ⟦-⟧ with p=[a]on, and a split,
 -- focused, at ⦉b⦊ [c] ⟦-⟧, cycling there (<M-m>). Window numbers depend on 'splitright' (off
 -- here, so the split opens on the left as window 1), so the cases read them from the windows.
