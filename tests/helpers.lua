@@ -47,10 +47,13 @@ end
 _G.CDV_NOTES = {}
 vim.notify = function(msg, level) table.insert(_G.CDV_NOTES, { msg = tostring(msg), level = level }) end
 
-require('cavediver').setup({
+-- what this child is set up with; every setup() starts from the defaults, so a case that sets up
+-- again layers its own options over these (_G.CDV_TEST.setup)
+_G.CDV_BASE = {
 	session_dir = root .. '/state/sessions/',
 	bufferline = { history_view = opts.history_view or 'global' },
-})
+}
+require('cavediver').setup(_G.CDV_BASE)
 
 local H = require('cavediver.domains.history')
 local W = require('cavediver.domains.window')
@@ -73,6 +76,10 @@ end
 
 _G.CDV_TEST = {
 	root = root,
+	-- set up again with the options given, layered over this child's own (_G.CDV_BASE)
+	setup = function(options)
+		require('cavediver').setup(vim.tbl_deep_extend('force', vim.deepcopy(_G.CDV_BASE), options or {}))
+	end,
 	slots = function(winid)
 		local t = W.data.crux[winid or vim.api.nvim_get_current_win()]
 		if not t then return 'no triquetra' end

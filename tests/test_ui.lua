@@ -284,7 +284,7 @@ T['T446 [char] (M12) the toggles\' commands, with no keymap'] = function()
 end
 
 T['T447 [char] (M12) with winbar.own off, cavediver writes no winbar, and offers its segment'] = function()
-	child.lua('require("cavediver").setup({ winbar = { own = false } })')
+	child.lua('_G.CDV_TEST.setup({ winbar = { own = false } })')
 	child.steps({ ':e a', ':e b' })
 	child.lua('vim.wo.winbar = "MINE"')
 	child.settle(300)
@@ -305,7 +305,7 @@ T['T448 [char] (M12) the winbar\'s skip list is configurable, and replaces the d
 	child.steps({ ':e a', ':e b' })
 	child.lua('vim.bo.filetype = "skipme"')
 	local default = winbar() ~= ''
-	child.lua('require("cavediver").setup({ winbar = { skip_filetypes = { "skipme" } } })')
+	child.lua('_G.CDV_TEST.setup({ winbar = { skip_filetypes = { "skipme" } } })')
 	child.lua('vim.wo.winbar = ""')
 	local skipped = winbar()
 	child.lua('vim.bo.filetype = "neo-tree"')
@@ -316,7 +316,7 @@ end
 T['T450 [char] (M12, P26) marked buffers come from the provider'] = function()
 	child.lua([[
 		local root = _G.CDV_TEST.root
-		require('cavediver').setup({ marks_provider = function() return { root .. '/b.txt' } end })
+		_G.CDV_TEST.setup({ marks_provider = function() return { root .. '/b.txt' } end })
 	]])
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.settle(300)
@@ -324,7 +324,7 @@ T['T450 [char] (M12, P26) marked buffers come from the provider'] = function()
 	local marked = { a = child.lua(bl, { bufnr('a.txt') })[1], b = child.lua(bl, { bufnr('b.txt') }), c = child.lua(bl, { bufnr('c.txt') })[1] }
 	child.lua([[
 		package.loaded['harpoon'] = { list = function() return { display = function() return { 'b.txt' } end } end }
-		require('cavediver').setup({ marks_provider = false })
+		_G.CDV_TEST.setup({ marks_provider = false })
 	]])
 	child.steps({ ':e a' })
 	child.settle(300)
@@ -343,7 +343,7 @@ return comps[7].text({ number = ..., filename = 'b.txt', index = 1, is_focused =
 T['T456 [char] (M12) the indicators by kind'] = function()
 	child.lua([[
 		local root = _G.CDV_TEST.root
-		require('cavediver').setup({ marks_provider = function() return { root .. '/b.txt' } end })
+		_G.CDV_TEST.setup({ marks_provider = function() return { root .. '/b.txt' } end })
 	]])
 	child.steps({ ':e a', ':e b' })
 	child.settle(300)
@@ -400,7 +400,7 @@ T['T457 [char] (M12) a window with no current slot shows its visit alone'] = fun
 		{ piece = true, group = true, centred = true, nc = true, mine = 'MINE', gone = '' })
 	-- not owned: none drawn
 	child.setup()
-	child.lua('require("cavediver").setup({ winbar = { own = false } })')
+	child.lua('_G.CDV_TEST.setup({ winbar = { own = false } })')
 	child.steps({ ':e a' })
 	child.cmd('help')
 	child.settle(300)
@@ -442,7 +442,7 @@ T['T500 [char] (A25) a window closed while cavediver was off doesn\'t break the 
 	child.lua('require("cavediver").disable()')
 	local split = child.lua('return vim.api.nvim_get_current_win()')
 	child.cmd('close')
-	child.lua('require("cavediver").setup({ session_dir = require("cavediver.configs").session_dir })')
+	child.lua('_G.CDV_TEST.setup({ session_dir = require("cavediver.configs").session_dir })')
 	child.messages()
 	child.settle(500)
 	child.steps({ ':e c' }) -- a history transition, which runs the cleanup pass

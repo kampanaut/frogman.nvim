@@ -144,7 +144,7 @@ end
 
 -- The picker stubbed: it picks what _G.CDV_PICKED names, full paths.
 local function stub_picker()
-	child.lua([[require('cavediver').setup({ primary_picker = function(add) add(_G.CDV_PICKED) end })]])
+	child.lua([[_G.CDV_TEST.setup({ primary_picker = function(add) add(_G.CDV_PICKED) end })]])
 end
 local function pick(files, row)
 	child.lua('_G.CDV_PICKED = vim.tbl_map(function(f) return _G.CDV_TEST.root .. "/" .. f end, ...)', { files })
@@ -239,7 +239,7 @@ T['T452 [char] (A18, A27) the pop-up in the trail\'s language'] = function()
 	local off = child.lua(DECORATION)[1]
 	child.steps({ 'q' })
 	settle_close()
-	child.lua('require("cavediver").setup({ glyphs = { set = "ascii" } })')
+	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" } })')
 	open()
 	local ascii = table.concat(child.lua(DECORATION), '') .. table.concat(child.popup_lines(), '')
 	eq({ lines = lines, on = on[1]:find('primary · on', 1, true) ~= nil, tag = on[1]:find('⎇feature', 1, true) ~= nil,
@@ -248,7 +248,7 @@ T['T452 [char] (A18, A27) the pop-up in the trail\'s language'] = function()
 end
 
 T['T453 [char] (A18) the pop-up\'s keys are keymaps.views\''] = function()
-	child.lua('require("cavediver").setup({ keymaps = { views = { leave = "Q" } } })')
+	child.lua('_G.CDV_TEST.setup({ keymaps = { views = { leave = "Q" } } })')
 	local w = queue_ba()
 	open()
 	child.popup_set({ 'b.txt', 'a.txt', 'c.txt' })

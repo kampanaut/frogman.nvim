@@ -1,6 +1,6 @@
 # Test review sheet
 
-583 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+585 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -3890,7 +3890,7 @@ note: Project one has a No Name buffer with text, closed with <M-.> (its text is
 spec: After switching sessions, the outgoing No Name text isn't in the incoming file.  
 `tests/test_sessions.lua:325`
 
-## tests/test_setup.lua (3 cases: 3 char)
+## tests/test_setup.lua (5 cases: 5 char)
 
 **T125 [char]** setup() with no argument works and uses the defaults  
 → `eq(got, { ok = true, key = true, history_view = 'global', cleanup_interval = 4000, session_dir = true })`  
@@ -3906,6 +3906,16 @@ spec: `require('cavediver')` without `setup()` creates no autocmds.
 → `eq(counts(), once)`  
 spec: Calling `setup()` twice leaves one set of autocmds and timers.  
 `tests/test_setup.lua:66`
+
+**T520 [char]** (M13, A25) setup() again starts from the defaults  
+`<M-.> (via maps)`, `<M-q> (via setup)`, `<M-q> (via maps)`, `<M-.> (via maps)`, `<M-q> (via maps)`, `<M-.> (via maps)` → `eq({ first = first, moved = moved, again = again }, {`  
+spec: (M13, A25) `setup()` again starts from the defaults: after `setup({ cleanup_interval = 123, keymaps = { close_buffer = '<M-q>' } })`, `<M-q>` closes and `<M-.>` no longer does; a `setup()` after it gives `cleanup_interval` 4000 and `<M-.>` back, and `<M-q>` maps nothing.  
+`tests/test_setup.lua:81`
+
+**T521 [char]** (M13) a bracket pair named at the top of glyphs is taken  
+→ `eq(got, { ok = true, err = vim.NIL, row_t = { '<', '>' } })`  
+spec: (M13) A bracket pair named at the top of `glyphs`, outside the sets, is taken: `setup({ glyphs = { row_t = { '<', '>' } } })` raises nothing, and the glyphs read `row_t` as `{ '<', '>' }`.  
+`tests/test_setup.lua:95`
 
 ## tests/test_ternary_key.lua (4 cases: 4 char)
 

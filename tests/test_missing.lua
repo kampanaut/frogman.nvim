@@ -66,7 +66,7 @@ T['T344 [char] with no label, a file that goes missing is tagged with the time']
 end
 
 T['T345 [char] a label provider in config names the label'] = function()
-	child.lua('require("cavediver").setup({ label_provider = function() return "jj:main" end })')
+	child.lua('_G.CDV_TEST.setup({ label_provider = function() return "jj:main" end })')
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.cmd('bdelete b.txt')
 	child.settle()

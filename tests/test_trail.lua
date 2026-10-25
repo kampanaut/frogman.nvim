@@ -193,7 +193,7 @@ end
 -- The float's width set in cells.
 local function at_width(cols)
 	child.setup()
-	child.lua('require("cavediver").setup({ trail_popup = { width = ... } })', { cols })
+	child.lua('_G.CDV_TEST.setup({ trail_popup = { width = ... } })', { cols })
 	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
 	child.settle(100)
 	open_trail()
@@ -210,7 +210,7 @@ end
 
 T['T430 [char] (A27) the header\'s pieces can be turned off'] = function()
 	child.setup()
-	child.lua('require("cavediver").setup({ trail = { header = { tally = false, gauge = false, shade = false } } })')
+	child.lua('_G.CDV_TEST.setup({ trail = { header = { tally = false, gauge = false, shade = false } } })')
 	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
 	child.settle(100)
 	open_trail()
@@ -222,7 +222,7 @@ end
 
 T['T431 [char] (A27) with the ascii set, the trail draws no character outside ASCII'] = function()
 	child.setup()
-	child.lua('require("cavediver").setup({ glyphs = { set = "ascii" } })')
+	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" } })')
 	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
 	child.settle(100)
 	open_trail()
@@ -493,7 +493,7 @@ end
 T['T442 [char] (A27) the formatters replace a line\'s look'] = function()
 	child.setup()
 	child.lua([[
-		require('cavediver').setup({ formatters = {
+		_G.CDV_TEST.setup({ formatters = {
 			trail_move = function(move) if move.kind == 'closed' then return { { 'MOVE ' .. move.kind, 'Normal' } } end end,
 			trail_step = function(step) return { { 'STEP ' .. step.trigger, 'Normal' } } end,
 			trail_header = function() return { { 'HEADER', 'Normal' } } end,
@@ -582,7 +582,7 @@ T['T445 [char] (A27) a close by a rename or a repair turns the life line closed'
 
 	-- the repair: b's buffer wiped without events, b kept on the editor's list
 	child.setup()
-	child.lua('require("cavediver").setup({ cleanup_interval = 100 })')
+	child.lua('_G.CDV_TEST.setup({ cleanup_interval = 100 })')
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.lua('vim.cmd("noautocmd bwipeout " .. vim.fn.bufnr("b.txt"))')
 	child.settle(500)
@@ -742,7 +742,7 @@ end
 T['T458 [char] (M13) the glyph sets are in the config, and a pair is changed there'] = function()
 	child.setup()
 	local defaults = child.lua('local g = require("cavediver.configs").glyphs; return { g.unicode and g.unicode.row_t, g.ascii and g.ascii.row_t }')
-	child.lua('require("cavediver").setup({ glyphs = { unicode = { row_t = { "<", ">" } }, closed = "v" } })')
+	child.lua('_G.CDV_TEST.setup({ glyphs = { unicode = { row_t = { "<", ">" } }, closed = "v" } })')
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.cmd('bdelete c.txt')
 	child.settle(300)

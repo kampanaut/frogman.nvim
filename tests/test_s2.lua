@@ -2527,7 +2527,7 @@ end
 T['T374 [char] (S2) with the ASCII glyph set the picker draws nothing outside ASCII'] = function()
 	local s = S2.shared()
 	two_pools(s)
-	child.lua([[require('cavediver').setup({ session_dir = require('cavediver.configs').session_dir, glyphs = { set = 'ascii' } })]])
+	child.lua([[_G.CDV_TEST.setup({ session_dir = require('cavediver.configs').session_dir, glyphs = { set = 'ascii' } })]])
 	local p = S2.picker(child)
 	local ascii = true
 	for i = 1, #p.lines do
@@ -2618,7 +2618,7 @@ end
 T['T503 [char] (S2) a closed_entry formatter that gives nothing leaves cavediver\'s own text'] = function()
 	local s = S2.shared()
 	two_pools(s)
-	child.lua([[require('cavediver').setup({ session_dir = require('cavediver.configs').session_dir,
+	child.lua([[_G.CDV_TEST.setup({ session_dir = require('cavediver.configs').session_dir,
 		formatters = { closed_entry = function() return nil end } })]])
 	local p = S2.picker(child)
 	local timed = false
