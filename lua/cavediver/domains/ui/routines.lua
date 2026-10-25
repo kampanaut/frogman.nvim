@@ -17,6 +17,17 @@ local update_timer = vim.loop:new_timer()
 
 local M = {}
 
+---Double every `%` in a piece of text, so a winbar or the tabline shows it as written.
+---
+---A `%` there starts a statusline item. A name, a tag or a visit's label goes into a winbar or
+---the tabline through this, once, as it goes in.
+---
+---@param text any The text, or anything `tostring` takes
+---@return string text The same, each `%` doubled
+function M.escape_renderline(text)
+	return (tostring(text):gsub("%%", "%%%%"))
+end
+
 ---Get the label a winbar names a visited buffer by.
 ---
 ---It's the buffer's number and its buftype, or its filetype when the buffer looks like a file
@@ -1279,9 +1290,7 @@ local function construct_winbar_string(winid, theme)
 	end
 
 	-- a `%` in a name or a tag is the winbar's own, so it goes in doubled
-	local function esc(text)
-		return (tostring(text):gsub("%%", "%%%%"))
-	end
+	local esc = M.escape_renderline
 
 	local fmt_sbufnr, fmt_cbufnr
 	fmt_cbufnr = "[%d]"
@@ -1601,7 +1610,7 @@ local function update_visit_bars()
 					local label = "[" .. visit_label(bufnr) .. "]"
 					local free = vim.api.nvim_win_get_width(winid) - vim.api.nvim_strwidth(label) - 2
 					local left = math.max(0, math.floor(free / 2))
-					bar = "%#" .. group .. "#" .. string.rep("─", left) .. " " .. (label:gsub("%%", "%%%%")) .. " "
+					bar = "%#" .. group .. "#" .. string.rep("─", left) .. " " .. M.escape_renderline(label) .. " "
 						.. string.rep("─", math.max(0, free - left)) -- the label's `%`, doubled once, as it goes in
 				end
 				vim.wo[winid].winbar = bar

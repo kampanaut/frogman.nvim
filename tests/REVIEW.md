@@ -2500,7 +2500,7 @@ spec: (A26) The recorder never records raw keystrokes: text typed in insert mode
 → `slots = '⦉c⦊ [b] ⟦-⟧'`  
 → `eq(Extra.at_least(child.messages()), {})`  
 note: A bug found while porting: a tracked buffer wiped with noautocmd, here the window's current buffer. Decided 2026-10-21: the UI repairs it on the spot, within one refresh, as cleanup's re-point would (like navigation, Q18): the window shows b, so b is current and c the ternary.  
-spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't make the UI loop error: `:e a`, `:e b`, `:e c`, then `noautocmd bwipeout` of c give no hook failure over the next ticks. Without the repair, "Invalid buffer id" comes on every tick (`ui/routines.lua:1382`); w…  
+spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't make the UI loop error: `:e a`, `:e b`, `:e c`, then `noautocmd bwipeout` of c give no hook failure over the next ticks. Without the repair, "Invalid buffer id" comes on every tick (`ui/routines.lua:1391`); w…  
 `tests/test_negative.lua:762`
 
 **T243 [char]** (I23) the check runs at graduation: a stale secondary note naming the graduated buffer is dropped ⚑ state set by hand  
