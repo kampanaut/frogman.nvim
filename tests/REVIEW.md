@@ -1,6 +1,6 @@
 # Test review sheet
 
-585 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+586 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -2096,7 +2096,7 @@ spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary
 spec: (D8, "Keep the older one") `<M-f>` and plain navigation onto the secondary write the same notes: from `⦉c⦊ [d] ⟦b⟧`, either one gives `⦉c⦊ [b] ⟦d⟧` with the swap notes `dsm{d-swap>b}` and `dtm{d-swap>c}`, and no plain secondary note for d. T30 and T39 pin the same notes. Plain na…  
 `tests/test_navigation.lua:150`
 
-## tests/test_negative.lua (48 cases: 48 char)
+## tests/test_negative.lua (49 cases: 49 char)
 
 **T207 [char]** (P5) a nofile scratch entered in a tracked window is not registered  
 `:e a`, `:e b` → `eq(registered(), true)`  
@@ -2377,12 +2377,18 @@ note: And the pop-up opens again (today: E95, a buffer with this name already ex
 spec: (A5) Closing another window first doesn't stop the pop-up's buffer going when the pop-up closes: `:vsplit`, `:close`, then `<M-;>F` and `:close` in the pop-up delete its buffer, as they do when no window was closed first. Today the first close uses up the `once` handler (`ui/hook…  
 `tests/test_negative.lua:606`
 
+**T522 [char]** (A18) the pop-up's buffer goes when its window switches to another buffer  
+`:e a`, `<M-;><M-c>`, `:buffer a.txt`, `<M-;>F` → `eq({ opened = opened, gone = gone, floats = floats, ok = ok, err = err, again = again, nameless = nameless, refused = refused },`  
+note: the buffer's BufDelete closes its float; for the code before, any float left is closed by hand, so the next press comes from the tracked window, as by hand with an edit not written, Neovim refuses the switch, and the pop-up stays  
+spec: (A18) The pop-up's buffer goes when its window switches to another buffer: `:e a`, `<M-;><M-c>`, `<M-;>F`, then `:buffer a.txt` in the pop-up's window leave no buffer of the pop-up's and, once its `BufDelete` has closed the window, no float; `<M-;>F` opens it again with no error,…  
+`tests/test_negative.lua:625`
+
 **T237 [char]** (A19) with nothing left to land on, the window keeps Neovim's empty buffer and no :enew runs  
 `:e a` → `eq(child.lua('return vim.api.nvim_get_current_buf()'), got.buf)`  
 → `eq(#child.lua('return vim.api.nvim_list_bufs()'), got.n)`  
 note: One tracked buffer only, so nothing is left to land on: Neovim puts an empty buffer in the window, read in the same call as the delete. The rest of A19's landing order is T111's.  
 spec: (A19) With nothing left to land on, the window keeps Neovim's empty buffer and no `:enew` runs: `:e a`, `:bdelete a.txt` leave the window on the buffer Neovim put there, with no buffer added. A guard on the landing (A19, built in step 1).  
-`tests/test_negative.lua:628`
+`tests/test_negative.lua:667`
 
 **T238 [char]** (A20) :w name on a No Name buffer is a move: no ghost on the closed stack, and its notes follow  
 `:e a`, `:enew`, `:e b`, `:buffer #` → `closed = ''`  
@@ -2393,7 +2399,7 @@ spec: (A19) With nothing left to land on, the window keeps Neovim's empty buffer
 → `eq(child.notes():find('?', 1, true), nil)`  
 note: The decided move (DESK:1924): no ghost on the closed stack, and the No Name's notes follow to the new name. The No Name buffer now carries a note: its ternary was a.  
 spec: (A20) `:w new.txt` on a No Name buffer with text leaves no ghost entry on the closed stack: the old name isn't a file, so it's a move. Its notes follow too (the decided move, DESK:1924): a No Name buffer whose note says its ternary was a gives `new>a` after `:w new.txt`, with no …  
-`tests/test_negative.lua:640`
+`tests/test_negative.lua:679`
 
 **T239 [char]** (A21) a secondary and a ternary whose files are deleted while their buffers are open stay in their slots  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:e d` → `slots = '⦉c⦊ [d] ⟦b⟧'`  
@@ -2401,7 +2407,7 @@ spec: (A20) `:w new.txt` on a No Name buffer with text leaves no ghost entry on 
 → `eq({ registered(bufnr('b')), registered(bufnr('c')) }, { true, true })`  
 note: b (the secondary) and c (the ternary) are open but hidden; their files go.  
 spec: (A21) A slot pointing at an open buffer is kept whatever the disk says: at `⦉c⦊ [d] ⟦b⟧`, deleting b.txt and c.txt (both still open), UI ticks and a `cleanup_system` pass leave the slots and both registrations as they were.  
-`tests/test_negative.lua:657`
+`tests/test_negative.lua:696`
 
 **T240 [char]** (A25) disable() clears the cavediver augroup and stops the timers, and nothing is tracked after  
 `:e a`, `:e b` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
@@ -2409,7 +2415,7 @@ spec: (A21) A slot pointing at an open buffer is kept whatever the disk says: at
 `:e c` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
 → `ordered = 'b,a'`  
 spec: (A25) `disable()` clears the `cavediver` augroup and stops the timers, and afterwards `:e c` changes no slot and records nothing.  
-`tests/test_negative.lua:668`
+`tests/test_negative.lua:707`
 
 **T241 [char]** (A26) the flight recorder records keymap actions and events, never raw keystrokes ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
@@ -2418,7 +2424,7 @@ spec: (A25) `disable()` clears the `cavediver` augroup and stops the timers, and
 → `eq(text:find('Q.-Z.-Q.-Z.-Q.-Z') == nil, true)`  
 note: Text typed in insert mode, then the restore assertion (c's secondary note set to name the secondary by hand, as T200 does). Whatever the dump looks like, the typed keys aren't steps in it.  
 spec: (A26) The recorder never records raw keystrokes: text typed in insert mode (`QZQZQZ`) before the restore assertion fires doesn't show up as steps in the dump, whatever its format, file or scratch buffer.  
-`tests/test_negative.lua:689`
+`tests/test_negative.lua:728`
 
 **T242 [char]** a tracked buffer wiped with noautocmd is repaired within one refresh, with no UI errors ⚑ state set by hand; wipes the window's current buffer: the bug only shows for that one  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -2426,8 +2432,8 @@ spec: (A26) The recorder never records raw keystrokes: text typed in insert mode
 → `slots = '⦉c⦊ [b] ⟦-⟧'`  
 → `eq(Extra.at_least(child.messages()), {})`  
 note: A bug found while porting: a tracked buffer wiped with noautocmd, here the window's current buffer. Decided 2026-10-21: the UI repairs it on the spot, within one refresh, as cleanup's re-point would (like navigation, Q18): the window shows b, so b is current and c the ternary.  
-spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't make the UI loop error: `:e a`, `:e b`, `:e c`, then `noautocmd bwipeout` of c give no hook failure over the next ticks. Without the repair, "Invalid buffer id" comes on every tick (`ui/routines.lua:1371`); w…  
-`tests/test_negative.lua:723`
+spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't make the UI loop error: `:e a`, `:e b`, `:e c`, then `noautocmd bwipeout` of c give no hook failure over the next ticks. Without the repair, "Invalid buffer id" comes on every tick (`ui/routines.lua:1372`); w…  
+`tests/test_negative.lua:762`
 
 **T243 [char]** (I23) the check runs at graduation: a stale secondary note naming the graduated buffer is dropped ⚑ state set by hand  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -2436,7 +2442,7 @@ spec: (bug (new), 2026-10-21) A tracked buffer wiped with `noautocmd` doesn't ma
 `<M-;><M-t>` → `eq({ ok, err }, { true, nil })`  
 note: The I23 check wherever a slot changes under the current buffer (decided 2026-10-21). Each stale note is planted by hand: no route is known that reaches these states with the other fixes in.  
 spec: (I23) The check runs wherever a slot changes under the current buffer (decided 2026-10-21), with the stale note planted: at graduation (`⦉b⦊ [c] ⟦-⟧` with `dsm{c>b}`, `<M-f>`), at the history fill (a fresh split on b with `dsm{b>a}`, `<M-f>` fills a), and at a session load (`⦉-⦊ …  
-`tests/test_negative.lua:740`
+`tests/test_negative.lua:779`
 
 **T243 [char]** (I23) the check runs at the history fill: a stale secondary note naming the filled buffer is dropped ⚑ state set by hand  
 `:e a`, `:e b`, `:vsplit` → `slots = '⦉-⦊ [b] ⟦-⟧'`  
@@ -2445,7 +2451,7 @@ spec: (I23) The check runs wherever a slot changes under the current buffer (dec
 → `eq(Neg.i23(child), nil)`  
 `<M-;><M-t>` → `eq({ ok, err }, { true, nil })`  
 spec: (I23) The check runs wherever a slot changes under the current buffer (decided 2026-10-21), with the stale note planted: at graduation (`⦉b⦊ [c] ⟦-⟧` with `dsm{c>b}`, `<M-f>`), at the history fill (a fresh split on b with `dsm{b>a}`, `<M-f>` fills a), and at a session load (`⦉-⦊ …  
-`tests/test_negative.lua:751`
+`tests/test_negative.lua:790`
 
 **T243 [char]** (I23) the check runs at a session load: a stale note from the file is dropped ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
@@ -2455,7 +2461,7 @@ spec: (I23) The check runs wherever a slot changes under the current buffer (dec
 → `slots = '⦉-⦊ [c] ⟦b⟧'`  
 → `eq(Neg.i23(child), nil)`  
 spec: (I23) The check runs wherever a slot changes under the current buffer (decided 2026-10-21), with the stale note planted: at graduation (`⦉b⦊ [c] ⟦-⟧` with `dsm{c>b}`, `<M-f>`), at the history fill (a fresh split on b with `dsm{b>a}`, `<M-f>` fills a), and at a session load (`⦉-⦊ …  
-`tests/test_negative.lua:765`
+`tests/test_negative.lua:804`
 
 **T244 [char]** (S2) a load into fewer windows matches by what they show and drops the unmatched entry, without an error  
 `:e a`, `:e b`, `:vsplit`, `:e c`, `:e d` → `slots = '⦉c⦊ [d] ⟦-⟧'`  
@@ -2465,7 +2471,7 @@ spec: (I23) The check runs wherever a slot changes under the current buffer (dec
 → `slots = '⦉a⦊ [b] ⟦-⟧'`  
 note: Saved: the split (listed first) ⦉c⦊ [d], the first window ⦉a⦊ [b]. The manager brings back one window, on b.  
 spec: (S2) A load into fewer windows than were saved matches by what they show and drops the unmatched entry, with no error: two windows saved (`⦉c⦊ [d] ⟦-⟧` in the split, `⦉a⦊ [b] ⟦-⟧`) and one restored on b give `⦉a⦊ [b] ⟦-⟧`.  
-`tests/test_negative.lua:786`
+`tests/test_negative.lua:825`
 
 **T245 [char]** (S2) a session file with a newer header says it was made by a newer cavediver and is left alone  
 `:e a`, `:e b` → `eq(Misc.save(child), { true })`  
@@ -2473,7 +2479,7 @@ spec: (S2) A load into fewer windows than were saved matches by what they show a
 → `eq(Extra.has(child.messages(), 'newer cavediver'), true)`  
 → `eq(bytes, 'CDV9\nfrom a later version\n')`  
 spec: (S2) A session file with a newer header gives "made by a newer cavediver" and is left alone: a file starting `CDV9` is unchanged after the load.  
-`tests/test_negative.lua:804`
+`tests/test_negative.lua:843`
 
 **T246 [char]** (S2) a No Name buffer closed with <M-.> stays on the closed stack across a save and a load  
 `:e a`, `:enew`, `<M-.>` → `shown = 'a'`  
@@ -2484,7 +2490,7 @@ spec: (S2) A session file with a newer header gives "made by a newer cavediver" 
 `<M-S-w>` → `eq(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), { 'kept text' })`  
 note: It held before the encrypted format and holds with it.  
 spec: (S2) A No Name buffer closed with `<M-.>` stays on the closed stack across a save and a load, and `<M-S-w>` then brings its text back. It held before save-as-closed was built (found 2026-10-21), and holds with it (step 4) and with the encrypted format, which reads the text from i…  
-`tests/test_negative.lua:829`
+`tests/test_negative.lua:868`
 
 **T247 [char]** (I13, A21) a cleanup heal in another window does not switch the focused window or wipe what that window shows ⚑ state set by hand; an acwrite window whose current file is :bdeleted from the focused window, to reach the healing branch  
 `:e a`, `:e b`, `:vsplit`, `:e x`, `:e c` → `slots = '⦉x⦊ [c] ⟦-⟧'`  
@@ -2497,7 +2503,7 @@ spec: (S2) A No Name buffer closed with `<M-.>` stays on the closed stack across
 → `eq(child.lua('return vim.api.nvim_buf_is_valid(...)', { acw }), true)`  
 note: The split shows an oil-like buffer (acwrite) and keeps its triquetra; its current slot's file is then closed from the first window, which has the focus (A21's healing branch, DESK:2447).  
 spec: (I13, A21) A cleanup heal in another window doesn't switch the focused window or wipe what that window shows: window 2 on `⦉x⦊ [c] ⟦-⟧` shows an `acwrite` buffer, and `:bdelete c.txt` from window 1 leaves window 1 focused on b and window 2 on its buffer.  
-`tests/test_negative.lua:853`
+`tests/test_negative.lua:892`
 
 **T248 [char]** (A12) with no cokeline, a cycle step raises nothing and <M-v> still ends the cycle  
 → `eq(child.lua('return (pcall(require, "cokeline.mappings"))'), false)`  
@@ -2510,16 +2516,16 @@ spec: (I13, A21) A cleanup heal in another window doesn't switch the focused win
 → `slots = '⦉b⦊ [a] ⟦-⟧'`  
 note: the step goes through cavediver's own order, onto a (T171)  
 spec: (A12) With no cokeline, a cycle step raises nothing, steps through cavediver's own order (T171), and `<M-v>` still ends the cycle: navigation `normal`, history attached, and the pick lands where the step went (from `⦉a⦊ [b] ⟦-⟧`, `<M-n>` and `<M-v>` give `⦉b⦊ [a] ⟦-⟧`). **[run s2…  
-`tests/test_negative.lua:882`
+`tests/test_negative.lua:921`
 
 **T249 [char]** (A1, A11) no note names its own buffer, over random walks: one window ⚑ random walk  
 note: It guards the decided check's order: after Q6's guard, never naming the current buffer.  
 spec: (A1, A11) No note names its own buffer: random walks with T190's mix, in one window and across windows, check after every action that no map holds `X>X` or `X-swap>X`. The decided check drops a stale note when the note it would copy names the current buffer (A11), and runs after …  
-`tests/test_negative.lua:913`
+`tests/test_negative.lua:952`
 
 **T249 [char]** (A1, A11) no note names its own buffer, over random walks: several windows ⚑ random walk  
 spec: (A1, A11) No note names its own buffer: random walks with T190's mix, in one window and across windows, check after every action that no map holds `X>X` or `X-swap>X`. The decided check drops a stale note when the note it would copy names the current buffer (A11), and runs after …  
-`tests/test_negative.lua:914`
+`tests/test_negative.lua:953`
 
 ## tests/test_primary_jump.lua (10 cases: 10 char)
 

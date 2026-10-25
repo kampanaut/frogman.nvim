@@ -622,6 +622,45 @@ T['T236 [char] (A5) closing another window first does not stop the pop-up\'s buf
 	eq(child.lua('return vim.bo.filetype'), 'cavediver-primary-buffer-history')
 end
 
+T['T522 [char] (A18) the pop-up\'s buffer goes when its window switches to another buffer'] = function()
+	child.steps({ ':e a', '<M-;><M-c>' })
+	open_popup()
+	local buf = child.lua('return vim.api.nvim_get_current_buf()')
+	local opened = child.lua('return vim.bo.filetype') == 'cavediver-primary-buffer-history'
+	child.cmd('buffer a.txt')
+	child.settle(1000)
+	local gone = not child.lua('return vim.api.nvim_buf_is_valid(...)', { buf })
+	-- the buffer's BufDelete closes its float; for the code before, any float left is closed by hand,
+	-- so the next press comes from the tracked window, as by hand
+	local floats = child.lua([[
+		local n = 0
+		for _, w in ipairs(vim.api.nvim_list_wins()) do
+			if vim.api.nvim_win_get_config(w).relative ~= '' then
+				n = n + 1
+				vim.api.nvim_win_close(w, true)
+			end
+		end
+		return n
+	]])
+	local ok, err = child.step('<M-;>F')
+	local again = child.lua('return vim.bo.filetype') == 'cavediver-primary-buffer-history'
+	local nameless = child.lua([[
+		local n = 0
+		for _, b in ipairs(vim.api.nvim_list_bufs()) do
+			if vim.bo[b].buflisted and vim.api.nvim_buf_get_name(b) == '' then n = n + 1 end
+		end
+		return n
+	]])
+	-- with an edit not written, Neovim refuses the switch, and the pop-up stays
+	local refused = child.lua([[
+		vim.api.nvim_buf_set_lines(0, -1, -1, false, { 'b.txt' })
+		local ok, err = pcall(vim.cmd, 'buffer a.txt')
+		return { ok = ok, e37 = err and err:find('E37', 1, true) ~= nil, stays = vim.bo.filetype == 'cavediver-primary-buffer-history' }
+	]])
+	eq({ opened = opened, gone = gone, floats = floats, ok = ok, err = err, again = again, nameless = nameless, refused = refused },
+		{ opened = true, gone = true, floats = 0, ok = true, again = true, nameless = 0, refused = { ok = false, e37 = true, stays = true } })
+end
+
 -- One tracked buffer only, so nothing is left to land on: Neovim puts an empty
 -- buffer in the window, read in the same call as the delete.
 -- The rest of A19's landing order is T111's.
