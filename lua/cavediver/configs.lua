@@ -91,6 +91,7 @@
 ---@field closed boolean|nil Whether it has closed
 ---@field torn boolean|nil Whether a whole-editor load replaced what it did (the session manager's teardown)
 ---@field dumped boolean|nil Whether the flight recorder dumped in it
+---@field written_to table<string, boolean>|nil The session files whose trail page holds it (in memory only)
 
 ---Something cavediver did in a step
 ---@class CavediverLedgerMove

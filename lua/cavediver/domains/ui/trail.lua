@@ -349,8 +349,9 @@ end
 
 ---Check if a step is this editor's own.
 ---
----A reader gives this editor's steps from its ledger, and earlier editors' from the pages, so a
----step began after this editor's ledger did exactly when it's this editor's.
+---A reader gives earlier editors' steps from the pages, and this editor's from its ledger, or from
+---the pages for a day the ledger let go; either way a step began after this editor's ledger did
+---exactly when it's this editor's.
 ---
 ---@param step CavediverLedgerStep The step
 ---@return boolean mine True if this editor made it

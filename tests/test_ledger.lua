@@ -818,6 +818,78 @@ T['T423 [char] (A27) pages outlive the editor that wrote them'] = function()
 		{ closes = { 'closed c.txt', 'closed b.txt' }, earlier = true })
 end
 
+-- The editor's ledger made to start three days ago, so the planted steps are this editor's.
+local PLANT = [==[
+local L, n, trigger, ringed = require('cavediver').ledger, ...
+local t = os.time() - n * 86400 + 60
+local day = os.date('%Y-%m-%d', t)
+local step = { seq = -n * 100 - #trigger, time = t, cause = 'keymap', trigger = trigger, names = {},
+	events = {}, moves = { { kind = 'closed', name = trigger .. '.txt', lists = { 'editor' } } },
+	session = L.session_of(nil, vim.fn.getcwd(-1, -1)) }
+L.data.days[day] = L.data.days[day] or {}
+table.insert(L.data.days[day], step)
+if ringed then table.insert(L.data.ring, 1, step) end
+return day
+]==]
+T['T567 [char] (A27) a past day leaves memory once its pages have it, and the trail reads it from them'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.lua('require("cavediver").ledger.data.started = os.time() - 3 * 86400')
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(S2.save(child), { true })
+	local yesterday = child.lua(PLANT, { 1, 'yesterday', false })
+	local before = child.lua(PLANT, { 2, 'twodays', true })
+	child.cmd('bdelete b.txt')
+	child.settle(1500)
+	local held = child.lua([[
+		local yesterday, before = ...
+		local L, st = require('cavediver').ledger, require('cavediver.domains.storage').routines
+		local read = {}
+		for _, step in ipairs(st.trail_reader().steps(yesterday)) do table.insert(read, step.trigger) end
+		return { yesterday = #L.trail(yesterday), before = #L.trail(before), read = read }
+	]], { yesterday, before })
+	child.lua(PLANT, { 1, 'late', false })
+	child.cmd('bdelete a.txt')
+	child.settle(1500)
+	eq({ held = held, page = closes(page(nil, yesterday)) }, {
+		held = { yesterday = 0, before = 1, read = { 'yesterday' } },
+		page = { 'closed yesterday.txt', 'closed late.txt' },
+	})
+end
+
+-- Another editor's step is sealed into yesterday's page by hand: the number of this editor's step there,
+-- a later time.
+T['T570 [char] (A27) another editor\'s step on a shared page isn\'t read as this editor\'s'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.lua('require("cavediver").ledger.data.started = os.time() - 3 * 86400')
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(S2.save(child), { true })
+	local yesterday = child.lua(PLANT, { 1, 'yesterday', false })
+	child.cmd('bdelete b.txt')
+	child.settle(1500)
+	local read = child.lua([[
+		local day = ...
+		local L, st = require('cavediver').ledger, require('cavediver.domains.storage').routines
+		local crypto = require('cavediver.domains.storage.crypto')
+		local dir = vim.fn.getcwd(-1, -1)
+		local main = require('cavediver.configs').session_dir .. vim.fn.sha256(dir)
+		local f = io.open(main, 'rb'); local bytes = f:read('*a'); f:close()
+		local key = st.key_for(dir, bytes:sub(5, 4 + crypto.salt_length))
+		local page = main .. '.d/' .. st.read_session(dir, nil).trail[day]
+		f = io.open(page, 'rb'); local sealed = f:read('*a'); f:close()
+		local held = vim.json.decode(crypto.open(key, sealed, 'CDV1trail\n' .. day))
+		local mine = held.steps[#held.steps]
+		table.insert(held.steps, { seq = mine.seq, time = mine.time + 5, cause = 'keymap', trigger = 'other', names = {},
+			events = {}, moves = { { kind = 'closed', name = 'other.txt', lists = { 'editor' } } } })
+		st.write_atomic(page, crypto.seal(key, vim.json.encode(held), 'CDV1trail\n' .. day))
+		local triggers = {}
+		for _, step in ipairs(st.trail_reader().steps(day)) do table.insert(triggers, step.trigger) end
+		return { forgotten = #L.trail(day) == 0, triggers = triggers }
+	]], { yesterday })
+	eq(read, { forgotten = true, triggers = { 'yesterday' } })
+end
+
 T['T424 [char] (A27) each file keeps its own moves'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 't'), { true })

@@ -157,4 +157,17 @@ T["T150 [char] Q6's ten keys: the third <M-f> rewrites dtm[b] := c, and the rest
 	eq(child.slots(), '⦉c⦊ [b] ⟦a⟧')
 end
 
+-- The user's function notes it ran, and inside what step.
+T['T571 [char] (A25, M11) a key follows its export as reassigned'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.lua([[
+		require('cavediver').toggle_secondary = function()
+			local step = require('cavediver').ledger.data.open
+			_G.CDV_RAN = step and step.trigger or 'no step'
+		end
+	]])
+	child.steps({ '<M-f>' })
+	eq(child.lua('return _G.CDV_RAN or vim.NIL'), '<M-f>')
+end
+
 return T

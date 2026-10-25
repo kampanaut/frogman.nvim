@@ -230,6 +230,14 @@ T['D29 [char] init.lua\'s header says encrypted session persistence, and the XOR
 	}, { true, false, false })
 end
 
+T['A26 [char] README says how to read a replay\'s line'] = function()
+	local r = read(README)
+	eq({
+		has(r, 'When it\'s done, it says what it did in one line, such as `cavediver: replayed 12 steps, 5 driven, 5 matching, 0 resynced`'),
+		has(r, 'a resync is a step the replay first put back where the dump says it began'),
+	}, { true, true })
+end
+
 -- The engine (Q20) ----------------------------------------------------------
 
 T['Q20 [char] the engine says modes are shared by every machine'] = function()

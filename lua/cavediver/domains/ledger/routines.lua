@@ -629,6 +629,22 @@ function M.trail(day)
 	return steps
 end
 
+---Let a past day's steps go from memory.
+---
+---Storage calls it once the day's steps are all on their pages, and the trail reads the day from
+---there. Each step's number and time stay behind, in `paged_out`, so this editor's steps are told
+---apart on a page from another editor's that share their numbers.
+---
+---@param day string The day as `YYYY-MM-DD`
+---@return nil
+function M.forget_day(day)
+	data.paged_out[day] = data.paged_out[day] or {}
+	for _, step in ipairs(data.days[day] or {}) do
+		data.paged_out[day][step.seq] = step.time
+	end
+	data.days[day] = nil
+end
+
 ---Get the days the trail holds steps for.
 ---
 ---The day the open step began counts when that step has made moves.

@@ -73,7 +73,11 @@ local function load(name, opts, restart)
 		end
 	end
 	local session = { name = name, directory = directory }
-	data.loading_batch = true
+	local batch = data.loading_batch
+	if not restart and batch and batch.name == name and batch.directory == directory then
+		return -- a repeat inside one restore: a native session calls once per loaded buffer
+	end
+	data.loading_batch = session
 	data.last_loaded = { name = name, tab = hint }
 	-- once the restore's batch is over: the next call is a full load again, and the window the
 	-- restore left focused is taken in. Only the second is settle work: a key may take the window
@@ -109,15 +113,12 @@ end
 ---Load session from file.
 ---
 ---A repeat inside one restore is skipped, since a native session calls this once per loaded
----buffer.
+---buffer: a call naming the session a load in the same batch was for. Another session loads.
 ---
 ---@param name string|nil The session's name as the session manager passes it (nil for a nameless load)
 ---@param opts {tab: integer|nil}|nil Options (`tab` is a tab session's tabpage, for a file that can't say so)
 ---@return nil
 function M.load_session(name, opts)
-	if data.loading_batch then
-		return
-	end
 	load(name, opts)
 end
 
