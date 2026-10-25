@@ -732,6 +732,41 @@ T['T460 [char] a dump is sealed, and :CavediverDump opens it from the directory 
 	eq(Extra.has(child.messages(), "doesn't open here"), true)
 end
 
+T['T528 [char] (A26) :CavediverDump on a directory says it isn\'t a dump'] = function()
+	child.steps({ ':e a' })
+	child.messages()
+	local ok, err = child.lua('return { pcall(vim.cmd, "CavediverDump " .. vim.fn.fnameescape(_G.CDV_TEST.root)) }')
+	local said = false
+	for _, m in ipairs(child.messages()) do
+		if m.msg:find("isn't a dump", 1, true) then said = true end
+	end
+	eq({ ok = ok[1] or ok, said = said }, { ok = true, said = true })
+end
+
+T['T529 [char] (A26) a failure inside a cleanup tick is dumped on the tick\'s step'] = function()
+	child.steps({ ':e a', ':e b', ':e c' })
+	local files_before = child.dumps()
+	-- <M-f>'s step still open, and a tick run as the cleanup timer runs it, a never planted in it
+	local open_dumped = child.lua([[
+		_G.CDV_TEST.press('<M-f>')
+		local ledger = require('cavediver.domains.ledger')
+		local open = ledger.open_step()
+		ledger.within('timer', 'cleanup', function()
+			pcall(ledger.never, 'planted for T529')
+		end)
+		return open and open.trigger == '<M-f>' and (open.dumped or false)
+	]])
+	child.settle(300)
+	local files = Extra.new_files(files_before, child.dumps())
+	local fired = #files == 1 and child.lua('return require("cavediver.domains.ledger.dump").read(...)', { files[1] }) or ''
+	local row
+	for line in fired:gmatch('[^\n]+') do
+		if line:find('fired here', 1, true) then row = line end
+	end
+	eq({ files = #files, open_dumped = open_dumped, row = row and row:find('cleanup', 1, true) ~= nil },
+		{ files = 1, open_dumped = false, row = true })
+end
+
 -- T461 and T462's setup: the first window at ⦉a⦊ [b] ⟦-⟧ with p=[a]on, and a split,
 -- focused, at ⦉b⦊ [c] ⟦-⟧, cycling there (<M-m>). Window numbers depend on 'splitright' (off
 -- here, so the split opens on the left as window 1), so the cases read them from the windows.

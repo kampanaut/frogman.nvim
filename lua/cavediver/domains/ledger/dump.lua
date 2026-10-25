@@ -487,12 +487,14 @@ function M.read(path)
 	end
 	local bytes = file:read("*a")
 	file:close()
-	if bytes:sub(1, #HEADER) ~= HEADER or #bytes <= #HEADER + crypto.salt_length then
+	-- a directory opens, and reads as nothing
+	if type(bytes) ~= "string" or bytes:sub(1, #HEADER) ~= HEADER or #bytes <= #HEADER + crypto.salt_length then
 		return nil, "not a dump"
 	end
 	local with_salt = bytes:sub(#HEADER + 1, #HEADER + crypto.salt_length)
-	local opened, text = pcall(crypto.open, key_for(vim.fn.getcwd(-1, -1), with_salt),
-		bytes:sub(#HEADER + crypto.salt_length + 1), aad(with_salt))
+	local opened, text = pcall(function()
+		return crypto.open(key_for(vim.fn.getcwd(-1, -1), with_salt), bytes:sub(#HEADER + crypto.salt_length + 1), aad(with_salt))
+	end)
 	if not opened or text == nil then
 		return nil, "not here"
 	end
@@ -521,14 +523,14 @@ end
 
 ---Dump a message that `ledger.never()` is about to raise.
 ---
----The open step is the one it fired in. The message is marked too, so the hook failure
----carrying it isn't dumped a second time.
+---The step it fired in is a running call's own, such as a tick's, or else the open one. The
+---message is marked too, so the hook failure carrying it isn't dumped a second time.
 ---
 ---@param message string The message being raised
 ---@return nil
 function M.never(message)
 	nevers[message] = true
-	M.fire("never:" .. message, message, data.open)
+	M.fire("never:" .. message, message, data.scopes[#data.scopes] or data.open)
 end
 
 ---Dump a hook that failed without being critical.
@@ -547,7 +549,7 @@ function M.hook_failed(name, err)
 		end
 	end
 	local first = text:match("[^\n]*"):gsub("^[^:]*:%d+: ", "")
-	M.fire("hook:" .. name .. ":" .. first, "Hook '" .. name .. "' failed: " .. text, data.open)
+	M.fire("hook:" .. name .. ":" .. first, "Hook '" .. name .. "' failed: " .. text, data.scopes[#data.scopes] or data.open)
 end
 
 ---Check the slot rules once a step has been held open its full time.

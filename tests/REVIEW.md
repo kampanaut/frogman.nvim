@@ -1,6 +1,6 @@
 # Test review sheet
 
-591 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
+594 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use cavediver, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -352,7 +352,7 @@ note: as a config that calls setup() at startup has it: the start buffer entered
 spec: (A21, M5) The first `:e` after the start buffer was taken in leaves that buffer in no slot: in a fresh editor, the empty buffer it starts on entered once cavediver is set up, as a config that calls `setup()` at startup has it, then `:e a`, give `⦉-⦊ [a] ⟦-⟧` with no "Healed the t…  
 `tests/test_cleanup.lua:325`
 
-## tests/test_closing.lua (23 cases: 23 char)
+## tests/test_closing.lua (24 cases: 24 char)
 
 **T80 [char]** <M-.> on the newest lands on the next, closes it, and keeps it in the ternary  
 `:e d`, `:e e`, `:e f` → `ordered = 'f,e,d'`  
@@ -469,13 +469,18 @@ spec: `<M-S-w>` with an empty stack warns "No closed buffers to reopen."
 spec: A No Name buffer closed with text comes back with the same lines and filetype.  
 `tests/test_closing.lua:206`
 
+**T530 [char]** (A16, M5, M14) <M-S-w> opens a never-written file again, and the entries under it stay within reach  
+`:e a`, `:e c`, `<M-.>`, `:e brandnew.txt`, `<M-.>`, `<M-S-w>`, `<M-S-w>` → `eq({ first = first, second = child.lua('return vim.fn.expand("%:t")') },`  
+spec: (A16, M5, M14) `<M-S-w>` opens a never-written file again as the new file it was, and the entries under it stay within reach: `:e a`, `:e c`, `<M-.>`, then `:e brandnew.txt` with nothing typed and `<M-.>`; `<M-S-w>` shows brandnew.txt, empty, and `<M-S-w>` again shows c.  
+`tests/test_closing.lua:217`
+
 **T89 [char]** <M-S-w> on a missing file says so and leaves the entry on the stack  
 `:e d`, `:e e`, `:e f`, `<M-.>` → `closed = 'f'`  
 `<M-S-w>` → `eq({ ok, err }, { true, nil })`  
 → `eq(said, true)`  
 → `closed = 'f'`  
 spec: `<M-S-w>` on a missing file says so and leaves the entry on the stack.  
-`tests/test_closing.lua:217`
+`tests/test_closing.lua:229`
 
 **T90 [char]** a reopened No Name buffer gets its cursor in its own window  
 `:e a`, `<M-.>` → `shown = 'a'`  
@@ -485,7 +490,7 @@ spec: `<M-S-w>` on a missing file says so and leaves the entry on the stack.
 → `eq(child.lua('return vim.api.nvim_win_get_cursor(0)'), { 3, 2 })`  
 note: Cursor on line 3; a.txt, where <M-.> lands, has one line.  
 spec: A reopened No Name buffer gets its cursor in its own window, with no "Invalid cursor line".  
-`tests/test_closing.lua:232`
+`tests/test_closing.lua:244`
 
 **T91 [char]** after a No Name buffer is reopened, its old hash is renamed everywhere ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-.>` → `shown = 'c'`  
@@ -497,13 +502,13 @@ spec: A reopened No Name buffer gets its cursor in its own window, with no "Inva
 → `eq(child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()].displacement_ternary_map[...]', { child.hash_of('b'`  
 note: b is left while the No Name buffer is its ternary, so dtm[b] names it; then the No Name buffer is closed from c, where it lands in the ternary.  
 spec: After a No Name buffer is reopened, every slot and map entry that held its old hash holds the new one.  
-`tests/test_closing.lua:246`
+`tests/test_closing.lua:258`
 
 **T162 [char]** pushing a hash already on the closed stack keeps one copy, as the newest  
 `:e a` → `eq(got, true)`  
 → `closed = 't,x'`  
 spec: (Q15) I22: pushing a hash that's already on the closed stack (for example, `track_closing_filehash_force` on x, t, then x again) leaves it on the stack once, as the newest entry: `t,x`. With pools: closing `notes.md` in two tabs' pools and merging both entries leaves one, the new…  
-`tests/test_closing.lua:268`
+`tests/test_closing.lua:280`
 
 **T164 [char]** <M-.> in a window visiting an untracked buffer closes it and lands on the current slot  
 `:e b`, `:e a`, `<M-f>` → `slots = '⦉-⦊ [a] ⟦b⟧'`  
@@ -515,7 +520,7 @@ spec: (Q15) I22: pushing a hash that's already on the closed stack (for example,
 → `slots = '⦉-⦊ [a] ⟦b⟧'`  
 note: Visit a nofile scratch in the same window.  
 spec: Q17, a visiting window: in a window with `{c=a s=b}` that's visiting an untracked buffer (a `nofile` scratch, or help shown with `:buffer`), `<M-.>` closes the visited buffer, and the window shows a with `{c=a s=b}` intact (A2, A15, T27).  
-`tests/test_closing.lua:286`
+`tests/test_closing.lua:298`
 
 **T165 [char]** <M-.> in a help window closes the help buffer and leaves a alone  
 `:e a`, `:help` → `eq(child.lua('return vim.bo.buftype'), 'help')`  
@@ -526,7 +531,7 @@ spec: Q17, a visiting window: in a window with `{c=a s=b}` that's visiting an un
 → `shown = 'a'`  
 → `slots = '⦉-⦊ [a] ⟦-⟧'`  
 spec: Q17, a window born untracked: `:e a`, `:help`, then `<M-.>` in the help window. The help buffer is closed, Neovim closes the help window, nothing throws, and a's window and triquetra are unchanged.  
-`tests/test_closing.lua:306`
+`tests/test_closing.lua:318`
 
 **T166 [char]** <M-.> on help in the only window closes the help buffer  
 `:help`, `:only` → `eq(child.lua('return vim.bo.buftype'), 'help')`  
@@ -535,7 +540,7 @@ spec: Q17, a window born untracked: `:e a`, `:help`, then `<M-.>` in the help wi
 → `eq(#child.lua('return vim.api.nvim_list_wins()'), 1)`  
 → `eq(Extra.at_least(child.messages()), {})`  
 spec: Q17, the only window: `:help`, `:only`, `<M-.>`. The help buffer is closed, nothing throws, and the window shows what Neovim picks.  
-`tests/test_closing.lua:323`
+`tests/test_closing.lua:335`
 
 **T167 [char]** <M-.> on a running terminal refuses with a message  
 `:e a`, `:e b`, `:terminal sleep 1000` → `eq(child.lua('return vim.bo.buftype'), 'terminal')`  
@@ -544,9 +549,9 @@ spec: Q17, the only window: `:help`, `:only`, `<M-.>`. The help buffer is closed
 → `eq(#Extra.at_least(child.messages(), vim.log.levels.WARN) > 0, true)`  
 → `eq(child.lua('return vim.api.nvim_buf_is_valid(...) and vim.api.nvim_get_current_buf() == ...', { term }), true)`  
 spec: Q17, a running terminal: `<M-.>` on a `:terminal` whose job is still running refuses with a message, and the terminal stays.  
-`tests/test_closing.lua:337`
+`tests/test_closing.lua:349`
 
-## tests/test_cycling.lua (55 cases: 55 char)
+## tests/test_cycling.lua (57 cases: 57 char)
 
 **T69 [char]** <M-m> from normal starts cycling and leaves the current slot  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
@@ -830,51 +835,62 @@ note: T200's route. The file on disk is sealed, and :CavediverDump opens it from
 spec: (A26) A dump is sealed: on T200's route the file starts with `CDV1` and holds none of its text in clear (no `c.txt`, no `<M-;><M-t>`, no `cavediver:`); `:CavediverDump <file>` opens it in a buffer holding the failing row and the `replay:` part; after `:cd sub`, the same command s…  
 `tests/test_cycling.lua:699`
 
+**T528 [char]** (A26) :CavediverDump on a directory says it isn't a dump  
+`:e a` → `eq({ ok = ok[1] or ok, said = said }, { ok = true, said = true })`  
+spec: (A26) `:CavediverDump` on a directory says it isn't a dump: `:CavediverDump` with the project's own directory raises nothing and gives the WARN that it isn't a dump.  
+`tests/test_cycling.lua:735`
+
+**T529 [char]** (A26) a failure inside a cleanup tick is dumped on the tick's step  
+`:e a`, `:e b`, `:e c`, `<M-f> (via _G.CDV_TEST.press)` → `eq({ files = #files, open_dumped = open_dumped, row = row and row:find('cleanup', 1, true) ~= nil },`  
+note: <M-f>'s step still open, and a tick run as the cleanup timer runs it, a never planted in it  
+spec: (A26) A failure inside a cleanup tick is dumped on the tick's step: with `<M-f>`'s step still open, a planted `never` inside a tick run as the cleanup timer runs it gives a dump whose fired row is the tick's, `cleanup`, and leaves `<M-f>`'s step not marked dumped.  
+`tests/test_cycling.lua:746`
+
 **T461 [char]** a key that comes before the cancel runs it first, then does its job  
 spec: (A12) A key that comes before the cancel runs it first: `:e a`, `<M-;><M-c>`, `:e b` give `⦉a⦊ [b] ⟦-⟧` with `p=[a]on`; `:vsplit`, `:e c` give the split `⦉b⦊ [c] ⟦-⟧`; `<M-m>` there, then `<C-w>w<M-;><M-f>` in one batch: nothing throws and nothing dumps, the split shows c again w…  
-`tests/test_cycling.lua:785`
+`tests/test_cycling.lua:820`
 
 **T464 [char]** a cycle started before its window's arrival has settled starts from it  
 → `eq({ hooks = Extra.has(child.messages(), "Hook '"), dumps = #Extra.new_files(before, child.dumps()),`  
 note: From a fresh editor: the empty start buffer picked, then reused for b.txt, then a cycle.  
 spec: (M11, A12) A cycle started before its window's arrival has settled starts from it: from a fresh editor, `<M-m><M-m><M-v>:e b.txt<CR><M-m>` in one batch gives no hook failure and no dump, navigation `cycling`, and the window's current slot b. **[run 2026-10-24]** recorded, before …  
-`tests/test_cycling.lua:797`
+`tests/test_cycling.lua:832`
 
 **T465 [char]** a key in a macro acts on the buffer the macro just opened  
 `:e a`, `:e c` → `slots = '⦉a⦊ [c] ⟦-⟧'`  
 → `eq({ shown = child.shown(), slots = child.slots() }, { shown = 'b', slots = '⦉-⦊ [b] ⟦c⟧' })`  
 spec: (A1, M11) A key in a macro acts on the buffer the macro just opened: from `⦉a⦊ [c] ⟦-⟧`, `:e b.txt<CR><M-f>` in one batch shows b with `⦉-⦊ [b] ⟦c⟧`, as typed by hand. **[run 2026-10-24]** recorded it ending on c, `⦉a⦊ [c] ⟦-⟧`, "Jumped back to windows current buffer.", b never r…  
-`tests/test_cycling.lua:805`
+`tests/test_cycling.lua:840`
 
 **T466 [char]** keys in one batch keep their order  
 `:e e`, `:e a`, `<M-f>`, `:e c` → `slots = '⦉a⦊ [c] ⟦e⟧'`  
 → `slots = '⦉e⦊ [d] ⟦b⟧'`  
 spec: (M11) The batch keeps its order: from `⦉a⦊ [c] ⟦e⟧`, `:e b.txt<CR><M-f>:e d.txt<CR>` in one batch gives `⦉e⦊ [d] ⟦b⟧`, as typed by hand.  
-`tests/test_cycling.lua:812`
+`tests/test_cycling.lua:847`
 
 **T467 [char]** a dump lists the settle work still queued  
 `:e a` → `eq(#files, 1)`  
 → `eq(text:match('\npending: ([^\n]*)'), 'arrival b.txt')`  
 spec: (A26, M11) A dump lists the settle work still queued: `:edit b.txt` and a planted `never` in one call give a dump whose heading names `arrival b.txt` as pending.  
-`tests/test_cycling.lua:819`
+`tests/test_cycling.lua:854`
 
 **T510 [char]** a cycle key in a window with no triquetra starts nothing  
 `:e a`, `:e b`, `:help`, `<M-m>`, `<M-;><M-f>` → `eq({ said = said, state = state, help = help, dumps = #Extra.new_files(dumps, child.dumps()) },`  
 spec: (A12) A cycle key in a window with no triquetra starts nothing: `:e a`, `:e b`, `:help`, then `<M-m>` in the help window says "Window with unregistered buffer.", leaves navigation `normal` and the help shown, and `<M-;><M-f>` there raises nothing and writes no dump.  
-`tests/test_cycling.lua:833`
+`tests/test_cycling.lua:868`
 
 **T511 [char]** the command-line window doesn't cancel a cycle  
 `:e a`, `:e b`, `:e c`, `<M-m>` → `eq(child.state(), CYCLING)`  
 `<C-c> (via child.type_keys)` → `eq({ errors = Extra.at_least(child.messages()), state = child.state() }, { errors = {}, state = CYCLING })`  
 spec: (A12, T459) The command-line window doesn't cancel a cycle: `:e a`, `:e b`, `:e c`, `<M-m>`, then `q:` and `<C-c>` give no error, and the cycle is still running in its window.  
-`tests/test_cycling.lua:848`
+`tests/test_cycling.lua:883`
 
 **T512 [char]** a tab session's load into a tab cycling there ends the cycle  
 `:e a`, `:e b`, `:e c` → `eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
 `:e d`, `<M-n>` → `eq(child.state(), CYCLING)`  
 `<M-n>` → `eq({ state = state, slots = child.slots() }, { state = NORMAL, slots = before })`  
 spec: (A12, S1 Load) A tab session's load ends a cycle, in the tab it loads into and elsewhere: `:e a`, `:e b`, `:e c` saved as tab session t, `:e d`, `<M-n>`, then t loaded into that tab, or into a second tab from the cycling one, leave navigation `normal` and history attached, and th…  
-`tests/test_cycling.lua:859`
+`tests/test_cycling.lua:894`
 
 **T512 [char]** a tab session's load into another tab ends a cycle running elsewhere ⚑ state set by hand  
 `:e a`, `:e b`, `:e c` → `eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
@@ -882,95 +898,95 @@ spec: (A12, S1 Load) A tab session's load ends a cycle, in the tab it loads into
 `<M-n>` → `eq({ state = state, slots = child.slots() }, { state = NORMAL, slots = before })`  
 note: The cycle runs in the first tab, and the session loads into a second one from there.  
 spec: (A12, S1 Load) A tab session's load ends a cycle, in the tab it loads into and elsewhere: `:e a`, `:e b`, `:e c` saved as tab session t, `:e d`, `<M-n>`, then t loaded into that tab, or into a second tab from the cycling one, leave navigation `normal` and history attached, and th…  
-`tests/test_cycling.lua:873`
+`tests/test_cycling.lua:908`
 
 **T201 [char]** a dumped file replays to the same assertion  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
 `<M-;><M-t> (via typed)` → `eq({`  
 spec: (A26) A dumped file replays to the same assertion: on T200's route in a project kept across editors, with the stale note planted by a typed `:lua` line, the dump replayed in a fresh editor in that project raises "Remembered secondary is the same as current secondary" at `<M-;><M-…  
-`tests/test_cycling.lua:918`
+`tests/test_cycling.lua:953`
 
 **T202 [char]** replaying the snapshot and the steps reproduces every driven step's row  
 `:e a`, `:e b`, `:e c`, `keys` → `eq({ snapshot = r.snapshot, enough = r.driven >= 50, matched = r.matched == r.driven, mismatches = #r.mismatches, resynced = r.resynced },`  
 spec: (A26) A dump starts with a snapshot of the state at its first step, and replaying snapshot plus steps reproduces every driven step's row: `:e a`, `:e b`, `:e c`, then 110 `<M-S-f>`, so the dump starts from a snapshot that holds them (A26 What a dump holds), then a planted `never`…  
-`tests/test_cycling.lua:936`
+`tests/test_cycling.lua:971`
 
 **T470 [char]** a replay runs no code a command line chains or carries  
 `:e a` → `eq(child.lua('return _G.CDV_PLANTED'), true) -- they ran here, in the editor that made the dump`  
 → `eq({ ran = child.lua('return _G.CDV_PLANTED == true'), failure = r.failure == nil }, { ran = false, failure = true })`  
 spec: (A26) A replay runs no code a command line chains or carries: a dump holding `:e b.txt | lua _G.CDV_PLANTED = true` and `:e +lua\ _G.CDV_PLANTED=true c.txt`, typed in the editor that made it, replayed in a fresh editor in its project, leaves `CDV_PLANTED` unset there, both steps'…  
-`tests/test_cycling.lua:953`
+`tests/test_cycling.lua:988`
 
 **T468 [char]** a replay's editor isn't saved  
 `:e a` → `eq({ ok = res.ok, said = res.err:find("this editor replayed a dump", 1, true) ~= nil, files = res.files },`  
 spec: (A26) A replay's editor isn't saved: after T201's replay, `save_session()` throws the replay's message and writes no session file.  
-`tests/test_cycling.lua:969`
+`tests/test_cycling.lua:1004`
 
 **T471 [char]** a replay goes into an editor that has taken in the empty buffer it started on  
 `:e a`, `:doautocmd BufEnter` → `eq({ registered = child.lua('return require("cavediver.domains.history").data.hash_buffer_registry.hashes[...] ~= nil', { start }),`  
 → `eq({`  
 note: as a config that calls setup() at startup has it: the start buffer entered once cavediver is set up  
 spec: (A26) A replay goes into an editor that has taken in the empty buffer it started on, as one whose config calls `setup()` at startup has: T468's dump, a fresh editor in its project whose empty start buffer is entered once cavediver is set up, so it's registered and its window has …  
-`tests/test_cycling.lua:987`
+`tests/test_cycling.lua:1022`
 
 **T486 [char]** a command line whose path the ledger cut is planted, not driven  
 `:e a`, `:e b` → `eq({ mismatches = #r.mismatches, stray = child.lua('return vim.fn.bufnr(...)', { root .. '/deep.txt' }) },`  
 spec: (A26) A command line whose path the ledger cut is planted, not driven: `:e a`, then `:e sub/deep.txt` typed, recorded as `:e deep.txt`, `:e b`, a planted `never`; the replay in a fresh editor in its project finds no mismatch and makes no `deep.txt` buffer in the project's root.  
-`tests/test_cycling.lua:1028`
+`tests/test_cycling.lua:1063`
 
 **T487 [char]** a command naming the original editor's buffers is planted  
 `:e a`, `:e b` → `eq({ mismatches = #r.mismatches, hash = child.lua([[return vim.fn.bufnr('^#$')]]) }, { mismatches = 0, hash = -1 })`  
 spec: (A26) A command naming the original editor's buffers is planted: `:e a`, `:e b`, then `:e #` and `:b 1` typed, a planted `never`; the replay finds no mismatch and makes no buffer named `#`.  
-`tests/test_cycling.lua:1040`
+`tests/test_cycling.lua:1075`
 
 **T489 [char]** a replay writes no dump of its own  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `<M-;><M-t> (via typed)` → `eq({ reproduced = r.failure ~= nil, new = #Extra.new_files(before_replay, child.dumps()) }, { reproduced = true, new = 0 })`  
 spec: (A26) A replay writes no dump of its own: T201's route, replayed, reproduces the restore's assertion and leaves no new dump file.  
-`tests/test_cycling.lua:1063`
+`tests/test_cycling.lua:1098`
 
 **T490 [char]** a cleanup tick's repair doesn't throw a replay off ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-f>`, `:vsplit`, `:e x`, `:noautocmd buffer ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")`, `:noautocmd bwipeout ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/x.txt")`, `<M-S-f>` → `eq({ mismatches = #r.mismatches, resynced = (r.resynced or 0) >= 1 }, { mismatches = 0, resynced = true })`  
 note: The split's buffer x is wiped without events while c is shown in its place; the cleanup tick's step re-points the split, a step with no window and no row of its own.  
 spec: (A26) A cleanup tick's repair doesn't throw a replay off: `:e a`, `:e b`, `:e c`, `<M-f>`, `:vsplit`, `:edit x.txt`, then c shown and x wiped without events, a cleanup tick, `<M-S-f>`, a planted `never`; the replay counts a resync and finds no mismatch.  
-`tests/test_cycling.lua:1079`
+`tests/test_cycling.lua:1114`
 
 **T491 [char]** a float in the replaying editor isn't one of its windows ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `:vsplit`, `:e d`, `keys` → `eq({`  
 spec: (A26) A float in the replaying editor isn't one of its windows: a dump made with two windows, replayed with a float open and not entered, gives no mismatch, plants no triquetra on the float, and leaves two windows in the tab.  
-`tests/test_cycling.lua:1093`
+`tests/test_cycling.lua:1128`
 
 **T492 [char]** with a short ring the dump's snapshot and steps still meet  
 `:e a`, `:e b`, `:e c`, `:e d`, `:e e`, `:e f` → `eq({ mismatches = #r.mismatches, driven = r.driven > 0 }, { mismatches = 0, driven = true })`  
 spec: (A26) With a short ring the dump's snapshot and steps still meet: with `ledger.ring` at 20, `:e a`, `:e b`, `:e c`, 55 `<M-S-f>`, `:e d`, `:e e`, `:e f`, 57 `<M-S-f>`, a planted `never`; the replay, the ring at 20 there too, finds no mismatch.  
-`tests/test_cycling.lua:1112`
+`tests/test_cycling.lua:1147`
 
 **T493 [char]** a replayed editor writes no records as a tab session's tab closes  
 `:e a`, `:e a`, `:tabnew`, `:e b` → `eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
 `:tabnew`, `:e c`, `:tabclose` → `eq(raw(main) == bytes, true)`  
 spec: (A26, S1 Records) A replayed editor writes no records as a tab session's tab closes: a tab session saved in one editor; a fresh editor replays a dump, loads that session into a new tab and closes it, and the session's file is as it was.  
-`tests/test_cycling.lua:1130`
+`tests/test_cycling.lua:1165`
 
 **T494 [char]** a replay reports a slot rule its dump fired at  
 `:e a`, `:e b`, `:e c`, `<M-f>` → `eq({ i23 = table.concat(r.fired or {}, '\n'):find('I23', 1, true) ~= nil, failure = r.failure, new = #Extra.new_files(before_replay, child.dumps()) },`  
 note: T201's stale note planted by a typed :lua line held open on its own: its close finds I23 broken and dumps. The replay plants that row, so the rule is broken at its end.  
 spec: (A26) A replay reports a slot rule its dump fired at: T201's stale note planted by a typed `:lua` line held open on its own, whose close dumps I23's break; the replay in a fresh editor lists the break in what fired, stops nowhere, and writes no dump.  
-`tests/test_cycling.lua:1170`
+`tests/test_cycling.lua:1205`
 
 **T469 [char]** a dump that spans more than one tab isn't replayed  
 `:e a`, `:tabnew`, `:e b` → `eq({ said = Extra.has(child.messages(), 'spans more than one tab'), windows = child.lua('return #vim.api.nvim_list_wins()'),`  
 spec: (A26) A dump that spans more than one tab isn't replayed: a dump made with a second tab open, replayed, gives the WARN and leaves the fresh editor as it was.  
-`tests/test_cycling.lua:1186`
+`tests/test_cycling.lua:1221`
 
 **T463 [char]** an export called from a user's mapping runs the cancel first too  
 → `eq({ ok = ok, dumps = #Extra.new_files(before, child.dumps()), split = child.shown(split), first = child.slots(first) },`  
 note: A user's own Lua mapping: a window jump and an export, in one function.  
 spec: (A12) An export called from a user's mapping runs the cancel first too: T461's setup, then `vim.cmd.wincmd('w')` and `require('cavediver').jump_to_primary()` in one function: nothing throws and nothing dumps, the split shows c again, and the other window is `⦉b⦊ [a] ⟦-⟧`.  
-`tests/test_cycling.lua:1205`
+`tests/test_cycling.lua:1240`
 
 **T462 [char]** a jump's cancel says so  
 `:wincmd w` → `eq(#said, 1)`  
 spec: (A12) A jump's cancel says so: T461's setup, `<M-m>` in the split, then `<C-w>w` alone, settled, gives one INFO, "Cycling cancelled. Window 1 returned to cycling origin buffer: c.txt", the split being window 1 with `'splitright'` off, as the harness runs.  
-`tests/test_cycling.lua:1217`
+`tests/test_cycling.lua:1252`
 
 ## tests/test_decisions.lua (52 cases: 52 char)
 
