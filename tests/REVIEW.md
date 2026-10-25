@@ -192,7 +192,7 @@ spec: (Q13) No key raises over random walks: T190's walks (one window and severa
 `:e x`, `:e b`, `:e c`, `:e d`, `:e a` → `notes = 'dtm{a-swap>b c>a} dsm{a-swap>b a>c d>a}'`  
 → `notes = 'dtm{c>x x-swap>b} dsm{d>x x-swap>b x>c}'`  
 note: Set up directly: a is renamed to x.  
-spec: ("Keep the older one") `rename_hash_in_triquetras(old, new)` moves `dsm[old-swap]` to `dsm[new-swap]` and renames values in both maps, as it already does for `dtm[old-swap]` (`window/data.lua:156-159`). Set it up directly, or with a No Name buffer that holds both kinds of seconda…  
+spec: ("Keep the older one") `rename_hash_in_triquetras(old, new)` moves `dsm[old-swap]` to `dsm[new-swap]` and renames values in both maps, as it already does for `dtm[old-swap]` (`window/data.lua:156-160`). Set it up directly, or with a No Name buffer that holds both kinds of seconda…  
 `tests/test_keep_older.lua:255`
 
 **T193 [char]** (D9) the missing-file rule on the secondary map: <M-;><M-t> says the file is missing, changes no slot, keeps both notes  
@@ -426,7 +426,7 @@ spec: (A15, P2) The close key's delete leaves a buffer a later command brought b
 `<M-.>` → `eq(child.lua('return vim.api.nvim_buf_is_valid(...)', { buf }), false)`  
 → `eq(child.lua('return require("cavediver.domains.history").data.closed_buffers'), { h })`  
 → `eq(`  
-note: delete_buffer keeps the cursor before it switches the window away (history/routines.lua:709), so the cache doesn't fall back to {1,0}.  
+note: delete_buffer keeps the cursor before it switches the window away (history/routines.lua), so the cache doesn't fall back to {1,0}.  
 spec: On a modified No Name buffer it closes it and caches its lines, filetype and cursor. `delete_buffer` switches the window away before the wipe, so it keeps the cursor on the buffer first (`vim.b[bufnr].cavediver_cursor`), and the cursor doesn't come back as `{1,0}` (bug, found 202…  
 `tests/test_closing.lua:150`
 
@@ -1577,7 +1577,7 @@ spec: A property test over random visits, with `history_view` set to `"global"` 
 
 **T149 [char]** random visits across windows, window view: the visited buffer is leftmost ⚑ random walk  
 → `eq(walks('window'), nil)`  
-note: Under the window view the rebuild gives every buffer its own time (history/routines.lua:271, :274; T197), on a window jump and on :close alike, e.g. after :e a, :e b, :vsplit, :close, :e a, a and b don't share one.  
+note: Under the window view the rebuild gives every buffer its own time (construct_crux, history/routines.lua; T197), on a window jump and on :close alike, e.g. after :e a, :e b, :vsplit, :close, :e a, a and b don't share one.  
 spec: A property test over random visits, with `history_view` set to `"global"` and to `"window"`, across windows: after any visit, the visited buffer is leftmost in the bufferline order (`compare_buffers`). The author's check: two windows, back into window A, `:e e` gave `e=7 b=6 a=5 …  
 `tests/test_history.lua:170`
 
