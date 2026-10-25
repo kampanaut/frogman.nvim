@@ -172,18 +172,6 @@ local function same(got, want)
 		and vim.deep_equal(got.dsm or {}, want.dsm or {})
 end
 
----Format a row in the trail's brackets, for a mismatch's report.
----
----@param row table|nil The row to format
----@return string text `⦉t⦊ [c] ⟦s⟧`, by file name
-local function text_of(row)
-	local name = function(hash)
-		return hash and (require('cavediver.domains.ledger.routines').name_of(hash) or hash) or "-"
-	end
-	row = row or {}
-	return "⦉" .. name(row.t) .. "⦊ [" .. name(row.c) .. "] ⟦" .. name(row.s) .. "⟧"
-end
-
 ---Make the planting functions for one replay.
 ---
 ---@param files table<Filehash, {path: string|nil}> The dump's files
@@ -424,7 +412,8 @@ function M.run(path)
 			if same(got, step.after) then
 				result.matched = result.matched + 1
 			else
-				table.insert(result.mismatches, { seq = step.seq, trigger = step.trigger, want = text_of(step.after), got = text_of(got) })
+				table.insert(result.mismatches, { seq = step.seq, trigger = step.trigger, want = require('cavediver.domains.ledger.routines').draw_row(step.after),
+					got = require('cavediver.domains.ledger.routines').draw_row(got) })
 			end
 		else
 			plant.row(winid, step.after)

@@ -12,6 +12,26 @@ M.data = data
 M.routines = routines
 
 M.begin = routines.begin
+
+---Run a key's job as a step of its own.
+---
+---What's still queued to settle runs first, so it lands on the step it belongs to, as if the key
+---had been typed by hand. Then the key's step begins, about the window given, and the job runs
+---through the settle lock, a cycle still running in another window cancelled first.
+---
+---@param lhs string The key, as the step's trigger
+---@param winid integer The window the step is about
+---@param fn function The key's job
+---@return any ... What the job returns
+function M.run_key(lhs, winid, fn)
+	local settle = require('cavediver.settle')
+	settle.drain()
+	routines.begin("keymap", lhs, winid)
+	return settle.now(function()
+		require('cavediver.domains.navigation').cancel_cycle_elsewhere()
+		return fn()
+	end)
+end
 M.within = routines.within
 M.move = routines.move
 M.step_fields = routines.step_fields
@@ -21,6 +41,9 @@ M.name_of = routines.name_of
 M.steps = routines.steps
 M.trail = routines.trail
 M.trail_days = routines.trail_days
+M.now = routines.now
+M.slot_name = routines.slot_name
+M.draw_row = routines.draw_row
 M.slots = routines.slots
 M.window_name = routines.window_name
 M.note = routines.note

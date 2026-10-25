@@ -720,6 +720,27 @@ end
 
 -- T200's route. The file on disk is sealed, and :CavediverDump opens it from the
 -- directory it was written in only.
+-- Every key stretched is counted, through the crypto module's derive_key; a save runs the forget pass.
+T['T569 [char] (A26, S1) a dump\'s key outlives the forget pass'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.lua([[
+		local crypto = require('cavediver.domains.storage.crypto')
+		local derive = crypto.derive_key
+		_G.CDV_STRETCHED = 0
+		crypto.derive_key = function(...)
+			_G.CDV_STRETCHED = _G.CDV_STRETCHED + 1
+			return derive(...)
+		end
+		pcall(require('cavediver.domains.ledger').never, 'a first planted failure')
+	]])
+	child.settle(300)
+	eq(Misc.save(child), { true })
+	local before = child.lua('return _G.CDV_STRETCHED')
+	child.lua([[pcall(require('cavediver.domains.ledger').never, 'a second planted failure')]])
+	child.settle(300)
+	eq({ first = before >= 2, after = child.lua('return _G.CDV_STRETCHED') - before }, { first = true, after = 0 })
+end
+
 T['T460 [char] a dump is sealed, and :CavediverDump opens it from the directory it was written in'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
 	stale_secondary_note(child)

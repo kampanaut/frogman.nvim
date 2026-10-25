@@ -1850,6 +1850,25 @@ T['T361 [char] (S2) records never make a file'] = function()
 	eq(Misc.files_in(s.session_dir), {})
 end
 
+-- t is loaded into a second tab after the whole editor's save; the No Name buffer is the first tab's alone.
+T['T566 [char] (S2) a No Name edit marks only the sessions whose files hold its text'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(S2.save(child), { true })
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.cmd('tabprevious')
+	child.cmd('enew')
+	child.settle(1500)
+	local dir, cwd = s.session_dir, S2.cwd(child)
+	local whole, tab = dir .. S2.main_file(dir, cwd, nil), dir .. S2.main_file(dir, cwd, 't')
+	local before = { whole = S2.read(whole), tab = S2.read(tab) }
+	child.type_keys('i', 'draft', '<Esc>')
+	child.settle(1500)
+	eq({ whole = S2.read(whole) ~= before.whole, tab = S2.read(tab) ~= before.tab }, { whole = true, tab = false })
+end
+
 -- The global directory moves to another project with no load, as a switch
 -- with post_load unwired leaves it.
 T['T362 [char] (S2) records aren\'t written into a session the editor has moved away from'] = function()

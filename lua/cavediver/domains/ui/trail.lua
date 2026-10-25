@@ -57,29 +57,14 @@ local function width(segs)
 	return w
 end
 
----Get a file's name as a row shows it, its basename without the extension.
----
----A name in brackets ([No Name]) is kept whole. No file shows as "-", and a file with no name
----as "?".
----
----@param names table<string, string> File hash → basename, as the step keeps them
----@param filehash string|nil The file's hash
----@return string stem The name to show
-local function stem(names, filehash)
-	if filehash == nil then
-		return "-"
-	end
-	local name = names[filehash] or "?"
-	return name:match("^%[") and name or vim.fn.fnamemodify(name, ":r")
-end
-
 ---Build a row, `⦉t⦊ [c] ⟦s⟧`, as coloured pieces.
 local function row_segs(glyphs, names, row)
+	local slot_name = require('cavediver.domains.ledger').slot_name
 	row = row or {}
 	return {
-		{ glyphs.row_t[1] .. stem(names, row.t) .. glyphs.row_t[2], "CavediverTrailRowT" }, { " ", nil },
-		{ glyphs.row_c[1] .. stem(names, row.c) .. glyphs.row_c[2], "CavediverTrailRowC" }, { " ", nil },
-		{ glyphs.row_s[1] .. stem(names, row.s) .. glyphs.row_s[2], "CavediverTrailRowS" },
+		{ glyphs.row_t[1] .. slot_name(row.t, names) .. glyphs.row_t[2], "CavediverTrailRowT" }, { " ", nil },
+		{ glyphs.row_c[1] .. slot_name(row.c, names) .. glyphs.row_c[2], "CavediverTrailRowC" }, { " ", nil },
+		{ glyphs.row_s[1] .. slot_name(row.s, names) .. glyphs.row_s[2], "CavediverTrailRowS" },
 	}
 end
 
@@ -171,7 +156,7 @@ local function move_segs(glyphs, names, move, group)
 		return vim.list_extend({ { words, group } }, list_segs(glyphs, move.lists, group))
 	elseif move.note then
 		local by = ({ guard = "Q6's guard: ", navigation = "navigation's check: ", ["no path"] = "no path: " })[move.by] or "stale "
-		local function n(h) return stem(names, h) end
+		local function n(h) return require('cavediver.domains.ledger').slot_name(h, names) end
 		local owner = n(move.subject)
 		words = by .. move.note.map .. " note " .. (move.note.after and "rewritten" or "dropped") .. "   " ..
 			owner .. ">" .. n(move.note.before) .. glyphs.arrow .. owner .. ">" .. (move.note.after and n(move.note.after) or "-")
@@ -1029,12 +1014,9 @@ function M.open(query)
 	vim.bo[buf].buftype = "nofile"
 	vim.bo[buf].bufhidden = "wipe"
 	vim.bo[buf].swapfile = false
-	local size = require('cavediver.configs').trail_popup
-	local w = math.abs(size.width) <= 1 and math.floor(vim.o.columns * math.abs(size.width)) or math.min(vim.o.columns, math.floor(math.abs(size.width)))
-	local h = math.abs(size.height) <= 1 and math.floor(vim.o.lines * math.abs(size.height)) or math.min(vim.o.lines, math.floor(math.abs(size.height)))
+	local w, h, col, row = require('cavediver.domains.ui.routines').resolve_float_geometry(require('cavediver.configs').trail_popup)
 	local win = vim.api.nvim_open_win(buf, true, {
-		relative = "editor", width = w, height = h, style = "minimal", border = "rounded",
-		col = math.floor((vim.o.columns - w) / 2), row = math.floor((vim.o.lines - h) / 2),
+		relative = "editor", width = w, height = h, style = "minimal", border = "rounded", col = col, row = row,
 	})
 	vim.wo[win].wrap = false
 	vim.wo[win].cursorline = true
@@ -1063,13 +1045,7 @@ function M.open(query)
 	map(keys.act, M.act, "Open the result's day")
 	map(keys.act_and_stay, function()
 		-- it can change the editor, so it's a step, as the closed lists' keys are; the rest only move the view
-		local settle = require('cavediver.settle')
-		settle.drain()
-		require('cavediver.domains.ledger').begin("keymap", keys.act_and_stay, view and view.from or vim.api.nvim_get_current_win())
-		settle.now(function()
-			require('cavediver.domains.navigation').cancel_cycle_elsewhere()
-			M.act_and_stay()
-		end)
+		require('cavediver.domains.ledger').run_key(keys.act_and_stay, view and view.from or vim.api.nvim_get_current_win(), M.act_and_stay)
 	end, "Act on the name under the cursor, and stay")
 	map(keys.search, M.ask, "Search the trail")
 	map(keys.search_word, M.search_word, "Search the trail for the name under the cursor")

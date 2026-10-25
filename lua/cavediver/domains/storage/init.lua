@@ -180,10 +180,9 @@ function M.init_autocmds(group)
 		group = group,
 		callback = function(args)
 			local history = require('cavediver.domains.history')
-			if vim.api.nvim_buf_get_name(args.buf) == "" and history.get_hash_from_buffer(args.buf) then
-				for id, _ in pairs(history.routines.pools()) do
-					routines.records_changed(id)
-				end
+			local filehash = history.get_hash_from_buffer(args.buf)
+			if vim.api.nvim_buf_get_name(args.buf) == "" and filehash then
+				routines.enforce_noname_text_policy(filehash) -- the sessions that hold the text, and no other
 			end
 		end,
 	})
