@@ -1194,7 +1194,7 @@ function M.reopen_filehash(filehash)
 	if filepath == nil then
 		return nil
 	end
-	if not filepath:match("^NONAME_") and vim.fn.filereadable(filepath) ~= 1 then
+	if not filepath:match("^NONAME_") and vim.fn.filereadable(filepath) ~= 1 and not data.unwritten[filehash] then
 		return nil -- a file gone from disk keeps its place on the closed stack: it may come back
 	end
 
@@ -1236,7 +1236,8 @@ function M.reopen_filehash(filehash)
 		if M.get_filepath_from_buffer(bufnr) ~= filepath then
 			M.unregister_filepath(filepath) -- This NONAME_ buffer is now irrelevant, we don't want to track it anymore.
 		end
-	elseif filepath and vim.fn.filereadable(filepath) == 1 then
+	elseif filepath and (vim.fn.filereadable(filepath) == 1 or data.unwritten[filehash]) then
+		-- a file never written opens as the new file it was
 		bufnr = vim.fn.bufadd(filepath)
 		vim.bo[bufnr].buflisted = true -- listed before bufload, whose BufEnter only tracks listed buffers.
 		vim.fn.bufload(bufnr)

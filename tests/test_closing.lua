@@ -214,6 +214,18 @@ T['T88 [char] a No Name buffer closed with text comes back with the same lines a
 	eq(child.lua('return vim.bo.filetype'), 'markdown')
 end
 
+T['T530 [char] (A16, M5, M14) <M-S-w> opens a never-written file again, and the entries under it stay within reach'] = function()
+	child.steps({ ':e a', ':e c', '<M-.>', ':e brandnew.txt', '<M-.>' })
+	child.settle(300)
+	child.step('<M-S-w>')
+	child.settle(100)
+	local first = { shown = child.lua('return vim.fn.expand("%:t")'), lines = child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)') }
+	child.step('<M-S-w>')
+	child.settle(100)
+	eq({ first = first, second = child.lua('return vim.fn.expand("%:t")') },
+		{ first = { shown = 'brandnew.txt', lines = { '' } }, second = 'c.txt' })
+end
+
 T['T89 [char] <M-S-w> on a missing file says so and leaves the entry on the stack'] = function()
 	child.steps({ ':e d', ':e e', ':e f', '<M-.>' })
 	eq(child.closed(), 'f')
