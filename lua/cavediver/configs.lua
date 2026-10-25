@@ -82,8 +82,8 @@
 ---@field tab integer|nil That window's tabpage
 ---@field pool string|nil Id of that tab's list then ("" for the editor's, otherwise a session's)
 ---@field session string|nil The whole editor's session it was made under, whose file keeps it (in memory only)
----@field row_before CavediverLedgerRow|nil The window's row as the step began
----@field row_after CavediverLedgerRow|nil The window's row as the step closed
+---@field row_before CavediverLedgerRow|nil The window's row as the step began (none once the ring drops the step, or read from a page)
+---@field row_after CavediverLedgerRow|nil The window's row as the step closed (none once the ring drops the step, or read from a page)
 ---@field names table<Filehash, string> Name of every file in its rows and moves, as it was then
 ---@field events string[] Events it set off, listed under it (`BufEnter b.txt`)
 ---@field moves CavediverLedgerMove[] What cavediver did in it

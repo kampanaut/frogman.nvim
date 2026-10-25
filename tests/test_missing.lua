@@ -144,6 +144,34 @@ T['T348 [char] a file that was never written isn\'t tagged; once written and del
 	eq(type(tag_of('brandnew')), 'string')
 end
 
+-- vim.fn.filereadable and vim.fs.find counted in the child while each runs.
+T['T564 [char] a tick checks each file against the disk once, and finds .git once'] = function()
+	plant_head('ref: refs/heads/main')
+	child.steps({ ':e a', ':e b', ':e c', ':e d' })
+	child.cmd('bdelete d.txt')
+	-- the label is read once first: a change of label would check every file again, as it should
+	child.lua('require("cavediver.domains.history").routines.refresh_label()')
+	local counts = child.lua([[
+		local H = require('cavediver.domains.history')
+		local readable, find = vim.fn.filereadable, vim.fs.find
+		local reads, finds = {}, 0
+		vim.fn.filereadable = function(path)
+			local stem = vim.fn.fnamemodify(path, ':t:r')
+			reads[stem] = (reads[stem] or 0) + 1
+			return readable(path)
+		end
+		vim.fs.find = function(names, opts)
+			if names == '.git' then finds = finds + 1 end
+			return find(names, opts)
+		end
+		local ok = pcall(H.routines.mark_missing, nil, 500)
+		local ok2 = pcall(H.routines.refresh_label)
+		vim.fn.filereadable, vim.fs.find = readable, find
+		return { ok = ok and ok2, reads = reads, finds = finds }
+	]])
+	eq(counts, { ok = true, reads = { a = 1, b = 1, c = 1, d = 1 }, finds = 1 })
+end
+
 T['T524 [char] a check before a new file is taken in keeps its mark'] = function()
 	child.steps({ ':e a' })
 	-- the check comes between BufNewFile and the arrival, which waits for the editor to settle

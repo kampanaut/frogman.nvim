@@ -262,9 +262,6 @@ local function close_if_not_restored(filehash)
 		not vim.tbl_contains(closed, filehash)
 	then
 		table.insert(closed, 1, filehash)
-		if load_pool then
-			load_pool.changed_at = vim.uv.hrtime()
-		end
 		local ledger = require('cavediver.domains.ledger')
 		ledger.move("closed", { subject = filehash, name = ledger.name_of(filehash),
 			lists = { history.routines.list_name(load_pool or history.routines.pools()[""]) },
@@ -1345,7 +1342,6 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 	for _, filehash in ipairs(saved_data.unwritten or {}) do
 		history.data.unwritten[filehash] = true
 	end
-	load_pool.changed_at, load_pool.saved_at = vim.uv.hrtime(), nil
 	return matched
 end
 
@@ -1546,16 +1542,17 @@ end
 
 ---Get the key for a session's file, and its salt.
 ---
----The salt is read from the file and stays from one save to the next, so the key does too, and a
----text that didn't change keeps its file. A file with no usable salt gets a new random one. Throws
----if a newer cavediver made the file, so it isn't overwritten.
+---The salt is read from the file's bytes and stays from one save to the next, so the key does too,
+---and a text that didn't change keeps its file. A file with no usable salt gets a new random one.
+---Throws if a newer cavediver made the file, so it isn't overwritten.
 ---
 ---@param file_path string The session's main file
 ---@param directory string The session's directory
+---@param existing string|nil The main file's bytes, nil when there's no file
 ---@return string key The session's key
 ---@return string salt The salt the file is written with
-local function session_key(file_path, directory)
-	local existing = read_file(file_path) or ""
+local function session_key(file_path, directory, existing)
+	existing = existing or ""
 	if existing:match("^CDV%d") and existing:sub(1, #HEADER) ~= HEADER then
 		error("cavediver: this session's file was made by a newer cavediver, so it isn't overwritten: " .. file_path)
 	end
@@ -2363,7 +2360,10 @@ function M.save_history(cwd, name, tab)
 	history.cleanup_system()
 
 	local file_path = get_session_filepath(cwd, name)
-	local key, salt = session_key(file_path, cwd)
+	-- one read: the salt, the detached lists and the trail's pages come from the same bytes
+	local bytes = read_file(file_path)
+	local key, salt = session_key(file_path, cwd, bytes)
+	local previous = bytes and read_session_file(file_path, cwd, bytes)
 
 	local pool
 	if tab then
@@ -2408,9 +2408,8 @@ function M.save_history(cwd, name, tab)
 	if not pool then
 		-- the detached lists, apart: each in memory with its tab's window entries, and each the file
 		-- holds alone carried over, with its texts and paths
-		local old = read_session_file(file_path, cwd)
 		local live
-		detached, live = detached_lists(old, function(detached_pool)
+		detached, live = detached_lists(previous, function(detached_pool)
 			local indices = {}
 			for i, winid in ipairs(entry_wins) do
 				if vim.api.nvim_win_is_valid(winid) and detached_pool.tabs[vim.api.nvim_win_get_tabpage(winid)] then
@@ -2419,7 +2418,7 @@ function M.save_history(cwd, name, tab)
 			end
 			return indices
 		end)
-		carry_detached(detached, live, old, texts, paths, key, file_path .. ".d/")
+		carry_detached(detached, live, previous, texts, paths, key, file_path .. ".d/")
 	end
 	local noname_content, kept = write_noname_texts(texts, key, file_path .. ".d/")
 	local closed, closed_times = serialise_closed_buffers(pool and { pool } or every_pool())
@@ -2443,7 +2442,6 @@ function M.save_history(cwd, name, tab)
 	end
 	-- the trail's pages: today's written, earlier days' kept. A page that can't be written doesn't stop
 	-- the save: the pages it had stay.
-	local previous = read_session_file(file_path, cwd)
 	if not pool then
 		require('cavediver.domains.ledger').claim(name, cwd) -- a first whole-editor save takes the steps before it
 	end
@@ -2468,7 +2466,6 @@ function M.save_history(cwd, name, tab)
 	require('cavediver.domains.ledger').move("saved", { name = vim.fn.fnamemodify(name or cwd, ":t"),
 		words = pool and "the tab session" or "the whole editor" })
 	if pool then
-		pool.saved_at = vim.uv.hrtime()
 		dirty[pool.id] = nil
 		refresh_unnamed()
 	else
@@ -2574,7 +2571,7 @@ end
 ---@return nil
 function M.write_session(directory, name, storage, texts)
 	local file_path = get_session_filepath(directory, name)
-	local key, salt = session_key(file_path, directory)
+	local key, salt = session_key(file_path, directory, read_file(file_path))
 	local noname_content, kept = write_noname_texts(texts, key, file_path .. ".d/")
 	storage.noname_content = noname_content
 	commit_session(file_path, key, salt, storage, kept)
