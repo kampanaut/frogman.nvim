@@ -43,7 +43,7 @@ You can also see that the two windows have their own history. You can turn this 
 
 - neovim 0.12+
 - nvim-cokeline
-- openssl 3 (system installed, its libcrypto is used for encrypting the session files. Hashing is done with neovim's built-in `vim.fn.sha256`)
+- openssl 3 or 4 (system installed, its libcrypto is used for encrypting the session files. Hashing is done with neovim's built-in `vim.fn.sha256`. When cavediver can't find it, set `libcrypto_path` to its file. Windows is untested: there, set `libcrypto_path` to the DLL, such as `libcrypto-3-x64.dll`)
 - harpoon (optional, harpooned buffers are marked in the bufferline)
 - telescope.nvim (optional, used for adding files in the primary buffer pop-up)
 - a session manager (optional, resession.nvim is used in the examples below)
@@ -253,6 +253,8 @@ You can start by just modifying the base colors
 ```lua
 local defaults = {
     session_dir = vim.fn.stdpath("data") .. "/cavediver/sessions/",
+    -- libcrypto_path: OpenSSL's libcrypto, a full path or a name the system finds, tried before
+    -- cavediver's own list (nil tries the list alone); read once, the first time it's needed
     bufferline = {
         history_view = "global" -- "global" | "window"
     },
