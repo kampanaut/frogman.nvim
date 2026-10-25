@@ -758,19 +758,8 @@ local function reopen_noname_buffers(noname_content, key, scratch_dir)
 				goto continue -- its file failed its check: that text is lost, not the session
 			end
 			if bufnr == nil then
-				bufnr = vim.api.nvim_create_buf(true, false)
-				vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, content.lines)
-				vim.bo[bufnr].filetype = content.filetype
+				bufnr = history.routines.buffer_from_text(content)
 				vim.b[bufnr].cavediver_reopened = filehash
-				-- the cursor goes back in the window that shows the buffer, once one does.
-				local cursor = content.cursor
-				vim.api.nvim_create_autocmd("BufWinEnter", {
-					buffer = bufnr,
-					once = true,
-					callback = function()
-						pcall(vim.api.nvim_win_set_cursor, 0, cursor)
-					end,
-				})
 			end
 			local new_filehash = history.register_buffer(bufnr)
 			if new_filehash ~= filehash then
