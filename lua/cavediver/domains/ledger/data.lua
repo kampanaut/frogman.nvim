@@ -10,6 +10,7 @@
 ---@field open CavediverLedgerStep|nil The open step, where what follows from its trigger lands
 ---@field scopes CavediverLedgerStep[] Steps that last only while a call runs, such as a timer's tick
 ---@field days table<string, CavediverLedgerStep[]> Day → its steps with moves, oldest first (the trail)
+---@field session string|nil The whole editor's session the steps are made under now (nil before the first)
 ---@field started number When this editor's ledger began, in seconds (older steps on a trail page came from earlier editors)
 
 return {
@@ -18,6 +19,7 @@ return {
 	open = nil,
 	scopes = {},
 	days = {},
+	session = nil,
 	started = (function()
 		local seconds, microseconds = vim.uv.gettimeofday()
 		return seconds + microseconds / 1e6

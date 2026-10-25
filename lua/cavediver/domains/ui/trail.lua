@@ -230,7 +230,7 @@ local function count_moves(steps)
 	return total, kinds
 end
 
-local frame, target_of
+local frame, target_of, earlier_window
 
 ---Build the day's header line, the dive.
 ---
@@ -315,17 +315,34 @@ frame = function(l, r, chosen, ch, group, winwidth)
 	return line
 end
 
+---Check if a step is this editor's own.
+---
+---A reader gives this editor's steps from its ledger, and earlier editors' from the pages, so a
+---step began after this editor's ledger did exactly when it's this editor's.
+---
+---@param step CavediverLedgerStep The step
+---@return boolean mine True if this editor made it
+local function of_this_editor(step)
+	return type(step.time) == "number" and step.time >= require('cavediver.domains.ledger').data.started
+end
+
 ---Get what a move's name stands for, for gf and *.
 ---
 ---A file is named by its hash, a window by its id, and a list by its name. Anything else is a
----plain name.
+---plain name. A window's id is only this editor's to follow: on a line an earlier editor wrote, the
+---window is marked `earlier` and has no id, since ids start again in every editor.
 ---
+---@param move CavediverLedgerMove The move
+---@param step CavediverLedgerStep The step it's on
 ---@return table target The target's `kind`, `value` and `name`
-target_of = function(move)
+target_of = function(move, step)
 	local subject = move.subject
 	if type(subject) == "string" and #subject == 16 and subject:match("^%x+$") then
 		return { kind = "file", value = subject, name = move.name }
 	elseif type(subject) == "string" and subject:match("^%d+$") and move.name and move.name:match("^win ") then
+		if not of_this_editor(step) then
+			return { kind = "window", earlier = true, name = move.name }
+		end
 		return { kind = "window", value = tonumber(subject), name = move.name }
 	elseif LIST_KINDS[move.kind] and move.name then
 		return { kind = "list", value = move.name, name = move.name }
@@ -351,7 +368,24 @@ end
 ---
 ---A step on a page that an editor before this one wrote gets nil, so its line never opens.
 local function own_of(in_ring, step)
-	return type(step.time) == "number" and step.time >= require('cavediver.domains.ledger').data.started and in_ring[step] or nil
+	return of_this_editor(step) and in_ring[step] or nil
+end
+
+---Get the ring's index of the trail's line before a step of this editor's, on any day.
+---
+---It's the nearest step before it in the ring that made moves the trail shows, so a day's first
+---step opens from the last line of the day before.
+---
+---@param own integer The step's index in the ring
+---@return integer before The ring's index of the line before it, 0 for none
+local function line_before(own)
+	local ring = require('cavediver.domains.ledger').data.ring
+	for i = own - 1, 1, -1 do
+		if #ring[i].moves > 0 and view.reader.keeps(ring[i]) then
+			return i
+		end
+	end
+	return 0
 end
 
 ---Get the key a step opens under, made of the day and the step's own number and time.
@@ -414,7 +448,6 @@ local function day_lines(glyphs, winwidth)
 	end
 	local formatters = require('cavediver.configs').formatters or {}
 	local in_ring = ring_index()
-	local before = 0 -- the ring's index of the trail's line before, this editor's
 	for _, step in ipairs(view.steps) do
 		local names = step.names or {}
 		local time = os.date("%H:%M", math.floor(step.time or 0))
@@ -434,10 +467,7 @@ local function day_lines(glyphs, winwidth)
 		end
 		table.insert(lines, { segs = segs, step = step, ring = key })
 		if own and view.open[key] then
-			vim.list_extend(lines, ring_lines(glyphs, own, before, key))
-		end
-		if own then
-			before = own
+			vim.list_extend(lines, ring_lines(glyphs, own, line_before(own), key))
 		end
 		-- more than three of a kind under one step fold to a count
 		local of_kind = {}
@@ -488,7 +518,7 @@ local function day_lines(glyphs, winwidth)
 					for _, move in ipairs(item.fold) do
 						table.insert(lines, { segs = { indent, { stem_ .. "  ", "CavediverTrailGutter" },
 							{ (glyphs[move.kind] or "?") .. " ", "CavediverTrail" .. (move.dim and "Dim" or FAMILY[move.kind] or "Words") },
-							{ move.name or "?", move.dim and "CavediverTrailDim" or "CavediverTrailName", target = target_of(move) } },
+							{ move.name or "?", move.dim and "CavediverTrailDim" or "CavediverTrailName", target = target_of(move, step) } },
 							move = move, step = step })
 					end
 				end
@@ -499,7 +529,7 @@ local function day_lines(glyphs, winwidth)
 				local segs = formatters.trail_move and formatters.trail_move(move, glyphs, step)
 				if not segs then
 					segs = { indent, { branch, "CavediverTrailGutter" }, { (glyphs[move.kind] or "?") .. " ", family },
-						{ string.format("%-14s", move.name or ""), dim and "CavediverTrailDim" or "CavediverTrailName", target = target_of(move) } }
+						{ string.format("%-14s", move.name or ""), dim and "CavediverTrailDim" or "CavediverTrailName", target = target_of(move, step) } }
 					vim.list_extend(segs, word_segs(glyphs, move_words(glyphs, names, move), dim and "CavediverTrailDim" or "CavediverTrailWords"))
 				end
 				table.insert(lines, { segs = segs, move = move, step = step })
@@ -520,16 +550,17 @@ end
 ---
 ---Each result carries the name's state after its move, and a file back on disk returns to the
 ---state it had before it went. With a subject, only its own moves are found, not every one of
----that name.
+---that name, and a window's, this editor's alone.
 ---
 ---@param name string The name to search for
 ---@param subject string|nil A file's hash or a window's id
+---@param mine boolean|nil Whether only this editor's steps count, as for a window
 ---@return table[] results Each move found, with its day, its step and the state after it
-local function find(name, subject)
+local function find(name, subject, mine)
 	local results, state, before_gone = {}, "Open", nil
 	for _, day in ipairs(view.reader.days()) do
 		for _, step in ipairs(view.reader.steps(day)) do
-			for _, move in ipairs(step.moves or {}) do
+			for _, move in ipairs((not mine or of_this_editor(step)) and step.moves or {}) do
 				if (subject and move.subject == subject) or (not subject and move.name == name) then
 					if move.kind == "gone" then
 						before_gone = state
@@ -574,17 +605,8 @@ local function search_lines(glyphs, winwidth)
 	for _, result in ipairs(view.results) do
 		trigger_width = math.max(trigger_width, vim.api.nvim_strwidth(result.step.trigger or ""))
 	end
-	-- a result opens into the ring as its step does on its day: since that day's line before it
-	local in_ring, befores = ring_index(), {}
-	for day, _ in pairs(days) do
-		local prev = 0
-		for _, step in ipairs(view.reader.steps(day)) do
-			local own = own_of(in_ring, step)
-			if own then
-				befores[step], prev = prev, own
-			end
-		end
-	end
+	-- a result opens into the ring as its step does on its day: since the trail's line before it
+	local in_ring = ring_index()
 	local expanded = {}
 	local last_day
 	for _, result in ipairs(view.results) do
@@ -612,13 +634,29 @@ local function search_lines(glyphs, winwidth)
 		end
 		table.insert(lines, { segs = segs, result = result, move = move, step = step, ring = key })
 		if own and view.open[key] then
-			vim.list_extend(lines, ring_lines(glyphs, own, befores[step] or 0, key))
+			vim.list_extend(lines, ring_lines(glyphs, own, line_before(own), key))
 		end
 	end
 	if #view.results == 0 then
 		table.insert(lines, { segs = { { "no moves name it", "CavediverTrailDim" } } })
 	end
 	return lines
+end
+
+---Read the trail's days again, keeping the day shown.
+---
+---A day that got its first move since the view last looked is in the list then.
+---
+---@return nil
+local function read_days()
+	local shown = view.days[view.day]
+	view.days = view.reader.days()
+	for i, day in ipairs(view.days) do
+		if day == shown then
+			view.day = i
+		end
+	end
+	view.day = math.max(1, math.min(view.day, #view.days))
 end
 
 ---Draw the view.
@@ -637,6 +675,7 @@ local function draw()
 	if view.mode == "search" then
 		lines = search_lines(glyphs, winwidth)
 	else
+		read_days()
 		local day = view.days[view.day]
 		view.steps = day and view.reader.steps(day) or {}
 		lines = day_lines(glyphs, winwidth)
@@ -703,6 +742,7 @@ function M.page(step)
 	if not view then
 		return
 	end
+	read_days()
 	local day = view.day + step
 	if day >= 1 and day <= #view.days then
 		view.day = day
@@ -760,23 +800,60 @@ end
 ---
 ---@param name string The name to search for
 ---@param subject string|nil A file's hash or a window's id, to follow that one alone
+---@param mine boolean|nil Whether only this editor's steps count, as for a window
 ---@return nil
-function M.search(name, subject)
+function M.search(name, subject, mine)
 	if not view or name == nil or name == "" then
 		return
 	end
 	view.mode, view.query = "search", name
-	view.results = find(name, subject)
+	view.results = find(name, subject, mine)
 	draw()
 	pcall(vim.api.nvim_win_set_cursor, view.win, { math.min(3, vim.api.nvim_buf_line_count(view.buf)), 0 })
+end
+
+---Search for what's typed: a name, or a window of the tab the trail came from.
+---
+---`win <N>`, or `win` alone, is that tab's window N, or the window the trail came from, followed by
+---its id in this editor. Anything else is a name.
+---
+---@param query string What's typed
+---@param from integer The window the trail came from
+---@return nil
+local function search_typed(query, from)
+	local number = query:match("^win%s*(%d*)$")
+	if not number then
+		M.search(query)
+		return
+	end
+	local winid = number == "" and from or vim.fn.win_getid(tonumber(number), vim.api.nvim_tabpage_get_number(vim.api.nvim_win_get_tabpage(from)))
+	if winid == 0 then
+		vim.notify("cavediver: there's no window " .. number .. " in this tab.", vim.log.levels.WARN)
+		return
+	end
+	M.search("win " .. vim.api.nvim_win_get_number(winid), tostring(winid), true)
 end
 
 ---Ask for a name and search for it.
 ---@return nil
 function M.ask()
 	vim.ui.input({ prompt = "Search the trail for: " }, function(input)
-		M.search(input)
+		if view and input and input ~= "" then
+			-- the window gone, the trail's own stands in for its tab
+			search_typed(input, vim.api.nvim_win_is_valid(view.from) and view.from or view.win)
+		end
 	end)
+end
+
+---Say a window on a line an earlier editor wrote can't be followed.
+---
+---Its id meant a window of that editor, and ids start again in every editor.
+---
+---@param target table The window's target, marked `earlier`
+---@return nil
+earlier_window = function(target)
+	vim.notify("cavediver: " .. (target.name or "that window") .. " was a window in an earlier editor, so the trail can't follow it.",
+		vim.log.levels.WARN)
 end
 
 ---Search for the name under the cursor.
@@ -789,12 +866,16 @@ function M.search_word()
 	local target = target_at_cursor()
 	local line = at_cursor()
 	if not target and line and line.move then
-		target = target_of(line.move)
+		target = target_of(line.move, line.step)
+	end
+	if target and target.earlier then
+		earlier_window(target)
+		return
 	end
 	local name = target and (target.name or target.value)
 	if type(name) == "string" then
-		-- a file follows its hash and a window its id; anything else is its name
-		M.search(name, (target.kind == "file" or target.kind == "window") and tostring(target.value) or nil)
+		-- a file follows its hash and a window its id, this editor's; anything else is its name
+		M.search(name, (target.kind == "file" or target.kind == "window") and tostring(target.value) or nil, target.kind == "window")
 	end
 end
 
@@ -820,7 +901,9 @@ function M.act_and_stay()
 			vim.cmd("edit " .. vim.fn.fnameescape(path))
 		end)
 	elseif target.kind == "window" then
-		if vim.api.nvim_win_is_valid(target.value) then
+		if target.earlier then
+			earlier_window(target)
+		elseif vim.api.nvim_win_is_valid(target.value) then
 			vim.api.nvim_set_current_win(target.value)
 		end
 	elseif target.kind == "list" then
@@ -846,6 +929,7 @@ function M.act()
 	end
 	local result = line.result
 	view.mode = "day"
+	read_days()
 	for i, day in ipairs(view.days) do
 		if day == result.day then
 			view.day = i
@@ -945,18 +1029,7 @@ function M.open(query)
 	vim.bo[buf].filetype = "cavediver-trail"
 	draw()
 	if query and query ~= "" then
-		-- `win <N>`, or `win` alone, is a window of the tab the trail is opened from, followed by its id
-		local number = query:match("^win%s*(%d*)$")
-		if number then
-			local winid = number == "" and from or vim.fn.win_getid(tonumber(number), vim.api.nvim_tabpage_get_number(vim.api.nvim_win_get_tabpage(from)))
-			if winid == 0 then
-				vim.notify("cavediver: there's no window " .. number .. " in this tab.", vim.log.levels.WARN)
-				return
-			end
-			M.search("win " .. vim.api.nvim_win_get_number(winid), tostring(winid))
-		else
-			M.search(query)
-		end
+		search_typed(query, from)
 	end
 end
 
