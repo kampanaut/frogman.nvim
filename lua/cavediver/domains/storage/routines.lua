@@ -1410,17 +1410,18 @@ function M.load_history(cwd, name)
 				fresh = fresh + 1
 			end
 		end
-		local words = #matched .. (#matched == 1 and " window" or " windows") .. " matched"
+		local parts = { #matched .. (#matched == 1 and " window" or " windows") .. " matched" }
 		if fresh > 0 then
-			words = words .. " · " .. fresh .. " started fresh"
+			table.insert(parts, fresh .. " started fresh")
 		end
 		if entries > #matched then
-			words = words .. " · " .. (entries - #matched) .. (entries - #matched == 1 and " entry" or " entries") .. " dropped"
+			table.insert(parts, (entries - #matched) .. (entries - #matched == 1 and " entry" or " entries") .. " dropped")
 		end
 		if #fixed > 0 then
-			words = words .. " · its file broke its own rules: " .. table.concat(fixed, "; ")
+			table.insert(parts, "its file broke its own rules: " .. table.concat(fixed, "; "))
 		end
-		ledger.move("loaded", { name = vim.fn.fnamemodify(name or cwd, ":t"), words = words })
+		-- the parts kept apart too, so the trail joins them with its own dot, and a name in one keeps its own
+		ledger.move("loaded", { name = vim.fn.fnamemodify(name or cwd, ":t"), words = table.concat(parts, " · "), parts = parts })
 	end
 	if (saved_data == nil and hint) or (saved_data and saved_data.scope == "tab") then
 		-- either tab route drops the tab's triquetras and attaches history: a cycle ends first
@@ -1789,8 +1790,8 @@ local function write_trail_pages(file_path, old_trail, owner, session, key, kept
 			local page = vim.list_slice(written.before, 1, #written.before)
 			for _, step in ipairs(mine) do
 				table.insert(page, {
-					seq = step.seq, time = step.time, cause = step.cause, trigger = step.trigger, pool = step.pool,
-					names = step.names, events = step.events, moves = step.moves, torn = step.torn,
+					seq = step.seq, time = step.time, cause = step.cause, trigger = step.trigger, labels = step.labels,
+					pool = step.pool, names = step.names, events = step.events, moves = step.moves, torn = step.torn,
 				})
 			end
 			vim.fn.mkdir(scratch_dir, "p", 448) -- 0700

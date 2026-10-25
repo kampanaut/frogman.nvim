@@ -431,6 +431,20 @@ function M.move(kind, fields)
 	return move
 end
 
+---Put fields on the step a move would be recorded on.
+---
+---It keeps what a step's trigger was made of, besides its text, such as the labels a label step
+---went from and to. The step is kept or not by its moves, as before.
+---
+---@param fields table The step's fields to set (CavediverLedgerStep)
+---@return nil
+function M.step_fields(fields)
+	local step = current()
+	for key, value in pairs(fields) do
+		step[key] = value
+	end
+end
+
 ---Record a note cavediver changed by itself.
 ---
 ---It's recorded as rewritten when it names another buffer now, otherwise as dropped. A note

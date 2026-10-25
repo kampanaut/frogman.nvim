@@ -741,9 +741,13 @@ function M.refresh_label()
 	if not data.label_seen then
 		data.label_seen = true
 	elseif label ~= data.last_label then
-		-- a change of label is a step of its own, the files it finds gone tagged under it
-		require('cavediver.domains.ledger').within("label", (data.last_label or "—") .. " → " .. (label or "—"),
-			M.mark_missing, data.last_label)
+		-- a change of label is a step of its own, the files it finds gone tagged under it; the step
+		-- keeps both labels apart too, so the trail draws a label's own characters as they are
+		local ledger = require('cavediver.domains.ledger')
+		ledger.within("label", (data.last_label or "—") .. " → " .. (label or "—"), function(left)
+			ledger.step_fields({ labels = { from = left, to = label } })
+			return M.mark_missing(left)
+		end, data.last_label)
 		checked = true
 	end
 	data.last_label = label
