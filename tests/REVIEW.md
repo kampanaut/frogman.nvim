@@ -1573,20 +1573,20 @@ spec: `track_buffer(h, t)` stores `t` in the global history.
 **T149 [char]** random visits across windows, global view: the visited buffer is leftmost ⚑ random walk  
 → `eq(walks('global'), nil)`  
 spec: A property test over random visits, with `history_view` set to `"global"` and to `"window"`, across windows: after any visit, the visited buffer is leftmost in the bufferline order (`compare_buffers`). The author's check: two windows, back into window A, `:e e` gave `e=7 b=6 a=5 …  
-`tests/test_history.lua:157`
+`tests/test_history.lua:163`
 
 **T149 [char]** random visits across windows, window view: the visited buffer is leftmost ⚑ random walk  
 → `eq(walks('window'), nil)`  
 note: Under the window view the rebuild gives every buffer its own time (history/routines.lua:271, :274; T197), on a window jump and on :close alike, e.g. after :e a, :e b, :vsplit, :close, :e a, a and b don't share one.  
 spec: A property test over random visits, with `history_view` set to `"global"` and to `"window"`, across windows: after any visit, the visited buffer is leftmost in the bufferline order (`compare_buffers`). The author's check: two windows, back into window A, `:e e` gave `e=7 b=6 a=5 …  
-`tests/test_history.lua:164`
+`tests/test_history.lua:170`
 
 **T149 [char]** the author's check (Q4): back into window A, :e e gives e=8 b=7 a=5 d=4 c=3  
 `:e a`, `:e b`, `:vsplit`, `:e c`, `:e d`, `:e e` → `eq(X.times(child), 'e=8 b=7 a=5 d=4 c=3')`  
 → `eq(X.leftmost(child), nil)`  
 note: e=7 b=6 a=5 d=4 c=3 before the tie fix, which gives the window's buffers one more time each on the rebuild: the same order.  
 spec: A property test over random visits, with `history_view` set to `"global"` and to `"window"`, across windows: after any visit, the visited buffer is leftmost in the bufferline order (`compare_buffers`). The author's check: two windows, back into window A, `:e e` gave `e=7 b=6 a=5 …  
-`tests/test_history.lua:168`
+`tests/test_history.lua:174`
 
 ## tests/test_identity.lua (7 cases: 7 char)
 

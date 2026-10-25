@@ -347,6 +347,11 @@ local function run_step(c, a)
 	local snap = c.pre and c.pre() or nil
 	local ok, err = pcall(actions[a])
 	vim.wait(10)
+	-- once the editor has settled, nothing is left on the settle queue
+	local queued = require('cavediver.settle').pending()
+	if #queued > 0 then
+		return 'the settle queue is not empty once settled: ' .. table.concat(queued, ', ')
+	end
 	return c.post(snap, a, ok, err)
 end
 
