@@ -82,6 +82,16 @@ function M.init_autocmds(group)
 		end,
 	})
 
+	-- a colorscheme's :hi clear removes every group it doesn't define, so they're defined again
+	vim.api.nvim_create_autocmd("ColorScheme", {
+		group = group,
+		callback = function()
+			local ui = require('cavediver.domains.ui')
+			ui.init_winbar_highlights()
+			ui.init_trail_highlights()
+		end,
+	})
+
 	vim.api.nvim_create_autocmd({ "VimResized" }, {
 		group = group,
 		callback = function()

@@ -178,6 +178,34 @@ T['T159 [char] <M-e> adds the picked files to the pop-up, and only :w saves them
 	})
 end
 
+-- The root's init.lua picked while a sub/init.lua is queued and shown by its short name, init.lua.
+T['T553 [char] a picked file whose path reads like another entry\'s short name goes in as its own'] = function()
+	stub_picker()
+	child.lua([[
+		local root = _G.CDV_TEST.root
+		vim.fn.mkdir(root .. '/sub', 'p')
+		vim.fn.writefile({ 'sub' }, root .. '/sub/init.lua')
+		vim.fn.writefile({ 'root' }, root .. '/init.lua')
+		vim.cmd.edit(vim.fn.fnameescape(root .. '/sub/init.lua'))
+	]])
+	child.settle()
+	child.steps({ '<M-;><M-c>' })
+	local w = child.win()
+	open()
+	local shown = child.popup_lines()
+	pick({ 'init.lua' }, 1)
+	local picked = child.popup_lines()
+	child.cmd('write')
+	child.settle()
+	local queue = child.lua([[
+		local H = require('cavediver.domains.history')
+		local t = require('cavediver.domains.window').data.crux[...]
+		return vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_hash(h), ':.') end, t.primary_buffer)
+	]], { w })
+	eq({ shown = shown, picked = picked, queue = queue },
+		{ shown = { 'init.lua' }, picked = { 'init.lua', './init.lua' }, queue = { 'sub/init.lua', 'init.lua' } })
+end
+
 T['T160 [char] with no picker, <M-e> gives a message and changes no line'] = function()
 	queue_ba()
 	open()

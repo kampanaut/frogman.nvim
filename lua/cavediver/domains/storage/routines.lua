@@ -123,12 +123,16 @@ end
 ---@param filehash Filehash The No Name buffer's hash, which the file's seal is bound to
 ---@return fun(): NoNameBufferContent|nil read Reads the text, or gives nil when it's lost
 local function scratch_reader(path, key, filehash)
+	local said = false
 	return function()
 		local bytes = read_file(path)
 		local plaintext = bytes and crypto.open(key, bytes, HEADER .. filehash)
 		local ok, text = pcall(vim.json.decode, plaintext or "")
 		if not plaintext or not ok or type(text) ~= "table" then
-			vim.notify("cavediver: a No Name text's file failed its integrity check (edited or corrupted), so that text is lost.", vim.log.levels.WARN)
+			if not said then -- said once for the text, however often it's read
+				said = true
+				vim.notify("cavediver: a No Name text's file failed its integrity check (edited or corrupted), so that text is lost.", vim.log.levels.WARN)
+			end
 			return nil
 		end
 		return text
@@ -692,6 +696,10 @@ local function write_noname_texts(texts, key, scratch_dir)
 				text = text.read() -- saved under another session or key: read, and written again here
 				if text then
 					history.data.noname_content[filehash] = text -- kept read, so it no longer needs that file
+				else
+					-- lost, as a reopen that can't read it finds it: no later write reads it again
+					history.data.noname_content[filehash] = nil
+					history.routines.discard_from_pools(filehash)
 				end
 			elseif vim.uv.fs_stat(scratch_dir .. name) == nil then
 				text = nil -- its file is gone, swept by another editor's save: nothing is left to keep
@@ -1583,9 +1591,11 @@ local function commit_session(file_path, key, salt, storage, kept)
 			end
 		end
 	end
+	-- a crash's leftovers, a minute old or more: a younger one is another editor's write in flight
 	local base = vim.fn.fnamemodify(file_path, ":t")
 	for _, entry in ipairs(vim.fn.readdir(configs.session_dir)) do
-		if entry:sub(1, #base + 4) == base .. ".tmp" then
+		local stat = entry:sub(1, #base + 4) == base .. ".tmp" and vim.uv.fs_stat(configs.session_dir .. entry)
+		if stat and stat.mtime.sec <= os.time() - 60 then
 			vim.uv.fs_unlink(configs.session_dir .. entry)
 		end
 	end

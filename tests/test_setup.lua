@@ -54,6 +54,21 @@ T['T125 [char] setup() with no argument works and uses the defaults'] = function
 	eq(got, { ok = true, key = true, history_view = 'global', cleanup_interval = 4000, session_dir = true })
 end
 
+-- :colorscheme runs :hi clear, which removes every group the theme doesn't define.
+T['T557 [char] the highlights outlive a theme change'] = function()
+	local got = child.lua([[
+		require('cavediver').setup()
+		vim.cmd.colorscheme('default')
+		local cfg = require('cavediver.configs')
+		local function fg(name) return vim.api.nvim_get_hl(0, { name = name }).fg end
+		return {
+			base = fg('WinbarBase') == tonumber(cfg.colors.base.focused.fg:sub(2), 16),
+			list = fg('CavediverTrailList') == tonumber(cfg.colors.trail.list:sub(2), 16),
+		}
+	]])
+	eq(got, { base = true, list = true })
+end
+
 T['T126 [char] require("cavediver") without setup() creates no autocmds'] = function()
 	local got = child.lua([[
 		local before = #vim.api.nvim_get_autocmds({})

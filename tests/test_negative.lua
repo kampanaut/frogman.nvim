@@ -69,6 +69,21 @@ end
 
 -- Principles -----------------------------------------------------------------
 
+-- A plugin's unlisted scratch, unnamed, shown in the window; then the window's current slot closes.
+T['T561 [char] (M1, A21) cleanup gives no id to an unnamed buffer it doesn\'t track'] = function()
+	child.steps({ ':e a', ':e b' })
+	local scratch = child.lua([[
+		local buf = vim.api.nvim_create_buf(false, true)
+		vim.api.nvim_set_current_buf(buf)
+		return buf
+	]])
+	child.settle()
+	child.cmd('bdelete b.txt')
+	child.settle(300)
+	eq({ id = child.lua('return vim.b[...].cavediver_noname', { scratch }), slots = child.slots() },
+		{ id = vim.NIL, slots = '⦉a⦊ [b] ⟦-⟧' })
+end
+
 T['T207 [char] (P5) a nofile scratch entered in a tracked window is not registered'] = function()
 	child.steps({ ':e a', ':e b' })
 	eq(registered(), true)
@@ -916,6 +931,39 @@ T['T247 [char] (I13, A21) a cleanup heal in another window does not switch the f
 	eq(child.lua('return vim.api.nvim_win_is_valid(...)', { w2 }), true)
 	eq(child.lua('return vim.api.nvim_win_get_buf(...)', { w2 }), acw)
 	eq(child.lua('return vim.api.nvim_buf_is_valid(...)', { acw }), true)
+end
+
+-- Window 2's current slot is an empty No Name buffer, wiped from window 1 while window 2 visits an
+-- acwrite buffer: neither open nor closed, it's healed from window 2's ternary, x, which no window
+-- goes to.
+T['T558 [char] (A21) a cleanup heal records no visit'] = function()
+	child.steps({ ':e a', ':e b' })
+	local w1 = child.win()
+	child.cmd('vsplit')
+	child.steps({ ':e x' })
+	child.cmd('enew')
+	child.settle()
+	local noname = child.lua('return vim.api.nvim_get_current_buf()')
+	local w2 = child.win()
+	child.lua([[
+		local buf = vim.api.nvim_create_buf(true, false)
+		vim.bo[buf].buftype = 'acwrite'
+		vim.api.nvim_buf_set_name(buf, 'acw://scratch')
+		vim.api.nvim_create_autocmd('BufWriteCmd', { buffer = buf, callback = function() end })
+		vim.api.nvim_set_current_buf(buf)
+	]])
+	child.settle(200)
+	child.cmd('wincmd p')
+	child.settle()
+	child.cmd('bwipeout ' .. noname)
+	child.settle(300)
+	local w1_has_x = child.lua([[
+		local H = require('cavediver.domains.history')
+		local x = H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/x.txt'))
+		return (H.data.crux_internals.window[...] or {})[x] ~= nil
+	]], { w1 })
+	eq({ slots = child.slots(w2), w1_has_x = w1_has_x, first = child.ordered():match('^[^,]*') },
+		{ slots = '⦉-⦊ [x] ⟦-⟧', w1_has_x = false, first = 'b' })
 end
 
 T['T248 [char] (A12) with no cokeline, a cycle step raises nothing and <M-v> still ends the cycle'] = function()

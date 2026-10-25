@@ -1354,6 +1354,26 @@ function M.settle_rename(bufnr, old_hash, old_history)
 		end
 	end
 	window_data.rename_hash_in_triquetras(old_hash, new_hash)
+	-- a queue that held both names keeps the file once, where it came first, and a note that named
+	-- one name from the other now names its own buffer, so it goes
+	for _, triquetra in pairs(window_data.crux) do
+		local seen = {}
+		for i = #triquetra.primary_buffer, 1, -1 do
+			if triquetra.primary_buffer[i] == new_hash then
+				if seen[new_hash] then
+					table.remove(triquetra.primary_buffer, seen[new_hash])
+				end
+				seen[new_hash] = i
+			end
+		end
+		for _, map in ipairs({ triquetra.displacement_ternary_map, triquetra.displacement_secondary_map }) do
+			for _, key in ipairs({ new_hash, new_hash .. "-swap" }) do
+				if map[key] == new_hash then
+					map[key] = nil
+				end
+			end
+		end
+	end
 	M.rename_hash_in_history(old_hash, new_hash)
 	if old_history then
 		data.crux[new_hash] = data.crux[new_hash] or old_history.crux
