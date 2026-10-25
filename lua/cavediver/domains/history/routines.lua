@@ -480,7 +480,10 @@ function M.open_out_of_pools(filehash)
 		local ledger = require('cavediver.domains.ledger')
 		local name = ledger.name_of(filehash) or filehash
 		local lists, others = named_lists(left)
-		ledger.move("reopened", { subject = filehash, name = name, lists = lists, dim = #others == 0 })
+		-- a file never written comes back as a new one, which the trail says
+		local filepath = data.hash_filepath_registry.filepaths[filehash]
+		local new = data.unwritten[filehash] ~= nil and filepath ~= nil and vim.fn.filereadable(filepath) == 0
+		ledger.move("reopened", { subject = filehash, name = name, lists = lists, dim = #others == 0, new = new or nil })
 		if #others > 0 then
 			ledger.tell("reopened", name, others)
 		end

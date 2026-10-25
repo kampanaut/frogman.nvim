@@ -229,6 +229,41 @@ T['T530 [char] (A16, M5, M14) <M-S-w> opens a never-written file again, and the 
 		{ first = { shown = 'brandnew.txt', lines = { '' } }, second = 'c.txt' })
 end
 
+T['T532 [char] (A7, M5, M14) a slot key opens a never-written closed file as the new file it was'] = function()
+	child.steps({ ':e a', ':e notes.txt', ':e b' })
+	child.cmd('bdelete notes.txt')
+	child.settle(300)
+	local before = child.slots()
+	child.messages()
+	child.step('<M-S-f>')
+	child.settle(200)
+	local disk = false
+	for _, m in ipairs(child.messages()) do
+		if m.msg:find('on disk', 1, true) then disk = true end
+	end
+	local words = child.lua([[
+		for _, step in ipairs(require('cavediver').ledger.trail()) do
+			for _, m in ipairs(step.moves) do
+				if m.kind == 'reopened' and m.name == 'notes.txt' then return m.new == true end
+			end
+		end
+		return false
+	]])
+	local after, shown = child.slots(), child.lua('return vim.fn.expand("%:t")')
+	local lines = child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)')
+	-- and the trail draws it so
+	child.cmd('CavediverTrail')
+	child.settle(100)
+	local drawn = child.lua([[
+		for _, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+			if l:find('notes.txt', 1, true) and l:find('never written, a new file', 1, true) then return true end
+		end
+		return false
+	]])
+	eq({ before = before, after = after, shown = shown, lines = lines, disk = disk, new = words, drawn = drawn },
+		{ before = '⦉notes⦊ [b] ⟦-⟧', after = '⦉b⦊ [notes] ⟦-⟧', shown = 'notes.txt', lines = { '' }, disk = false, new = true, drawn = true })
+end
+
 T['T89 [char] <M-S-w> on a missing file says so and leaves the entry on the stack'] = function()
 	child.steps({ ':e d', ':e e', ':e f', '<M-.>' })
 	eq(child.closed(), 'f')
