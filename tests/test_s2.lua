@@ -631,6 +631,57 @@ T['T533 [char] (S1 Records, S2) a records write leaves out of the outsiders a fi
 	eq(child.shown(), 'x')
 end
 
+-- The file is sealed again by hand, the way only a writer's bug could leave it: x.txt's hash both
+-- an outsider and closed, and a closed entry whose hash has no path.
+T['T541 [char] (S1 Load, S2) a load fixes a session file that broke its own rules, and says so'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(Misc.save(child), { true })
+
+	-- planted in the fresh editor: the first one's quit writes its records over the file
+	S2.start(child, s)
+	child.lua([[
+		local crypto = require('cavediver.domains.storage.crypto')
+		local dir, name = vim.fn.getcwd(-1, -1), vim.fn.getcwd()
+		local path = require('cavediver.configs').session_dir .. vim.fn.sha256(dir .. "\n" .. name)
+		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
+		local salt = bytes:sub(5, 4 + crypto.salt_length)
+		local data = require('cavediver.domains.storage.routines').read_session(dir, name)
+		local x = _G.CDV_TEST.root .. '/x.txt'
+		local h = vim.fn.sha256(x .. "\n"):sub(1, 16)
+		data.paths[h] = x
+		data.outsiders = data.outsiders or {}
+		table.insert(data.outsiders, h)
+		table.insert(data.closed, h)
+		table.insert(data.closed, 'deadbeefdeadbeef') -- a closed entry no path names
+		local header = "CDV1" .. salt
+		local out = header .. crypto.seal(crypto.derive_key(dir, salt), vim.json.encode(data), header)
+		fh = assert(io.open(path, 'wb')); fh:write(out); fh:close()
+	]])
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	child.messages()
+	local dumps = child.dump_files()
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	local notes = child.messages()
+	local warns = vim.tbl_filter(function(m) return m.msg:find("broke its own rules", 1, true) ~= nil end, notes)
+	local errors = vim.tbl_map(function(m) return m.msg end, vim.tbl_filter(function(m) return m.level == Misc.ERROR end, notes))
+	local trail = child.lua([[
+		for _, st in ipairs(require('cavediver').ledger.steps()) do
+			for _, m in ipairs(st.moves or {}) do
+				if m.kind == 'loaded' and (m.words or ''):find('broke its own rules', 1, true) then return true end
+			end
+		end
+		return false
+	]])
+	eq({ errors = errors, dump = child.dumped_since(dumps), warns = #warns, trail = trail, x = child.closed():find('x') ~= nil,
+		nopath = child.lua('for _, h in ipairs(require("cavediver.domains.history").data.closed_buffers) do if h == "deadbeefdeadbeef" then return true end end return false') },
+		{ errors = {}, dump = nil, warns = 1, trail = true, x = true, nopath = false })
+	child.step('<M-S-w>')
+	eq(child.shown(), 'x')
+end
+
 -- The text is open in the ternary, the window on b, when the session is saved;
 -- its buffer is then set to nofile, which takes it out of cavediver's hands.
 T['T476 [char] (S2) a saved-open No Name text whose buffer turned nofile is reopened from its file, and the load goes through'] = function()

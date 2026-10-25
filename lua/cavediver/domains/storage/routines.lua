@@ -895,6 +895,70 @@ end
 ---@type fun()
 local forget_closed_keys
 
+---Make a session's data keep the session file's policy.
+---
+---These are the rules every session file keeps, whichever writer made it: every closed entry, on
+---`closed` or on a detached list, has its path in `paths`; a closed No Name entry has its text; and a
+---hash the data holds as a record, closed, on a detached list or as a text, isn't an outsider, the
+---record winning, since the registry is the authority on what a hash means. Whatever breaks a rule
+---is taken out, and said in the lines it gives back.
+---
+---@param storage table The session's data, as it's written or as it was read
+---@return string[] fixed What broke a rule, a line for each kind, empty when nothing did
+local function enforce_session_file_policy(storage)
+	local fixed, counts = {}, {}
+	local function broke(line)
+		if counts[line] == nil then
+			table.insert(fixed, line)
+		end
+		counts[line] = (counts[line] or 0) + 1
+	end
+	local paths = storage.paths or {}
+	local function keeps(filehash)
+		local filepath = paths[filehash]
+		if filepath == nil then
+			broke("a closed entry no path names was left out")
+			return false
+		end
+		if filepath:match("^NONAME_") and (storage.noname_content or {})[filehash] == nil then
+			broke("a closed No Name entry with no text was left out")
+			return false
+		end
+		return true
+	end
+	storage.closed = vim.tbl_filter(keeps, storage.closed or {})
+	for _, list in ipairs(storage.detached or {}) do
+		list.closed = vim.tbl_filter(keeps, list.closed or {})
+	end
+	if storage.outsiders then
+		local held = {}
+		for _, filehash in ipairs(storage.closed) do
+			held[filehash] = true
+		end
+		for _, list in ipairs(storage.detached or {}) do
+			for _, filehash in ipairs(list.closed) do
+				held[filehash] = true
+			end
+		end
+		for filehash, _ in pairs(storage.noname_content or {}) do
+			held[filehash] = true
+		end
+		storage.outsiders = vim.tbl_filter(function(filehash)
+			if held[filehash] then
+				broke(vim.fn.fnamemodify(paths[filehash] or filehash, ":t") .. " was both an outsider and a record, and is kept as the record")
+				return false
+			end
+			return true
+		end, storage.outsiders)
+	end
+	for i, line in ipairs(fixed) do
+		if counts[line] > 1 then
+			fixed[i] = line .. " (" .. counts[line] .. " times)"
+		end
+	end
+	return fixed
+end
+
 ---Read and decrypt a session's main file.
 ---
 ---The header is checked first, so a newer format's file or one from before encryption is told apart
@@ -907,6 +971,8 @@ local forget_closed_keys
 ---@return string|nil key The session's key, or nil if there's a problem
 ---@return string|nil problem "missing", "newer" (a newer format's header), "unencrypted" (the format
 ---before encryption) or "integrity" (an edited or corrupted file, or one that isn't this directory's)
+---@return string[]|nil fixed What the data broke of the session file's policy and was fixed, as
+---`enforce_session_file_policy()` says it
 local function read_session_file(file_path, directory, bytes)
 	bytes = bytes or read_file(file_path)
 	if bytes == nil then
@@ -927,7 +993,7 @@ local function read_session_file(file_path, directory, bytes)
 	if not plaintext or not ok or type(saved_data) ~= "table" then
 		return nil, nil, "integrity"
 	end
-	return saved_data, key, nil
+	return saved_data, key, nil, enforce_session_file_policy(saved_data) -- every read keeps the file's policy
 end
 
 ---Read a session's saved data, as the load reads it.
@@ -957,14 +1023,15 @@ local prepared = nil
 function M.prepare_load(directory, name, hint)
 	-- this runs before the storage machine moves, outside its hooks' catch: a failure here (libcrypto
 	-- missing, a session directory that can't be made) is kept for the load's hook to raise
-	local ok, saved_data, key, problem = xpcall(function()
+	local ok, saved_data, key, problem, fixed = xpcall(function()
 		return read_session_file(get_session_filepath(directory, name), directory)
 	end, debug.traceback)
 	if not ok then
 		prepared = { directory = directory, name = name, err = saved_data, hint = hint }
 		return hint ~= nil
 	end
-	prepared = { directory = directory, name = name, saved_data = saved_data, key = key, problem = problem, hint = hint }
+	prepared = { directory = directory, name = name, saved_data = saved_data, key = key, problem = problem, hint = hint,
+		fixed = fixed }
 	if saved_data and saved_data.paths and saved_data.buffers and saved_data.windows then
 		return saved_data.scope == "tab" -- a file's scope wins over the hint
 	end
@@ -1292,7 +1359,7 @@ function M.load_history(cwd, name)
 	history.data.loads = history.data.loads + 1
 
 	-- Try to load existing session data: the read the load made before it started, when it's this one
-	local saved_data, key, problem
+	local saved_data, key, problem, fixed
 	local hint = nil
 	if prepared and prepared.directory == cwd and prepared.name == name then
 		if prepared.err then
@@ -1300,9 +1367,10 @@ function M.load_history(cwd, name)
 			prepared = nil
 			error(err, 0) -- the read's failure, raised here, where the hook's catch reports it
 		end
-		saved_data, key, problem, hint = prepared.saved_data, prepared.key, prepared.problem, prepared.hint
+		saved_data, key, problem, hint, fixed = prepared.saved_data, prepared.key, prepared.problem, prepared.hint,
+			prepared.fixed
 	else
-		saved_data, key, problem = read_session_file(file_path, cwd)
+		saved_data, key, problem, fixed = read_session_file(file_path, cwd)
 	end
 	prepared = nil
 	if problem == "newer" then
@@ -1318,11 +1386,17 @@ function M.load_history(cwd, name)
 	if saved_data and not (saved_data.paths and saved_data.buffers and saved_data.windows) then
 		saved_data = nil
 	end
+	-- only a writer's bug leaves a file breaking its rules: the read fixed the data, and the load says so
+	fixed = saved_data and fixed or {}
 
 	-- why there's no data, for the trail
 	local why = ({ missing = "no session file", newer = "made by a newer cavediver", unencrypted = "from before encryption",
 		integrity = "failed its integrity check" })[problem] or "its file holds no session"
 	local ledger = require('cavediver.domains.ledger')
+	if #fixed > 0 then
+		vim.notify("cavediver: this session's file broke its own rules, and the load fixed them: " .. table.concat(fixed, "; ") .. ".",
+			vim.log.levels.WARN)
+	end
 	---Record the load in the ledger, with how many windows matched or started fresh, and how many
 	---entries were dropped.
 	---@param matched integer[] The windows that took an entry
@@ -1342,6 +1416,9 @@ function M.load_history(cwd, name)
 		end
 		if entries > #matched then
 			words = words .. " · " .. (entries - #matched) .. (entries - #matched == 1 and " entry" or " entries") .. " dropped"
+		end
+		if #fixed > 0 then
+			words = words .. " · its file broke its own rules: " .. table.concat(fixed, "; ")
 		end
 		ledger.move("loaded", { name = vim.fn.fnamemodify(name or cwd, ":t"), words = words })
 	end
@@ -1494,14 +1571,7 @@ end
 ---@param kept table<string, boolean> The files in the scratch directory the main file references
 ---@return nil
 local function commit_session(file_path, key, salt, storage, kept)
-	local function with_text(filehash)
-		local filepath = storage.paths[filehash]
-		return storage.noname_content[filehash] ~= nil or not (filepath and filepath:match("^NONAME_"))
-	end
-	storage.closed = vim.tbl_filter(with_text, storage.closed or {})
-	for _, list in ipairs(storage.detached or {}) do
-		list.closed = vim.tbl_filter(with_text, list.closed or {})
-	end
+	enforce_session_file_policy(storage) -- whichever writer made the data, the file keeps its rules
 	write_atomic(file_path, HEADER .. salt .. crypto.seal(key, vim.json.encode(storage), HEADER .. salt))
 
 	local scratch_dir = file_path .. ".d/"
@@ -1827,10 +1897,6 @@ local function write_records(session, changes)
 		for filehash, _ in pairs(noname_content) do
 			saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
 		end
-		-- a file the path registry knows isn't an outsider, as at a save, though one showed it then
-		saved.outsiders = vim.tbl_filter(function(filehash)
-			return not is_known(filehash)
-		end, saved.outsiders or {})
 		-- a file removed meanwhile isn't made again
 		if not vim.uv.fs_stat(file_path) then
 			gone = true
