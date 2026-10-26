@@ -1832,7 +1832,7 @@ function M.cleanup_system(on_tick)
 
 	-- 5. Update ordered lists after cleanup
 	if report.orphaned_history > 0 or report.stale_hash_entries > 0 then
-		require('frogman.domains.window.routines').cleanup_triquetras()
+		require('frogman.domains.window.routines').enforce_editor_policy()
 		M.update_buffer_history_ordered()
 		M.update_buffer_history_ordered_nonharpooned()
 	end

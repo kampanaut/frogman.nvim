@@ -1195,14 +1195,14 @@ local function derive_cache_from_window_triquetra(winid, again)
 				filepath = history.get_filepath_from_hash(filehash)
 				if filepath == nil then
 					if not derive_cache_lock[winid] then
-						window.routines.cleanup_triquetras() -- I know it's really good to do this, but we need to clean up the triquetra.
+						window.routines.enforce_editor_policy() -- I know it's really good to do this, but we need to clean up the triquetra.
 						return nil, nil, false, false, false
 					else
 						require('frogman.domains.ledger').never("This is unexpected: file " .. display_name .. " has no buffer or closed state. " .. winid .. "\n" .. debug.traceback())
 					end
 				elseif vim.fn.filereadable(filepath) == 1 then -- ignore if the file is already deleted.
 					if not derive_cache_lock[winid] then
-						window.routines.cleanup_triquetras() -- I know it's really good to do this, but we need to clean up the triquetra.
+						window.routines.enforce_editor_policy() -- I know it's really good to do this, but we need to clean up the triquetra.
 						return nil, nil, false, false, false
 					else
 						require('frogman.domains.ledger').never("This is unexpected: file " .. display_name .. " This thing happens? " .. winid .. "\n" .. debug.traceback())
@@ -1247,10 +1247,10 @@ local function derive_cache_from_window_triquetra(winid, again)
 		-- the retry is counted here: resolve_slot clears derive_cache_lock when another slot resolves.
 		if not again then
 			derive_cache_lock[winid] = true
-			window.routines.cleanup_triquetras() -- I know it's really good to do this, but we need to clean up the triquetra.
+			window.routines.enforce_editor_policy() -- I know it's really good to do this, but we need to clean up the triquetra.
 			return derive_cache_from_window_triquetra(winid, true) -- We redo it again.
 		else
-			require('frogman.domains.ledger').never("Impossible state: current_bufnr is nil in derive_cache_from_window_triquetra() for winid " .. winid .. " , even cleanup_triquetras() couldn't fix it. So what the fuck right?")
+			require('frogman.domains.ledger').never("Impossible state: current_bufnr is nil in derive_cache_from_window_triquetra() for winid " .. winid .. " , even enforce_editor_policy() couldn't fix it. So what the fuck right?")
 		end
 	end
 

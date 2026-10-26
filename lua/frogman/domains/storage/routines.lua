@@ -1541,7 +1541,7 @@ function M.load_history(cwd, name)
 		local set_cache_from_window_triquetra = require('frogman').set_cache_from_window_triquetra
 		for _, winid in ipairs(matched) do
 			set_cache_from_window_triquetra(winid)
-			window.routines.check_notes_under_current(window.data.crux[winid])
+			window.routines.enforce_note_maps_policy(window.data.crux[winid])
 		end
 	elseif saved_data then
 		-- Restore from saved session
@@ -1593,7 +1593,7 @@ function M.load_history(cwd, name)
 		end
 		-- the notes come from the file, so a slot loaded under a buffer can leave its notes naming it.
 		for _, triquetra in pairs(window.data.crux) do
-			window.routines.check_notes_under_current(triquetra)
+			window.routines.enforce_note_maps_policy(triquetra)
 		end
 		if not window.data.crux[window.data.last_valid_window] then
 			-- the focused window has none (a help or quickfix window): the last valid window is one that has,
@@ -2520,7 +2520,7 @@ end
 ---
 ---@param filehash Filehash The No Name buffer's hash
 ---@return nil
-function M.enforce_noname_text_policy(filehash)
+function M.noname_text_changed(filehash)
 	if noname_edited[filehash] then
 		return
 	end

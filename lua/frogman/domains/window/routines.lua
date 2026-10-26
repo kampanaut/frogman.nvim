@@ -29,7 +29,7 @@ local M = {}
 ---@param ternary_before Filehash|nil The ternary before the arrival
 ---@param ternary_after Filehash|nil The ternary after the arrival
 ---@return nil
-function M.keep_older_ternary_note(triquetra, arrived, left, ternary_before, ternary_after)
+function M.enforce_ternary_map_policy(triquetra, arrived, left, ternary_before, ternary_after)
 	local dtm = triquetra.displacement_ternary_map
 	if arrived == nil or ternary_after == nil or dtm[arrived] ~= ternary_after then
 		return
@@ -56,7 +56,7 @@ end
 ---@param current Filehash|nil The current buffer
 ---@param secondary Filehash|nil The window's secondary
 ---@return nil
-function M.keep_older_secondary_note(triquetra, current, secondary)
+function M.enforce_secondary_map_policy(triquetra, current, secondary)
 	local dsm = triquetra.displacement_secondary_map
 	if current == nil or secondary == nil or dsm[current] ~= secondary then
 		return
@@ -99,11 +99,11 @@ end
 ---Runs where a slot changes with no buffer becoming current: the restores' exchanges, graduation,
 ---the history fill, and a cleanup pass that moved slots. A ternary note naming the ternary becomes
 ---the ternary's own plain note, or is dropped when that names the current buffer or the ternary. A
----secondary note naming the secondary is rewritten as `M.keep_older_secondary_note()` does it.
+---secondary note naming the secondary is rewritten as `M.enforce_secondary_map_policy()` does it.
 ---
 ---@param triquetra WindowTriquetra
 ---@return nil
-function M.check_notes_under_current(triquetra)
+function M.enforce_note_maps_policy(triquetra)
 	local current, ternary = triquetra.current_slot, triquetra.ternary_slot
 	if current == nil then
 		return
@@ -117,7 +117,7 @@ function M.check_notes_under_current(triquetra)
 		require('frogman.domains.ledger').note("ternary", current, ternary, older, "stale")
 		dtm[current] = older
 	end
-	M.keep_older_secondary_note(triquetra, current, triquetra.secondary_slot)
+	M.enforce_secondary_map_policy(triquetra, current, triquetra.secondary_slot)
 end
 
 ---Remember a window's triquetra from just before a buffer arrives in it.
@@ -218,7 +218,7 @@ function M.undo_arrival(bufnr)
 			end
 			if data.crux[winid] then
 				ledger.slots_moved("undone", winid, before, { words = "its buffer turned into something untracked" })
-				M.check_notes_under_current(triquetra) -- a slot changed under the current buffer.
+				M.enforce_note_maps_policy(triquetra) -- a slot changed under the current buffer.
 			else
 				ledger.move("dropped", { subject = tostring(winid), name = ledger.window_name(winid),
 					words = "its buffer turned into something untracked, with nothing to come back to" })
@@ -385,7 +385,7 @@ function M.reconcile_triquetra(winid, new_bufnr, is_pick)
 	if triquetra and triquetra.current_slot ~= new_filehash then
 		M.remember_arrival(winid, triquetra, new_filehash)
 		local left, ternary_before = triquetra.current_slot, triquetra.ternary_slot
-		M.keep_older_secondary_note(
+		M.enforce_secondary_map_policy(
 			triquetra,
 			new_filehash,
 			(triquetra.secondary_slot == new_filehash) and triquetra.current_slot or triquetra.secondary_slot
@@ -438,7 +438,7 @@ function M.reconcile_triquetra(winid, new_bufnr, is_pick)
 				triquetra.displacement_ternary_map[new_filehash .. "-swap"] = nil
 			end
 		end
-		M.keep_older_ternary_note(
+		M.enforce_ternary_map_policy(
 			triquetra,
 			new_filehash,
 			left,
@@ -477,7 +477,7 @@ function M.land_after_delete(winid, deleted_bufnr)
 		-- not, as an oil listing unlists its own; the window now visits what it is, as cleanup takes it.
 		if vim.api.nvim_buf_is_valid(deleted_bufnr) and vim.api.nvim_win_get_buf(winid) == deleted_bufnr then
 			if history.get_buffer_from_hash(triquetra.current_slot) == nil then
-				M.cleanup_triquetras()
+				M.enforce_editor_policy()
 			end
 			return
 		end
@@ -492,7 +492,7 @@ function M.land_after_delete(winid, deleted_bufnr)
 
 		if landing_bufnr then
 			ledger.slots_moved("landed", winid, before, { from = from })
-			M.check_notes_under_current(triquetra) -- a buffer became current under the slots, its notes may be stale.
+			M.enforce_note_maps_policy(triquetra) -- a buffer became current under the slots, its notes may be stale.
 		else
 			ledger.slots_moved("landed", winid, before, { from = "empty" })
 		end
@@ -545,7 +545,7 @@ end
 ---
 ---@param bufnr_ondelete nil | Bufnr
 ---@return nil
-function M.cleanup_triquetras(bufnr_ondelete)
+function M.enforce_editor_policy(bufnr_ondelete)
 	local set_cache_from_window_triquetra = require("frogman").ui.routines.set_cache_from_window_triquetra
 	local ledger = require('frogman.domains.ledger')
 	local slots_before, rows_before = {}, {}
@@ -594,7 +594,7 @@ function M.cleanup_triquetras(bufnr_ondelete)
 				end
 				triquetra.current_slot = current_slot_candidate
 			else
-				-- print("Running cleanup_triquetras [" .. winid .. "] with unregistered current slot: " .. (history.get_filepath_from_hash(triquetra.current_slot) or "nil"))
+				-- print("Running enforce_editor_policy [" .. winid .. "] with unregistered current slot: " .. (history.get_filepath_from_hash(triquetra.current_slot) or "nil"))
 				-- yes if the noname buffer turns evolved into a terminal, we don't want to track it.
 				--
 				-- but there is a catch, what if the buffer's file was just deleted along the way? Then
@@ -778,7 +778,7 @@ function M.cleanup_triquetras(bufnr_ondelete)
 				before[3] ~= triquetra.ternary_slot
 			)
 		then
-			M.check_notes_under_current(triquetra)
+			M.enforce_note_maps_policy(triquetra)
 		end
 	end
 end
@@ -829,7 +829,7 @@ function M.swap_with_secondary(winid)
 				triquetra.displacement_ternary_map[triquetra.secondary_slot]
 			triquetra.displacement_secondary_map[triquetra.secondary_slot .. "-swap"] = nil
 			triquetra.ternary_slot = nil
-			M.check_notes_under_current(triquetra)
+			M.enforce_note_maps_policy(triquetra)
 			vim.notify("Secondary buffer set to ternary slot. Ternary slot graduated.", vim.log.levels.INFO)
 		elseif #history.data.ordered.crux >= 2 then
 			-- the newest buffer that isn't the current one: a visit in another window, made without
@@ -842,7 +842,7 @@ function M.swap_with_secondary(winid)
 				end
 			end
 			if triquetra.secondary_slot then
-				M.check_notes_under_current(triquetra)
+				M.enforce_note_maps_policy(triquetra)
 				vim.notify("Secondary buffer populated from history.", vim.log.levels.INFO)
 			else
 				-- no entry but the current one names a file: a history just made stale
@@ -1050,8 +1050,8 @@ function M.jump_to_primary(winid)
 		triquetra.displacement_ternary_map[triquetra.current_slot .. "-swap"] = triquetra.ternary_slot
 		triquetra.ternary_slot = triquetra.current_slot
 		triquetra.current_slot = triquetra.primary_buffer[1]
-		M.keep_older_secondary_note(triquetra, triquetra.current_slot, triquetra.secondary_slot)
-		M.keep_older_ternary_note(triquetra, triquetra.current_slot, left, ternary_before, left)
+		M.enforce_secondary_map_policy(triquetra, triquetra.current_slot, triquetra.secondary_slot)
+		M.enforce_ternary_map_policy(triquetra, triquetra.current_slot, left, ternary_before, left)
 	else
 		vim.notify("Already in primary buffer, no displacement performed.", vim.log.levels.INFO)
 	end
@@ -1178,7 +1178,7 @@ local function restore_from_displacement_map(type, triquetra)
 		end
 		triquetra["displacement_" .. type .. "_map"][triquetra.current_slot] = current_relationship
 		-- a slot changed under the current buffer (both, at an exchange), so its notes may name them now.
-		M.check_notes_under_current(triquetra)
+		M.enforce_note_maps_policy(triquetra)
 	end
 	loop_sm:to(loop_states.SELF)
 end
