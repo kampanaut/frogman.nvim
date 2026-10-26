@@ -15,9 +15,8 @@ local storageSM = require('cavediver.domains.storage.sm')
 local storageStates = require('cavediver.domains.storage.states')
 storageSM:on(storageStates.IDLE, storageStates.BARE, "window_teardown", function()
 	for winid, _ in pairs(data.crux) do
-		if vim.api.nvim_win_is_valid(winid) then
-			require('cavediver.domains.ui.routines').remove_winbar_string(winid)
-		end
+		-- a window closed while cavediver was off too: what the UI kept of it goes, its winbar only if it's there
+		require('cavediver.domains.ui.routines').remove_winbar_string(winid)
 	end
 	data.crux = {}
 	data.landing = {}

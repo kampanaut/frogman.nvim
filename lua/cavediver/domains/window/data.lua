@@ -83,6 +83,9 @@ end
 ---@param winid number Window ID to get relationships for
 ---@return WindowTriquetra|nil relationship The window's buffer relationships
 function M.get_window_triquetra(winid)
+	if winid == 0 then
+		winid = vim.api.nvim_get_current_win() -- Neovim's "current window"
+	end
 	if winid == nil or not vim.api.nvim_win_is_valid(winid) then
 		return nil -- a window that's gone (e.g. :only closed it) has no triquetra to give.
 	end

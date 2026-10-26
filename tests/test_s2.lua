@@ -136,6 +136,26 @@ T['T572 [char] (S2) a second session loaded in the same batch loads'] = function
 	eq({ loads = S2.loads(child), slots = child.slots() }, { loads = 2, slots = '⦉c⦊ [d] ⟦-⟧' })
 end
 
+-- T572's route, the third call naming A again, as a native restore's repeat for A arriving after a load of B.
+T['T613 [char] (S2) a call naming a session a load in the same batch was for is skipped, whichever came between'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child, 'A'), { true })
+	child.steps({ ':e c', ':e d' })
+	eq(S2.save(child, 'B'), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'c', 'd' }, 'd')
+	child.lua([[
+		local cd = require('cavediver')
+		cd.load_session('A')
+		cd.load_session('B')
+		cd.load_session('A')
+	]])
+	child.settle(300)
+	eq({ loads = S2.loads(child), slots = child.slots() }, { loads = 2, slots = '⦉c⦊ [d] ⟦-⟧' })
+end
+
 T['T297 [char] (S2) the repeat flag is re-armed by vim.schedule: a call after the batch is a full load'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
@@ -411,7 +431,7 @@ T['T550 [char] (S2) a libcrypto_path that loads but isn\'t libcrypto counts as o
 	eq({ saved = saved, warns = #warns }, { saved = { true }, warns = 1 })
 end
 
--- Every load fails, so each save runs the loader again.
+-- Every load fails; the second save fails the same way.
 T['T549 [char] (S2) with no libcrypto loading, the error names what was tried, and the WARN comes once'] = function()
 	child.setup()
 	child.lua('_G.CDV_TEST.setup({ libcrypto_path = _G.CDV_TEST.root .. "/nowhere/libcrypto.so.3" })')
@@ -441,6 +461,89 @@ T['T549 [char] (S2) with no libcrypto loading, the error names what was tried, a
 		path_first = (tried[1] or ''):find('/nowhere/', 1, true) ~= nil,
 		four_after_three = (at('libcrypto.so.4') or 0) > (at('libcrypto.so.3') or math.huge), warns = #warns },
 		{ first = false, second = false, named = true, option = true, path_first = true, four_after_three = true, warns = 1 })
+end
+
+-- The FFI says macOS, and every name the loader tries is recorded, none loading.
+T['T594 [char] (S2) on macOS no bare name is tried'] = function()
+	child.setup()
+	child.steps({ ':e a' })
+	child.lua([[
+		local ffi = require('ffi')
+		_G.CDV_TRIED = {}
+		ffi.os = 'OSX'
+		ffi.load = function(name)
+			table.insert(_G.CDV_TRIED, tostring(name))
+			error('simulated: ' .. tostring(name) .. ' not found')
+		end
+	]])
+	Misc.save(child)
+	local bare = child.lua([[
+		local out = {}
+		for _, name in ipairs(_G.CDV_TRIED) do
+			if not name:find('/', 1, true) then table.insert(out, name) end
+		end
+		return out
+	]])
+	eq({ tried = child.lua('return #_G.CDV_TRIED') > 0, bare = bare }, { tried = true, bare = {} })
+end
+
+T['T595 [char] (S2) libcrypto_path is expanded'] = function()
+	child.setup()
+	child.lua('_G.CDV_TEST.setup({ libcrypto_path = "$HOME/nowhere/libcrypto.so.3" })')
+	child.steps({ ':e a' })
+	child.lua([[
+		local ffi = require('ffi')
+		local real = ffi.load
+		_G.CDV_TRIED = {}
+		ffi.load = function(name, ...)
+			table.insert(_G.CDV_TRIED, tostring(name))
+			return real(name, ...)
+		end
+	]])
+	eq(Misc.save(child), { true })
+	eq(child.lua('return _G.CDV_TRIED[1] == vim.env.HOME .. "/nowhere/libcrypto.so.3"'), true)
+end
+
+T['T597 [char] (S2) a search that loaded nothing isn\'t made again until libcrypto_path changes'] = function()
+	child.setup()
+	child.lua('_G.CDV_TEST.setup({ libcrypto_path = _G.CDV_TEST.root .. "/nowhere/libcrypto.so.3" })')
+	child.steps({ ':e a' })
+	child.lua([[
+		_G.CDV_TRIED = {}
+		require('ffi').load = function(name)
+			table.insert(_G.CDV_TRIED, tostring(name))
+			error('simulated: ' .. tostring(name) .. ' not found')
+		end
+	]])
+	Misc.save(child)
+	local first = child.lua('return #_G.CDV_TRIED')
+	Misc.save(child)
+	local second = child.lua('return #_G.CDV_TRIED') - first
+	child.lua('_G.CDV_TEST.setup({ libcrypto_path = _G.CDV_TEST.root .. "/elsewhere/libcrypto.so.3" })')
+	Misc.save(child)
+	local again = child.lua('return (_G.CDV_TRIED[...] or ""):find("/elsewhere/", 1, true) ~= nil', { first + 1 })
+	eq({ first = first > 0, second = second, again = again }, { first = true, second = 0, again = true })
+end
+
+-- A libcrypto stood in for by the loader: enough to derive a key and make a nonce,
+-- and no cipher context.
+T['T598 [char] (S2) a cipher context libcrypto can\'t make fails the save'] = function()
+	child.setup()
+	child.steps({ ':e a' })
+	child.lua([[
+		require('ffi').load = function()
+			return {
+				cdv_EVP_aes_256_gcm = function() return nil end,
+				cdv_EVP_sha256 = function() return nil end,
+				cdv_PKCS5_PBKDF2_HMAC = function() return 1 end,
+				cdv_RAND_bytes = function() return 1 end,
+				cdv_EVP_CIPHER_CTX_new = function() return nil end,
+				cdv_EVP_CIPHER_CTX_free = function() end,
+			}
+		end
+	]])
+	local saved = Misc.save(child)
+	eq({ saved = saved[1], said = tostring(saved[2]):find('cipher context', 1, true) ~= nil }, { saved = false, said = true })
 end
 
 T['T304 [char] (S2) every write is atomic: a new file is renamed over the old one, and nothing else is left'] = function()
@@ -704,6 +807,17 @@ T['T472 [char] (S2) an unchanged No Name text keeps its file in every editor'] =
 	end
 end
 
+-- Is a No Name text on any list in memory?
+local NONAME_LISTED = [[
+	local H = require('cavediver.domains.history')
+	for _, pool in pairs(H.routines.pools()) do
+		for _, h in ipairs(pool.closed) do
+			if (H.get_filepath_from_hash(h) or ''):match('^NONAME_') then return true end
+		end
+	end
+	return false
+]]
+
 -- A No Name text closed with <M-.> and saved under A is held unread in the
 -- next editor, which saves B. A's files then go, as another editor's save of
 -- A would sweep the text's file.
@@ -754,15 +868,203 @@ T['T556 [char] (S2) a held text that can\'t be read at a write is lost there, an
 	child.messages()
 	eq(S2.save(child, 'B'), { true })
 	eq(S2.save(child, 'B'), { true })
-	local warns = vim.tbl_filter(function(m) return m.msg:find('integrity check', 1, true) ~= nil end, child.messages())
-	local listed = child.lua([[
-		local H = require('cavediver.domains.history')
-		for _, h in ipairs(H.data.closed_buffers) do
-			if (H.get_filepath_from_hash(h) or ''):match('^NONAME_') then return true end
-		end
-		return false
-	]])
+	local warns = vim.tbl_filter(function(m) return m.msg:find('so that text is lost', 1, true) ~= nil end, child.messages())
+	local listed = child.lua(NONAME_LISTED)
 	eq({ warns = #warns, listed = listed }, { warns = 1, listed = false })
+end
+
+-- A closed No Name text saved under A, held unread in the next editor, which loaded A.
+local function held_text(s)
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	S2.noname(child, { 'carried text' })
+	child.steps({ '<M-.>' })
+	eq(S2.save(child, 'A'), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child, 'A'), { true })
+	child.settle(300)
+	return s.session_dir .. S2.main_file(s.session_dir, S2.cwd(child), 'A') .. '.d/'
+end
+
+local function said(text)
+	return #vim.tbl_filter(function(m) return m.msg:find(text, 1, true) ~= nil end, child.messages())
+end
+
+T['T607 [char] (S2, M5) a held text whose file is missing says it\'s missing'] = function()
+	local s = S2.shared()
+	vim.fn.delete(held_text(s), 'rf')
+	child.messages()
+	child.steps({ '<M-S-w>' })
+	eq({ missing = said("a No Name text's file is missing, so that text is lost."), check = said('integrity check'),
+		listed = child.lua(NONAME_LISTED) }, { missing = 1, check = 0, listed = false })
+end
+
+T['T608 [char] (S2 Closed-stack picker, M5) a lost text found by the closed lists\' draw leaves every list then, said once'] = function()
+	local s = S2.shared()
+	local dir = held_text(s)
+	for _, name in ipairs(Misc.files_in(dir)) do
+		if not name:match('%.trail$') then S2.flip_middle(dir .. name) end
+	end
+	child.messages()
+	local first = S2.picker(child)
+	child.type_keys('q')
+	child.settle()
+	local second = S2.picker(child)
+	local function drawn(p)
+		return #vim.tbl_filter(function(l) return l:find('[No Name]', 1, true) ~= nil end, p.lines)
+	end
+	eq({ warns = said('integrity check'), first = drawn(first), second = drawn(second), listed = child.lua(NONAME_LISTED) },
+		{ warns = 1, first = 0, second = 0, listed = false })
+end
+
+T['T610 [char] (S2, S1 Save) a held text whose own session\'s file is gone leaves every list at the next write'] = function()
+	local s = S2.shared()
+	vim.fn.delete(held_text(s), 'rf')
+	child.messages()
+	eq(S2.save(child, 'A'), { true })
+	eq({ listed = child.lua(NONAME_LISTED), lost = said('so that text is lost') }, { listed = false, lost = 0 })
+end
+
+T['T625 [char] (S1 Load) a load with a quickfix window focused leaves a window with a triquetra as the last one'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child), { true }) -- the first load, so the next is from idle and tears down first
+	child.settle(300)
+	child.cmd('copen')
+	child.settle()
+	eq(S2.load(child), { true })
+	child.settle(300)
+	eq(child.lua([[
+		local W = require('cavediver.domains.window').data
+		local w = W.last_valid_window
+		return { valid = w ~= nil and vim.api.nvim_win_is_valid(w), tracked = w ~= nil and W.crux[w] ~= nil,
+			focused = vim.bo.buftype }
+	]]), { valid = true, tracked = true, focused = 'quickfix' })
+end
+
+-- B saved with c closed and in no slot; a fresh editor loads B, a tick's round left halfway through two thousand
+-- paths no file holds, as a long-lived session's would be, then B loaded again from idle and c.txt
+-- removed from disk.
+T['T638 [char] (M14, S1) a whole-editor load starts the tick\'s round over on the new session\'s files'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', ':e a', ':e b' })
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")'))
+	child.settle()
+	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧') -- c on the closed list alone, in no slot
+	eq(S2.save(child, 'B'), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child, 'B'), { true })
+	child.settle(300)
+	child.lua([[
+		local H = require('cavediver.domains.history')
+		for n = 1, 2000 do
+			H.data.hash_filepath_registry.filepaths[('%016x'):format(n)] = '/nowhere/' .. n
+		end
+		H.routines.cleanup_system(true)
+	]])
+	eq(S2.load(child, 'B'), { true })
+	child.settle(300)
+	local got = child.lua([[
+		local H = require('cavediver.domains.history')
+		local path = _G.CDV_TEST.root .. '/c.txt'
+		local c = H.routines.get_filehash(path)
+		local closed = H.routines.is_filehash_closed(c)
+		os.remove(path)
+		H.routines.cleanup_system(true)
+		return { closed = closed, missing = H.data.missing[c] ~= nil }
+	]])
+	eq(got, { closed = true, missing = true })
+end
+
+-- A thousand closed entries no file holds, as a long-lived editor's lists gather, and focus coming back.
+T['T650 [char] (M14) a settle point checks the known files as a tick does'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	child.settle(300)
+	local tagged = child.lua([[
+		local H = require('cavediver.domains.history')
+		local pool = H.routines.pools()['']
+		for n = 1, 1000 do
+			local h = ('%016x'):format(n)
+			H.data.hash_filepath_registry.filepaths[h] = '/nowhere/' .. n
+			table.insert(pool.closed, h)
+		end
+		vim.api.nvim_exec_autocmds('FocusGained', {})
+		local n = 0
+		for h in pairs(H.data.missing) do
+			if H.data.hash_filepath_registry.filepaths[h]:match('^/nowhere/') then n = n + 1 end
+		end
+		return n
+	]])
+	eq(tagged <= 500, true)
+end
+
+-- A project with no .git above it, and every upward look for one counted.
+T['T651 [char] (M14) the label looks for .git once when there\'s none'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	eq(child.lua([[
+		local find, n = vim.fs.find, 0
+		vim.fs.find = function(names, opts)
+			if names == '.git' then n = n + 1 end
+			return find(names, opts)
+		end
+		require('cavediver.domains.history').routines.refresh_label()
+		vim.fs.find = find
+		return n
+	]]), 1)
+end
+
+T['T611 [char] (S2 The file) session_dir is read as a path: its variables expanded, with or without its trailing slash'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.lua('vim.env.CDV_T611 = ...; _G.CDV_TEST.setup({ session_dir = "$CDV_T611" })', { (s.session_dir:gsub('/$', '')) })
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child), { true })
+	eq({ inside = S2.main_file(s.session_dir, S2.cwd(child), nil) ~= nil, dir = child.lua('return require("cavediver.configs").session_dir') },
+		{ inside = true, dir = s.session_dir })
+end
+
+T['T612 [char] (S2 The file) a look for a session\'s file makes no folder, and the first write makes it'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	local later = s.session_dir .. 'later/'
+	child.lua('_G.CDV_TEST.setup({ session_dir = ... })', { later })
+	local looked = child.lua('return require("cavediver.domains.storage").routines.session_exists(vim.fn.getcwd(-1, -1), "work")')
+	eq(S2.load(child, 'work'), { true })
+	local made = vim.fn.isdirectory(later) == 1
+	child.steps({ ':e a' })
+	eq(S2.save(child), { true })
+	eq({ looked = looked, made = made, after = vim.fn.isdirectory(later) == 1 }, { looked = false, made = false, after = true })
+end
+
+-- A crash's leftover of the main file, two minutes old, and every listing of the session folder counted.
+T['T614 [char] (S2 Save) a commit finds its leftovers without listing the session folder'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child), { true })
+	local main = s.session_dir .. S2.main_file(s.session_dir, S2.cwd(child), nil)
+	S2.write(main .. '.tmp1', 'left')
+	vim.uv.fs_utime(main .. '.tmp1', os.time() - 120, os.time() - 120)
+	child.lua([[
+		_G.CDV_LISTED = 0
+		local readdir, dir = vim.fn.readdir, require('cavediver.configs').session_dir
+		vim.fn.readdir = function(path, ...)
+			if path == dir then _G.CDV_LISTED = _G.CDV_LISTED + 1 end
+			return readdir(path, ...)
+		end
+	]])
+	eq(S2.save(child), { true })
+	eq({ listed = child.lua('return _G.CDV_LISTED'), swept = vim.uv.fs_stat(main .. '.tmp1') == nil }, { listed = 0, swept = true })
 end
 
 -- The No Name text is in a second tab, its cursor on its third line; the
@@ -978,8 +1280,13 @@ T['T508 [char] (S2) the quit\'s records come after the settle work'] = function(
 	child.steps({ ':e a', ':e b' })
 	eq(Misc.save(child), { true })
 	S2.noname(child, { 'note' })
-	child.lua([[vim.cmd('write ' .. vim.fn.fnameescape(_G.CDV_TEST.root .. '/notes.txt')); vim.cmd('doautocmd VimLeavePre')]])
-	pcall(child.lua, 'vim.uv.kill(vim.uv.os_getpid(), "sigkill")')
+	-- the kill in the same call, so nothing scheduled between two requests repairs the file first
+	local ran, err = pcall(child.lua, [[
+		vim.cmd('write ' .. vim.fn.fnameescape(_G.CDV_TEST.root .. '/notes.txt'))
+		vim.cmd('doautocmd VimLeavePre')
+		vim.uv.kill(vim.uv.os_getpid(), 'sigkill')
+	]])
+	eq({ ran = ran, killed = tostring(err):find('was closed by the peer', 1, true) ~= nil }, { ran = false, killed = true })
 	S2.start(child, s)
 	Misc.restore(child, { 'a', 'b' }, 'b')
 	eq(Misc.load(child), { true })
@@ -1109,7 +1416,8 @@ T['T313 [char] (S2) a reference that resolves to nothing is kept, says so when u
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 	child.messages()
 	local ok, err = child.step('<M-f>')
-	eq({ ok = ok, err = err, told = #child.messages() > 0, slots = child.slots() },
+	local told = #vim.tbl_filter(function(m) return m.msg:find("isn't on disk right now; the secondary slot keeps it.", 1, true) ~= nil end, child.messages()) > 0
+	eq({ ok = ok, err = err, told = told, slots = child.slots() },
 		{ ok = true, told = true, slots = '⦉c⦊ [d] ⟦b⟧' })
 	vim.fn.writefile({ 'b' }, s.root .. '/b.txt')
 	child.steps({ '<M-f>' })
@@ -1368,7 +1676,79 @@ T['T479 [char] (S2) the migration script names an old file it can\'t read, and l
 	vim.fn.writefile({ 'not json' }, old_path)
 	local run = migrate()
 	eq({ code = run.code, named = run.stdout:find("can't be read", 1, true) ~= nil, left = vim.fn.filereadable(old_path) },
-		{ code = 0, named = true, left = 1 })
+		{ code = 1, named = true, left = 1 })
+end
+
+T['T642 [char] (S2) the migration script takes libcrypto_path from --libcrypto-path'] = function()
+	local s = S2.shared()
+	local _, migrate = old_session(s)
+	local run = migrate('--libcrypto-path', '/nowhere/libcrypto.so.3')
+	local said = (run.stdout .. run.stderr):find('libcrypto_path (/nowhere/libcrypto.so.3) didn\'t load', 1, true) ~= nil
+	eq({ code = run.code, said = said, converted = run.stdout:find('converted 1 session', 1, true) ~= nil },
+		{ code = 0, said = true, converted = true })
+end
+
+T['T643 [char] (S2) the migration script stops at a flag whose value is missing'] = function()
+	local s = S2.shared()
+	local old_path = old_session(s)
+	local function run(...)
+		return vim.system({ vim.v.progpath, '--clean', '-l', 'scripts/migrate_sessions.lua', '--resession-dir', 'cavediver_test_sessions', ... },
+			{ text = true }):wait()
+	end
+	local last, flag = run('--session-dir'), run('--session-dir', '--dry-run')
+	eq({ last = { last.code, last.stderr:find('--session-dir needs a value', 1, true) ~= nil },
+		flag = { flag.code, flag.stderr:find('--session-dir needs a value', 1, true) ~= nil }, left = vim.fn.filereadable(old_path) },
+		{ last = { 2, true }, flag = { 2, true }, left = 1 })
+end
+
+-- T338's old file, and a resession session under a name of its own instead of the project's.
+T['T644 [char] (S2) the migration script counts an old file whose session name can\'t be told once'] = function()
+	local s = S2.shared()
+	local _, migrate = old_session(s)
+	local root = S2.cwd(child)
+	local dir = vim.fn.stdpath('data') .. '/cavediver_test_sessions/'
+	vim.fn.delete(dir .. root:gsub('/', '_'):gsub(':', '_') .. '.json')
+	vim.fn.writefile({ vim.json.encode({ global = { cwd = root }, buffers = {}, tab_scoped = false, tabs = { {} } }) }, dir .. 'custom.json')
+	local run = migrate()
+	eq({ unnamed = run.stdout:find('1 with a name that can\'t be told', 1, true) ~= nil,
+		leftover = run.stdout:find('0 old file(s) no resession session points to', 1, true) ~= nil }, { unnamed = true, leftover = true })
+end
+
+-- A project whose path holds a `$`, which the old editor's shell expanded before hashing it.
+T['T645 [char] (S2) the migration script names a session whose directory the old shell hashed another way'] = function()
+	local s = S2.shared()
+	local _, migrate = old_session(s)
+	local root = S2.cwd(child)
+	local odd = root .. '/a$b'
+	vim.fn.mkdir(odd, 'p')
+	local dir = vim.fn.stdpath('data') .. '/cavediver_test_sessions/'
+	vim.fn.writefile({ vim.json.encode({ global = { cwd = odd }, buffers = {}, tab_scoped = false, tabs = { {} } }) },
+		dir .. odd:gsub('/', '_'):gsub(':', '_') .. '.json')
+	local run = migrate('--dry-run')
+	eq({ named = run.stdout:find('a$b', 1, true) ~= nil and run.stdout:find('shell', 1, true) ~= nil,
+		none = run.stdout:find('0 with no cavediver file', 1, true) ~= nil }, { named = true, none = true })
+end
+
+-- T338's old file is also a tab session's: saved from a tab whose cwd is the project's, the
+-- editor's own cwd elsewhere.
+T['T646 [char] (S2) the migration script converts both sessions whose old file is one, a dry run counting alike'] = function()
+	local s = S2.shared()
+	local _, migrate = old_session(s)
+	local root = S2.cwd(child)
+	local elsewhere = root .. '/elsewhere'
+	vim.fn.mkdir(elsewhere, 'p')
+	local dir = vim.fn.stdpath('data') .. '/cavediver_test_sessions/'
+	vim.fn.writefile({ vim.json.encode({ global = { cwd = elsewhere }, buffers = {}, tab_scoped = true, tabs = { { cwd = root } } }) },
+		dir .. elsewhere:gsub('/', '_'):gsub(':', '_') .. '.json')
+	local dry = migrate('--dry-run')
+	local real = migrate()
+	local both = child.lua([[
+		local root, elsewhere = ...
+		local st = require('cavediver.domains.storage.routines')
+		return st.session_exists(root, root) and st.session_exists(root, elsewhere)
+	]], { root, elsewhere })
+	eq({ dry = dry.stdout:find('would convert 2 session', 1, true) ~= nil, real = real.stdout:find('converted 2 session', 1, true) ~= nil, both = both },
+		{ dry = true, real = true, both = true })
 end
 
 -- Only a file named the old way is there: the first 32 hex characters of
@@ -1387,6 +1767,21 @@ T['T340 [char] (S2) a load that finds only a file named the old way points to th
 	child.settle(300)
 	eq({ told = S2.has(child.messages(), 'migration script'), slots = child.slots(), left = vim.fn.filereadable(old) },
 		{ told = true, slots = '⦉-⦊ [a] ⟦-⟧', left = 1 })
+end
+
+-- T340's old-named file, and the plugin's own directory, the test run's, on the child's runtimepath.
+T['T648 [char] (S2) the WARN gives the migration script\'s command as it runs in this install'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	local root = S2.cwd(child)
+	vim.fn.writefile({ '{"buffers":{"window":[],"global":[]},"windows":[],"closed":[],"noname_content":[]}' },
+		s.session_dir .. vim.fn.sha256(root .. '\n'):sub(1, 32) .. '.json')
+	S2.start(child, s)
+	Misc.restore(child, { 'a' }, 'a')
+	child.messages()
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq(S2.has(child.messages(), 'nvim --clean -l ' .. vim.fn.getcwd() .. '/scripts/migrate_sessions.lua'), true)
 end
 
 -- Errors and drift ----------------------------------------------------------------
@@ -1697,6 +2092,47 @@ T['T352 [char] (S2) a tab session saved from a tab with a :tcd of its own is fou
 end
 
 -- One process: a save, then a load from idle, then a close and a reopen.
+-- The window of tab 1 built the last history view before the load, so the load's
+-- rebuild for it has to start afresh to rank the session's own visits.
+-- The text's typing writes t's records with it open; its wipe's write waits for the
+-- records' second, and the load comes before that.
+T['T586 [char] (S2) a session loaded while it\'s open doesn\'t reopen a text it has closed since'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	local buf = S2.noname(child, { 'precious' })
+	child.settle(100)
+	child.steps({ ':e d' })
+	child.cmd('bwipeout! ' .. buf)
+	child.settle()
+	eq(S2.load_tab_session(child, 't'), { true })
+	local holding = S2.holding(child, 'precious')
+	child.steps({ '<M-S-w>' })
+	eq({ before = holding, after = S2.holding(child, 'precious') }, { before = 0, after = 1 })
+end
+
+T['T582 [char] (S2) a tab session loaded into the window that built the last view ranks the session\'s visits at once'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c' })
+	local tab1 = child.lua('return vim.api.nvim_get_current_tabpage()')
+	child.cmd('tabnew')
+	child.steps({ ':e d', ':e e' })
+	eq(child.lua('return { pcall(require("cavediver").save_session, "t1", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.cmd('tabclose')
+	child.settle(300)
+	child.steps({ ':e a' })
+	eq(child.lua('return { pcall(require("cavediver").load_session, "t1", { tab = ... }) }', { tab1 }), { true })
+	child.settle(300)
+	local got = child.ordered()
+	child.lua([[
+		local routines = require('cavediver.domains.history').routines
+		routines.construct_crux(nil)
+		routines.construct_crux(vim.api.nvim_get_current_win())
+		routines.update_buffer_history_ordered()
+	]])
+	eq(got, child.ordered())
+end
+
 T['T353 [char] (S1) after a load from idle, closes and <M-S-w> use one closed stack'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
@@ -1756,12 +2192,16 @@ T['T356 [char] (S2) a tab session\'s records that can\'t be written as its tab c
 	tab_session(s)
 	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
 	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
+	if vim.fn.filewritable(s.session_dir) == 2 then -- root writes through a read-only folder
+		vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+		MiniTest.skip('a read-only folder is still writable: the suite runs as root')
+	end
 	child.cmd('bdelete c.txt')
 	child.settle(300)
 	child.messages()
 	child.cmd('tabclose')
 	child.settle(300)
-	local warned = #S2.notices(child.messages()) > 0
+	local warned = S2.has(child.messages(), "'s tab closed, and its closed files couldn't be written")
 	local kept = child.lua([[
 		local H = require('cavediver.domains.history')
 		for id, pool in pairs(H.routines.pools()) do
@@ -1823,12 +2263,15 @@ T['T358 [char] (S2) a quit in the same batch as a tab close writes that tab sess
 	local s = S2.shared()
 	tab_session(s)
 	child.steps({ ':e e', ':e d' })
-	pcall(child.lua, [[
+	local ran, err = pcall(child.lua, [[
 		vim.cmd('bdelete e.txt')
 		vim.cmd('tabclose')
 		vim.api.nvim_exec_autocmds('VimLeavePre', {})
 		vim.uv.kill(vim.uv.os_getpid(), 'sigkill')
 	]])
+	-- the batch reached the kill: an error before it would leave the child up, and the restart's quit
+	-- would write the records the case is about
+	eq({ ran = ran, killed = tostring(err):find('was closed by the peer', 1, true) ~= nil }, { ran = false, killed = true })
 	S2.start(child, s)
 	local got = child.lua([[
 		vim.cmd('noautocmd tabnew')
@@ -1886,13 +2329,17 @@ T['T360 [char] (S2) a load cancels a write still pending, so the teardown\'s clo
 end
 
 -- Closes are written on every change; the write never makes a file.
+-- A session known but with no file, from a load that found none: its records are due at a close.
 T['T361 [char] (S2) records never make a file'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b' })
+	eq(S2.load(child, 'u'), { true })
+	child.settle(300)
+	child.steps({ ':e a', ':e b' })
 	child.cmd('bdelete a.txt')
 	child.settle(1200)
-	eq(Misc.files_in(s.session_dir), {})
+	eq(vim.fn.readdir(s.session_dir), {})
 end
 
 -- t is loaded into a second tab after the whole editor's save; the No Name buffer is the first tab's alone.
@@ -1912,6 +2359,113 @@ T['T566 [char] (S2) a No Name edit marks only the sessions whose files hold its 
 	child.type_keys('i', 'draft', '<Esc>')
 	child.settle(1500)
 	eq({ whole = S2.read(whole) ~= before.whole, tab = S2.read(tab) ~= before.tab }, { whole = true, tab = false })
+end
+
+T['T599 [char] (S2) a tab session keeps owning a No Name text its tab visited after the window that showed it closes'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	child.cmd('split')
+	S2.noname(child, { 'draft' })
+	child.steps({ ':e x' })
+	local function texts()
+		eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+		return child.lua([[
+			local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 't')
+			local n = 0
+			for _ in pairs(saved.noname_content or {}) do n = n + 1 end
+			return n
+		]])
+	end
+	local first = texts()
+	child.cmd('close')
+	child.settle()
+	eq({ first = first, after = texts() }, { first = 1, after = 1 })
+end
+
+-- Unnamed mode: the whole editor saved, then t loaded into a second tab. The text
+-- is typed in a split of the first tab, so closing the split takes it out of that
+-- tab's histories.
+T['T600 [char] (S2) a session whose last write held a No Name text no longer its own is written without it'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	local w1 = child.lua('return vim.api.nvim_get_current_win()')
+	eq(S2.save(child), { true })
+	eq(S2.load_tab_session(child, 't'), { true })
+	local w2 = child.lua('return vim.api.nvim_get_current_win()')
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	child.cmd('split')
+	local buf = S2.noname(child, { 'draft' })
+	child.steps({ ':e x' })
+	child.settle(1500)
+	local function editor_texts()
+		return child.lua([[
+			local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+			local n = 0
+			for _ in pairs(saved.noname_content or {}) do n = n + 1 end
+			return n
+		]])
+	end
+	local held = editor_texts()
+	child.cmd('close')
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('buffer ' .. buf)
+	child.settle()
+	child.type_keys('i', 'more', '<Esc>')
+	child.settle(1500)
+	eq({ held = held, after = editor_texts() }, { held = 1, after = 0 })
+end
+
+T['T601 [char] (S2) an edited text\'s sessions are worked out once in a second of writes'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	S2.noname(child, { 'draft' })
+	child.settle(1500)
+	local asked = child.lua([[
+		local H = require('cavediver.domains.history').routines
+		local real = H.tabs_that_visited
+		local n = 0
+		H.tabs_that_visited = function(...) n = n + 1 return real(...) end
+		for i = 1, 20 do
+			vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'draft ' .. i })
+			vim.api.nvim_exec_autocmds('TextChanged', { buffer = 0 })
+		end
+		H.tabs_that_visited = real
+		return n
+	]])
+	eq(asked <= 2, true)
+end
+
+T['T602 [char] (S2) steady typing writes the records once a second'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	eq(S2.save(child), { true })
+	S2.noname(child, { 'draft' })
+	child.settle(1500)
+	child.lua([[
+		local R = require('cavediver.domains.storage').routines
+		local real = R.write_records
+		_G.CDV_WRITES = 0
+		_G.CDV_AT = {}
+		local t0 = vim.uv.hrtime()
+		R.write_records = function(...) _G.CDV_WRITES = _G.CDV_WRITES + 1 table.insert(_G.CDV_AT, (vim.uv.hrtime() - t0) / 1e6) return real(...) end
+		local n = 0
+		local t = vim.uv.new_timer()
+		t:start(0, 50, vim.schedule_wrap(function()
+			n = n + 1
+			vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'draft ' .. n })
+			vim.api.nvim_exec_autocmds('TextChanged', { buffer = 0 })
+			if n >= 80 then t:stop() t:close() end
+		end))
+	]])
+	child.settle(5500)
+	-- one a second: no two writes close together, as the first change after a second's write was
+	local at = child.lua('return _G.CDV_AT')
+	local closest = math.huge
+	for i = 2, #at do closest = math.min(closest, at[i] - at[i - 1]) end
+	eq({ some = #at > 0, apart = closest >= 500 }, { some = true, apart = true })
 end
 
 -- The global directory moves to another project with no load, as a switch
@@ -2281,7 +2835,8 @@ T['T382 [char] (S2) with no whole-editor file, a detached list left with no tab 
 		end
 		return false
 	]])
-	eq({ kept = kept, warned = #S2.notices(child.messages()) > 0 }, { kept = true, warned = true })
+	eq({ kept = kept, warned = S2.has(child.messages(), "'s tab is gone, and its closed files couldn't be written into the whole editor's session file") },
+		{ kept = true, warned = true })
 end
 
 T['T383 [char] (S2) a second detach of a session is numbered'] = function()
@@ -2477,6 +3032,88 @@ T['T389 [char] (S2) a line moved out of a list in the file alone lands on the li
 	eq({ in_file = child.lua(EDITOR_FILE).detached.t_DETACHED ~= nil, reopened = child.shown(w1) }, { in_file = false, reopened = 'e' })
 end
 
+-- T574's route to t_DETACHED in the whole editor's file alone holding the text, then the text's file
+-- there made to fail its check.
+T['T609 [char] (S2 Closed-stack picker) a lost text on a list in the file alone is said once however often the lists are drawn'] = function()
+	local s = S2.shared()
+	local _, w2 = tab_session(s)
+	eq(S2.save(child), { true })
+	local buf = S2.noname(child, { 'precious' })
+	child.steps({ ':e d' })
+	child.cmd('bwipeout! ' .. buf)
+	child.settle(1200)
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('tabclose')
+	child.settle(300)
+	local dir = s.session_dir .. S2.main_file(s.session_dir, S2.cwd(child), nil) .. '.d/'
+	for _, name in ipairs(Misc.files_in(dir)) do
+		if not name:match('%.trail$') then S2.flip_middle(dir .. name) end
+	end
+	child.messages()
+	local lines = {}
+	for i = 1, 2 do
+		local p = S2.picker(child)
+		local section
+		for _, l in ipairs(p.lines) do
+			if l:sub(1, 3) == '≡' then section = l end
+			if section == '≡t_DETACHED' and l:find('[No Name]', 1, true) then lines[i] = l end
+		end
+		child.type_keys('q')
+		child.settle()
+	end
+	local warns = #vim.tbl_filter(function(m) return m.msg:find('integrity check', 1, true) ~= nil end, child.messages())
+	eq({ warns = warns, drawn = { lines[1] ~= nil, lines[2] ~= nil } }, { warns = 1, drawn = { true, true } })
+end
+
+-- T381's route with a No Name text in t's tab instead of e, so t_DETACHED in the
+-- whole editor's file alone holds the text; t's own list held it too, until the
+-- text was reopened from it in t's new tab.
+T['T574 [char] (S2) a No Name text moved from a list in the file alone onto a tab session\'s list keeps its text'] = function()
+	local s = S2.shared()
+	local _, w2 = tab_session(s)
+	eq(S2.save(child), { true })
+	local buf = S2.noname(child, { 'precious' })
+	child.steps({ ':e d' })
+	child.cmd('bwipeout! ' .. buf)
+	child.settle(1200) -- the records' second runs out, so t's file has the text closed
+	eq(S2.load_tab_session(child, 't'), { true })
+	local w3 = child.lua('return vim.api.nvim_get_current_win()')
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('tabclose')
+	child.settle(300)
+	child.lua('vim.api.nvim_set_current_win(...)', { w3 })
+	child.steps({ '<M-S-w>' })
+	eq(S2.holding(child, 'precious'), 1)
+	local p = S2.picker(child)
+	local t_header, text
+	local section
+	for i, l in ipairs(p.lines) do
+		if l:sub(1, 3) == '≡' then section = l end
+		if l == '≡t' then t_header = i end
+		if section == '≡t_DETACHED' and l:find('precious', 1, true) then text = i end
+	end
+	eq({ t_header = t_header ~= nil, text = text ~= nil }, { t_header = true, text = true })
+	local lines = vim.deepcopy(p.lines)
+	local moved = table.remove(lines, text)
+	table.insert(lines, t_header + 1, moved)
+	child.messages()
+	S2.write_picker(child, p, lines)
+	child.lua('if vim.api.nvim_win_is_valid(...) then vim.api.nvim_win_close(..., true) end', { p.win })
+	child.lua('vim.api.nvim_set_current_win(...)', { w3 })
+	child.settle(600)
+	local lost = S2.has(child.messages(), "so that text is lost")
+	local in_file = child.lua([[
+		local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 't')
+		for _, h in ipairs(saved and saved.closed or {}) do
+			if (saved.noname_content or {})[h] then return true end
+		end
+		return false
+	]])
+	child.steps({ '<M-S-w>' })
+	eq({ lost = lost, in_file = in_file, holding = S2.holding(child, 'precious') }, { lost = false, in_file = true, holding = 2 })
+end
+
 -- T381's state with b closed too, so t_DETACHED in the file alone holds e and b.
 -- Returns the first tab's window.
 local function file_only_two(s)
@@ -2527,9 +3164,14 @@ T['T391 [char] (S2) an edit to a list in the file alone that can\'t be written s
 	table.remove(lines, e)
 	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
 	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
+	if vim.fn.filewritable(s.session_dir) == 2 then -- root writes through a read-only folder
+		vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+		MiniTest.skip('a read-only folder is still writable: the suite runs as root')
+	end
 	child.messages()
 	S2.write_picker(child, p, lines)
-	local got = { warned = #S2.notices(child.messages()) > 0, modified = child.lua('return vim.bo[...].modified', { p.buf }) }
+	local got = { warned = S2.has(child.messages(), "the closed lists' edits to the lists in the whole editor's file alone weren't written"),
+		modified = child.lua('return vim.bo[...].modified', { p.buf }) }
 	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
 	eq(got, { warned = true, modified = true })
 end
@@ -2546,6 +3188,10 @@ T['T542 [char] (S2) q leaves the closed lists when only the write into the whole
 	table.remove(lines, e)
 	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
 	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
+	if vim.fn.filewritable(s.session_dir) == 2 then -- root writes through a read-only folder
+		vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+		MiniTest.skip('a read-only folder is still writable: the suite runs as root')
+	end
 	child.messages()
 	child.lua('vim.api.nvim_buf_set_lines(...)', { p.buf, 0, -1, false, lines })
 	child.lua('vim.api.nvim_set_current_win(...)', { p.win })
@@ -2575,6 +3221,10 @@ T['T555 [char] (S2) <CR> in the closed lists reopens when only the write into th
 	eq(x ~= nil, true)
 	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
 	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
+	if vim.fn.filewritable(s.session_dir) == 2 then -- root writes through a read-only folder
+		vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+		MiniTest.skip('a read-only folder is still writable: the suite runs as root')
+	end
 	child.messages()
 	child.lua('vim.api.nvim_buf_set_lines(...)', { p.buf, 0, -1, false, lines })
 	child.lua('vim.api.nvim_set_current_win(...)', { p.win })
@@ -2584,6 +3234,69 @@ T['T555 [char] (S2) <CR> in the closed lists reopens when only the write into th
 	local got = { warned = #S2.notices(child.messages()), shown = child.shown(w1) }
 	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
 	eq(got, { warned = 1, shown = 'x' })
+end
+
+T['T587 [char] (S2) gf says what\'s kept when only the write into the whole editor\'s file fails'] = function()
+	local s = S2.shared()
+	local w1 = file_only_state(s)
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	child.cmd('bdelete x.txt')
+	child.settle()
+	local p = S2.picker(child)
+	local _, e = under_detached(p.lines)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, e)
+	local x = S2.line_of(lines, 'x.txt')
+	eq(x ~= nil, true)
+	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
+	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
+	if vim.fn.filewritable(s.session_dir) == 2 then -- root writes through a read-only folder
+		vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+		MiniTest.skip('a read-only folder is still writable: the suite runs as root')
+	end
+	child.messages()
+	child.lua('vim.api.nvim_buf_set_lines(...)', { p.buf, 0, -1, false, lines })
+	child.lua('vim.api.nvim_set_current_win(...)', { p.win })
+	child.lua('vim.api.nvim_win_set_cursor(0, { ..., 0 })', { x })
+	child.type_keys('gf')
+	child.settle()
+	local said = S2.notices(child.messages())
+	local got = { shown = child.shown(w1), open = child.lua('return vim.api.nvim_win_is_valid(...)', { p.win }),
+		kept = #said == 1 and said[1]:find('the lists in memory keep their edits', 1, true) ~= nil }
+	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+	eq(got, { shown = 'x', open = true, kept = true })
+end
+
+T['T588 [char] (S2) a No Name text discarded by a write that failed only on the file isn\'t asked about again'] = function()
+	local s = S2.shared()
+	local w1 = file_only_state(s)
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	local buf = S2.noname(child, { 'scratch' })
+	child.steps({ ':e t' })
+	child.cmd('bwipeout! ' .. buf)
+	child.settle()
+	local p = S2.picker(child)
+	local _, e = under_detached(p.lines)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, e)
+	table.remove(lines, S2.line_of(lines, '[No Name]'))
+	child.lua([[
+		_G.CDV_ASKED = 0
+		vim.fn.confirm = function() _G.CDV_ASKED = _G.CDV_ASKED + 1 return 1 end
+	]])
+	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
+	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
+	if vim.fn.filewritable(s.session_dir) == 2 then -- root writes through a read-only folder
+		vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+		MiniTest.skip('a read-only folder is still writable: the suite runs as root')
+	end
+	S2.write_picker(child, p, lines)
+	child.lua('vim.api.nvim_set_current_win(...)', { p.win })
+	child.type_keys('q')
+	child.settle()
+	local got = { asked = child.lua('return _G.CDV_ASKED'), open = child.lua('return vim.api.nvim_win_is_valid(...)', { p.win }) }
+	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+	eq(got, { asked = 1, open = false })
 end
 
 -- From the first tab, the hint names another tab: u has no file, so the tab

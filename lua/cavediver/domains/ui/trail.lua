@@ -188,15 +188,22 @@ local function move_segs(glyphs, names, move, group)
 end
 
 
+---Get a day's noon, as a time.
+---
+---Noon stays inside its day whatever an hour's shift does, a day with a daylight saving change
+---included, so days counted from noon to noon are whole.
+---
+---@param day string The day, as `YYYY-MM-DD`
+---@return integer time Noon that day, in local time
+local function noon_of(day)
+	return os.time({ year = tonumber(day:sub(1, 4)), month = tonumber(day:sub(6, 7)), day = tonumber(day:sub(9, 10)), hour = 12 })
+end
+
 ---Get a day's depth, how many calendar days ago it was.
 ---@param day string The day, as `YYYY-MM-DD`
 ---@return integer depth Calendar days ago, 0 for the current day
 local function depth_of(day)
-	local y, m, d = day:match("^(%d+)-(%d+)-(%d+)$")
-	local then_ = os.time({ year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = 12 })
-	local now = os.date("*t")
-	local today = os.time({ year = now.year, month = now.month, day = now.day, hour = 12 })
-	return math.floor((today - then_) / 86400 + 0.5)
+	return math.floor((noon_of(os.date("%Y-%m-%d")) - noon_of(day)) / 86400 + 0.5)
 end
 
 ---Get the header fill's glyph and highlight group for a depth.
@@ -277,8 +284,7 @@ local function header(glyphs, keys, winwidth)
 	local steps = view.steps
 	local total, kinds = count_moves(steps)
 	local ch, group = fill_of(glyphs, depth, configured.shade ~= false)
-	local date = day and os.date("%a %d %b %Y", os.time({ year = tonumber(day:sub(1, 4)), month = tonumber(day:sub(6, 7)),
-		day = tonumber(day:sub(9, 10)), hour = 12 })) or os.date("%a %d %b %Y")
+	local date = day and os.date("%a %d %b %Y", noon_of(day)) or os.date("%a %d %b %Y")
 	local mid = {
 		{ glyphs.title, "CavediverTrailTitle" }, { " ", nil }, { date, "CavediverTrailDate" },
 		{ glyphs.dot, "CavediverTrailCount" },
@@ -315,8 +321,9 @@ local function header(glyphs, keys, winwidth)
 	if custom then
 		return custom
 	end
-	local l = { { glyphs.older .. " " .. (keys.previous_section or "H"), view.day > 1 and "CavediverTrailKeyOn" or "CavediverTrailKeyOff" }, { " ", nil } }
-	local r = { { " ", nil }, { (keys.next_section or "L") .. " " .. glyphs.newer, view.day < #view.days and "CavediverTrailKeyOn" or "CavediverTrailKeyOff" } }
+	-- a key is named as it's mapped, and one set to false, so left unmapped, isn't
+	local l = { { glyphs.older .. (keys.previous_section and (" " .. keys.previous_section) or ""), view.day > 1 and "CavediverTrailKeyOn" or "CavediverTrailKeyOff" }, { " ", nil } }
+	local r = { { " ", nil }, { (keys.next_section and (keys.next_section .. " ") or "") .. glyphs.newer, view.day < #view.days and "CavediverTrailKeyOn" or "CavediverTrailKeyOff" } }
 	local function fits(segs)
 		return width(l) + width(r) + width(segs) + 2 + 8 <= winwidth
 	end
@@ -347,17 +354,7 @@ frame = function(l, r, chosen, ch, group, winwidth)
 	return line
 end
 
----Check if a step is this editor's own.
----
----A reader gives earlier editors' steps from the pages, and this editor's from its ledger, or from
----the pages for a day the ledger let go; either way a step began after this editor's ledger did
----exactly when it's this editor's.
----
----@param step CavediverLedgerStep The step
----@return boolean mine True if this editor made it
-local function of_this_editor(step)
-	return type(step.time) == "number" and step.time >= require('cavediver.domains.ledger').data.started
-end
+local of_this_editor = require('cavediver.domains.ledger').of_this_editor
 
 ---Get what a move's name stands for, for gf and *.
 ---
@@ -446,9 +443,10 @@ local function ring_lines(glyphs, own, before, key)
 	local count = CHUNK * (1 + (view.more[key] or 0))
 	local hidden = math.max(0, #earlier - count)
 	if hidden > 0 then
+		local fold = (require('cavediver.configs').keymaps.views or {}).fold -- named only when it's mapped
 		table.insert(lines, { segs = { { "        " .. glyphs.ring .. " " .. glyphs.more .. " " .. hidden ..
 			(hidden == 1 and " earlier step" or " earlier steps"), "CavediverTrailRing" },
-			{ "   (" .. ((require('cavediver.configs').keymaps.views or {}).fold or "za") .. " for " .. CHUNK .. " more)", "CavediverTrailDim" } },
+			{ "   (" .. (fold and (fold .. " for ") or "") .. CHUNK .. " more)", "CavediverTrailDim" } },
 			more = key })
 	end
 	for i = hidden + 1, #earlier do
@@ -631,8 +629,8 @@ local function search_lines(glyphs, winwidth)
 			(n_days == 1 and " day" or " days"), "CavediverTrailCount" },
 	}
 	local ch, group = fill_of(glyphs, 0, ((require('cavediver.configs').trail or {}).header or {}).shade ~= false)
-	local l = { { glyphs.older .. " " .. (keys.leave or "q"), "CavediverTrailKeyOn" }, { " ", nil } }
-	local r = { { " ", nil }, { (keys.act or "<CR>") .. " " .. glyphs.newer, "CavediverTrailKeyOn" } }
+	local l = { { glyphs.older .. (keys.leave and (" " .. keys.leave) or ""), "CavediverTrailKeyOn" }, { " ", nil } }
+	local r = { { " ", nil }, { (keys.act and (keys.act .. " ") or "") .. glyphs.newer, "CavediverTrailKeyOn" } }
 	local lines = { { segs = frame(l, r, mid, ch, group, winwidth) }, { segs = { { "", nil } } } }
 	local trigger_width = 0
 	for _, result in ipairs(view.results) do
@@ -644,8 +642,7 @@ local function search_lines(glyphs, winwidth)
 	local last_day
 	for _, result in ipairs(view.results) do
 		local step, move = result.step, result.move
-		local stamp = os.time({ year = tonumber(result.day:sub(1, 4)), month = tonumber(result.day:sub(6, 7)),
-			day = tonumber(result.day:sub(9, 10)), hour = 12 })
+		local stamp = noon_of(result.day)
 		local label = result.day ~= last_day and os.date("%a %d", stamp) or string.rep(" ", #os.date("%a %d", stamp))
 		last_day = result.day
 		local trigger = trigger_of(glyphs, step) or ""
@@ -952,7 +949,7 @@ end
 
 ---Open the day of the search result under the cursor, on its step.
 ---
----It's the main action on a line, which only a search's results have.
+---It's the main action on a search's line. On a day's line the main action is `M.act_and_stay()`'s.
 ---
 ---@return nil
 function M.act()
@@ -1043,7 +1040,14 @@ function M.open(query)
 	map(keys.previous_section, function() if view and view.mode == "day" then M.page(-1) end end, "The older day")
 	map(keys.next_section, function() if view and view.mode == "day" then M.page(1) end end, "The newer day")
 	map(keys.fold, M.fold, "Open or close what's under the cursor")
-	map(keys.act, M.act, "Open the result's day")
+	map(keys.act, function()
+		if view and view.mode == "day" then
+			-- on a day's line the main action is gf's, a step as gf's is
+			require('cavediver.domains.ledger').run_key(keys.act, view.from, M.act_and_stay)
+		else
+			M.act()
+		end
+	end, "Open the result's day, or act on the name under the cursor")
 	map(keys.act_and_stay, function()
 		-- it can change the editor, so it's a step, as the closed lists' keys are; the rest only move the view
 		require('cavediver.domains.ledger').run_key(keys.act_and_stay, view and view.from or vim.api.nvim_get_current_win(), M.act_and_stay)

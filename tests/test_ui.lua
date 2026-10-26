@@ -403,6 +403,51 @@ T['T560 [char] (M12) a refresh writes no winbar that hasn\'t changed'] = functio
 	eq(child.lua('return _G.CDV_WINBAR_SETS'), 0)
 end
 
+-- cavediver's winbar hidden while a global 'winbar' is set, as a user's statusline plugin sets one.
+T['T629 [char] (M12) a hidden winbar is written once while a global winbar is set'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('vsplit')
+	child.settle()
+	child.lua('vim.o.winbar = "%f"; require("cavediver.domains.ui").hide_winbar()')
+	child.settle(300)
+	child.lua([[
+		_G.CDV_WINBAR_SETS = 0
+		vim.api.nvim_create_autocmd('OptionSet', { pattern = 'winbar', callback = function()
+			_G.CDV_WINBAR_SETS = _G.CDV_WINBAR_SETS + 1
+		end })
+	]])
+	child.settle(600)
+	eq(child.lua('return _G.CDV_WINBAR_SETS'), 0)
+end
+
+T['T649 [char] (M12) the indicators machine and the kinds agree'] = function()
+	eq(child.lua([[
+		local ui = require('cavediver.domains.ui')
+		ui.sm.indicators:to(ui.states.INDICATORS.OFF)
+		local off = ui.is_hidden('indicators', 'roles')
+		ui.show_indicators()
+		ui.hide_indicators()
+		ui.sm.indicators:to(ui.states.INDICATORS.ON)
+		return { off = off, on = ui.is_hidden('indicators', 'roles') }
+	]]), { off = true, on = false })
+end
+
+-- cokeline's own colour reader stood in for: the colour a group has when it's called.
+T['T628 [char] (M12) the bufferline reads the Comment colour at each draw'] = function()
+	local got = child.lua([[
+		package.loaded['cokeline.hlgroups'] = { get_hl_attr = function(group)
+			local hl = vim.api.nvim_get_hl(0, { name = group, link = false })
+			return hl.fg and string.format('#%06x', hl.fg) or nil
+		end }
+		vim.api.nvim_set_hl(0, 'Comment', { fg = '#111111' })
+		local components = require('cavediver').bufferline.cokeline.create_buffer_components()
+		vim.api.nvim_set_hl(0, 'Comment', { fg = '#222222' })
+		local fg = components[6].fg -- the unique prefix, sixth in the list
+		return type(fg) == 'function' and fg({}) or fg
+	]])
+	eq(got, '#222222')
+end
+
 T['T457 [char] (M12) a window with no current slot shows its visit alone'] = function()
 	child.steps({ ':e a' })
 	child.cmd('help')
@@ -413,6 +458,7 @@ T['T457 [char] (M12) a window with no current slot shows its visit alone'] = fun
 	child.settle(300)
 	local unfocused = child.lua('return vim.wo[...].winbar', { hw })
 	-- a split with a winbar of its own keeps it
+	child.lua('vim.o.shell = "sh"')
 	child.cmd('split | terminal')
 	child.settle(300)
 	local tw = child.lua('return vim.api.nvim_get_current_win()')
@@ -492,10 +538,10 @@ T['T535 [char] (M12) a % in a file name doesn\'t break the bufferline'] = functi
 		local ok, drawn = pcall(vim.api.nvim_eval_statusline, line, { use_tabline = true })
 		return { texts = texts, ok = ok, drawn = ok and drawn.str or tostring(drawn) }
 	]])
-	local undoubled = vim.tbl_filter(function(t) return (t:gsub("%%%%", "")):find("%", 1, true) ~= nil end, out.texts)
-	eq({ undoubled = undoubled, ok = out.ok, name = out.drawn:find("100%done.txt", 1, true) ~= nil,
-		prefix = out.drawn:find("50%/", 1, true) ~= nil },
-		{ undoubled = {}, ok = true, name = true, prefix = true })
+	-- each % drawn as the full-width ％, which cokeline can measure and cut without making a statusline item
+	eq({ with_percent = out.texts, ok = out.ok, name = out.drawn:find("100％done.txt", 1, true) ~= nil,
+		prefix = out.drawn:find("50％/", 1, true) ~= nil },
+		{ with_percent = {}, ok = true, name = true, prefix = true })
 end
 
 -- A terminal whose command's first word has a %, visited from a tracked window, and run in a split

@@ -430,7 +430,8 @@ T['T268 [char] (A2) the winbar shows the visit, like "a.txt ← [<id> help]"'] =
 	-- Format locked 2026-10-21, and 2026-10-24 with the visited buffer's id: the current slot's piece
 	-- becomes "[<bufnr>] a.txt ← [<id> help]", the ternary and secondary pieces kept around it.
 	local help = Dec.winbar_text(child, aw):find('] a.txt ← [' .. hb .. ' help]', 1, true) ~= nil
-	-- a terminal names its command, from its term:// name
+	-- a terminal names its command, from its term:// name; sh, so no rc file of the user's runs
+	child.lua('vim.o.shell = "sh"')
 	child.cmd('terminal')
 	child.settle(300)
 	local tb, cmd = unpack(child.lua([[
@@ -456,6 +457,7 @@ end
 T['T270 [char] (A2) while visiting, the current slot may hold a closed buffer'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
 	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')
+	child.lua('vim.o.shell = "sh"')
 	child.cmd('terminal')
 	child.settle()
 	eq(child.lua('return vim.bo.buftype'), 'terminal')
@@ -795,9 +797,14 @@ T['T286 [char] (I21) the critical save hook throws to the caller and leaves stor
 	local s = shared()
 	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
 	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
+	if vim.fn.filewritable(s.session_dir) == 2 then -- root writes through a read-only folder
+		vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+		MiniTest.skip('a read-only folder is still writable: the suite runs as root')
+	end
 	start(s)
 	child.steps({ ':e a' })
 	local before = child.lua('return require("cavediver").get_storage_state()')
+	eq(before, 'bare')
 	local got = Misc.save(child)
 	local state = child.lua('return require("cavediver").get_storage_state()')
 	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')

@@ -206,6 +206,90 @@ T['T553 [char] a picked file whose path reads like another entry\'s short name g
 		{ shown = { 'init.lua' }, picked = { 'init.lua', './init.lua' }, queue = { 'sub/init.lua', 'init.lua' } })
 end
 
+T['T583 [char] two queued files of one name keep their own lines'] = function()
+	child.lua([[
+		local root = _G.CDV_TEST.root
+		for _, d in ipairs({ 'a', 'b' }) do
+			vim.fn.mkdir(root .. '/' .. d, 'p')
+			vim.fn.writefile({ d }, root .. '/' .. d .. '/foo.lua')
+		end
+	]])
+	child.steps({ ':e a/foo.lua', '<M-;><M-c>', ':e b/foo.lua', '<M-;><M-c>', ':e c' })
+	child.cmd('bwipeout a/foo.lua')
+	child.cmd('bwipeout b/foo.lua')
+	child.settle()
+	local w = child.win()
+	local function queue()
+		return child.lua([[
+			local H = require('cavediver.domains.history')
+			local t = require('cavediver.domains.window').data.crux[...]
+			return vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_hash(h), ':.') end, t.primary_buffer)
+		]], { w })
+	end
+	eq(queue(), { 'b/foo.lua', 'a/foo.lua' })
+	open()
+	child.popup_set(child.popup_lines())
+	child.messages()
+	child.cmd('write')
+	child.settle()
+	eq({ queue = queue(), errors = Extra.at_least(child.messages()) }, { queue = { 'b/foo.lua', 'a/foo.lua' }, errors = {} })
+end
+
+T['T584 [char] a picked file keeps its line through a second write'] = function()
+	stub_picker()
+	child.lua([[
+		local root = _G.CDV_TEST.root
+		vim.fn.mkdir(root .. '/sub', 'p')
+		vim.fn.writefile({ 'sub' }, root .. '/sub/init.lua')
+		vim.fn.writefile({ 'root' }, root .. '/init.lua')
+		vim.cmd.edit(vim.fn.fnameescape(root .. '/sub/init.lua'))
+	]])
+	child.settle()
+	child.steps({ '<M-;><M-c>' })
+	local w = child.win()
+	open()
+	pick({ 'init.lua' }, 1)
+	child.cmd('write')
+	child.settle()
+	local lines = child.popup_lines()
+	child.popup_set({ lines[2], lines[1] })
+	child.messages()
+	child.cmd('write')
+	child.settle()
+	local queue = child.lua([[
+		local H = require('cavediver.domains.history')
+		local t = require('cavediver.domains.window').data.crux[...]
+		return vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_hash(h), ':.') end, t.primary_buffer)
+	]], { w })
+	eq({ queue = queue, errors = Extra.at_least(child.messages()) }, { queue = { 'init.lua', 'sub/init.lua' }, errors = {} })
+end
+
+T['T585 [char] the pop-up opened again while it\'s open opens once'] = function()
+	local w = queue_ba()
+	open()
+	child.lua('vim.api.nvim_set_current_win(...)', { w })
+	child.messages()
+	local ok, err = child.step('<M-;>F')
+	local count = child.lua([[
+		local n = 0
+		for _, b in ipairs(vim.api.nvim_list_bufs()) do
+			if vim.bo[b].filetype == 'cavediver-primary-buffer-history' then n = n + 1 end
+		end
+		return n
+	]])
+	eq({ ok = ok, err = err, count = count, shown = child.popup() ~= nil }, { ok = true, err = nil, count = 1, shown = true })
+	child.popup_set({ 'a.txt', 'b.txt' })
+	child.lua('vim.api.nvim_set_current_win(...)', { w })
+	child.messages()
+	child.step('<M-;>F')
+	local warned = false
+	for _, m in ipairs(child.messages()) do
+		if m.msg:find('edits not written yet', 1, true) then warned = true end
+	end
+	eq({ lines = child.popup_lines(), focused = child.win() == child.popup(), warned = warned },
+		{ lines = { 'a.txt', 'b.txt' }, focused = true, warned = true })
+end
+
 T['T160 [char] with no picker, <M-e> gives a message and changes no line'] = function()
 	queue_ba()
 	open()
@@ -316,6 +400,70 @@ T['T539 [char] (A18) a view key set to false isn\'t mapped in the pop-up'] = fun
 		return out
 	]])
 	eq(mapped, { ["<C-c>"] = false, ["<M-e>"] = false, q = true })
+end
+
+-- <CR> on line 2, once the pop-up's own opening step has closed.
+T['T631 [char] (A18, A27) the pop-up\'s keys begin steps of their own'] = function()
+	queue_ba()
+	open()
+	child.settle(300)
+	child.lua('vim.api.nvim_win_set_cursor(0, { 2, 0 })')
+	child.steps({ '<CR>' })
+	settle_close()
+	eq(child.lua([[
+		for _, step in ipairs(require('cavediver').ledger.steps()) do
+			if step.cause == 'keymap' and step.trigger == '<CR>' then return true end
+		end
+		return false
+	]]), true)
+end
+
+T['T632 [char] (A18, S2 Closed-stack picker) the views\' write key is keymaps.views.write, in both pop-ups'] = function()
+	child.lua('_G.CDV_TEST.setup({ keymaps = { views = { write = "<M-w>" } } })')
+	queue_ba()
+	child.steps({ ':e c' })
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")'))
+	child.settle()
+	open()
+	local popup = child.lua([[return { mine = vim.fn.maparg('<M-w>', 'n', false, true).buffer == 1,
+		default = vim.fn.maparg('<C-s>', 'n', false, true).buffer == 1 }]])
+	child.steps({ 'q' })
+	settle_close()
+	child.cmd('CavediverClosed')
+	child.settle()
+	local lists = child.lua([[return vim.bo.filetype == 'cavediver-closed-lists' and vim.fn.maparg('<M-w>', 'n', false, true).buffer == 1]])
+	eq({ popup = popup, lists = lists }, { popup = { mine = true, default = false }, lists = true })
+end
+
+-- * on c's line in the closed lists, then on a's line in the primary pop-up.
+T['T633 [char] (A18, S2 Closed-stack picker, A27) * in either pop-up searches the trail for the file on the line'] = function()
+	queue_ba()
+	child.steps({ ':e c' })
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")'))
+	child.settle()
+	local function searched(name)
+		local got = child.lua([[return { ft = vim.bo.filetype, head = vim.api.nvim_buf_get_lines(0, 0, 1, false)[1] or '' }]])
+		return got.ft == 'cavediver-trail' and got.head:find('⌕', 1, true) ~= nil and got.head:find(name, 1, true) ~= nil
+	end
+	child.cmd('CavediverClosed')
+	child.settle()
+	child.lua([[
+		for i, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+			if l:find('c.txt', 1, true) then vim.api.nvim_win_set_cursor(0, { i, 0 }) end
+		end
+	]])
+	child.steps({ '*' })
+	local lists = searched('c.txt')
+	child.lua([[
+		for _, w in ipairs(vim.api.nvim_list_wins()) do
+			if vim.api.nvim_win_get_config(w).relative ~= '' then vim.api.nvim_win_close(w, true) end
+		end
+	]])
+	child.settle(200)
+	open()
+	child.lua('vim.api.nvim_win_set_cursor(0, { 2, 0 })')
+	child.steps({ '*' })
+	eq({ lists = lists, popup = searched('a.txt') }, { lists = true, popup = true })
 end
 
 T['T454 [char] (A18, P9) a save keeps a queue entry whose file is gone from disk'] = function()

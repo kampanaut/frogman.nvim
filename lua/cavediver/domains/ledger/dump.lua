@@ -246,14 +246,16 @@ local function compose(what, failing)
 			table.insert(steps, step)
 		end
 	end
-	if failing and steps[#steps] ~= failing then
+	-- the failing step once: a step closed already may be in the ring, with steps kept after it
+	if failing and not vim.tbl_contains(steps, failing) then
 		table.insert(steps, failing)
 	end
 
 	local rows = {}
 	local replay_steps = {}
 	for _, step in ipairs(steps) do
-		local after = step == failing and ledger.row_of(step.win, step.names) or step.row_after
+		-- the failing step as the failure found it: as it closed, or as it stands when still open
+		local after = step == failing and (step.closed and step.row_after or ledger.row_of(step.win, step.names)) or step.row_after
 		local n = step.win_nr or number(step.win)
 		table.insert(rows, string.format("%s  %-7s %-16s %-6s %s → %s  %s%s", os.date("%H:%M:%S", math.floor(step.time)),
 			step.cause, step.trigger or "", n and ("win " .. n) or "win -", ledger.draw_row(step.row_before), ledger.draw_row(after), notes(after),

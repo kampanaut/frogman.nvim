@@ -73,8 +73,9 @@ local function setup_keymaps(keymaps)
 		local lhs, desc = keymaps[action[1]], action[3]
 		if lhs then
 			vim.keymap.set('n', lhs, function()
-				-- the export as it is when the key is pressed, so a reassigned one takes the key
-				ledger.run_key(lhs, vim.api.nvim_get_current_win(), M[action[2]])
+				-- the export as it is when the key is pressed, so a reassigned one takes the key; the step is
+				-- about the window current once the queue has run
+				ledger.run_key(lhs, nil, M[action[2]])
 			end, { desc = desc })
 		end
 	end
@@ -137,6 +138,9 @@ function M.setup(user_config)
 	end
 
 	deep_merge_into(settings, user_config or {})
+	-- the session directory as Neovim reads a path, `~` and variables expanded, with one slash at its end
+	local session_dir = vim.fs.normalize(settings.session_dir)
+	settings.session_dir = session_dir:sub(-1) == "/" and session_dir or session_dir .. "/"
 
 	-- Store config for domain access
 	M.config = settings

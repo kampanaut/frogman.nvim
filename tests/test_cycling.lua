@@ -522,6 +522,48 @@ end
 -- A planted stale note, not a real route: every real route into a rule break is one
 -- the decided fixes remove, so the recorder is tested on its own. The note is planted
 -- in the other window, so the step taken in this window can't repair it first.
+-- The step that breaks the rule is closed and kept when its check runs, and a
+-- step with a move, a cleanup tick's, is kept after it first.
+T['T589 [char] (A26) a rule break found after another step was kept lists its step once'] = function()
+	child.steps({ ':e a', ':e b' })
+	local dumps = child.dump_files()
+	child.lua([[
+		local L = require('cavediver.domains.ledger')
+		local W = require('cavediver.domains.window')
+		local win = vim.api.nvim_get_current_win()
+		local t = W.data.crux[win]
+		L.begin('keymap', 'kfail', win)
+		t.secondary_slot = t.current_slot -- I1: a file in two slots
+		local function chain(n)
+			vim.schedule(function()
+				if n > 1 then return chain(n - 1) end
+				L.within('timer', 'tick', function()
+					L.move('repair', { subject = 'x', name = 'x' })
+				end)
+			end)
+		end
+		chain(4)
+	]])
+	child.settle(300)
+	local got = child.lua([[
+		local seen = {}
+		for _, f in ipairs(...) do seen[f] = true end
+		local files = {}
+		for _, f in ipairs(vim.fn.globpath(vim.fn.stdpath('state') .. '/cavediver', 'dump-*.txt', true, true)) do
+			if not seen[f] then table.insert(files, f) end
+		end
+		if #files == 0 then return { dumps = 0 } end
+		local text = require('cavediver.domains.ledger.dump').read(files[1]) or ''
+		local rows, fired = 0, 0
+		for line in text:match('^(.-)\nreplay:'):gmatch('[^\n]+') do
+			if line:match('keymap%s+kfail') then rows = rows + 1 end
+			if line:match('fired here') then fired = fired + 1 end
+		end
+		return { dumps = #files, rows = rows, fired = fired }
+	]], { dumps })
+	eq(got, { dumps = 1, rows = 1, fired = 1 })
+end
+
 T['T203 [char] a planted rule break dumps at the next step'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	local win1 = child.win()
@@ -946,6 +988,41 @@ T['T540 [char] (M11) an item\'s own turn waits while a key\'s job waits at a pro
 	eq(child.lua('return _G.CDV_ORDER'), { "job done", "item" })
 end
 
+-- T540's prompt, with a second item queued after it: the first item's own turn is put off while the
+-- job waits, and the second's own turn comes once the job is over.
+T['T639 [char] (M11) an item\'s own turn runs the items queued before it first'] = function()
+	child.lua_notify([[
+		_G.CDV_ORDER = {}
+		local settle = require('cavediver.settle')
+		settle.now(function()
+			settle.later("first", function() table.insert(_G.CDV_ORDER, "first") end)
+			local t = vim.uv.new_timer()
+			t:start(100, 0, function() vim.api.nvim_input("y") end)
+			vim.fn.getchar()
+			settle.later("second", function() table.insert(_G.CDV_ORDER, "second") end)
+		end)
+	]])
+	child.settle(500)
+	child.settle(100)
+	eq(child.lua('return _G.CDV_ORDER'), { "first", "second" })
+end
+
+-- A close queued and a key pressed in the same call: the key's drain closes the window it was pressed in.
+T['T640 [char] (M11, A27) a key\'s step is about the window current once the queue has run'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('vsplit')
+	child.settle()
+	local got = child.lua([[
+		local split = vim.api.nvim_get_current_win()
+		require('cavediver.settle').later('close', function() vim.api.nvim_win_close(split, true) end)
+		_G.CDV_TEST.press('<M-f>')
+		local step = require('cavediver').ledger.data.open
+		return { valid = step ~= nil and step.win ~= nil and vim.api.nvim_win_is_valid(step.win),
+			tab = step ~= nil and step.tab ~= nil, current = step ~= nil and step.win == vim.api.nvim_get_current_win() }
+	]])
+	eq(got, { valid = true, tab = true, current = true })
+end
+
 T['T467 [char] a dump lists the settle work still queued'] = function()
 	child.steps({ ':e a' })
 	local before = child.dumps()
@@ -1186,6 +1263,18 @@ local function made_and_replayed(body, before_replay)
 	return replay(path), root
 end
 
+-- The replaying editor's toggle_primary does nothing, so <M-;><M-x>'s step lands with the switch
+-- left as it was: a row that differs only in a field the ledger's drawing leaves out.
+T['T641 [char] (A26) a mismatch whose rows draw alike shows the rows themselves'] = function()
+	local r = made_and_replayed(function()
+		child.steps({ ':e a', '<M-;><M-c>', ':e b', '<M-;><M-x>' })
+	end, function()
+		child.lua('require("cavediver").toggle_primary = function() end')
+	end)
+	local m = r.mismatches[1]
+	eq({ one = #r.mismatches >= 1, apart = m ~= nil and m.want ~= m.got }, { one = true, apart = true })
+end
+
 T['T486 [char] a command line whose path the ledger cut is planted, not driven'] = function()
 	local r, root = made_and_replayed(function(root)
 		vim.fn.mkdir(root .. '/sub', 'p')
@@ -1385,6 +1474,89 @@ T['T462 [char] a jump\'s cancel says so'] = function()
 			and m.level == vim.log.levels.INFO
 	end, child.messages())
 	eq(#said, 1)
+end
+
+T['T615 [char] (D15) a cycle\'s end, a pick or a cancel, lets its window\'s start go'] = function()
+	local _, split = cycling_in_split()
+	child.steps({ '<M-v>' })
+	local picked = child.lua('return require("cavediver.domains.history").data.cycling_origins[...] == nil', { split })
+	child.steps({ '<M-m>' })
+	eq(child.state(), CYCLING)
+	child.cmd('wincmd w')
+	child.settle(200)
+	eq({ picked = picked, cancelled = child.lua('return next(require("cavediver.domains.history").data.cycling_origins) == nil') },
+		{ picked = true, cancelled = true })
+end
+
+-- T462's setup, the split then visiting a scratch buffer and its start, c.txt, closed from the command line.
+local function start_closed(split)
+	child.lua('vim.api.nvim_set_current_buf(vim.api.nvim_create_buf(true, true))')
+	child.settle()
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")'))
+	child.settle()
+	eq(child.state(), CYCLING)
+	child.messages()
+end
+
+local function cancels_said()
+	return vim.tbl_map(function(m) return m.msg end,
+		vim.tbl_filter(function(m) return m.msg:find('Cycling cancelled', 1, true) ~= nil end, child.messages()))
+end
+
+T['T616 [char] (A12) a cancel reopens a start closed meanwhile'] = function()
+	local _, split = cycling_in_split()
+	start_closed(split)
+	child.cmd('wincmd w')
+	child.settle(200)
+	eq({ shown = child.shown(split), said = cancels_said() },
+		{ shown = 'c', said = { 'Cycling cancelled. Window ' .. number(split) .. ' returned to cycling origin buffer: c.txt' } })
+end
+
+T['T617 [char] (A12) a start that can\'t come back leaves the window as it is, and the cancel says only that'] = function()
+	local _, split = cycling_in_split()
+	start_closed(split)
+	child.lua('vim.fn.delete(_G.CDV_TEST.root .. "/c.txt")')
+	child.cmd('wincmd w')
+	child.settle(200)
+	eq({ visiting = child.lua('return vim.bo[vim.api.nvim_win_get_buf(...)].buftype', { split }), said = cancels_said() },
+		{ visiting = 'nofile', said = { 'Cycling cancelled.' } })
+end
+
+-- The first window at ⦉a⦊ [b] ⟦-⟧ visiting a scratch buffer, and the split, at ⦉b⦊ [c] ⟦-⟧, cycling.
+T['T618 [char] (A12) a cancel into a window visiting something untracked records no visit'] = function()
+	child.lua('vim.o.splitright = false')
+	child.steps({ ':e a', ':e b' })
+	local first = child.win()
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e c' })
+	local split = child.win()
+	child.lua('vim.api.nvim_set_current_win(...)', { first })
+	child.settle()
+	child.lua('vim.api.nvim_set_current_buf(vim.api.nvim_create_buf(true, true))')
+	child.settle()
+	child.lua('vim.api.nvim_set_current_win(...)', { split })
+	child.settle()
+	child.steps({ '<M-m>' })
+	eq(child.state(), CYCLING)
+	child.cmd('wincmd w')
+	child.settle(200)
+	eq({ newest = child.ordered():match('^[^,]*'), slots = child.slots(first) }, { newest = 'c', slots = '⦉a⦊ [b] ⟦-⟧' })
+end
+
+-- The step onto a terminal stands in for cokeline's focus reaching one: a terminal
+-- buffer with no job shown in the window.
+T['T581 [char] (A8, A12) <M-;><M-f> mid-cycle reopens a start closed meanwhile'] = function()
+	child.steps({ ':e a', ':e b', '<M-n>' })
+	eq(child.state(), CYCLING)
+	child.lua('vim.api.nvim_set_current_buf((function() local b = vim.api.nvim_create_buf(true, false) vim.api.nvim_open_term(b, {}) return b end)())')
+	child.settle()
+	child.cmd('bdelete b.txt')
+	child.settle()
+	local dumps = child.dump_files()
+	local ok, err = child.step('<M-;><M-f>')
+	eq({ ok = ok, err = err, shown = child.shown(), dump = child.dumped_since(dumps), state = child.state() },
+		{ ok = true, err = nil, shown = 'b', dump = nil, state = CYCLING })
 end
 
 return T

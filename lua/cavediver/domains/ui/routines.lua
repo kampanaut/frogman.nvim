@@ -112,6 +112,21 @@ local function primary_picker()
 	end
 end
 
+---Search the trail for the file on the primary pop-up's line under the cursor.
+---
+---The line is a short name the pop-up shows, or a path as typed. The trail opens on the file's
+---name, and a No Name text's line, or an empty one, searches nothing.
+---
+---@param dbuf Bufnr The pop-up's buffer
+---@return nil
+function M.search_primary_popup(dbuf)
+	local text = vim.trim(vim.api.nvim_get_current_line())
+	local filepath = (vim.b[dbuf].cavediver_names or {})[text] or (text ~= "" and text) or nil
+	if filepath and not filepath:match("^NONAME_") then
+		require('cavediver.domains.ui.trail').open(vim.fs.basename(filepath))
+	end
+end
+
 ---Add files to the primary pop-up through the picker.
 ---
 ---The picked paths go on the cursor's line when it's empty, otherwise after it. Nothing is
@@ -156,20 +171,6 @@ function M.show_primary_buffer_history()
 
 	local triquetra = window.get_triquetra(cwin)
 
-	local basename_filepath_mapping = {}
-	
-	for filepath, filehash in pairs(history.data.hash_filepath_registry.hashes) do
-		data.clear_display_name_cache()
-		local basename = M.get_smart_basename(filehash) -- Ensure cache is populated
-		if filepath then
-			if filepath:match("^NONAME_") then
-				basename_filepath_mapping[filepath] = filepath
-			else
-				basename_filepath_mapping[basename] = filepath
-			end
-		end
-	end
-
 	if not triquetra then
 		vim.notify("No triquetra found for current window.", vim.log.levels.INFO)
 		return
@@ -180,6 +181,34 @@ function M.show_primary_buffer_history()
 		return
 	end
 
+	local existing = vim.fn.bufnr("cavediver://primary-buffer-queue-history")
+	if existing ~= -1 and vim.bo[existing].modified then
+		-- an edit not written yet stays: the pop-up opens as it is
+		local shown = vim.fn.win_findbuf(existing)[1]
+		if shown then
+			vim.api.nvim_set_current_win(shown)
+		end
+		vim.notify("cavediver: the primary queue has edits not written yet: write them with :w, or leave them, first.", vim.log.levels.WARN)
+		return
+	end
+	if existing ~= -1 then
+		vim.api.nvim_buf_delete(existing, { force = true })
+	end
+
+	local basename_filepath_mapping = {}
+	
+	data.clear_display_name_cache() -- worked out afresh, once for the whole list
+	for filepath, filehash in pairs(history.data.hash_filepath_registry.hashes) do
+		local basename = M.get_smart_basename(filehash) -- Ensure cache is populated
+		if filepath then
+			if filepath:match("^NONAME_") then
+				basename_filepath_mapping[filepath] = filepath
+			else
+				basename_filepath_mapping[basename] = filepath
+			end
+		end
+	end
+
 	local dbuf = vim.api.nvim_create_buf(true, false)
 	local dwin
 
@@ -188,12 +217,20 @@ function M.show_primary_buffer_history()
 	vim.bo[dbuf].swapfile = false
 	vim.bo[dbuf].bufhidden = "wipe" -- gone once no window shows it, so its name is free for the next one
 	vim.b[dbuf].cavediver_names = basename_filepath_mapping -- what each short name stands for, for the picker
+	vim.b[dbuf].origin_window = cwin -- the window the queue is for, which the keys' steps are about
 
 	local function to_display(hash)
 		local basename = M.get_smart_basename(hash)
 		local filepath = history.get_filepath_from_hash(hash)
 		if filepath and filepath:match("^NONAME_") then
 			basename = filepath
+		elseif filepath then
+			-- a name another file already goes by is drawn as the path from here, and every name drawn
+			-- stands for its own file at the next write
+			if basename_filepath_mapping[basename] and basename_filepath_mapping[basename] ~= filepath then
+				basename = vim.fn.fnamemodify(filepath, ":.")
+			end
+			basename_filepath_mapping[basename] = filepath
 		end
 		return basename
 	end
@@ -286,6 +323,17 @@ function M.show_primary_buffer_history()
 	})
 
 	vim.b[dbuf].display_window = dwin
+	-- the buffer goes with its window, however that window closes
+	vim.api.nvim_create_autocmd("WinClosed", {
+		group = "cavediver",
+		pattern = tostring(dwin),
+		once = true,
+		callback = function()
+			if vim.api.nvim_buf_is_valid(dbuf) then
+				vim.api.nvim_buf_delete(dbuf, { force = true })
+			end
+		end,
+	})
 
 	vim.wo[dwin].wrap = false
 	vim.wo[dwin].cursorline = true
@@ -338,7 +386,7 @@ end
 ---Get a closed entry's name, as its line holds it.
 ---
 ---A file's name is its path from the cwd. A No Name text's is its first line, cut at 24
----characters. A text still in the session file is read once to show it, and kept.
+---characters, read before the lists are drawn when it was still in the session file.
 ---
 ---@param filehash Filehash The closed entry
 ---@param glyphs table The views' glyphs
@@ -358,15 +406,6 @@ local function closed_entry_name(filehash, glyphs, file)
 		return '[No Name] "' .. first .. '"', file.texts[filehash].filetype ~= "" and file.texts[filehash].filetype or nil
 	end
 	local content = history.data.noname_content[filehash]
-	if content and content.lines == nil and content.read then
-		-- a text from the session file, read now to show it, and kept so it's read once; one whose
-		-- file fails its check stays as it was
-		local read = content.read()
-		if read then
-			history.data.noname_content[filehash] = read
-		end
-		content = read
-	end
 	local first = content and content.lines and vim.trim(content.lines[1] or "") or ""
 	if vim.fn.strchars(first) > 24 then
 		first = vim.fn.strcharpart(first, 0, 24) .. glyphs.more
@@ -482,6 +521,20 @@ end
 local function draw_closed_lists(dbuf)
 	local picker = closed_pickers[dbuf]
 	local glyphs = M.glyphs()
+	-- a text held unread from a session file is read now to show it, and kept read; one that's lost
+	-- leaves every list now, as a reopen that can't read it finds it, so it isn't read again
+	for _, pool in pairs(history.routines.pools()) do
+		for _, filehash in ipairs(vim.list_slice(pool.closed, 1, #pool.closed)) do
+			local content = history.data.noname_content[filehash]
+			if content and content.lines == nil and content.read then
+				local read = content.read()
+				history.data.noname_content[filehash] = read
+				if read == nil then
+					history.routines.discard_from_pools(filehash)
+				end
+			end
+		end
+	end
 	local pools = history.routines.pools()
 	local order, others = { pools[""] }, {}
 	for id, pool in pairs(pools) do
@@ -595,8 +648,9 @@ end
 ---returns false, with the other lists already written.
 ---
 ---@param dbuf Bufnr The closed-lists buffer
----@param leaving boolean|nil True when the window is left after the write, so the message says the
----lists in memory keep their edits rather than that they're still on screen
+---@param leaving boolean|nil True when the lines won't stay as edited after the write, the window left
+---or drawn again, so the message says the lists in memory keep their edits rather than that they're
+---still on screen
 ---@return boolean written True if every list was written
 ---@return string|nil why "file" when only the write into the whole editor's file failed
 local function write_closed_lists(dbuf, leaving)
@@ -711,6 +765,15 @@ local function write_closed_lists(dbuf, leaving)
 			history.data.came_from[filehash] = nil
 		end
 	end
+	if not written then
+		-- the lists in memory are written, but the window isn't drawn again: what left them is gone
+		-- from what the window's lines stand for, so the next write asks nothing about it again
+		for text, filehash in pairs(picker.hashes) do
+			if gone[filehash] and not history.routines.is_filehash_closed(filehash) then
+				picker.hashes[text] = nil
+			end
+		end
+	end
 	return written, not written and "file" or nil
 end
 
@@ -761,8 +824,8 @@ function M.reopen_from_closed_lists(dbuf, stay)
 	end
 	if vim.bo[dbuf].modified then
 		-- only the write into the whole editor's file failed: the lists in memory are written, so it
-		-- goes on, as leaving does
-		local written, why = write_closed_lists(dbuf)
+		-- goes on, as leaving does, and the lists are drawn again from memory and the file
+		local written, why = write_closed_lists(dbuf, true)
 		if not written and why ~= "file" then
 			return
 		end
@@ -819,6 +882,21 @@ function M.reopen_from_closed_lists(dbuf, stay)
 		close_closed_lists(dbuf)
 		vim.api.nvim_set_current_win(target)
 		vim.api.nvim_set_current_buf(bufnr)
+	end
+end
+
+---Search the trail for the file on the closed lists' line under the cursor.
+---
+---The trail opens on the file's name. A No Name text's line, or a header, searches nothing.
+---
+---@param dbuf Bufnr The closed-lists buffer
+---@return nil
+function M.search_closed_entry(dbuf)
+	local picker = closed_pickers[dbuf]
+	local filehash = picker and picker.hashes[vim.trim(vim.api.nvim_get_current_line())]
+	local filepath = filehash and (history.get_filepath_from_hash(filehash) or picker.paths[filehash])
+	if filepath and not filepath:match("^NONAME_") then
+		require('cavediver.domains.ui.trail').open(vim.fs.basename(filepath))
 	end
 end
 
@@ -1163,7 +1241,9 @@ local function derive_cache_from_window_triquetra(winid, again)
 	-- reflect the primary_enabled state.
 	ui_triquetra.has_primary = ui_triquetra.has_primary and window_triquetra.primary_enabled
 
-	if ui_triquetra.current_bufnr == nil and not (ui_triquetra.deleted_slots.current and ui_triquetra.visiting) then
+	-- a trackable buffer not taken in yet has its arrival still to settle, which the heal leaves it to
+	local arriving = ui_triquetra.visiting ~= nil and history.routines.is_trackable(shown)
+	if ui_triquetra.current_bufnr == nil and not (ui_triquetra.visiting and (ui_triquetra.deleted_slots.current or arriving)) then
 		-- the retry is counted here: resolve_slot clears derive_cache_lock when another slot resolves.
 		if not again then
 			derive_cache_lock[winid] = true
@@ -1283,7 +1363,8 @@ local function put_winbar(winid, winbar, segment)
 		return
 	end
 	local value = require('cavediver.domains.ui').is_hidden("winbar") and "" or winbar
-	if vim.wo[winid].winbar ~= value then -- each write redraws, so only a winbar that changed is written
+	-- each write redraws, so only a winbar that changed is written: the window's own value, not a global one
+	if vim.api.nvim_get_option_value("winbar", { scope = "local", win = winid }) ~= value then
 		vim.wo[winid].winbar = value
 	end
 end
@@ -1309,6 +1390,9 @@ local function construct_winbar_string(winid, theme)
 
 	if triquetra == nil then
 		require('cavediver.domains.ledger').never("This should never happen, current_window_triquetra is nil")
+	end
+	if triquetra.current_bufnr == nil and triquetra.current_display_name == nil and triquetra.visiting then
+		return -- its arrival is still to settle, and draws it: until then it keeps the winbar it has
 	end
 
 	-- a `%` in a name or a tag is the winbar's own, so it goes in doubled

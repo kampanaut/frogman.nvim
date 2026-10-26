@@ -56,7 +56,8 @@ end
 ---
 ---The work runs by itself on `vim.schedule`, as it would without the queue, unless a key runs
 ---it first. Its own turn waits while a key's job or an item is running, as one can be while it
----waits at a prompt, which lets the event loop run.
+---waits at a prompt, which lets the event loop run, and runs the work queued before it first, so
+---the queue's order holds whichever turn comes first.
 ---
 ---@param name string Name of the work, as the dump lists it ("arrival b.txt")
 ---@param fn function The work to run
@@ -69,7 +70,10 @@ function M.later(name, fn)
 			vim.defer_fn(own_turn, 10) -- a job is still running: the item runs once it's done
 			return
 		end
-		run(item)
+		-- what was queued before it runs first, one whose own turn was put off included
+		while not item.done and queue[1] do
+			run(queue[1])
+		end
 	end
 	vim.schedule(own_turn)
 end

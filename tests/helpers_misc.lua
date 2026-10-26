@@ -271,15 +271,29 @@ local function check_wipe(buf)
 end
 checks.I12 = {
 	install = function()
+		-- every form: a string, a table ({ cmd = 'bwipeout', args = { n } }) and vim.cmd.bwipeout(n)
+		local function wipes(name)
+			return type(name) == 'string' and (name:match('^bw') ~= nil or name:match('^bd') ~= nil)
+		end
 		vim.cmd = setmetatable({}, {
 			__call = function(_, c, ...)
 				if type(c) == 'string' then
 					local n = c:match('^%s*bw%a*!?%s+(%d+)') or c:match('^%s*bd%a*!?%s+(%d+)')
 					if n then check_wipe(tonumber(n)) end
+				elseif type(c) == 'table' and wipes(c.cmd) then
+					check_wipe(tonumber(c.args and c.args[1]))
 				end
 				return raw_cmd(c, ...)
 			end,
-			__index = raw_cmd,
+			__index = function(_, name)
+				if not wipes(name) then
+					return raw_cmd[name]
+				end
+				return function(arg, ...)
+					check_wipe(tonumber(type(arg) == 'table' and arg.args and arg.args[1] or arg))
+					return raw_cmd[name](arg, ...)
+				end
+			end,
 		})
 		local raw_del = vim.api.nvim_buf_delete
 		vim.api.nvim_buf_delete = function(buf, opts)

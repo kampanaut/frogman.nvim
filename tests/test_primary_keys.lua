@@ -45,14 +45,21 @@ T['T451 [char] (A9, A10) the primary keys run no redraw!'] = function()
 	child.lua([[
 		_G.CDV_CMDS = {}
 		local real = vim.cmd
+		_G.CDV_REAL_CMD = real
+		-- every form: a string or a table, and vim.cmd.redraw({ bang = true }), recorded as it would be typed
 		vim.cmd = setmetatable({}, {
 			__call = function(_, c) table.insert(_G.CDV_CMDS, type(c) == 'string' and c or vim.inspect(c)); return real(c) end,
-			__index = real,
+			__index = function(_, name)
+				return function(arg, ...)
+					table.insert(_G.CDV_CMDS, name .. ((type(arg) == 'table' and arg.bang) and '!' or '') .. ' ' .. vim.inspect(arg))
+					return real[name](arg, ...)
+				end
+			end,
 		})
 	]])
 	child.steps({ '<M-;><M-x>', '<M-;><M-x>', '<M-;><M-c>' })
 	child.settle(100)
-	local cmds = child.lua('vim.cmd = getmetatable(vim.cmd).__index; return _G.CDV_CMDS')
+	local cmds = child.lua('vim.cmd = _G.CDV_REAL_CMD; return _G.CDV_CMDS')
 	local bang, status, tabline = false, false, false
 	for _, c in ipairs(cmds) do
 		if c:find('redraw!', 1, true) then bang = true end

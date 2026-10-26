@@ -421,15 +421,27 @@ function M.close_into_pools(filehash, quiet)
 		push_closed(pool, filehash, time)
 	end
 	if not quiet then
-		local ledger = require('cavediver.domains.ledger')
-		local name = ledger.name_of(filehash) or filehash
-		local lists, others = named_lists(targets)
-		ledger.move("closed", { subject = filehash, name = name, lists = lists, dim = #others == 0 })
-		if #others > 0 then
-			ledger.tell("closed", name, others)
-		end
+		M.ledger_record_close(filehash, targets)
 	end
 	return targets
+end
+
+---Record a close in the trail, and say it when it went on lists other than the tab's.
+---
+---A close the caller held back, as a No Name buffer's that a write may yet make a rename, is
+---recorded here once it turns out to be one.
+---
+---@param filehash Filehash The closed file's hash
+---@param targets table<Pool, boolean> The pools it went on (pool → true)
+---@return nil
+function M.ledger_record_close(filehash, targets)
+	local ledger = require('cavediver.domains.ledger')
+	local name = ledger.name_of(filehash) or filehash
+	local lists, others = named_lists(targets)
+	ledger.move("closed", { subject = filehash, name = name, lists = lists, dim = #others == 0 })
+	if #others > 0 then
+		ledger.tell("closed", name, others)
+	end
 end
 
 ---Take a file that's open again off every pool's closed stack.
@@ -537,10 +549,12 @@ end
 ---HEAD is read as a file, without running git. Returns the branch, or the first 7 hex
 ---characters of a detached HEAD.
 ---
----@param git_dir string|nil The git directory, when it's found already
+---@param git_dir string|false|nil The git directory when it's found already, false when it was looked for and there's none
 ---@return string|nil label The label, or nil when there's no HEAD to read
 function M.git_label(git_dir)
-	git_dir = git_dir or M.git_dir()
+	if git_dir == nil then
+		git_dir = M.git_dir()
+	end
 	if not git_dir then
 		return nil
 	end
@@ -557,7 +571,7 @@ end
 ---The `label_provider` config decides it. A function there gives the label, and `false` turns
 ---labels off. With no provider set, it's the git branch (see `M.git_label()`).
 ---
----@param git_dir string|nil The git directory, when it's found already
+---@param git_dir string|false|nil The git directory when it's found already, false when it was looked for and there's none
 ---@return string|nil label The label, or nil when there's none
 function M.current_label(git_dir)
 	local provider = require('cavediver.configs').label_provider
@@ -583,10 +597,12 @@ local mark_queue, mark_next = {}, 1
 ---and the marks of files cavediver no longer knows are dropped.
 ---
 ---@param label string|nil The label the files went missing under
----@param limit integer|nil How many other files to check at most (nil = every file)
+---@param limit integer|true|nil How many other files to check at most, true for a tick's slice (nil = every file)
+---@param known table<Filehash, boolean>|nil The files cavediver knows, when the caller has them already
 ---@return nil
-function M.mark_missing(label, limit)
-	local known = M.known_filehashes()
+function M.mark_missing(label, limit, known)
+	limit = limit == true and mark_slice or limit
+	known = known or M.known_filehashes()
 	local filepaths = data.hash_filepath_registry.filepaths
 	local checked = {} -- a file open, in a slot and in the slice is checked once all the same
 	local function mark(filehash)
@@ -726,8 +742,8 @@ end
 function M.refresh_label()
 	local git_dir
 	if require('cavediver.configs').label_provider == nil and head_watch_on then
-		git_dir = M.git_dir() -- found once, for the watch and the label
-		watch_head(git_dir)
+		git_dir = M.git_dir() or false -- found once, for the watch and the label; false when there's none
+		watch_head(git_dir or nil)
 	else
 		M.stop_head_watch()
 	end
@@ -884,13 +900,13 @@ end
 ---
 ---@param winid WinId|nil
 function M.construct_crux(winid)
-	local global_copy = vim.fn.deepcopy(data.crux_internals.global)
-
 	if previous_window_constructed == winid then
 		return
 	else
 		previous_window_constructed = winid
 	end
+	-- copied only once it's needed, the visits being numbers: a plain copy does
+	local global_copy = vim.tbl_extend("force", {}, data.crux_internals.global)
 
 	-- in a tab session's tab, the session's own visits rank above the editor's history, in either view
 	local pool = winid and vim.api.nvim_win_is_valid(winid) and M.pool_of_tab(vim.api.nvim_win_get_tabpage(winid))
@@ -1238,7 +1254,6 @@ function M.reopen_filehash(filehash)
 		data.noname_content[filehash] = nil
 		local old_filehash = filehash
 		filehash = M.register_buffer(bufnr)
-		M.track_buffer(filehash)
 		if filehash ~= old_filehash then
 			-- it comes back under a new name, and everything that named the old one follows: slots, notes
 			-- and history.
@@ -1255,11 +1270,10 @@ function M.reopen_filehash(filehash)
 		vim.bo[bufnr].buflisted = true -- listed before bufload, whose BufEnter only tracks listed buffers.
 		vim.fn.bufload(bufnr)
 		M.register_buffer(bufnr)
-		M.track_buffer(filehash)
 	end
 
 	if bufnr then
-		M.update_buffer_history(bufnr)
+		M.update_buffer_history(bufnr) -- its visit, once, and it leaves the closed lists
 		M.update_buffer_history_ordered()
 		M.update_buffer_history_ordered_nonharpooned()
 		return bufnr
@@ -1271,8 +1285,8 @@ end
 ---Carry a hash's history over to a new hash.
 ---
 ---Used when a file takes a new hash: a reopened No Name buffer, or a rename that was a move.
----Its visits move overall, in each window and in each pool, and a visit the new hash already
----has stays.
+---Its visits move overall, in each window and in each pool, and where the new hash has a visit
+---already, the newer of the two stays.
 ---
 ---@param old_hash Filehash The hash it had
 ---@param new_hash Filehash The hash it takes
@@ -1287,7 +1301,7 @@ function M.rename_hash_in_history(old_hash, new_hash)
 	end
 	for _, crux in ipairs(cruxes) do
 		if crux[old_hash] ~= nil then
-			crux[new_hash] = crux[new_hash] or crux[old_hash]
+			crux[new_hash] = math.max(crux[new_hash] or crux[old_hash], crux[old_hash])
 			crux[old_hash] = nil
 		end
 	end
@@ -1312,8 +1326,9 @@ end
 ---
 ---The disk decides. If the old name is still a file, it was a copy, and the caller closes the
 ---old name. If it isn't, or never was (a No Name buffer), it was a move. Every slot, note and
----history entry that named the old hash then follows to the new name, and the old hash leaves
----every closed stack. The buffer is unregistered from the old hash, for the caller to register
+---history entry that named the old hash then follows to the new name, the newer visit staying where
+---the new name had one, and the old hash leaves every closed stack, and so does the new one, whose
+---buffer holds it open now. The buffer is unregistered from the old hash, for the caller to register
 ---under the new one. A buffer cavediver doesn't track is left alone.
 ---
 ---@param bufnr Bufnr The renamed buffer
@@ -1332,6 +1347,8 @@ function M.settle_rename(bufnr, old_hash, old_history)
 	local new_name = vim.api.nvim_buf_get_name(bufnr)
 	local new_hash = M.get_filehash(new_name ~= "" and new_name or M.noname_name(bufnr)) -- no name: a No Name buffer's
 	M.discard_from_pools(old_hash)
+	-- a name still on a closed list is open now, the buffer holding it: its old entry goes, nothing remembered
+	M.discard_from_pools(new_hash)
 	data.noname_content[old_hash] = nil -- a No Name buffer's text is in its file now.
 	if data.hash_buffer_registry.hashes[bufnr] == old_hash then
 		M.unregister_buffer(bufnr) -- the buffer is registered under its new name next.
@@ -1370,11 +1387,16 @@ function M.settle_rename(bufnr, old_hash, old_history)
 	end
 	M.rename_hash_in_history(old_hash, new_hash)
 	if old_history then
-		data.crux[new_hash] = data.crux[new_hash] or old_history.crux
-		data.crux_internals.global[new_hash] = data.crux_internals.global[new_hash] or old_history.global
+		-- the newer visit stays, where the new name had one already
+		if old_history.crux then
+			data.crux[new_hash] = math.max(data.crux[new_hash] or old_history.crux, old_history.crux)
+		end
+		if old_history.global then
+			data.crux_internals.global[new_hash] = math.max(data.crux_internals.global[new_hash] or old_history.global, old_history.global)
+		end
 		for winid, time in pairs(old_history.windows) do
 			if data.crux_internals.window[winid] then
-				data.crux_internals.window[winid][new_hash] = data.crux_internals.window[winid][new_hash] or time
+				data.crux_internals.window[winid][new_hash] = math.max(data.crux_internals.window[winid][new_hash] or time, time)
 			end
 		end
 	end
@@ -1385,8 +1407,10 @@ end
 ---
 ---The filehash must still be rigistered in the hash_buffer_registry.
 ---@param filehash Filehash THE FILEHASH MUST BE REGISTERED
+---@param quiet boolean|nil Whether the close is left out of the trail, for the caller to record
 ---@return boolean success True if the filehash was added to the closed buffers registry
-function M.track_closing_filehash(filehash)
+---@return table<Pool, boolean>|nil targets The pools it went on, when it was added
+function M.track_closing_filehash(filehash, quiet)
 	local filepath = data.hash_filepath_registry.filepaths[filehash]
 	local bufnr = data.hash_buffer_registry.buffers[filehash]
 
@@ -1419,8 +1443,8 @@ function M.track_closing_filehash(filehash)
 		}
 	end
 
-	M.close_into_pools(filehash) -- one copy per pool: a file closed again is the newest
-	return true
+	-- one copy per pool: a file closed again is the newest
+	return true, M.close_into_pools(filehash, quiet)
 end
 
 
@@ -1715,14 +1739,7 @@ M.find_buffer_by_filepath = find_buffer_by_filepath
 function M.cleanup_system(on_tick)
 	local report = {
 		orphaned_history = 0,
-		orphaned_hashes = {},
-		orphaned_paths = {},
-		invalid_closed_buffers = 0,
-		invalid_closed_hashes = {},
 		stale_hash_entries = 0,
-		stale_hashes = {},
-		invalid_triquetra_refs = 0,
-		updated_lists = false
 	}
 
 
@@ -1766,7 +1783,6 @@ function M.cleanup_system(on_tick)
 				words = "its buffer vanished without an event, and its text with it" })
 			detach_filehash_from_crux(filepath, filehash)
 		end
-		table.insert(report.stale_hashes, filehash)
 		report.stale_hash_entries = report.stale_hash_entries + 1
 		::continue::
 	end
@@ -1781,7 +1797,6 @@ function M.cleanup_system(on_tick)
 				goto continue
 			end
 
-			table.insert(report.invalid_closed_hashes, filehash)
 			require('cavediver.domains.ledger').move("repair", {
 				subject = filehash, name = require('cavediver.domains.ledger').name_of(filehash) or filehash,
 				lists = { M.list_name(pool) },
@@ -1796,7 +1811,6 @@ function M.cleanup_system(on_tick)
 				data.came_from[filehash] = data.came_from[filehash] or {}
 				data.came_from[filehash][id] = true
 			end
-			report.invalid_closed_buffers = report.invalid_closed_buffers + 1
 			::continue::
 		end
 	end
@@ -1806,8 +1820,6 @@ function M.cleanup_system(on_tick)
 	local known = M.known_filehashes()
 	for filehash, _ in pairs(data.crux_internals.global) do
 		if not known[filehash] then
-			table.insert(report.orphaned_hashes, filehash)
-			report.orphaned_paths[filehash] = data.hash_filepath_registry.filepaths[filehash] -- before it goes
 			report.orphaned_history = report.orphaned_history + 1
 		end
 	end
@@ -1815,21 +1827,7 @@ function M.cleanup_system(on_tick)
 
 	-- files gone from disk are marked with where you are, and back ones cleared
 	if not M.refresh_label() then
-		M.mark_missing(data.last_label, on_tick and mark_slice or nil)
-	end
-
-
-	-- 4. Validate triquetra references across windows
-	local window = require('cavediver.domains.window')
-	for winid, triquetra in pairs(window.data.crux) do
-		local slots_to_check = { triquetra.current_slot, triquetra.secondary_slot, triquetra.ternary_slot, triquetra
-			.primary_buffer[1] }
-		for _, slot in ipairs(slots_to_check) do
-			if slot and not data.hash_filepath_registry.filepaths[slot] then
-				-- Triquetra references invalid filehash
-				report.invalid_triquetra_refs = report.invalid_triquetra_refs + 1
-			end
-		end
+		M.mark_missing(data.last_label, on_tick and true or nil, known)
 	end
 
 	-- 5. Update ordered lists after cleanup
@@ -1837,7 +1835,6 @@ function M.cleanup_system(on_tick)
 		require('cavediver.domains.window.routines').cleanup_triquetras()
 		M.update_buffer_history_ordered()
 		M.update_buffer_history_ordered_nonharpooned()
-		report.updated_lists = true
 	end
 
 	return report
@@ -1865,9 +1862,11 @@ function M.teardown()
 	data.label_seen = false
 	M.reset_pools()
 	previous_window_constructed = nil
+	mark_queue, mark_next = {}, 1 -- the tick's round starts over, on the new session's files
 end
 
 function M.repopulate_history()
+	mark_queue, mark_next = {}, 1
 	data.crux = {}
 	data.hash_buffer_registry.buffers = {}
 	data.hash_buffer_registry.hashes = {}

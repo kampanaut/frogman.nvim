@@ -144,6 +144,36 @@ T['T513 [char] (M6) under the window view, closing a window rebuilds the view fo
 	eq({ ok = ok[1], dump = child.dumped_since(dumps) }, { ok = true, dump = nil })
 end
 
+-- Windows first (b) and second (b), first entered, then a float showing a.txt, then second, which closes.
+T['T619 [char] (M6, M10) a window closed hands the view to a window with a triquetra, never a float'] = function()
+	child.steps({ ':e a', ':e b' })
+	local first = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('split')
+	child.settle()
+	local second = child.lua('return vim.api.nvim_get_current_win()')
+	child.lua('vim.api.nvim_set_current_win(...)', { first })
+	child.settle()
+	child.lua([[vim.api.nvim_open_win(vim.fn.bufnr(_G.CDV_TEST.root .. '/a.txt'), true,
+		{ relative = 'editor', row = 1, col = 1, width = 20, height = 3 })]])
+	child.settle()
+	child.lua('vim.api.nvim_set_current_win(...)', { second })
+	child.settle()
+	local got = child.lua([[
+		vim.cmd('close')
+		return require('cavediver.domains.window').data.last_valid_window
+	]])
+	eq(got, first)
+end
+
+T['T620 [char] (M6) window 0 is the current window'] = function()
+	child.steps({ ':e a' })
+	eq(child.lua([[
+		local t = require('cavediver').get_window_triquetra(0)
+		local crux = require('cavediver.domains.window').data.crux
+		return { zero = crux[0] ~= nil, same = t == crux[vim.api.nvim_get_current_win()] }
+	]]), { zero = false, same = true })
+end
+
 -- P arrives in W, the queue is switched off, and W is left and entered again on P.
 T['T514 [char] (M6, I10) entering the current buffer again keeps the last arrival'] = function()
 	child.steps({ ':e a', '<M-;><M-c>', ':e b' })
@@ -173,6 +203,40 @@ T['T515 [char] (M6) a fresh start leaves a window in last_valid_window'] = funct
 		local w = W.last_valid_window
 		return { valid = w ~= nil and vim.api.nvim_win_is_valid(w), tracked = w ~= nil and W.crux[w] ~= nil }
 	]]), { valid = true, tracked = true })
+end
+
+T['T624 [char] (M6) a fresh start gives a float no triquetra'] = function()
+	child.steps({ ':e a', ':e b' })
+	local float = child.lua([[return vim.api.nvim_open_win(vim.fn.bufnr(_G.CDV_TEST.root .. '/a.txt'), false,
+		{ relative = 'editor', row = 1, col = 1, width = 20, height = 3 })]])
+	child.lua('require("cavediver").load_session("fresh-1")')
+	child.settle(200)
+	eq(child.lua('return require("cavediver.domains.window").data.crux[...] ~= nil', { float }), false)
+end
+
+-- A split's winbar drawn, then cavediver off, the split closed, cavediver set up again and a load: the
+-- first from bare, a fresh start, and the second from idle, which tears down first.
+T['T626 [char] (M6, S1) a load lets go what the UI kept of a window closed while cavediver was off'] = function()
+	local SEGMENT = 'return require("cavediver.domains.ui.routines").winbar_segment(...) ~= ""'
+	local function closed_while_off(session)
+		child.cmd('vsplit')
+		child.steps({ ':e b' })
+		local split = child.lua('return vim.api.nvim_get_current_win()')
+		child.settle(300)
+		local before = child.lua(SEGMENT, { split })
+		child.lua('require("cavediver").disable()')
+		child.cmd('close')
+		child.lua('_G.CDV_TEST.setup()')
+		local from = child.lua('return require("cavediver.domains.storage.sm"):state()')
+		child.lua('require("cavediver").load_session(...)', { session })
+		child.settle(200)
+		return { from = from, before = before, after = child.lua(SEGMENT, { split }) }
+	end
+	child.steps({ ':e a' })
+	eq({ closed_while_off('fresh-1'), closed_while_off('fresh-2') }, {
+		{ from = 'bare', before = true, after = false },
+		{ from = 'idle', before = true, after = false },
+	})
 end
 
 return T

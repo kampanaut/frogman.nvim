@@ -5,7 +5,9 @@
 ---own directory. GCM's tag checks the stored bytes before any decrypted byte is used, so an edited
 ---or corrupted file fails as a whole instead of decrypting into something else.
 
-local ffi = require('ffi')
+-- LuaJIT's FFI, taken the first time libcrypto is needed, so a Neovim without LuaJIT still loads
+-- the plugin, and only what encrypts fails, saying so
+local ffi
 
 local M = {}
 
@@ -19,76 +21,93 @@ M.tag_length = 16
 local EVP_CTRL_GCM_GET_TAG = 0x10
 local EVP_CTRL_GCM_SET_TAG = 0x11
 
--- each declaration on its own, so one another plugin made already doesn't stop the rest
-for _, declaration in ipairs({
-	"typedef struct evp_cipher_ctx_st EVP_CIPHER_CTX;",
-	"typedef struct evp_cipher_st EVP_CIPHER;",
-	"typedef struct evp_md_st EVP_MD;",
-	"typedef struct engine_st ENGINE;",
-	"EVP_CIPHER_CTX *EVP_CIPHER_CTX_new(void);",
-	"void EVP_CIPHER_CTX_free(EVP_CIPHER_CTX *ctx);",
-	"const EVP_CIPHER *EVP_aes_256_gcm(void);",
-	"const EVP_MD *EVP_sha256(void);",
-	"int EVP_EncryptInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *type, ENGINE *impl, const unsigned char *key, const unsigned char *iv);",
-	"int EVP_EncryptUpdate(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl, const unsigned char *in, int inl);",
-	"int EVP_EncryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl);",
-	"int EVP_DecryptInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *type, ENGINE *impl, const unsigned char *key, const unsigned char *iv);",
-	"int EVP_DecryptUpdate(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl, const unsigned char *in, int inl);",
-	"int EVP_DecryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl);",
-	"int EVP_CIPHER_CTX_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg, void *ptr);",
-	"int PKCS5_PBKDF2_HMAC(const char *pass, int passlen, const unsigned char *salt, int saltlen, int iter, const EVP_MD *digest, int keylen, unsigned char *out);",
-	"int RAND_bytes(unsigned char *buf, int num);",
-}) do
-	pcall(ffi.cdef, declaration)
-end
-
 local libcrypto
 -- the libcrypto_path values that didn't load, each said once
 local warned = {}
+-- the last search that loaded nothing: the libcrypto_path it was made with, and its error
+local failed
 
 ---Get libcrypto, loading it the first time it's needed.
 ---
 ---The config's `libcrypto_path` is tried first, then OpenSSL 3's and OpenSSL 4's names. A path that
 ---won't load, or loads and isn't libcrypto, is said once, and the names after it are tried. A
----missing library is an environment failure, so this throws, naming each name tried. A save then
----fails as a whole, and the session manager's save with it.
+---missing library is an environment failure, so this throws, naming each name tried, and throws
+---the same again until `libcrypto_path` changes. A save then fails as a whole, and the session
+---manager's save with it.
 ---
 ---@return ffi.namespace* lib The loaded libcrypto
 local function crypto()
 	if libcrypto == nil then
 		local configured = require('cavediver.configs').libcrypto_path
+		if failed and failed.configured == configured then
+			error(failed.error, 0) -- nothing new to try: the same search loaded nothing
+		end
+		if ffi == nil then
+			local ok, module = pcall(require, 'ffi')
+			if not ok then
+				error("cavediver: this Neovim has no LuaJIT FFI, which encrypts the session files; a Neovim built with LuaJIT has it.", 0)
+			end
+			ffi = module
+			-- each function under a name of cavediver's own, its symbol named by __asm__, so another
+			-- plugin's declaration of the same function, even a different one, never stands in for it
+			for _, declaration in ipairs({
+				"typedef struct evp_cipher_ctx_st EVP_CIPHER_CTX;",
+				"typedef struct evp_cipher_st EVP_CIPHER;",
+				"typedef struct evp_md_st EVP_MD;",
+				"typedef struct engine_st ENGINE;",
+				'EVP_CIPHER_CTX *cdv_EVP_CIPHER_CTX_new(void) __asm__("EVP_CIPHER_CTX_new");',
+				'void cdv_EVP_CIPHER_CTX_free(EVP_CIPHER_CTX *ctx) __asm__("EVP_CIPHER_CTX_free");',
+				'const EVP_CIPHER *cdv_EVP_aes_256_gcm(void) __asm__("EVP_aes_256_gcm");',
+				'const EVP_MD *cdv_EVP_sha256(void) __asm__("EVP_sha256");',
+				'int cdv_EVP_EncryptInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *type, ENGINE *impl, const unsigned char *key, const unsigned char *iv) __asm__("EVP_EncryptInit_ex");',
+				'int cdv_EVP_EncryptUpdate(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl, const unsigned char *in, int inl) __asm__("EVP_EncryptUpdate");',
+				'int cdv_EVP_EncryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl) __asm__("EVP_EncryptFinal_ex");',
+				'int cdv_EVP_DecryptInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *type, ENGINE *impl, const unsigned char *key, const unsigned char *iv) __asm__("EVP_DecryptInit_ex");',
+				'int cdv_EVP_DecryptUpdate(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl, const unsigned char *in, int inl) __asm__("EVP_DecryptUpdate");',
+				'int cdv_EVP_DecryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl) __asm__("EVP_DecryptFinal_ex");',
+				'int cdv_EVP_CIPHER_CTX_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg, void *ptr) __asm__("EVP_CIPHER_CTX_ctrl");',
+				'int cdv_PKCS5_PBKDF2_HMAC(const char *pass, int passlen, const unsigned char *salt, int saltlen, int iter, const EVP_MD *digest, int keylen, unsigned char *out) __asm__("PKCS5_PBKDF2_HMAC");',
+				'int cdv_RAND_bytes(unsigned char *buf, int num) __asm__("RAND_bytes");',
+			}) do
+				pcall(ffi.cdef, declaration)
+			end
+		end
 		local names = {}
 		if type(configured) == "string" and configured ~= "" then
-			table.insert(names, configured)
+			table.insert(names, vim.fs.normalize(configured)) -- ~ and $HOME expanded, as Neovim's own paths are
 		end
-		-- the versioned names first, OpenSSL 3's before 4's: on macOS the bare name loads the system's
-		-- own libcrypto, which stops any program that isn't Apple's own, so it's tried only elsewhere
-		vim.list_extend(names, { "libcrypto.so.3", "libcrypto.3.dylib", "libcrypto.so.4", "libcrypto.4.dylib" })
 		if ffi.os ~= "OSX" then
-			table.insert(names, "crypto")
+			-- the versioned names first, OpenSSL 3's before 4's
+			vim.list_extend(names, { "libcrypto.so.3", "libcrypto.so.4", "crypto" })
 		else
-			-- Homebrew's openssl@3 and openssl@4, and MacPorts', sit outside dlopen's own search on macOS
-			vim.list_extend(names, { "/opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib",
-				"/usr/local/opt/openssl@3/lib/libcrypto.3.dylib", "/opt/local/lib/libcrypto.3.dylib",
-				"/opt/homebrew/opt/openssl@4/lib/libcrypto.4.dylib", "/usr/local/opt/openssl@4/lib/libcrypto.4.dylib" })
+			-- full paths only: for a bare name dlopen also searches the current directory, which a project
+			-- could fill, and the bare libcrypto there is the system's own, which stops any program that
+			-- isn't Apple's. Homebrew's openssl@3 and openssl@4, linked or not, and MacPorts'.
+			vim.list_extend(names, {
+				"/opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib", "/usr/local/opt/openssl@3/lib/libcrypto.3.dylib",
+				"/opt/homebrew/lib/libcrypto.3.dylib", "/usr/local/lib/libcrypto.3.dylib", "/opt/local/lib/libcrypto.3.dylib",
+				"/opt/homebrew/opt/openssl@4/lib/libcrypto.4.dylib", "/usr/local/opt/openssl@4/lib/libcrypto.4.dylib",
+				"/opt/homebrew/lib/libcrypto.4.dylib", "/usr/local/lib/libcrypto.4.dylib",
+			})
 		end
 		for i, name in ipairs(names) do
 			local ok, lib = pcall(ffi.load, name)
 			-- a library that loads but has no libcrypto in it counts as one that won't load
 			local why = not ok and tostring(lib):match("[^\n]*")
-				or not pcall(function() return lib.EVP_aes_256_gcm end) and "it isn't libcrypto (no EVP_aes_256_gcm)"
+				or not pcall(function() return lib.cdv_EVP_aes_256_gcm end) and "it isn't libcrypto (no EVP_aes_256_gcm)"
 			if not why then
 				libcrypto = lib
 				break
-			elseif i == 1 and name == configured and not warned[name] then
+			elseif i == 1 and type(configured) == "string" and configured ~= "" and not warned[name] then
 				warned[name] = true
 				vim.notify("cavediver: libcrypto_path (" .. name .. ") didn't load: " .. why
 					.. "; trying cavediver's own list.", vim.log.levels.WARN)
 			end
 		end
 		if libcrypto == nil then
-			error("cavediver: OpenSSL's libcrypto was not found; it encrypts the session files. Tried: "
-				.. table.concat(names, ", ") .. ". Set libcrypto_path to its file.")
+			failed = { configured = configured, error = "cavediver: OpenSSL's libcrypto was not found; it encrypts the session files. Tried: "
+				.. table.concat(names, ", ") .. ". Set libcrypto_path to its file." }
+			error(failed.error, 0)
 		end
 	end
 	return libcrypto
@@ -101,8 +120,9 @@ end
 ---@param n integer How many bytes
 ---@return string bytes The n random bytes
 function M.random_bytes(n)
+	local lib = crypto()
 	local buf = ffi.new("unsigned char[?]", n)
-	if crypto().RAND_bytes(buf, n) ~= 1 then
+	if lib.cdv_RAND_bytes(buf, n) ~= 1 then
 		error("cavediver: libcrypto couldn't make random bytes.")
 	end
 	return ffi.string(buf, n)
@@ -116,8 +136,9 @@ end
 ---@param salt string The file's salt
 ---@return string key The key, `M.key_length` bytes long
 function M.derive_key(directory, salt)
+	local lib = crypto()
 	local key = ffi.new("unsigned char[?]", M.key_length)
-	local ok = crypto().PKCS5_PBKDF2_HMAC(directory, #directory, salt, #salt, M.rounds, crypto().EVP_sha256(), M.key_length, key)
+	local ok = lib.cdv_PKCS5_PBKDF2_HMAC(directory, #directory, salt, #salt, M.rounds, lib.cdv_EVP_sha256(), M.key_length, key)
 	if ok ~= 1 then
 		error("cavediver: libcrypto couldn't derive the session key.")
 	end
@@ -136,21 +157,24 @@ end
 function M.seal(key, plaintext, aad)
 	local lib = crypto()
 	local nonce = M.random_bytes(M.nonce_length)
-	local ctx = lib.EVP_CIPHER_CTX_new()
+	local ctx = lib.cdv_EVP_CIPHER_CTX_new()
+	if ctx == nil then
+		error("cavediver: libcrypto couldn't make a cipher context (out of memory?).", 0) -- an environment failure
+	end
 	local out = ffi.new("unsigned char[?]", #plaintext + 16)
 	local tag = ffi.new("unsigned char[?]", M.tag_length)
 	local outl = ffi.new("int[1]")
 	local ok, sealed = pcall(function()
-		assert(lib.EVP_EncryptInit_ex(ctx, lib.EVP_aes_256_gcm(), nil, key, nonce) == 1)
-		assert(lib.EVP_EncryptUpdate(ctx, nil, outl, aad, #aad) == 1)
-		assert(lib.EVP_EncryptUpdate(ctx, out, outl, plaintext, #plaintext) == 1)
+		assert(lib.cdv_EVP_EncryptInit_ex(ctx, lib.cdv_EVP_aes_256_gcm(), nil, key, nonce) == 1)
+		assert(lib.cdv_EVP_EncryptUpdate(ctx, nil, outl, aad, #aad) == 1)
+		assert(lib.cdv_EVP_EncryptUpdate(ctx, out, outl, plaintext, #plaintext) == 1)
 		local length = outl[0]
-		assert(lib.EVP_EncryptFinal_ex(ctx, out + length, outl) == 1)
+		assert(lib.cdv_EVP_EncryptFinal_ex(ctx, out + length, outl) == 1)
 		length = length + outl[0]
-		assert(lib.EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, M.tag_length, tag) == 1)
+		assert(lib.cdv_EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, M.tag_length, tag) == 1)
 		return nonce .. ffi.string(out, length) .. ffi.string(tag, M.tag_length)
 	end)
-	lib.EVP_CIPHER_CTX_free(ctx)
+	lib.cdv_EVP_CIPHER_CTX_free(ctx)
 	if not ok then
 		error("cavediver: libcrypto couldn't encrypt the session file.")
 	end
@@ -174,7 +198,10 @@ function M.open(key, sealed, aad)
 	local nonce = sealed:sub(1, M.nonce_length)
 	local ciphertext = sealed:sub(M.nonce_length + 1, #sealed - M.tag_length)
 	local tag = sealed:sub(#sealed - M.tag_length + 1)
-	local ctx = lib.EVP_CIPHER_CTX_new()
+	local ctx = lib.cdv_EVP_CIPHER_CTX_new()
+	if ctx == nil then
+		error("cavediver: libcrypto couldn't make a cipher context (out of memory?).", 0) -- an environment failure
+	end
 	local out = ffi.new("unsigned char[?]", #ciphertext + 16)
 	local outl = ffi.new("int[1]")
 	-- copied by its length: a string initializer would add a zero byte past the buffer's end
@@ -182,16 +209,16 @@ function M.open(key, sealed, aad)
 	ffi.copy(tagbuf, tag, M.tag_length)
 	local plaintext
 	local ok = pcall(function()
-		assert(lib.EVP_DecryptInit_ex(ctx, lib.EVP_aes_256_gcm(), nil, key, nonce) == 1)
-		assert(lib.EVP_DecryptUpdate(ctx, nil, outl, aad, #aad) == 1)
-		assert(lib.EVP_DecryptUpdate(ctx, out, outl, ciphertext, #ciphertext) == 1)
+		assert(lib.cdv_EVP_DecryptInit_ex(ctx, lib.cdv_EVP_aes_256_gcm(), nil, key, nonce) == 1)
+		assert(lib.cdv_EVP_DecryptUpdate(ctx, nil, outl, aad, #aad) == 1)
+		assert(lib.cdv_EVP_DecryptUpdate(ctx, out, outl, ciphertext, #ciphertext) == 1)
 		local length = outl[0]
-		assert(lib.EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, M.tag_length, tagbuf) == 1)
+		assert(lib.cdv_EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, M.tag_length, tagbuf) == 1)
 		-- the tag is checked here; the bytes decrypted so far are thrown away when it fails
-		assert(lib.EVP_DecryptFinal_ex(ctx, out + length, outl) == 1)
+		assert(lib.cdv_EVP_DecryptFinal_ex(ctx, out + length, outl) == 1)
 		plaintext = ffi.string(out, length + outl[0])
 	end)
-	lib.EVP_CIPHER_CTX_free(ctx)
+	lib.cdv_EVP_CIPHER_CTX_free(ctx)
 	if not ok then
 		return nil
 	end

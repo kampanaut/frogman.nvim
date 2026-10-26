@@ -170,4 +170,60 @@ T['T571 [char] (A25, M11) a key follows its export as reassigned'] = function()
 	eq(child.lua('return _G.CDV_RAN or vim.NIL'), '<M-f>')
 end
 
+-- A No Name buffer N holding `lines`, made with :enew in the current window; returns its hash.
+local function noname(lines)
+	child.cmd('enew')
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, ...)', { lines })
+	child.settle()
+	return child.lua('return require("cavediver.domains.history").get_hash_from_buffer(vim.api.nvim_get_current_buf())')
+end
+
+-- N closed, then its text held as a text a load left unread whose read gives nothing, as one whose
+-- file failed its check does.
+local function lose(hash)
+	child.cmd('bwipeout! ' .. child.lua('return require("cavediver.domains.history").get_buffer_from_hash(...)', { hash }))
+	child.settle()
+	child.lua([[require('cavediver.domains.history').data.noname_content[...] = { scratch = 'gone', read = function() return nil end }]], { hash })
+end
+
+-- ⦉a⦊ [N] ⟦-⟧, the window visiting a scratch buffer while N is closed and its text lost.
+T['T621 [char] (A6, M5) a current slot that can\'t be reopened stops the key'] = function()
+	child.steps({ ':e a' })
+	local n = noname({ 'draft' })
+	child.lua('vim.api.nvim_set_current_buf(vim.api.nvim_create_buf(true, true))')
+	child.settle()
+	lose(n)
+	local before = child.slots()
+	child.messages()
+	child.steps({ '<M-f>' })
+	local msgs = K.messages(child)
+	eq({ slots = child.slots(), said = K.has(msgs, "can't be reopened, so the window stays where it is."),
+		graduated = K.has(msgs, 'Ternary slot graduated') }, { slots = before, said = true, graduated = false })
+end
+
+-- A history entry whose buffer isn't registered, ahead of the current one, as an undone arrival leaves it.
+T['T622 [char] (A6, D11) a fill that finds nothing but the current buffer says the history is short'] = function()
+	child.steps({ ':e a' })
+	child.lua([[table.insert(require('cavediver.domains.history').data.ordered.crux, 1, { buf = vim.api.nvim_create_buf(true, true) })]])
+	child.messages()
+	child.steps({ '<M-f>' })
+	local msgs = K.messages(child)
+	eq({ slots = child.slots(), populated = K.has(msgs, 'populated from history'), short = K.has(msgs, 'insufficent history') },
+		{ slots = '⦉-⦊ [a] ⟦-⟧', populated = false, short = true })
+end
+
+-- {c=a s=N t=t}, N closed and its text lost.
+T['T623 [char] (A6, M7) a secondary that can\'t be reopened leaves the notes as they were'] = function()
+	child.steps({ ':e a' })
+	local n = noname({ 'n' })
+	child.steps({ '<M-f>', '<M-f>', ':e t', ':e a' })
+	eq(child.slots():match('^⦉t⦊ %[a%] ⟦(.-)⟧$') ~= '-', true)
+	lose(n)
+	local before = child.notes()
+	child.messages()
+	child.steps({ '<M-f>' })
+	eq({ notes = child.notes(), slots = child.slots(), said = K.has(K.messages(child), 'Removed secondary file not found in filesystem') },
+		{ notes = before, slots = '⦉t⦊ [a] ⟦-⟧', said = true })
+end
+
 return T

@@ -19,11 +19,7 @@ storageSM:on(storageStates.IDLE, storageStates.BARE, "ui_teardown", function()
 		data.clear_window_display_cache(winid)
 	end
 	data.clear_display_name_cache()
-	local cache = data.bufferline_state
-	cache.harpooned_buffers, cache.harpooned_lookup = {}, {}
-	cache.recent_buffers, cache.buffer_ranking = {}, {}
-	cache.current_buf, cache.current_window_triquetra = nil, nil
-	cache.initialized, cache.history_detached = false, false
+	data.clear_bufferline_cache()
 end, 4, true)
 
 -- The toggles: the winbar, the indicators and the bufferline, each drawn again once its new state is set
@@ -66,6 +62,30 @@ end, 4, true, navigation.states.mode.WINENTER)
 
 local M = {}
 
+---Map a view key on a view's buffer.
+---
+---A key set to false isn't mapped, as in every view. A job is a step of its own, through
+---`run_key`, about the window `origin` gives when the key is pressed; a string is mapped as it is.
+---
+---@param buf Bufnr The view's buffer
+---@param lhs string|false|nil The key
+---@param fn function|string The key's job, or the keys it stands for
+---@param desc string What the key does
+---@param origin fun(): WinId|nil The window the key's step is about, nil for the current one
+---@return nil
+local function map_view_key(buf, lhs, fn, desc, origin)
+	if not lhs then
+		return
+	end
+	local act = fn
+	if type(fn) == "function" then
+		act = function()
+			require('cavediver.domains.ledger').run_key(lhs, origin(), fn)
+		end
+	end
+	vim.keymap.set("n", lhs, act, { buffer = buf, desc = desc })
+end
+
 ---Create the ui domain's autocmds in cavediver's augroup.
 ---
 ---Called by setup(), so nothing runs at require. Calling it again after the group is cleared
@@ -82,13 +102,20 @@ function M.init_autocmds(group)
 		end,
 	})
 
-	-- a colorscheme's :hi clear removes every group it doesn't define, so they're defined again
+	-- a colorscheme's :hi clear removes every group it doesn't define, so they're defined again; one the
+	-- colorscheme defines, or a ColorScheme autocmd made before this one, stays theirs
 	vim.api.nvim_create_autocmd("ColorScheme", {
 		group = group,
 		callback = function()
 			local ui = require('cavediver.domains.ui')
+			local defined = vim.api.nvim_get_hl(0, {})
 			ui.init_winbar_highlights()
 			ui.init_trail_highlights()
+			for name, spec in pairs(defined) do
+				if next(spec) ~= nil and not vim.deep_equal(spec, vim.api.nvim_get_hl(0, { name = name })) then
+					vim.api.nvim_set_hl(0, name, spec)
+				end
+			end
 		end,
 	})
 
@@ -114,12 +141,7 @@ function M.init_autocmds(group)
 				vim.cmd("write!")
 				local dwin = vim.b[args.buf].display_window
 
-				vim.api.nvim_win_close(dwin, true)
-				vim.defer_fn(function()
-					if vim.api.nvim_buf_is_loaded(args.buf) then
-						vim.api.nvim_buf_delete(args.buf, { force = true })
-					end
-				end, 100)
+				vim.api.nvim_win_close(dwin, true) -- its WinClosed deletes the buffer
 			end
 
 			local function promote_to_primary_and_quit(stay)
@@ -151,32 +173,21 @@ function M.init_autocmds(group)
 			end
 
 			local keys = require('cavediver.configs').keymaps.views or {}
-
+			-- each key's step is about the window the queue is for
+			local function origin()
+				local winid = vim.b[args.buf].origin_window
+				return winid and vim.api.nvim_win_is_valid(winid) and winid or nil
+			end
 
 			-- Quick save
-			vim.keymap.set("n", "<C-s>", "<cmd>write<cr>", { buffer = args.buf, desc = "Save queue" })
-
-			-- a view key set to false isn't mapped, as in every view
+			map_view_key(args.buf, keys.write, function() vim.cmd("write") end, "Save queue", origin)
 			-- Save and close
-			if keys.leave_too then
-				vim.keymap.set("n", keys.leave_too, close_window, { buffer = args.buf, desc = "Save and close" })
-			end
-
-			if keys.leave then
-				vim.keymap.set("n", keys.leave, close_window, { buffer = args.buf, desc = "Save and close" })
-			end
-
-			if keys.act then
-				vim.keymap.set("n", keys.act, function() promote_to_primary_and_quit(false) end, { buffer = args.buf, desc = "Promote file under cursor and quit floating window"})
-			end
-
-			if keys.act_and_stay then
-				vim.keymap.set("n", keys.act_and_stay, function() promote_to_primary_and_quit(true) end, { buffer = args.buf, desc = "Promote file under cursor and stay" })
-			end
-
-			if keys.pick then
-				vim.keymap.set("n", keys.pick, function() routines.pick_into_primary_popup(args.buf) end, { buffer = args.buf, desc = "Add files through the picker" })
-			end
+			map_view_key(args.buf, keys.leave_too, close_window, "Save and close", origin)
+			map_view_key(args.buf, keys.leave, close_window, "Save and close", origin)
+			map_view_key(args.buf, keys.act, function() promote_to_primary_and_quit(false) end, "Promote file under cursor and quit floating window", origin)
+			map_view_key(args.buf, keys.act_and_stay, function() promote_to_primary_and_quit(true) end, "Promote file under cursor and stay", origin)
+			map_view_key(args.buf, keys.pick, function() routines.pick_into_primary_popup(args.buf) end, "Add files through the picker", origin)
+			map_view_key(args.buf, keys.search_word, function() routines.search_primary_popup(args.buf) end, "Search the trail for the file under the cursor", origin)
 		end
 	})
 
@@ -187,17 +198,9 @@ function M.init_autocmds(group)
 		callback = function(args)
 			local keys = require('cavediver.configs').keymaps.views or {}
 			local buf = args.buf
+			-- the step is about the window the lists act on, the one they were opened from
 			local function map(lhs, fn, desc)
-				if lhs then
-					local act = fn
-					if type(fn) == "function" then
-						act = function()
-							-- the step is about the window the lists act on, the one they were opened from
-							require('cavediver.domains.ledger').run_key(lhs, routines.closed_lists_origin(buf) or vim.api.nvim_get_current_win(), fn)
-						end
-					end
-					vim.keymap.set("n", lhs, act, { buffer = buf, desc = desc })
-				end
+				map_view_key(buf, lhs, fn, desc, function() return routines.closed_lists_origin(buf) end)
 			end
 			map(keys.leave, function() routines.leave_closed_lists(buf) end, "Write and leave the closed lists")
 			map(keys.leave_too, function() routines.leave_closed_lists(buf) end, "Write and leave the closed lists")
@@ -206,29 +209,11 @@ function M.init_autocmds(group)
 			map(keys.fold, "za", "Fold or unfold the list")
 			map(keys.previous_section, function() routines.closed_lists_section(buf, -1) end, "Go to the previous list")
 			map(keys.next_section, function() routines.closed_lists_section(buf, 1) end, "Go to the next list")
+			map(keys.write, function() vim.cmd("write") end, "Write the closed lists")
+			map(keys.search_word, function() routines.search_closed_entry(buf) end, "Search the trail for the file under the cursor")
 		end
 	})
 
-	-- WinClosed: the primary pop-up's buffer goes with its window, however it closes
-	vim.api.nvim_create_autocmd("WinClosed", {
-		group = group,
-		callback = function(args)
-			if not args.file then
-				return
-			end
-			local winid = tonumber(args.file)
-			if not winid then
-				return
-			end
-			local bufnr = vim.api.nvim_win_get_buf(winid)
-
-			if vim.bo[bufnr].filetype ~= "cavediver-primary-buffer-history" then
-				return
-			end
-
-			vim.api.nvim_buf_delete(bufnr, { force = true })
-		end
-	})
 end
 
 return M

@@ -12,7 +12,7 @@
 ---@field days table<string, CavediverLedgerStep[]> Day → its steps with moves, oldest first (the trail)
 ---@field session string|nil The whole editor's session the steps are made under now (nil before the first)
 ---@field started number When this editor's ledger began, in seconds (older steps on a trail page came from earlier editors)
----@field paged_out table<string, table<integer, number>> Day → the steps of this editor's that day let go onto its pages, each step's number → its time
+---@field epoch string This editor's mark, on every step it makes and on the trail pages with them: when its ledger began, and a few digits besides
 
 return {
 	ring = {},
@@ -22,5 +22,5 @@ return {
 	days = {},
 	session = nil,
 	started = nil, -- set with the ledger's clock as the routines load
-	paged_out = {},
+	epoch = nil, -- set with started
 }

@@ -16,16 +16,22 @@ M.begin = routines.begin
 ---Run a key's job as a step of its own.
 ---
 ---What's still queued to settle runs first, so it lands on the step it belongs to, as if the key
----had been typed by hand. Then the key's step begins, about the window given, and the job runs
----through the settle lock, a cycle still running in another window cancelled first.
+---had been typed by hand. Then the key's step begins, about the window given, or the current one
+---once the queue has run, and the job runs through the settle lock, a cycle still running in another
+---window cancelled first.
 ---
 ---@param lhs string The key, as the step's trigger
----@param winid integer The window the step is about
+---@param winid integer|nil The window the step is about, the current one once the queue has run when nil
+---or when that window is gone by then
 ---@param fn function The key's job
 ---@return any ... What the job returns
 function M.run_key(lhs, winid, fn)
 	local settle = require('cavediver.settle')
 	settle.drain()
+	-- the window as the drain left it: what ran may have closed or left the one the key was pressed in
+	if winid == nil or not vim.api.nvim_win_is_valid(winid) then
+		winid = vim.api.nvim_get_current_win()
+	end
 	routines.begin("keymap", lhs, winid)
 	return settle.now(function()
 		require('cavediver.domains.navigation').cancel_cycle_elsewhere()
@@ -42,6 +48,7 @@ M.steps = routines.steps
 M.trail = routines.trail
 M.trail_days = routines.trail_days
 M.forget_day = routines.forget_day
+M.of_this_editor = routines.of_this_editor
 M.now = routines.now
 M.slot_name = routines.slot_name
 M.draw_row = routines.draw_row
@@ -98,10 +105,16 @@ function M.init_autocmds(group)
 			local line = vim.fn.getcmdline()
 			if line ~= "" then
 				local typed = line
-				-- a path typed in it is kept as its last part, as every other trigger names files
-				line = line:gsub("%S+", function(word)
+				-- a path typed in it is kept as its last part, as every other trigger names files; the
+				-- command itself, with its range or its pattern, stays as typed
+				local command, rest = line:match("^(%s*%S+)(.*)$")
+				if not command then
+					command, rest = "", line
+				end
+				line = command .. rest:gsub("%S+", function(word)
 					if word:match("^[/~.]") or vim.fn.filereadable(word) == 1 or vim.fn.isdirectory(word) == 1 then
-						return vim.fs.basename(word)
+						local last = vim.fs.basename((word:gsub("(.)/+$", "%1"))) -- `sub/` is `sub`
+						return last ~= "" and last or word
 					end
 				end)
 				local step = routines.begin("command", ":" .. line, vim.api.nvim_get_current_win())

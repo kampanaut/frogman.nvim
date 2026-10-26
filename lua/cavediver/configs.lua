@@ -27,7 +27,8 @@
 ---@field next_section string|false Go to the next section (the newer day in the trail)
 ---@field pick string|false Add files through the picker, in the primary pop-up
 ---@field search string|false Search every page for a name, in the trail
----@field search_word string|false Search for the name under the cursor, in the trail
+---@field search_word string|false Search the trail for the name under the cursor (in the pop-ups, the line's file)
+---@field write string|false Write the view's edits, in the closed lists and the primary pop-up
 
 ---@class CavediverGlyphs
 ---@field set "unicode"|"ascii" The glyph set (a glyph named here, outside the sets, replaces the set's own)
@@ -53,7 +54,7 @@
 ---@field kinds table<string, integer> Number of the day's moves by kind (kind → count)
 
 ---@class CavediverFormatters
----@field closed_entry fun(entry: CavediverClosedEntry, glyphs: table): table[]|nil Virtual text after a closed entry, as {text, highlight} chunks (nil draws none)
+---@field closed_entry fun(entry: CavediverClosedEntry, glyphs: table): table[]|nil Virtual text after a closed entry, as {text, highlight} chunks (nil for cavediver's own)
 ---@field trail_step fun(step: CavediverLedgerStep, glyphs: table): table[]|nil A step's line in the trail, as {text, highlight} chunks (nil for cavediver's own)
 ---@field trail_move fun(move: CavediverLedgerMove, glyphs: table, step: CavediverLedgerStep): table[]|nil A move's line in the trail (nil for cavediver's own)
 ---@field trail_header fun(header: CavediverTrailHeader, glyphs: table): table[]|nil The trail's header line (nil for cavediver's own)
@@ -111,7 +112,8 @@
 local defaults = {
 	session_dir = vim.fn.stdpath("data") .. "/cavediver/sessions/",
 	-- libcrypto_path: OpenSSL's libcrypto, a full path or a name the system finds, tried before
-	-- cavediver's own list (nil tries the list alone); read once, the first time it's needed
+	-- cavediver's own list (nil tries the list alone); ~ and $HOME in it are expanded. It's read
+	-- the first time it's needed, and again only when no libcrypto loaded and it has changed since
 	bufferline = {
 		history_view = "global" -- "global" | "window"
 	},
@@ -325,6 +327,7 @@ local defaults = {
 			pick = "<M-e>", -- the primary pop-up's: add files through the picker
 			search = "s", -- the trail's: search every page for a name
 			search_word = "*", -- the trail's: search for the name under the cursor
+			write = "<C-s>", -- the closed lists' and the primary pop-up's: write the edits
 		},
 	},
 	-- the ledger: `ring`, how many of the last steps are kept in memory, and `dump`, whether something
