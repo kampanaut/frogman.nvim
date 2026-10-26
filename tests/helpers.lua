@@ -1,6 +1,6 @@
--- Shared helpers for cavediver's tests.
+-- Shared helpers for frogman's tests.
 --
--- Every test drives a child Neovim with cavediver set up in a fresh temporary
+-- Every test drives a child Neovim with frogman set up in a fresh temporary
 -- project (files a.txt to f.txt, t.txt and x.txt), so no state leaks between
 -- cases. Slots are read back in the winbar's order and brackets:
 --   ⦉ternary⦊ [current] ⟦secondary⟧
@@ -26,7 +26,7 @@ vim.cmd('cd ' .. vim.fn.fnameescape(root))
 package.preload['harpoon'] = function()
 	return { list = function() return { display = function() return {} end } end }
 end
--- cokeline: by_step("focus", step) walks cavediver's ordered history
+-- cokeline: by_step("focus", step) walks frogman's ordered history
 -- (index 1 = most recent), the order the bufferline shows.
 if not opts.no_cokeline then
 	package.preload['cokeline.mappings'] = function()
@@ -44,16 +44,16 @@ if not opts.no_cokeline then
 	end
 end
 
-_G.CDV_NOTES = {}
-vim.notify = function(msg, level) table.insert(_G.CDV_NOTES, { msg = tostring(msg), level = level }) end
+_G.FRG_NOTES = {}
+vim.notify = function(msg, level) table.insert(_G.FRG_NOTES, { msg = tostring(msg), level = level }) end
 
 -- what this child is set up with; every setup() starts from the defaults, so a case that sets up
--- again layers its own options over these (_G.CDV_TEST.setup)
-_G.CDV_BASE = {
+-- again layers its own options over these (_G.FRG_TEST.setup)
+_G.FRG_BASE = {
 	session_dir = root .. '/state/sessions/',
 	bufferline = { history_view = opts.history_view or 'global' },
 }
-require('frogman').setup(_G.CDV_BASE)
+require('frogman').setup(_G.FRG_BASE)
 
 local H = require('frogman.domains.history')
 local W = require('frogman.domains.window')
@@ -74,11 +74,11 @@ local function map(m)
 	return '{' .. table.concat(keys, ' ') .. '}'
 end
 
-_G.CDV_TEST = {
+_G.FRG_TEST = {
 	root = root,
-	-- set up again with the options given, layered over this child's own (_G.CDV_BASE)
+	-- set up again with the options given, layered over this child's own (_G.FRG_BASE)
 	setup = function(options)
-		require('frogman').setup(vim.tbl_deep_extend('force', vim.deepcopy(_G.CDV_BASE), options or {}))
+		require('frogman').setup(vim.tbl_deep_extend('force', vim.deepcopy(_G.FRG_BASE), options or {}))
 	end,
 	slots = function(winid)
 		local t = W.data.crux[winid or vim.api.nvim_get_current_win()]
@@ -125,7 +125,7 @@ _G.CDV_TEST = {
 }
 ]==]
 
--- Start a new child; `child.setup(opts)` restarts it with cavediver ready.
+-- Start a new child; `child.setup(opts)` restarts it with frogman ready.
 -- opts: history_view = 'global' | 'window' (default 'global'),
 --       no_cokeline = true to leave cokeline out.
 Helpers.new_child = function()
@@ -136,9 +136,9 @@ Helpers.new_child = function()
 		child.lua(CHILD_SETUP, { opts or {} })
 	end
 
-	-- The dumps under stdpath('state')/cavediver/.
+	-- The dumps under stdpath('state')/frogman/.
 	child.dump_files = function()
-		return child.lua([[return vim.fn.globpath(vim.fn.stdpath('state') .. '/cavediver', 'dump-*.txt', true, true)]])
+		return child.lua([[return vim.fn.globpath(vim.fn.stdpath('state') .. '/frogman', 'dump-*.txt', true, true)]])
 	end
 
 	-- What fired in the first dump written since `before` (a child.dump_files() list), read in this
@@ -147,7 +147,7 @@ Helpers.new_child = function()
 		local fired = child.lua([[
 			local seen = {}
 			for _, f in ipairs(...) do seen[f] = true end
-			for _, f in ipairs(vim.fn.globpath(vim.fn.stdpath('state') .. '/cavediver', 'dump-*.txt', true, true)) do
+			for _, f in ipairs(vim.fn.globpath(vim.fn.stdpath('state') .. '/frogman', 'dump-*.txt', true, true)) do
 				if not seen[f] then
 					local text = require('frogman.domains.ledger.dump').read(f)
 					return text and text:match('\n([^\n]*)') or ('a dump that does not open: ' .. vim.fn.fnamemodify(f, ':t'))
@@ -172,7 +172,7 @@ Helpers.new_child = function()
 			local cmd = action:sub(2):gsub('^(e%s+)(%a)$', '%1%2.txt')
 			child.cmd(cmd)
 		else
-			local res = child.lua('return { _G.CDV_TEST.press(...) }', { action })
+			local res = child.lua('return { _G.FRG_TEST.press(...) }', { action })
 			ok, err = res[1], res[2]
 		end
 		child.settle()
@@ -189,14 +189,14 @@ Helpers.new_child = function()
 		end
 	end
 
-	child.slots = function(winid) return child.lua('return _G.CDV_TEST.slots(...)', { winid }) end
-	child.notes = function(winid) return child.lua('return _G.CDV_TEST.notes(...)', { winid }) end
-	child.primary = function(winid) return child.lua('return _G.CDV_TEST.primary(...)', { winid }) end
-	child.shown = function(winid) return child.lua('return _G.CDV_TEST.shown(...)', { winid }) end
-	child.ordered = function() return child.lua('return _G.CDV_TEST.ordered()') end
-	child.closed = function() return child.lua('return _G.CDV_TEST.closed()') end
+	child.slots = function(winid) return child.lua('return _G.FRG_TEST.slots(...)', { winid }) end
+	child.notes = function(winid) return child.lua('return _G.FRG_TEST.notes(...)', { winid }) end
+	child.primary = function(winid) return child.lua('return _G.FRG_TEST.primary(...)', { winid }) end
+	child.shown = function(winid) return child.lua('return _G.FRG_TEST.shown(...)', { winid }) end
+	child.ordered = function() return child.lua('return _G.FRG_TEST.ordered()') end
+	child.closed = function() return child.lua('return _G.FRG_TEST.closed()') end
 	child.messages = function()
-		local m = child.lua('local n = _G.CDV_NOTES; _G.CDV_NOTES = {}; return n')
+		local m = child.lua('local n = _G.FRG_NOTES; _G.FRG_NOTES = {}; return n')
 		return m
 	end
 

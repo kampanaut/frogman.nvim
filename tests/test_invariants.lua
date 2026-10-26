@@ -62,9 +62,9 @@ T['T130 [char] I3: every triquetra has a history entry'] = function()
 	walk('I3', MW, 3)
 end
 
--- I12. Route: a new file, not on disk yet, with a typed line. Cavediver's
+-- I12. Route: a new file, not on disk yet, with a typed line. Frogman's
 -- vim.cmd and nvim_buf_delete calls are checked.
-T['T131 [char] I12: no buffer with unsaved changes is wiped by cavediver'] = function()
+T['T131 [char] I12: no buffer with unsaved changes is wiped by frogman'] = function()
 	walk('I12', join(ACTS, rep(2, { 'new file' }), { '<M-.>', '<M-S-w>' }), 4)
 end
 
@@ -81,9 +81,9 @@ T['T133 [char] I11: ordered.crux is newest first and holds only registered open 
 end
 
 -- I14. A save after every action, over the one-window, several-window and closing
--- mixes: the save hook is critical, so any throw on cavediver's own data would
+-- mixes: the save hook is critical, so any throw on frogman's own data would
 -- reach the session manager's save.
-T['T334 [char] I14: a save never throws on cavediver\'s own data, over random walks'] = function()
+T['T334 [char] I14: a save never throws on frogman\'s own data, over random walks'] = function()
 	walk('save', ACTS, 8, 10)
 	walk('save', MWY, 9, 10)
 	walk('save', join(ACTS, rep(2, { 'enew', '<M-.>' }), { 'enew+text', '<M-S-w>', 'new file' }), 10, 10)

@@ -55,21 +55,21 @@ function M.init_winbar_highlights()
 	vim.api.nvim_set_hl(0, "BothWayNerdArrowNC", { fg = configs.colors.both_way_arrow.unfocused, bg = configs.colors.base.unfocused.bg})                      -- Amber buffer ID
 end
 
----Initiate the highlight groups cavediver's own views draw with.
+---Initiate the highlight groups frogman's own views draw with.
 ---
 ---Their colours come from the config's `colors.trail`.
 ---
 ---@return nil
 function M.init_trail_highlights()
 	local trail = configs.colors.trail
-	vim.api.nvim_set_hl(0, "CavediverTrailList", { fg = trail.list, bold = true })
-	vim.api.nvim_set_hl(0, "CavediverTrailClosed", { fg = trail.closed, bold = true })
-	vim.api.nvim_set_hl(0, "CavediverTrailTime", { fg = trail.time })
-	vim.api.nvim_set_hl(0, "CavediverTrailTag", { fg = trail.tag })
-	vim.api.nvim_set_hl(0, "CavediverTrailDim", { fg = trail.dim })
+	vim.api.nvim_set_hl(0, "FrogmanTrailList", { fg = trail.list, bold = true })
+	vim.api.nvim_set_hl(0, "FrogmanTrailClosed", { fg = trail.closed, bold = true })
+	vim.api.nvim_set_hl(0, "FrogmanTrailTime", { fg = trail.time })
+	vim.api.nvim_set_hl(0, "FrogmanTrailTag", { fg = trail.tag })
+	vim.api.nvim_set_hl(0, "FrogmanTrailDim", { fg = trail.dim })
 	-- the trail's view
 	for i, colour in ipairs(trail.wave or {}) do
-		vim.api.nvim_set_hl(0, "CavediverTrailWave" .. (i - 1), { fg = colour })
+		vim.api.nvim_set_hl(0, "FrogmanTrailWave" .. (i - 1), { fg = colour })
 	end
 	local plain = { Title = { trail.title, true }, Date = { trail.date }, Depth = { trail.depth }, Count = { trail.count },
 		Gauge = { trail.gauge }, GaugeNow = { trail.gauge_now, true }, KeyOn = { trail.key_on, true }, KeyOff = { trail.key_off },
@@ -80,9 +80,9 @@ function M.init_trail_highlights()
 		Rename = { trail.rename, true }, RowT = { trail.row_t }, RowC = { trail.row_c }, RowS = { trail.row_s },
 		LifeOpen = { trail.life_open, true }, LifeClosed = { trail.life_closed, true }, LifeGone = { trail.life_gone, true } }
 	for name, spec in pairs(plain) do
-		vim.api.nvim_set_hl(0, "CavediverTrail" .. name, { fg = spec[1], bold = spec[2] })
+		vim.api.nvim_set_hl(0, "FrogmanTrail" .. name, { fg = spec[1], bold = spec[2] })
 	end
-	vim.api.nvim_set_hl(0, "CavediverTrailTrigger", { fg = trail.trigger, italic = true })
+	vim.api.nvim_set_hl(0, "FrogmanTrailTrigger", { fg = trail.trigger, italic = true })
 end
 
 local periodic_timer = nil

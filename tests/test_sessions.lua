@@ -43,7 +43,7 @@ T['T134 [char] save_session writes paths, outsiders, buffers, windows, closed, c
 		local keys = vim.tbl_keys(data)
 		table.sort(keys)
 		local w = data.windows[1]
-		local function path(file) return _G.CDV_TEST.root .. '/' .. file end
+		local function path(file) return _G.FRG_TEST.root .. '/' .. file end
 		local function hash(file) return H.get_hash_from_buffer(vim.fn.bufnr(path(file))) end
 		return {
 			keys = keys,
@@ -177,7 +177,7 @@ T['T142 [char] two windows, one on a No Name buffer: after save and load each wi
 	local s = shared()
 	start(s)
 	child.steps({ ':e a', ':e b', ':vsplit', ':e c', ':enew' })
-	eq(child.slots(), '⦉c⦊ [NONAME_' .. child.lua('return vim.b.cavediver_noname') .. '] ⟦-⟧')
+	eq(child.slots(), '⦉c⦊ [NONAME_' .. child.lua('return vim.b.frogman_noname') .. '] ⟦-⟧')
 	child.cmd('wincmd p')
 	child.settle()
 	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
@@ -278,7 +278,7 @@ T['T146 [char] a save never wipes a buffer or changes what a window shows'] = fu
 	child.steps({ ':e a', ':vsplit', ':e b' })
 	local before = snapshot()
 	local got = child.lua([[
-		os.remove(_G.CDV_TEST.root .. '/b.txt')
+		os.remove(_G.FRG_TEST.root .. '/b.txt')
 		return { pcall(require('frogman').save_session, vim.fn.getcwd()) }
 	]])
 	eq(got, { true })
@@ -293,7 +293,7 @@ T['T146 [char] a save leaves an oil window on its oil buffer'] = function()
 	child.steps({ ':e a', ':e b', ':vsplit', ':e c' })
 	child.lua([[
 		local b = vim.api.nvim_create_buf(true, false)
-		vim.api.nvim_buf_set_name(b, 'oil://' .. _G.CDV_TEST.root .. '/')
+		vim.api.nvim_buf_set_name(b, 'oil://' .. _G.FRG_TEST.root .. '/')
 		vim.bo[b].buftype = 'acwrite'
 		vim.bo[b].filetype = 'oil'
 		vim.api.nvim_win_set_buf(0, b)

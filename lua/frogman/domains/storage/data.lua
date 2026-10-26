@@ -11,7 +11,7 @@ local M = {}
 ---@type {name: string|nil, directory: string}[]|false
 M.loading_batch = false
 
----What the last load in this startup loaded, so cavediver can load it again after Neovim's own
+---What the last load in this startup loaded, so frogman can load it again after Neovim's own
 ---:restart session (`name` is nil for a nameless load, `tab` is true when the load had the hint)
 ---@type {name: string|nil, tab: boolean}|nil
 M.last_loaded = nil

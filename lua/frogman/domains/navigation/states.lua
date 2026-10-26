@@ -1,4 +1,4 @@
--- Navigation state constants for the cavediver state machine system.
+-- Navigation state constants for the frogman state machine system.
 ---
 -- The navigation state machine provides the root context that determines all system behavior.
 -- All other state machines (window, domain-specific) extend this navigation context.

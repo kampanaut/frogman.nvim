@@ -27,7 +27,7 @@ local function triquetra(winid)
 	return W.data.crux[winid or vim.api.nvim_get_current_win()]
 end
 
-_G.CDV_X = {
+_G.FRG_X = {
 	name = name,
 	state = function()
 		return { nav = N.sm:state(), hist = H.sm:state() }
@@ -45,7 +45,7 @@ _G.CDV_X = {
 	end,
 	-- The hash of a project file by its stem ('a' → <root>/a.txt).
 	hash_of = function(stem)
-		return H.get_hash_from_filepath(_G.CDV_TEST.root .. '/' .. stem .. '.txt')
+		return H.get_hash_from_filepath(_G.FRG_TEST.root .. '/' .. stem .. '.txt')
 	end,
 	-- Floating windows open now.
 	floats = function()
@@ -59,11 +59,11 @@ _G.CDV_X = {
 	popup = function()
 		for _, w in ipairs(vim.api.nvim_list_wins()) do
 			local b = vim.api.nvim_win_get_buf(w)
-			if vim.bo[b].filetype == 'cavediver-primary-buffer-history' then return w end
+			if vim.bo[b].filetype == 'frogman-primary-buffer-history' then return w end
 		end
 		return nil
 	end,
-	-- Every place in cavediver's data that holds `hash`: slots, primary
+	-- Every place in frogman's data that holds `hash`: slots, primary
 	-- queues, map keys (plain or -swap) and values, history, closed stack.
 	refs = function(hash)
 		local out = {}
@@ -88,9 +88,9 @@ _G.CDV_X = {
 		end
 		return out
 	end,
-	-- Files under stdpath('state')/cavediver/, recursively, sorted.
+	-- Files under stdpath('state')/frogman/, recursively, sorted.
 	dumps = function()
-		local dir = vim.fn.stdpath('state') .. '/cavediver'
+		local dir = vim.fn.stdpath('state') .. '/frogman'
 		local files = vim.fn.globpath(dir, '**/*', true, true)
 		local out = {}
 		for _, f in ipairs(files) do
@@ -104,13 +104,13 @@ _G.CDV_X = {
 
 Extra.attach = function(child)
 	local function ensure()
-		if not child.lua('return _G.CDV_X ~= nil') then
+		if not child.lua('return _G.FRG_X ~= nil') then
 			child.lua(CHILD_EXTRA)
 		end
 	end
 	local function call(fn, ...)
 		ensure()
-		return child.lua('return _G.CDV_X.' .. fn .. '(...)', { ... })
+		return child.lua('return _G.FRG_X.' .. fn .. '(...)', { ... })
 	end
 
 	-- { nav = 'normal'|'cycling', hist = 'attached'|'detached' }

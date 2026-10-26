@@ -146,6 +146,14 @@ nvim --clean -l <cavediver's directory>/scripts/migrate_sessions.lua
 A load that finds an old file tells you the command with the path for your install. `--dry-run` shows what would
 change. If your setup sets them, pass `--session-dir`, `--resession-dir` and `--libcrypto-path` too.
 
+#### Session files saved under cavediver
+
+This plugin was called cavediver before. The same script moves what was saved under that name, the session files
+in `stdpath("data")/cavediver/sessions/` and the dumps in `stdpath("state")/cavediver/`, into frogman's folders
+before it converts anything, so run it once as above. A file frogman's folder has already stays where it is, and the
+script names it. With `--session-dir` naming a folder of your own, the session files aren't moved. A load that finds
+its session's file still in cavediver's folder tells you to run the script.
+
 ### nvim-cokeline setup
 
 The cavediver plugin can work without the bufferline, but it reduces the experience a lot. 
@@ -263,7 +271,7 @@ You can start by just modifying the base colors
 
 ```lua
 local defaults = {
-    session_dir = vim.fn.stdpath("data") .. "/cavediver/sessions/",
+    session_dir = vim.fn.stdpath("data") .. "/frogman/sessions/",
     -- libcrypto_path: OpenSSL's libcrypto, a full path or a name the system finds, tried before
     -- cavediver's own list (nil tries the list alone); ~ and $HOME in it are expanded. It's read
     -- the first time it's needed, and again only when no libcrypto loaded and it has changed since
@@ -484,7 +492,7 @@ local defaults = {
         },
     },
     -- the ledger: `ring`, how many of the last steps are kept in memory, and `dump`, whether something
-    -- that shouldn't happen writes them to a file under stdpath("state")/cavediver/ and a window
+    -- that shouldn't happen writes them to a file under stdpath("state")/frogman/ and a window
     ledger = {
         ring = 1000,
         dump = true,
@@ -587,6 +595,6 @@ You will notice that no matter how you cycle, the current slot buffer doesn't ch
 
 ## When something shouldn't happen
 
-Cavediver keeps its last steps in memory. When something that shouldn't happen fires (an assertion, a hook failing, a broken rule), it writes them to a file under `stdpath("state")/cavediver/` and shows them in a window, and a warning says where the file is. The file is encrypted like the session files, so it only opens from the directory it was written in: `:CavediverDump <file>`.
+Cavediver keeps its last steps in memory. When something that shouldn't happen fires (an assertion, a hook failing, a broken rule), it writes them to a file under `stdpath("state")/frogman/` and shows them in a window, and a warning says where the file is. The file is encrypted like the session files, so it only opens from the directory it was written in: `:FrogmanDump <file>`.
 
-To replay one, start Neovim in that directory with cavediver set up, open no file and load no session, then run `:lua require('frogman').replay_dump('<file>')`. If your config loads a session when Neovim starts, start it with a minimal init that only sets cavediver up instead (`nvim -u minimal.lua`). An editor that replayed a dump doesn't save its session. When it's done, it says what it did in one line, such as `cavediver: replayed 12 steps, 5 driven, 5 matching, 0 resynced`: driven steps are your keys and window commands, run again and checked against the dump; matching ones came out the same; a resync is a step the replay first put back where the dump says it began. If it stopped, the line says where and why, and "what fired" is what the dump fired at, reproduced.
+To replay one, start Neovim in that directory with cavediver set up, open no file and load no session, then run `:lua require('frogman').replay_dump('<file>')`. If your config loads a session when Neovim starts, start it with a minimal init that only sets cavediver up instead (`nvim -u minimal.lua`). An editor that replayed a dump doesn't save its session. When it's done, it says what it did in one line, such as `frogman: replayed 12 steps, 5 driven, 5 matching, 0 resynced`: driven steps are your keys and window commands, run again and checked against the dump; matching ones came out the same; a resync is a step the replay first put back where the dump says it began. If it stopped, the line says where and why, and "what fired" is what the dump fired at, reproduced.

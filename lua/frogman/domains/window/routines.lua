@@ -189,7 +189,7 @@ local function resolve_next_slot(triquetra, except)
 		end
 	end
 end
----Undo a buffer's arrival once it turned into something cavediver doesn't track.
+---Undo a buffer's arrival once it turned into something frogman doesn't track.
 ---
 ---Runs when the buffer's buftype changed after it was slotted. A window it just arrived in gets back
 ---the slots and notes it had before, and is visiting it. A window whose current slot it was otherwise
@@ -277,7 +277,7 @@ function M.update_primary_buffer(primary_filepaths, winid)
 			-- history.register_buffer(fbufnr)
 			table.insert(error_lines,
 				"- You cannot set the file buffer [" ..
-				typed .. "] that isn't tracked by cavediver to be a primary buffer.")
+				typed .. "] that isn't tracked by frogman to be a primary buffer.")
 			goto continue
 		elseif (fbufnr == -1 or not vim.api.nvim_buf_is_loaded(fbufnr)) and history.get_hash_from_filepath(filepath) == nil then -- If the filepath is not loaded by neovim and is not registered then register it.
 			if filepath:match("^NONAME_") then                                 -- If the buffer_from_filepath query turned out to be nil and the filepath was just for NO NAME buffer then that means this NO_NAME buffer you have never existed, since the registry says so.
@@ -555,7 +555,7 @@ function M.cleanup_triquetras(bufnr_ondelete)
 	end
 	for winid, triquetra in pairs(data.crux) do
 		if not vim.api.nvim_win_is_valid(winid) then
-			-- a window gone without its WinClosed: closed while cavediver was off, or with noautocmd
+			-- a window gone without its WinClosed: closed while frogman was off, or with noautocmd
 			data.unregister_triquetra(winid)
 			goto continue
 		end
@@ -605,7 +605,7 @@ function M.cleanup_triquetras(bufnr_ondelete)
 				if vim.api.nvim_win_is_valid(winid) then
 					cbufnr = vim.api.nvim_win_get_buf(winid)
 					cbufname = vim.api.nvim_buf_get_name(cbufnr)
-					if cbufname == "" and vim.b[cbufnr].cavediver_noname ~= nil then -- one with no id was never tracked
+					if cbufname == "" and vim.b[cbufnr].frogman_noname ~= nil then -- one with no id was never tracked
 						cbufname = history.routines.noname_name(cbufnr)
 					end
 					cbufhash = history.routines.get_filehash(cbufname)
@@ -1209,7 +1209,7 @@ end
 function M.repopulate_window_relationships()
 	local set_cache_from_window_triquetra = require("frogman.domains.ui").set_cache_from_window_triquetra
 	for winid, _ in pairs(data.crux) do
-		-- a window closed while cavediver was off too: what the UI kept of it goes, its winbar only if it's there
+		-- a window closed while frogman was off too: what the UI kept of it goes, its winbar only if it's there
 		require('frogman.domains.ui.routines').remove_winbar_string(winid)
 	end
 	data.crux = {}

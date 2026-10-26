@@ -1,12 +1,12 @@
--- Options for MiniTest.run(). Which cases run is picked by tag, through CDV_TAGS:
+-- Options for MiniTest.run(). Which cases run is picked by tag, through FRG_TAGS:
 --   char   - intended behaviour that holds today
 --   today  - today's behaviour, expected to flip when its fix lands
 --   target - decided behaviour, expected to fail until its fix lands
 -- A case's tag is the "[char]" / "[today]" / "[target]" in its name.
--- CDV_TAGS defaults to "char,today"; `make test-target` sets it to "target".
--- CDV_FILE, when set, runs only that test file.
+-- FRG_TAGS defaults to "char,today"; `make test-target` sets it to "target".
+-- FRG_FILE, when set, runs only that test file.
 local wanted = {}
-for tag in (os.getenv('CDV_TAGS') or 'char,today'):gmatch('[^,]+') do
+for tag in (os.getenv('FRG_TAGS') or 'char,today'):gmatch('[^,]+') do
 	wanted[vim.trim(tag)] = true
 end
 
@@ -20,7 +20,7 @@ local function tag_of(case)
 	return 'char'
 end
 
-local file = os.getenv('CDV_FILE')
+local file = os.getenv('FRG_FILE')
 
 return {
 	collect = {

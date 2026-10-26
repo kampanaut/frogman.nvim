@@ -28,7 +28,7 @@ local M = {
 function M.save_session(name, opts)
 	if data.replayed then
 		-- a replay planted another editor's state: it isn't this project's session, and it isn't saved
-		error("cavediver: this editor replayed a dump, so its state isn't a session, and it isn't saved.", 0)
+		error("frogman: this editor replayed a dump, so its state isn't a session, and it isn't saved.", 0)
 	end
 	require('frogman.settle').drain() -- the editor as it stands, with nothing still settling
 	local directory = vim.fn.getcwd(-1, -1)
@@ -127,11 +127,11 @@ function M.load_session(name, opts)
 	load(name, opts)
 end
 
----Create the storage domain's autocmds in cavediver's augroup.
+---Create the storage domain's autocmds in frogman's augroup.
 ---
 ---Called by setup(), so nothing runs at require. Also turns on the writing of records.
 ---
----@param group integer The cavediver augroup
+---@param group integer The frogman augroup
 ---@return nil
 function M.init_autocmds(group)
 	-- Neovim's :restart restores its own session after the startup's, and rebuilds the windows, so
@@ -173,7 +173,7 @@ function M.init_autocmds(group)
 		end,
 	})
 
-	-- Records cavediver writes itself: every known session's, as the editor quits (nothing scheduled
+	-- Records frogman writes itself: every known session's, as the editor quits (nothing scheduled
 	-- runs after this), and an open No Name text's, as it's edited.
 	vim.api.nvim_create_autocmd("VimLeavePre", {
 		group = group,

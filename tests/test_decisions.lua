@@ -10,7 +10,7 @@ local Dec = dofile('tests/helpers_decisions.lua')
 local eq = Helpers.eq
 local child = Helpers.new_child()
 Extra.attach(child)
--- For the cases about what runs at require: cavediver isn't loaded yet.
+-- For the cases about what runs at require: frogman isn't loaded yet.
 local bare = MiniTest.new_child_neovim()
 
 local T = MiniTest.new_set({
@@ -44,18 +44,18 @@ end
 -- Principles ------------------------------------------------------------------
 
 -- A BufEnter autocmd of the user's, made after setup(), runs inside the event:
--- under the settle rule cavediver hasn't slotted the arrival yet.
+-- under the settle rule frogman hasn't slotted the arrival yet.
 T['T250 [char] (P2, A1) the slotting happens after the event, not inside it'] = function()
 	child.steps({ ':e a' })
 	child.lua([[
-		_G.CDV_SEEN = {}
+		_G.FRG_SEEN = {}
 		vim.api.nvim_create_autocmd('BufEnter', { callback = function()
-			table.insert(_G.CDV_SEEN, _G.CDV_TEST.slots())
+			table.insert(_G.FRG_SEEN, _G.FRG_TEST.slots())
 		end })
 	]])
 	child.steps({ ':e b' })
 	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
-	eq(child.lua('return _G.CDV_SEEN'), { '⦉-⦊ [a] ⟦-⟧' })
+	eq(child.lua('return _G.FRG_SEEN'), { '⦉-⦊ [a] ⟦-⟧' })
 end
 
 -- T250's purpose: what settling protects. A buffer that only becomes a terminal or help
@@ -141,28 +141,28 @@ T['T254 [char] (P12, A25) require creates no user commands and starts no timers'
 		require('frogman')
 		local cmds = {}
 		for name in pairs(vim.api.nvim_get_commands({})) do
-			if name:find('^Cavediver') then table.insert(cmds, name) end
+			if name:find('^Frogman') then table.insert(cmds, name) end
 		end
 		return { commands = cmds, timers = timers() - before }
 	]])
 	eq(got, { commands = {}, timers = 0 })
 end
 
-T['T254 [char] (P12, A25) setup() puts every autocmd it makes in the cavediver augroup, and makes the commands'] = function()
+T['T254 [char] (P12, A25) setup() puts every autocmd it makes in the frogman augroup, and makes the commands'] = function()
 	Dec.bare(bare)
 	local got = bare.lua([[
 		local function key(a) return table.concat({ tostring(a.id), a.event, tostring(a.group), tostring(a.pattern), tostring(a.buffer) }, '|') end
 		local before = {}
 		for _, a in ipairs(vim.api.nvim_get_autocmds({})) do before[key(a)] = true end
-		require('frogman').setup({ session_dir = _G.CDV_ROOT .. '/sessions/' })
+		require('frogman').setup({ session_dir = _G.FRG_ROOT .. '/sessions/' })
 		local made, outside = 0, 0
 		for _, a in ipairs(vim.api.nvim_get_autocmds({})) do
 			if not before[key(a)] then
 				made = made + 1
-				if a.group_name ~= 'cavediver' then outside = outside + 1 end
+				if a.group_name ~= 'frogman' then outside = outside + 1 end
 			end
 		end
-		return { made = made > 0, outside = outside, command = vim.fn.exists(':CavediverTriquetra') == 2 }
+		return { made = made > 0, outside = outside, command = vim.fn.exists(':FrogmanTriquetra') == 2 }
 	]])
 	eq(got, { made = true, outside = 0, command = true })
 end
@@ -189,7 +189,7 @@ end
 T['T255 [char] (M1) a session "a" in /proj and a nameless save in /proja are two files'] = function()
 	child.steps({ ':e a' })
 	local got = child.lua([[
-		local root = _G.CDV_TEST.root
+		local root = _G.FRG_TEST.root
 		local dir = require('frogman.configs').session_dir
 		vim.fn.mkdir(root .. '/proj', 'p'); vim.fn.mkdir(root .. '/proja', 'p')
 		-- the files: a session's .d directory, which the trail's pages make too, isn't one
@@ -212,7 +212,7 @@ end
 T['T256 [char] (M3) a listed nowrite buffer on an existing regular file is tracked'] = function()
 	child.steps({ ':e a' })
 	child.lua([[
-		local b = vim.fn.bufadd(_G.CDV_TEST.root .. '/c.txt')
+		local b = vim.fn.bufadd(_G.FRG_TEST.root .. '/c.txt')
 		vim.bo[b].buftype = 'nowrite'
 		vim.bo[b].buflisted = true
 		vim.api.nvim_set_current_buf(b)
@@ -509,7 +509,7 @@ T['T271 [char] (A19) with no ternary or secondary, it lands on the primary'] = f
 	-- The queue set by hand: [a], switched on.
 	child.lua([[
 		local t = require('frogman.domains.window').data.crux[...]
-		t.primary_buffer = { require('frogman.domains.history').get_hash_from_filepath(_G.CDV_TEST.root .. '/a.txt') }
+		t.primary_buffer = { require('frogman.domains.history').get_hash_from_filepath(_G.FRG_TEST.root .. '/a.txt') }
 		t.primary_enabled = true
 	]], { w2 })
 	eq(child.primary(), '[a]on')
@@ -533,7 +533,7 @@ T['T271 [char] (A19) under the window view, "most recent" is the window\'s own h
 	child.cmd('vsplit')
 	child.settle()
 	local w2 = child.win()
-	-- keepjumps: cavediver records these visits, Neovim's jumplist doesn't, so Neovim's own
+	-- keepjumps: frogman records these visits, Neovim's jumplist doesn't, so Neovim's own
 	-- pick on :bdelete (the jumplist, b) differs from the window's history (a): no pass by luck.
 	child.cmd('keepjumps edit a.txt')
 	child.settle()
@@ -575,7 +575,7 @@ T['T272 [char] (A20) a rename whose old file still exists is a copy: the old nam
 	child.steps({ ':e a', ':e b' })
 	child.cmd('saveas g.txt')
 	child.settle(300)
-	eq(child.lua('return vim.fn.filereadable(_G.CDV_TEST.root .. "/b.txt")'), 1)
+	eq(child.lua('return vim.fn.filereadable(_G.FRG_TEST.root .. "/b.txt")'), 1)
 	eq(vim.tbl_contains(vim.split(child.closed(), ','), 'b'), true)
 end
 
@@ -585,7 +585,7 @@ T['T273 [char] (A22) the stale pass keeps the history of the file it re-points']
 	child.steps({ ':e a', ':e b', ':e c' })
 	local got = child.lua([[
 		local H = require('frogman.domains.history')
-		local path = _G.CDV_TEST.root .. '/b.txt'
+		local path = _G.FRG_TEST.root .. '/b.txt'
 		local old = vim.fn.bufnr(path)
 		local hash = H.get_hash_from_buffer(old)
 		local had = H.data.crux_internals.global[hash] ~= nil
@@ -604,13 +604,13 @@ end
 T['T274 [char] (A23) the triquetra commands print primary_buffer[1] as "Primary buffer"'] = function()
 	child.steps({ ':e a', '<M-;><M-c>', ':e b' })
 	local h = K.hash(child, 'a')
-	local plain = child.lua('return vim.api.nvim_exec2("CavediverTriquetra", { output = true }).output')
-	local verbose = child.lua('return vim.api.nvim_exec2("CavediverTriquetraVerbose", { output = true }).output')
+	local plain = child.lua('return vim.api.nvim_exec2("FrogmanTriquetra", { output = true }).output')
+	local verbose = child.lua('return vim.api.nvim_exec2("FrogmanTriquetraVerbose", { output = true }).output')
 	eq({ plain:find('Primary buffer:%s+' .. h) ~= nil, verbose:find('Primary buffer:%s+' .. h) ~= nil }, { true, true })
 end
 
 -- The flight recorder (A26) ----------------------------------------------------
--- Its dumps go under stdpath('state')/cavediver/, as in test_cycling.lua.
+-- Its dumps go under stdpath('state')/frogman/, as in test_cycling.lua.
 
 local function dumps_after(fn)
 	local before = child.dumps()
@@ -625,7 +625,7 @@ T['T275 [char] (A26) "Duplicates detected" dumps'] = function()
 	child.lua([[
 		local H = require('frogman.domains.history')
 		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
-		local c = H.get_hash_from_filepath(_G.CDV_TEST.root .. '/c.txt')
+		local c = H.get_hash_from_filepath(_G.FRG_TEST.root .. '/c.txt')
 		t.secondary_slot, t.ternary_slot = c, c
 	]])
 	eq(child.slots(), '⦉c⦊ [d] ⟦c⟧')
@@ -734,7 +734,7 @@ end
 -- stale until the cleanup tick (4 s, first tick at once).
 T['T280 [char] (I6) a buffer wiped without events leaves no stale registration after a cleanup tick'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
-	child.lua('vim.cmd("noautocmd bwipeout " .. vim.fn.bufnr(_G.CDV_TEST.root .. "/b.txt"))')
+	child.lua('vim.cmd("noautocmd bwipeout " .. vim.fn.bufnr(_G.FRG_TEST.root .. "/b.txt"))')
 	child.settle(4600)
 	eq(child.lua([[
 		local r = require('frogman.domains.history').data.hash_buffer_registry

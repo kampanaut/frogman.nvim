@@ -18,7 +18,7 @@ local function current() return child.slots():match('%[(.-)%]') end
 local function buffer_state(file)
 	return child.lua([[
 		local H = require('frogman.domains.history')
-		local b = vim.fn.bufnr(_G.CDV_TEST.root .. '/' .. ...)
+		local b = vim.fn.bufnr(_G.FRG_TEST.root .. '/' .. ...)
 		if b == -1 or not vim.api.nvim_buf_is_valid(b) then return { valid = false } end
 		local h = H.get_hash_from_buffer(b)
 		return {
@@ -31,7 +31,7 @@ local function buffer_state(file)
 end
 
 local function remove_on_disk(file)
-	child.lua('os.remove(_G.CDV_TEST.root .. "/" .. ...)', { file })
+	child.lua('os.remove(_G.FRG_TEST.root .. "/" .. ...)', { file })
 end
 
 T['T102 [char] :bdelete of the ternary keeps it as a closed hash'] = function()
@@ -96,7 +96,7 @@ T['T107 [char] a rename whose old file is gone moves every reference and pushes 
 	eq(child.primary(), '[b]on')
 	eq(child.notes(), 'dtm{b>a} dsm{}')
 	child.lua([[
-		local root = _G.CDV_TEST.root
+		local root = _G.FRG_TEST.root
 		os.rename(root .. '/b.txt', root .. '/g.txt')
 		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/b.txt'), root .. '/g.txt')
 	]])
@@ -141,7 +141,7 @@ T['T482 [char] (A20, M3) a write of buffers never entered moves no window\'s slo
 	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
 	child.lua([[
 		for _, f in ipairs({ 'c.txt', 'd.txt' }) do
-			local b = vim.fn.bufadd(_G.CDV_TEST.root .. '/' .. f)
+			local b = vim.fn.bufadd(_G.FRG_TEST.root .. '/' .. f)
 			vim.bo[b].buflisted = true
 			vim.fn.bufload(b)
 			vim.api.nvim_buf_set_lines(b, 0, -1, false, { 'edited ' .. f })
@@ -153,7 +153,7 @@ T['T482 [char] (A20, M3) a write of buffers never entered moves no window\'s slo
 		local H = require('frogman.domains.history')
 		local out = {}
 		for _, f in ipairs({ 'c.txt', 'd.txt' }) do
-			table.insert(out, H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/' .. f)) ~= nil)
+			table.insert(out, H.get_hash_from_buffer(vim.fn.bufnr(_G.FRG_TEST.root .. '/' .. f)) ~= nil)
 		end
 		return out
 	]])
@@ -164,12 +164,12 @@ end
 -- a.txt on disk and b's buffer takes a's name, as an LSP or oil rename does.
 T['T483 [char] (A20, I1) a move onto a file the ternary holds leaves no file in two slots'] = function()
 	child.steps({ ':e a', ':e b' })
-	child.cmd('bwipeout ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/a.txt")'))
+	child.cmd('bwipeout ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/a.txt")'))
 	child.settle(300)
 	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
 	local dumps = child.dump_files()
 	child.lua([[
-		local root = _G.CDV_TEST.root
+		local root = _G.FRG_TEST.root
 		os.rename(root .. '/b.txt', root .. '/a.txt')
 		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/b.txt'), root .. '/a.txt')
 	]])
@@ -192,9 +192,9 @@ T['T554 [char] (A20, I18) a move onto a file the primary queue holds keeps it th
 	child.lua([[
 		local H = require('frogman.domains.history')
 		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
-		t.displacement_ternary_map[t.current_slot] = H.get_hash_from_filepath(_G.CDV_TEST.root .. '/b.txt')
-		os.rename(_G.CDV_TEST.root .. '/a.txt', _G.CDV_TEST.root .. '/b.txt')
-		vim.cmd('file ' .. vim.fn.fnameescape(_G.CDV_TEST.root .. '/b.txt'))
+		t.displacement_ternary_map[t.current_slot] = H.get_hash_from_filepath(_G.FRG_TEST.root .. '/b.txt')
+		os.rename(_G.FRG_TEST.root .. '/a.txt', _G.FRG_TEST.root .. '/b.txt')
+		vim.cmd('file ' .. vim.fn.fnameescape(_G.FRG_TEST.root .. '/b.txt'))
 	]])
 	child.settle(300)
 	local self_notes = child.lua([[
@@ -216,17 +216,17 @@ end
 T['T484 [char] (A20, I2) a rename to the same name renames nothing'] = function()
 	child.steps({ ':e a', ':e new.txt', ':e b', ':e c' })
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
-	child.lua('local b = vim.fn.bufnr(_G.CDV_TEST.root .. "/new.txt"); vim.api.nvim_buf_set_name(b, vim.api.nvim_buf_get_name(b))')
+	child.lua('local b = vim.fn.bufnr(_G.FRG_TEST.root .. "/new.txt"); vim.api.nvim_buf_set_name(b, vim.api.nvim_buf_get_name(b))')
 	child.settle(300)
 	local kept = child.lua([[
 		local H = require('frogman.domains.history')
-		local h = H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/new.txt'))
+		local h = H.get_hash_from_buffer(vim.fn.bufnr(_G.FRG_TEST.root .. '/new.txt'))
 		return { history = h ~= nil and H.data.crux_internals.global[h] ~= nil, path = h ~= nil and H.get_filepath_from_hash(h) ~= nil }
 	]])
 	eq(kept, { history = true, path = true })
 	child.messages()
 	local dumps = child.dump_files()
-	child.cmd('bdelete! ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/new.txt")'))
+	child.cmd('bdelete! ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/new.txt")'))
 	child.settle(300)
 	local errors = vim.tbl_filter(function(m) return m.level == 4 end, child.messages())
 	eq({ errors = errors, dump = child.dumped_since(dumps) }, { errors = {}, dump = nil })
@@ -317,7 +317,7 @@ T['T113 [char] a stale registration re-points to a copy reloaded under noautocmd
 	child.steps({ ':e a', ':e b', ':e c' })
 	local got = child.lua([[
 		local H = require('frogman.domains.history')
-		local path = _G.CDV_TEST.root .. '/b.txt'
+		local path = _G.FRG_TEST.root .. '/b.txt'
 		local old = vim.fn.bufnr(path)
 		local hash = H.get_hash_from_buffer(old)
 		vim.cmd('noautocmd bwipeout! ' .. old)
@@ -356,7 +356,7 @@ T['T163 [char] a re-point to the shown buffer moves the old current into the ter
 end
 
 T['T523 [char] (A21, M5) the first :e after the start buffer was taken in leaves that buffer in no slot'] = function()
-	-- as a config that calls setup() at startup has it: the start buffer entered once cavediver is set up
+	-- as a config that calls setup() at startup has it: the start buffer entered once frogman is set up
 	child.cmd('doautocmd BufEnter')
 	child.settle(200)
 	local taken = child.lua('return require("frogman.domains.history").data.hash_buffer_registry.hashes[vim.api.nvim_get_current_buf()] ~= nil')
@@ -394,7 +394,7 @@ T['T575 [char] (A19, A21) an :edit that reuses the empty buffer for a listing th
 		end })
 		vim.api.nvim_create_autocmd('BufWriteCmd', { pattern = 'oilish://*', callback = function() end })
 	]])
-	child.cmd('edit oilish://' .. child.lua('return _G.CDV_TEST.root') .. '/')
+	child.cmd('edit oilish://' .. child.lua('return _G.FRG_TEST.root') .. '/')
 	child.settle(300)
 	local shown = child.lua('return vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(...))', { win })
 	eq({ shown = shown:match('^oilish://') ~= nil, slots = child.slots(win) }, { shown = true, slots = '⦉-⦊ [a] ⟦-⟧' })
@@ -420,7 +420,7 @@ T['T576 [char] (A21) the heal leaves a slot that isn\'t open in its place'] = fu
 		vim.api.nvim_set_current_buf(buf)
 	]])
 	child.settle(200)
-	child.lua([[vim.cmd('noautocmd lua vim.bo[vim.fn.bufnr(_G.CDV_TEST.root .. "/b.txt")].buflisted = false')]])
+	child.lua([[vim.cmd('noautocmd lua vim.bo[vim.fn.bufnr(_G.FRG_TEST.root .. "/b.txt")].buflisted = false')]])
 	child.cmd('wincmd p')
 	child.settle()
 	child.cmd('bwipeout ' .. noname)
@@ -451,11 +451,11 @@ T['T577 [char] (A21) a delete helper that switches the window first doesn\'t los
 		{ kept = true, new = true, primary = '[b]on' })
 end
 
--- b.txt deleted from disk, then its buffer given a name cavediver doesn't track, as a plugin's scratch takes one.
-T['T635 [char] (A20) a rename to a name cavediver doesn\'t track closes the old name, and claims no copy'] = function()
+-- b.txt deleted from disk, then its buffer given a name frogman doesn't track, as a plugin's scratch takes one.
+T['T635 [char] (A20) a rename to a name frogman doesn\'t track closes the old name, and claims no copy'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.lua([[
-		local root = _G.CDV_TEST.root
+		local root = _G.FRG_TEST.root
 		os.remove(root .. '/b.txt')
 		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/b.txt'), 'scratch://b')
 	]])
@@ -479,12 +479,12 @@ T['T636 [char] (A20) a copy\'s arrival lands in the window that shows it, in ano
 	local w1 = child.lua('return vim.api.nvim_get_current_win()')
 	child.cmd('tabnew')
 	child.steps({ ':e c' })
-	child.lua('vim.api.nvim_buf_set_name(vim.fn.bufnr(_G.CDV_TEST.root .. "/b.txt"), _G.CDV_TEST.root .. "/g.txt")')
+	child.lua('vim.api.nvim_buf_set_name(vim.fn.bufnr(_G.FRG_TEST.root .. "/b.txt"), _G.FRG_TEST.root .. "/g.txt")')
 	child.settle(300)
 	-- an arrival records the visit in the window's own history, as a heal doesn't (T558)
 	local visited = child.lua([[
 		local H = require('frogman.domains.history')
-		local g = H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/g.txt'))
+		local g = H.get_hash_from_buffer(vim.fn.bufnr(_G.FRG_TEST.root .. '/g.txt'))
 		return H.data.crux_internals.window[...][g] ~= nil
 	]], { w1 })
 	eq({ current = child.slots(w1):match('%[(.-)%]'), visited = visited }, { current = 'g', visited = true })
@@ -494,23 +494,23 @@ end
 -- showing it, its buffer given b's name, as a file manager's move does.
 T['T637 [char] (A20) a move onto a closed name takes it off the lists and keeps the newer visit'] = function()
 	child.steps({ ':e b', ':e a', ':e c' })
-	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/b.txt")'))
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/b.txt")'))
 	child.steps({ ':e d' })
 	eq(vim.tbl_contains(vim.split(child.closed(), ','), 'b'), true)
 	local c_visits = child.lua([[
 		local H = require('frogman.domains.history')
-		local c = H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/c.txt'))
+		local c = H.get_hash_from_buffer(vim.fn.bufnr(_G.FRG_TEST.root .. '/c.txt'))
 		return { global = H.data.crux_internals.global[c], window = H.data.crux_internals.window[vim.api.nvim_get_current_win()][c] }
 	]])
 	child.lua([[
-		local root = _G.CDV_TEST.root
+		local root = _G.FRG_TEST.root
 		os.rename(root .. '/c.txt', root .. '/b.txt')
 		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/c.txt'), root .. '/b.txt')
 	]])
 	child.settle(300)
 	local b_visits = child.lua([[
 		local H = require('frogman.domains.history')
-		local b = H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/b.txt'))
+		local b = H.get_hash_from_buffer(vim.fn.bufnr(_G.FRG_TEST.root .. '/b.txt'))
 		return { global = H.data.crux_internals.global[b], window = H.data.crux_internals.window[vim.api.nvim_get_current_win()][b] }
 	]])
 	eq({ closed = vim.tbl_contains(vim.split(child.closed(), ','), 'b'), visits = b_visits }, { closed = false, visits = c_visits })
@@ -524,7 +524,7 @@ T['T647 [char] (A21, M12) a refresh before a window\'s arrival settles finds not
 	child.settle()
 	local dumps = child.dump_files()
 	child.lua([[
-		vim.cmd('edit ' .. _G.CDV_TEST.root .. '/c.txt')
+		vim.cmd('edit ' .. _G.FRG_TEST.root .. '/c.txt')
 		local ui = require('frogman.domains.ui')
 		ui.sm.loop:to(ui.states.LOOP.SELF)
 	]])

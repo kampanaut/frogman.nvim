@@ -1,4 +1,4 @@
--- Convert cavediver's session files from the format before encryption to the encrypted one.
+-- Convert frogman's session files from the format before encryption to the encrypted one.
 --
 -- Run it once, with nothing else of your config loaded:
 --
@@ -9,7 +9,7 @@
 -- one belongs to through resession's own session list: every session resession saved (in
 -- stdpath("data")/<resession-dir>, "session" unless you pass another) names its cwd, and its name is
 -- its file's name. Each old file it finds is written again in the encrypted format, under
--- sha256(directory .. "\n" .. name), the name cavediver reads when the session manager passes that
+-- sha256(directory .. "\n" .. name), the name frogman reads when the session manager passes that
 -- name. Hashes are worked out again with vim.fn.sha256, so a name the shell had mangled gets its
 -- right hash where its path is known. Each old file it converts is kept, renamed with
 -- ".migrated" added, which is also how the script knows what it has converted: running it again
@@ -17,19 +17,24 @@
 -- has a file in the new format already, and the script reports it instead of converting over it,
 -- unless you pass --replace.
 --
--- --session-dir is cavediver's session_dir, stdpath("data")/cavediver/sessions/ unless your setup()
+-- --session-dir is frogman's session_dir, stdpath("data")/frogman/sessions/ unless your setup()
 -- sets another, and --libcrypto-path its libcrypto_path, for a libcrypto the system's search doesn't
 -- find. --dry-run reports what would be converted and writes nothing. The old editor hashed a
 -- directory through the shell's echo, so one holding $, a backtick, a double quote or a backslash
 -- has its old file under a name the script can't work out: such a session is named, not converted.
--- The script exits with 1 when an old file couldn't be read or written, and 0 otherwise.
+-- The script exits with 1 when an old file couldn't be read, written or moved, and 0 otherwise.
+--
+-- It moves cavediver's files first, from before the rename: the session files from
+-- stdpath("data")/cavediver/sessions/ to frogman's when --session-dir is left as it is, and the dumps
+-- from stdpath("state")/cavediver/ to stdpath("state")/frogman/. A file frogman's folder has under
+-- that name already stays where it is, and the script names it.
 
 local script_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h")
 vim.opt.runtimepath:prepend(vim.fn.fnamemodify(script_dir, ":h"))
 
 local options = {
 	resession_dir = "session",
-	session_dir = vim.fn.stdpath("data") .. "/cavediver/sessions/",
+	session_dir = vim.fn.stdpath("data") .. "/frogman/sessions/",
 	libcrypto_path = nil,
 	dry_run = false,
 	replace = false,
@@ -219,10 +224,54 @@ local function convert(old, cwd, known)
 	}, texts, dropped
 end
 
+-- cavediver's folders, from before the rename: what they hold moves to frogman's, the session files
+-- when --session-dir is the default one, and the dumps. An entry frogman's folder has already stays.
+local default_dir = vim.fn.stdpath("data") .. "/frogman/sessions/"
+local moves = {
+	{ from = vim.fn.stdpath("state") .. "/cavediver/", to = vim.fn.stdpath("state") .. "/frogman/", mode = 448, -- 0700
+		cavediver = vim.fn.stdpath("state") .. "/cavediver/" },
+}
+if options.session_dir == default_dir then
+	table.insert(moves, 1, { from = vim.fn.stdpath("data") .. "/cavediver/sessions/", to = default_dir,
+		cavediver = vim.fn.stdpath("data") .. "/cavediver/" })
+end
+local moved, left, move_failed = 0, 0, 0
+for _, move in ipairs(moves) do
+	for _, entry in ipairs(vim.fn.isdirectory(move.from) == 1 and vim.fn.readdir(move.from) or {}) do
+		if vim.uv.fs_stat(move.to .. entry) then
+			left = left + 1
+			io.stdout:write(move.from .. entry .. " stays: frogman's folder has one of that name\n")
+		elseif options.dry_run then
+			moved = moved + 1
+		else
+			vim.fn.mkdir(move.to, "p", move.mode or 493) -- 0755, mkdir's own, when the move sets none
+			local renamed, why = os.rename(move.from .. entry, move.to .. entry)
+			if renamed then
+				moved = moved + 1
+			else
+				move_failed = move_failed + 1
+				io.stdout:write(move.from .. entry .. " couldn't be moved (" .. tostring(why) .. ")\n")
+			end
+		end
+	end
+	if not options.dry_run then
+		-- emptied, it goes, and so does cavediver's own folder when that's empty too
+		vim.fn.delete(move.from, "d")
+		vim.fn.delete(move.cavediver, "d")
+	end
+end
+io.stdout:write(string.format("%s %d of cavediver's file(s) to frogman's folders; %d stay where frogman's had one of that name\n",
+	options.dry_run and "would move" or "moved", moved, left))
+
+-- a dry run moves nothing, so where it would move cavediver's session files, a name frogman's folder
+-- hasn't got is looked for in cavediver's, where the move would bring it from
+local unmoved_dir = options.dry_run and options.session_dir == default_dir and vim.fn.stdpath("data") .. "/cavediver/sessions/"
+	or nil
+
 local resession_dir = vim.fn.stdpath("data") .. "/" .. options.resession_dir .. "/"
 if vim.fn.isdirectory(resession_dir) == 0 then
-	io.stdout:write("no resession sessions in " .. resession_dir .. "\n")
-	os.exit(1)
+	io.stdout:write("no resession sessions in " .. resession_dir .. ": nothing to convert\n")
+	os.exit(move_failed > 0 and 1 or 0)
 end
 
 local report = { converted = 0, already = 0, conflict = 0, no_file = 0, renamed_by_shell = 0, unnamed = 0, dropped = 0, unreadable = 0, failed = 0 }
@@ -247,12 +296,26 @@ for _, entry in ipairs(vim.fn.readdir(resession_dir)) do
 		-- the old wiring named the file after the cwd it was saved from: a tab session's is its tab's
 		local old_path, migrated
 		for _, cwd in ipairs(session.tab_scoped and { directory } or { session.global.cwd }) do
-			local path = options.session_dir .. vim.fn.sha256(cwd .. "\n"):sub(1, 32) .. ".json"
+			local old_name = vim.fn.sha256(cwd .. "\n"):sub(1, 32) .. ".json"
+			local path, mark = options.session_dir .. old_name, options.session_dir .. old_name .. ".migrated"
+			if unmoved_dir and not vim.uv.fs_stat(path) then
+				path = unmoved_dir .. old_name
+			end
+			if unmoved_dir and not vim.uv.fs_stat(mark) then
+				mark = unmoved_dir .. old_name .. ".migrated"
+			end
 			if old_path == nil and vim.fn.filereadable(path) == 1 then
 				old_path = { path = path, cwd = cwd }
-			elseif vim.fn.filereadable(path .. ".migrated") == 1 then
+			elseif vim.fn.filereadable(mark) == 1 then
 				migrated = true
 			end
+		end
+		-- its file in the new format, looked for where the move would bring it from too
+		local fresh = storage.session_exists(directory, name)
+		if not fresh and unmoved_dir then
+			require("frogman.configs").session_dir = unmoved_dir
+			fresh = storage.session_exists(directory, name)
+			require("frogman.configs").session_dir = options.session_dir
 		end
 		if old_path == nil then
 			if migrated then
@@ -268,7 +331,7 @@ for _, entry in ipairs(vim.fn.readdir(resession_dir)) do
 			report.unnamed = report.unnamed + 1
 			used[old_path.path] = true
 			io.stdout:write("can't tell the session name of " .. entry .. "; left as it is\n")
-		elseif storage.session_exists(directory, name) and not options.replace then
+		elseif fresh and not options.replace then
 			-- a session saved on the encrypted format before the script ran: not a conversion
 			report.conflict = report.conflict + 1
 			used[old_path.path] = true
@@ -306,7 +369,7 @@ for _, entry in ipairs(vim.fn.readdir(resession_dir)) do
 			else
 				report.unreadable = report.unreadable + 1
 				used[old_path.path] = true
-				io.stdout:write(entry .. "'s old cavediver file can't be read; left as it is\n")
+				io.stdout:write(entry .. "'s old frogman file can't be read; left as it is\n")
 			end
 		end
 	end
@@ -323,18 +386,22 @@ for path, entry in pairs(to_mark) do
 	end
 end
 
-local leftover = 0
-for _, entry in ipairs(vim.fn.isdirectory(options.session_dir) == 1 and vim.fn.readdir(options.session_dir) or {}) do
-	if entry:match("^%x+%.json$") and not used[options.session_dir .. entry] then
-		leftover = leftover + 1
+-- a name frogman's folder has is counted there alone, as the move leaves cavediver's of that name
+local leftover, seen = 0, {}
+for _, dir in ipairs({ options.session_dir, unmoved_dir }) do
+	for _, entry in ipairs(vim.fn.isdirectory(dir) == 1 and vim.fn.readdir(dir) or {}) do
+		if entry:match("^%x+%.json$") and not seen[entry] and not used[dir .. entry] then
+			leftover = leftover + 1
+		end
+		seen[entry] = true
 	end
 end
 
 io.stdout:write(string.format(
-	"%s %d session(s); %d already converted; %d with a file in the new format already (--replace converts over them); %d with no cavediver file; %d whose directory the old shell changed; %d with a name that can't be told; %d old file(s) no resession session points to; %d reference(s) with no known path dropped; %d old file(s) that can't be read; %d that couldn't be written\n",
+	"%s %d session(s); %d already converted; %d with a file in the new format already (--replace converts over them); %d with no frogman file; %d whose directory the old shell changed; %d with a name that can't be told; %d old file(s) no resession session points to; %d reference(s) with no known path dropped; %d old file(s) that can't be read; %d that couldn't be written\n",
 	options.dry_run and "would convert" or "converted",
 	report.converted, report.already, report.conflict, report.no_file, report.renamed_by_shell, report.unnamed, leftover, report.dropped,
 	report.unreadable, report.failed
 ))
 -- a wrapper can tell a run that left files behind from one that didn't
-os.exit((report.unreadable > 0 or report.failed > 0) and 1 or 0)
+os.exit((report.unreadable > 0 or report.failed > 0 or move_failed > 0) and 1 or 0)

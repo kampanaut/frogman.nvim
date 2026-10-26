@@ -49,7 +49,7 @@ end
 T['T293 [char] (S2) a whole-editor save is keyed by the global directory, not by a tab-local :tcd'] = function()
 	child.setup()
 	child.steps({ ':e a' })
-	child.lua('vim.fn.mkdir(_G.CDV_TEST.root .. "/sub", "p")')
+	child.lua('vim.fn.mkdir(_G.FRG_TEST.root .. "/sub", "p")')
 	child.cmd('tabnew')
 	child.cmd('tcd sub')
 	child.settle()
@@ -64,7 +64,7 @@ end
 T['T294 [char] (S2) a tab session is keyed by its tab\'s directory'] = function()
 	child.setup()
 	child.steps({ ':e a' })
-	child.lua('vim.fn.mkdir(_G.CDV_TEST.root .. "/sub", "p")')
+	child.lua('vim.fn.mkdir(_G.FRG_TEST.root .. "/sub", "p")')
 	child.cmd('tabnew')
 	child.cmd('tcd sub')
 	child.cmd('edit ../b.txt')
@@ -181,7 +181,7 @@ end
 -- and Neovim's restart session is a real :mksession! file, named the way
 -- :restart names it. It's sourced in the same batch as the startup load, as in
 -- the desk's tmux run, and rebuilds the windows with events on.
-T['T298 [char] (S2) after Neovim\'s :restart session, cavediver loads again by itself, ignoring the repeat flag'] = function()
+T['T298 [char] (S2) after Neovim\'s :restart session, frogman loads again by itself, ignoring the repeat flag'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b' })
@@ -213,7 +213,7 @@ T['T298 [char] (S2) after Neovim\'s :restart session, cavediver loads again by i
 end
 
 -- The current window is a split on c, made with no events, so nothing has
--- told cavediver about it before the load. Timer handles are counted: the
+-- told frogman about it before the load. Timer handles are counted: the
 -- decided load uses vim.schedule, and a fixed delay needs a timer.
 T['T299 [char] (S2) one post-restore callback replaces the load\'s 210 ms delay'] = function()
 	local s = S2.shared()
@@ -322,7 +322,7 @@ T['T302 [char] (S2) no session file is JSON or holds the directory, a file name 
 	child.steps({ ':e d' })
 	eq(Misc.save(child), { true })
 	local pieces = {
-		{ 'the project directory', child.lua('return _G.CDV_TEST.root') },
+		{ 'the project directory', child.lua('return _G.FRG_TEST.root') },
 		{ 'a.txt', 'a.txt' }, { 'b.txt', 'b.txt' }, { 'c.txt', 'c.txt' }, { 'd.txt', 'd.txt' },
 		{ 'the No Name text', 'private words' },
 	}
@@ -343,11 +343,11 @@ end
 -- Every way to a shell is counted, at the save and, in a fresh process, at the
 -- load. Hashing on :e is T222.
 local SHELL_SPY = [[
-	_G.CDV_SHELL = 0
+	_G.FRG_SHELL = 0
 	local sys, popen, vsys = vim.fn.system, io.popen, vim.system
-	vim.fn.system = function(...) _G.CDV_SHELL = _G.CDV_SHELL + 1; return sys(...) end
-	io.popen = function(...) _G.CDV_SHELL = _G.CDV_SHELL + 1; return popen(...) end
-	vim.system = function(...) _G.CDV_SHELL = _G.CDV_SHELL + 1; return vsys(...) end
+	vim.fn.system = function(...) _G.FRG_SHELL = _G.FRG_SHELL + 1; return sys(...) end
+	io.popen = function(...) _G.FRG_SHELL = _G.FRG_SHELL + 1; return popen(...) end
+	vim.system = function(...) _G.FRG_SHELL = _G.FRG_SHELL + 1; return vsys(...) end
 ]]
 T['T303 [char] (S2) a save and a load run no shell command'] = function()
 	local s = S2.shared()
@@ -355,14 +355,14 @@ T['T303 [char] (S2) a save and a load run no shell command'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.lua(SHELL_SPY)
 	eq(Misc.save(child), { true })
-	local at_save = child.lua('return _G.CDV_SHELL')
+	local at_save = child.lua('return _G.FRG_SHELL')
 
 	S2.start(child, s)
 	Misc.restore(child, { 'a', 'b' }, 'b')
 	child.lua(SHELL_SPY)
 	eq(Misc.load(child), { true })
 	child.settle(30)
-	eq({ save = at_save, load = child.lua('return _G.CDV_SHELL') }, { save = 0, load = 0 })
+	eq({ save = at_save, load = child.lua('return _G.FRG_SHELL') }, { save = 0, load = 0 })
 end
 
 -- Every name the loader tries is recorded, the real loader still doing the
@@ -373,28 +373,28 @@ T['T480 [char] (S2) libcrypto is loaded by its versioned name first'] = function
 	child.lua([[
 		local ffi = require('ffi')
 		local real = ffi.load
-		_G.CDV_TRIED = {}
+		_G.FRG_TRIED = {}
 		ffi.load = function(name, ...)
-			table.insert(_G.CDV_TRIED, tostring(name))
+			table.insert(_G.FRG_TRIED, tostring(name))
 			return real(name, ...)
 		end
 	]])
 	eq(Misc.save(child), { true })
-	eq(child.lua('return _G.CDV_TRIED[1]'), 'libcrypto.so.3')
+	eq(child.lua('return _G.FRG_TRIED[1]'), 'libcrypto.so.3')
 end
 
 -- libcrypto_path names a file that isn't there; every name the loader tries is recorded, the real
 -- loader still doing the loading.
 T['T548 [char] (S2) libcrypto_path is tried first, and one that won\'t load falls back with a WARN'] = function()
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ libcrypto_path = _G.CDV_TEST.root .. "/nowhere/libcrypto.so.3" })')
+	child.lua('_G.FRG_TEST.setup({ libcrypto_path = _G.FRG_TEST.root .. "/nowhere/libcrypto.so.3" })')
 	child.steps({ ':e a' })
 	child.lua([[
 		local ffi = require('ffi')
 		local real = ffi.load
-		_G.CDV_TRIED = {}
+		_G.FRG_TRIED = {}
 		ffi.load = function(name, ...)
-			table.insert(_G.CDV_TRIED, tostring(name))
+			table.insert(_G.FRG_TRIED, tostring(name))
 			return real(name, ...)
 		end
 	]])
@@ -403,7 +403,7 @@ T['T548 [char] (S2) libcrypto_path is tried first, and one that won\'t load fall
 	local warns = vim.tbl_filter(function(m)
 		return m.msg:find('libcrypto_path (', 1, true) ~= nil and m.msg:find('/nowhere/', 1, true) ~= nil
 	end, child.messages())
-	eq({ saved = saved, first = child.lua('return _G.CDV_TRIED[1]'):find('/nowhere/libcrypto.so.3', 1, true) ~= nil, warns = #warns },
+	eq({ saved = saved, first = child.lua('return _G.FRG_TRIED[1]'):find('/nowhere/libcrypto.so.3', 1, true) ~= nil, warns = #warns },
 		{ saved = { true }, first = true, warns = 1 })
 end
 
@@ -411,7 +411,7 @@ end
 -- its functions fails, as a wrong library's lookup does.
 T['T550 [char] (S2) a libcrypto_path that loads but isn\'t libcrypto counts as one that won\'t load'] = function()
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ libcrypto_path = _G.CDV_TEST.root .. "/wrong/libnotcrypto.so" })')
+	child.lua('_G.FRG_TEST.setup({ libcrypto_path = _G.FRG_TEST.root .. "/wrong/libnotcrypto.so" })')
 	child.steps({ ':e a' })
 	child.lua([[
 		local ffi = require('ffi')
@@ -434,18 +434,18 @@ end
 -- Every load fails; the second save fails the same way.
 T['T549 [char] (S2) with no libcrypto loading, the error names what was tried, and the WARN comes once'] = function()
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ libcrypto_path = _G.CDV_TEST.root .. "/nowhere/libcrypto.so.3" })')
+	child.lua('_G.FRG_TEST.setup({ libcrypto_path = _G.FRG_TEST.root .. "/nowhere/libcrypto.so.3" })')
 	child.steps({ ':e a' })
 	child.lua([[
-		_G.CDV_TRIED = {}
+		_G.FRG_TRIED = {}
 		require('ffi').load = function(name)
-			table.insert(_G.CDV_TRIED, tostring(name))
+			table.insert(_G.FRG_TRIED, tostring(name))
 			error('simulated: ' .. tostring(name) .. ' not found')
 		end
 	]])
 	child.messages()
 	local first, second = Misc.save(child), Misc.save(child)
-	local tried = child.lua('return _G.CDV_TRIED')
+	local tried = child.lua('return _G.FRG_TRIED')
 	local err = tostring(first[2])
 	local named = #tried > 0
 	for _, name in ipairs(tried) do
@@ -469,59 +469,59 @@ T['T594 [char] (S2) on macOS no bare name is tried'] = function()
 	child.steps({ ':e a' })
 	child.lua([[
 		local ffi = require('ffi')
-		_G.CDV_TRIED = {}
+		_G.FRG_TRIED = {}
 		ffi.os = 'OSX'
 		ffi.load = function(name)
-			table.insert(_G.CDV_TRIED, tostring(name))
+			table.insert(_G.FRG_TRIED, tostring(name))
 			error('simulated: ' .. tostring(name) .. ' not found')
 		end
 	]])
 	Misc.save(child)
 	local bare = child.lua([[
 		local out = {}
-		for _, name in ipairs(_G.CDV_TRIED) do
+		for _, name in ipairs(_G.FRG_TRIED) do
 			if not name:find('/', 1, true) then table.insert(out, name) end
 		end
 		return out
 	]])
-	eq({ tried = child.lua('return #_G.CDV_TRIED') > 0, bare = bare }, { tried = true, bare = {} })
+	eq({ tried = child.lua('return #_G.FRG_TRIED') > 0, bare = bare }, { tried = true, bare = {} })
 end
 
 T['T595 [char] (S2) libcrypto_path is expanded'] = function()
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ libcrypto_path = "$HOME/nowhere/libcrypto.so.3" })')
+	child.lua('_G.FRG_TEST.setup({ libcrypto_path = "$HOME/nowhere/libcrypto.so.3" })')
 	child.steps({ ':e a' })
 	child.lua([[
 		local ffi = require('ffi')
 		local real = ffi.load
-		_G.CDV_TRIED = {}
+		_G.FRG_TRIED = {}
 		ffi.load = function(name, ...)
-			table.insert(_G.CDV_TRIED, tostring(name))
+			table.insert(_G.FRG_TRIED, tostring(name))
 			return real(name, ...)
 		end
 	]])
 	eq(Misc.save(child), { true })
-	eq(child.lua('return _G.CDV_TRIED[1] == vim.env.HOME .. "/nowhere/libcrypto.so.3"'), true)
+	eq(child.lua('return _G.FRG_TRIED[1] == vim.env.HOME .. "/nowhere/libcrypto.so.3"'), true)
 end
 
 T['T597 [char] (S2) a search that loaded nothing isn\'t made again until libcrypto_path changes'] = function()
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ libcrypto_path = _G.CDV_TEST.root .. "/nowhere/libcrypto.so.3" })')
+	child.lua('_G.FRG_TEST.setup({ libcrypto_path = _G.FRG_TEST.root .. "/nowhere/libcrypto.so.3" })')
 	child.steps({ ':e a' })
 	child.lua([[
-		_G.CDV_TRIED = {}
+		_G.FRG_TRIED = {}
 		require('ffi').load = function(name)
-			table.insert(_G.CDV_TRIED, tostring(name))
+			table.insert(_G.FRG_TRIED, tostring(name))
 			error('simulated: ' .. tostring(name) .. ' not found')
 		end
 	]])
 	Misc.save(child)
-	local first = child.lua('return #_G.CDV_TRIED')
+	local first = child.lua('return #_G.FRG_TRIED')
 	Misc.save(child)
-	local second = child.lua('return #_G.CDV_TRIED') - first
-	child.lua('_G.CDV_TEST.setup({ libcrypto_path = _G.CDV_TEST.root .. "/elsewhere/libcrypto.so.3" })')
+	local second = child.lua('return #_G.FRG_TRIED') - first
+	child.lua('_G.FRG_TEST.setup({ libcrypto_path = _G.FRG_TEST.root .. "/elsewhere/libcrypto.so.3" })')
 	Misc.save(child)
-	local again = child.lua('return (_G.CDV_TRIED[...] or ""):find("/elsewhere/", 1, true) ~= nil', { first + 1 })
+	local again = child.lua('return (_G.FRG_TRIED[...] or ""):find("/elsewhere/", 1, true) ~= nil', { first + 1 })
 	eq({ first = first > 0, second = second, again = again }, { first = true, second = 0, again = true })
 end
 
@@ -533,12 +533,12 @@ T['T598 [char] (S2) a cipher context libcrypto can\'t make fails the save'] = fu
 	child.lua([[
 		require('ffi').load = function()
 			return {
-				cdv_EVP_aes_256_gcm = function() return nil end,
-				cdv_EVP_sha256 = function() return nil end,
-				cdv_PKCS5_PBKDF2_HMAC = function() return 1 end,
-				cdv_RAND_bytes = function() return 1 end,
-				cdv_EVP_CIPHER_CTX_new = function() return nil end,
-				cdv_EVP_CIPHER_CTX_free = function() end,
+				frg_EVP_aes_256_gcm = function() return nil end,
+				frg_EVP_sha256 = function() return nil end,
+				frg_PKCS5_PBKDF2_HMAC = function() return 1 end,
+				frg_RAND_bytes = function() return 1 end,
+				frg_EVP_CIPHER_CTX_new = function() return nil end,
+				frg_EVP_CIPHER_CTX_free = function() end,
 			}
 		end
 	]])
@@ -581,7 +581,7 @@ end
 T['T563 [char] (S2) a save reads its main file once'] = function()
 	child.setup()
 	child.steps({ ':e a' })
-	child.lua('vim.fn.mkdir(_G.CDV_TEST.root .. "/sub", "p")')
+	child.lua('vim.fn.mkdir(_G.FRG_TEST.root .. "/sub", "p")')
 	local reads_during = function(path, save)
 		return child.lua([[
 			local path, save = ...
@@ -954,7 +954,7 @@ T['T638 [char] (M14, S1) a whole-editor load starts the tick\'s round over on th
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ':e a', ':e b' })
-	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")'))
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/c.txt")'))
 	child.settle()
 	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧') -- c on the closed list alone, in no slot
 	eq(S2.save(child, 'B'), { true })
@@ -973,7 +973,7 @@ T['T638 [char] (M14, S1) a whole-editor load starts the tick\'s round over on th
 	child.settle(300)
 	local got = child.lua([[
 		local H = require('frogman.domains.history')
-		local path = _G.CDV_TEST.root .. '/c.txt'
+		local path = _G.FRG_TEST.root .. '/c.txt'
 		local c = H.routines.get_filehash(path)
 		local closed = H.routines.is_filehash_closed(c)
 		os.remove(path)
@@ -1026,7 +1026,7 @@ end
 T['T611 [char] (S2 The file) session_dir is read as a path: its variables expanded, with or without its trailing slash'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
-	child.lua('vim.env.CDV_T611 = ...; _G.CDV_TEST.setup({ session_dir = "$CDV_T611" })', { (s.session_dir:gsub('/$', '')) })
+	child.lua('vim.env.FRG_T611 = ...; _G.FRG_TEST.setup({ session_dir = "$FRG_T611" })', { (s.session_dir:gsub('/$', '')) })
 	child.steps({ ':e a', ':e b' })
 	eq(S2.save(child), { true })
 	eq({ inside = S2.main_file(s.session_dir, S2.cwd(child), nil) ~= nil, dir = child.lua('return require("frogman.configs").session_dir') },
@@ -1037,7 +1037,7 @@ T['T612 [char] (S2 The file) a look for a session\'s file makes no folder, and t
 	local s = S2.shared()
 	S2.start(child, s)
 	local later = s.session_dir .. 'later/'
-	child.lua('_G.CDV_TEST.setup({ session_dir = ... })', { later })
+	child.lua('_G.FRG_TEST.setup({ session_dir = ... })', { later })
 	local looked = child.lua('return require("frogman.domains.storage").routines.session_exists(vim.fn.getcwd(-1, -1), "work")')
 	eq(S2.load(child, 'work'), { true })
 	local made = vim.fn.isdirectory(later) == 1
@@ -1056,15 +1056,15 @@ T['T614 [char] (S2 Save) a commit finds its leftovers without listing the sessio
 	S2.write(main .. '.tmp1', 'left')
 	vim.uv.fs_utime(main .. '.tmp1', os.time() - 120, os.time() - 120)
 	child.lua([[
-		_G.CDV_LISTED = 0
+		_G.FRG_LISTED = 0
 		local readdir, dir = vim.fn.readdir, require('frogman.configs').session_dir
 		vim.fn.readdir = function(path, ...)
-			if path == dir then _G.CDV_LISTED = _G.CDV_LISTED + 1 end
+			if path == dir then _G.FRG_LISTED = _G.FRG_LISTED + 1 end
 			return readdir(path, ...)
 		end
 	]])
 	eq(S2.save(child), { true })
-	eq({ listed = child.lua('return _G.CDV_LISTED'), swept = vim.uv.fs_stat(main .. '.tmp1') == nil }, { listed = 0, swept = true })
+	eq({ listed = child.lua('return _G.FRG_LISTED'), swept = vim.uv.fs_stat(main .. '.tmp1') == nil }, { listed = 0, swept = true })
 end
 
 -- The No Name text is in a second tab, its cursor on its third line; the
@@ -1092,13 +1092,13 @@ T['T474 [char] (S2) an open No Name text shown in another tab keeps its cursor']
 end
 
 -- c is closed with <M-.>, and its buffer, unlisted after :bdelete, shown again
--- with :buffer, which doesn't list it: the window visits a buffer cavediver
+-- with :buffer, which doesn't list it: the window visits a buffer frogman
 -- doesn't track, whose file it knows.
 T['T475 [char] (S2) a closed file shown again through its unlisted buffer is not an outsider, and the load goes through'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
-	child.cmd('buffer ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")'))
+	child.cmd('buffer ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/c.txt")'))
 	child.settle()
 	eq(child.lua('return vim.bo.buflisted'), false)
 	eq(Misc.save(child), { true })
@@ -1194,7 +1194,7 @@ T['T541 [char] (S1 Load, S2) a load fixes a session file that broke its own rule
 		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
 		local salt = bytes:sub(5, 4 + crypto.salt_length)
 		local data = require('frogman.domains.storage.routines').read_session(dir, name)
-		local x = _G.CDV_TEST.root .. '/x.txt'
+		local x = _G.FRG_TEST.root .. '/x.txt'
 		local h = vim.fn.sha256(x .. "\n"):sub(1, 16)
 		data.paths[h] = x
 		data.outsiders = data.outsiders or {}
@@ -1229,7 +1229,7 @@ T['T541 [char] (S1 Load, S2) a load fixes a session file that broke its own rule
 end
 
 -- The text is open in the ternary, the window on b, when the session is saved;
--- its buffer is then set to nofile, which takes it out of cavediver's hands.
+-- its buffer is then set to nofile, which takes it out of frogman's hands.
 T['T476 [char] (S2) a saved-open No Name text whose buffer turned nofile is reopened from its file, and the load goes through'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
@@ -1282,7 +1282,7 @@ T['T508 [char] (S2) the quit\'s records come after the settle work'] = function(
 	S2.noname(child, { 'note' })
 	-- the kill in the same call, so nothing scheduled between two requests repairs the file first
 	local ran, err = pcall(child.lua, [[
-		vim.cmd('write ' .. vim.fn.fnameescape(_G.CDV_TEST.root .. '/notes.txt'))
+		vim.cmd('write ' .. vim.fn.fnameescape(_G.FRG_TEST.root .. '/notes.txt'))
 		vim.cmd('doautocmd VimLeavePre')
 		vim.uv.kill(vim.uv.os_getpid(), 'sigkill')
 	]])
@@ -1302,7 +1302,7 @@ T['T509 [char] (A19, S1) a landing queued before a whole-editor load doesn\'t mo
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
 	eq(Misc.save(child), { true })
 	child.steps({ ':e x' })
-	child.lua([[vim.cmd('bwipeout ' .. vim.fn.bufnr(_G.CDV_TEST.root .. '/x.txt')); require('frogman').load_session(vim.fn.getcwd())]])
+	child.lua([[vim.cmd('bwipeout ' .. vim.fn.bufnr(_G.FRG_TEST.root .. '/x.txt')); require('frogman').load_session(vim.fn.getcwd())]])
 	child.settle(300)
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
 end
@@ -1557,7 +1557,7 @@ local function old_session(s)
 	}
 	local old_path = s.session_dir .. vim.fn.sha256(root .. '\n'):sub(1, 32) .. '.json'
 	vim.fn.writefile({ vim.json.encode(old) }, old_path)
-	local resession_dir = vim.fn.stdpath('data') .. '/cavediver_test_sessions/'
+	local resession_dir = vim.fn.stdpath('data') .. '/frogman_test_sessions/'
 	vim.fn.delete(resession_dir, 'rf')
 	vim.fn.mkdir(resession_dir, 'p')
 	local session = {
@@ -1569,7 +1569,7 @@ local function old_session(s)
 	vim.fn.writefile({ vim.json.encode(session) }, resession_dir .. root:gsub('/', '_'):gsub(':', '_') .. '.json')
 	local function migrate(...)
 		local cmd = { vim.v.progpath, '--clean', '-l', 'scripts/migrate_sessions.lua',
-			'--resession-dir', 'cavediver_test_sessions', '--session-dir', s.session_dir, ... }
+			'--resession-dir', 'frogman_test_sessions', '--session-dir', s.session_dir, ... }
 		return vim.system(cmd, { text = true }):wait()
 	end
 	return old_path, migrate
@@ -1623,7 +1623,7 @@ T['T342 [char] (S2) the migration script reports a session saved fresh before it
 end
 
 -- A tab session saved from a tab whose directory is aaa/: the old wiring named
--- its cavediver file after that cwd. The project's own old file, under the
+-- its frogman file after that cwd. The project's own old file, under the
 -- global cwd, belongs to another session, so the script mustn't take it.
 T['T478 [char] (S2) the migration script finds a tab session\'s old file under its tab\'s directory, and writes it as a tab session'] = function()
 	local s = S2.shared()
@@ -1646,7 +1646,7 @@ T['T478 [char] (S2) the migration script finds a tab session\'s old file under i
 		noname_content = {},
 	}
 	vim.fn.writefile({ vim.json.encode(old) }, s.session_dir .. vim.fn.sha256(tab .. '\n'):sub(1, 32) .. '.json')
-	local resession_dir = vim.fn.stdpath('data') .. '/cavediver_test_sessions/'
+	local resession_dir = vim.fn.stdpath('data') .. '/frogman_test_sessions/'
 	vim.fn.delete(resession_dir, 'rf')
 	vim.fn.mkdir(resession_dir, 'p')
 	local session = {
@@ -1692,7 +1692,7 @@ T['T643 [char] (S2) the migration script stops at a flag whose value is missing'
 	local s = S2.shared()
 	local old_path = old_session(s)
 	local function run(...)
-		return vim.system({ vim.v.progpath, '--clean', '-l', 'scripts/migrate_sessions.lua', '--resession-dir', 'cavediver_test_sessions', ... },
+		return vim.system({ vim.v.progpath, '--clean', '-l', 'scripts/migrate_sessions.lua', '--resession-dir', 'frogman_test_sessions', ... },
 			{ text = true }):wait()
 	end
 	local last, flag = run('--session-dir'), run('--session-dir', '--dry-run')
@@ -1706,7 +1706,7 @@ T['T644 [char] (S2) the migration script counts an old file whose session name c
 	local s = S2.shared()
 	local _, migrate = old_session(s)
 	local root = S2.cwd(child)
-	local dir = vim.fn.stdpath('data') .. '/cavediver_test_sessions/'
+	local dir = vim.fn.stdpath('data') .. '/frogman_test_sessions/'
 	vim.fn.delete(dir .. root:gsub('/', '_'):gsub(':', '_') .. '.json')
 	vim.fn.writefile({ vim.json.encode({ global = { cwd = root }, buffers = {}, tab_scoped = false, tabs = { {} } }) }, dir .. 'custom.json')
 	local run = migrate()
@@ -1721,12 +1721,12 @@ T['T645 [char] (S2) the migration script names a session whose directory the old
 	local root = S2.cwd(child)
 	local odd = root .. '/a$b'
 	vim.fn.mkdir(odd, 'p')
-	local dir = vim.fn.stdpath('data') .. '/cavediver_test_sessions/'
+	local dir = vim.fn.stdpath('data') .. '/frogman_test_sessions/'
 	vim.fn.writefile({ vim.json.encode({ global = { cwd = odd }, buffers = {}, tab_scoped = false, tabs = { {} } }) },
 		dir .. odd:gsub('/', '_'):gsub(':', '_') .. '.json')
 	local run = migrate('--dry-run')
 	eq({ named = run.stdout:find('a$b', 1, true) ~= nil and run.stdout:find('shell', 1, true) ~= nil,
-		none = run.stdout:find('0 with no cavediver file', 1, true) ~= nil }, { named = true, none = true })
+		none = run.stdout:find('0 with no frogman file', 1, true) ~= nil }, { named = true, none = true })
 end
 
 -- T338's old file is also a tab session's: saved from a tab whose cwd is the project's, the
@@ -1737,7 +1737,7 @@ T['T646 [char] (S2) the migration script converts both sessions whose old file i
 	local root = S2.cwd(child)
 	local elsewhere = root .. '/elsewhere'
 	vim.fn.mkdir(elsewhere, 'p')
-	local dir = vim.fn.stdpath('data') .. '/cavediver_test_sessions/'
+	local dir = vim.fn.stdpath('data') .. '/frogman_test_sessions/'
 	vim.fn.writefile({ vim.json.encode({ global = { cwd = elsewhere }, buffers = {}, tab_scoped = true, tabs = { { cwd = root } } }) },
 		dir .. elsewhere:gsub('/', '_'):gsub(':', '_') .. '.json')
 	local dry = migrate('--dry-run')
@@ -1749,6 +1749,155 @@ T['T646 [char] (S2) the migration script converts both sessions whose old file i
 	]], { root, elsewhere })
 	eq({ dry = dry.stdout:find('would convert 2 session', 1, true) ~= nil, real = real.stdout:find('converted 2 session', 1, true) ~= nil, both = both },
 		{ dry = true, real = true, both = true })
+end
+
+-- cavediver's folders planted in the run's own data and state folders, checked first to sit inside
+-- the test sandbox.
+T['T652 [char] (S2) the migration script moves cavediver\'s files into frogman\'s folders'] = function()
+	local sandbox = vim.env.FRG_TEST_SANDBOX
+	local data, state = vim.fn.stdpath('data'), vim.fn.stdpath('state')
+	eq({ data:sub(1, #sandbox + 1) == sandbox .. '/', state:sub(1, #sandbox + 1) == sandbox .. '/' }, { true, true })
+	local old_sessions, old_state = data .. '/cavediver/sessions/', state .. '/cavediver/'
+	local hash = vim.fn.sha256('planted for T652')
+	vim.fn.mkdir(old_sessions .. hash .. '.d', 'p')
+	vim.fn.writefile({ 'x' }, old_sessions .. hash)
+	vim.fn.writefile({ 'x' }, old_sessions .. hash .. '.d/text')
+	vim.fn.mkdir(old_state, 'p')
+	vim.fn.writefile({ 'x' }, old_state .. 'dump-planted.txt')
+	local function run(...)
+		return vim.system({ vim.v.progpath, '--clean', '-l', 'scripts/migrate_sessions.lua',
+			'--resession-dir', 'frogman_test_no_sessions', ... }, { text = true }):wait()
+	end
+	local dry = run('--dry-run')
+	local before = vim.fn.filereadable(old_sessions .. hash)
+	local real = run()
+	local new = data .. '/frogman/sessions/' .. hash
+	eq({ dry = dry.stdout:find('would move 3 of cavediver', 1, true) ~= nil, before = before,
+		moved = real.stdout:find('moved 3 of cavediver', 1, true) ~= nil, code = real.code,
+		main = vim.fn.filereadable(new), text = vim.fn.filereadable(new .. '.d/text'),
+		dump = vim.fn.filereadable(state .. '/frogman/dump-planted.txt'),
+		gone = vim.fn.isdirectory(data .. '/cavediver') + vim.fn.isdirectory(old_state) },
+		{ dry = true, before = 1, moved = true, code = 0, main = 1, text = 1, dump = 1, gone = 0 })
+	vim.fn.delete(new, 'rf')
+	vim.fn.delete(new .. '.d', 'rf')
+	vim.fn.delete(state .. '/frogman/dump-planted.txt')
+end
+
+-- The session's file planted in cavediver's sessions folder, inside the sandbox, and frogman's
+-- session_dir left as it is.
+T['T653 [char] (S2) a load whose file is still in cavediver\'s folder points to the migration script'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	eq(child.lua([[
+		local sandbox = ...
+		local data = vim.fn.stdpath('data')
+		if data:sub(1, #sandbox + 1) ~= sandbox .. '/' then return 'outside the sandbox' end
+		_G.FRG_TEST.setup({ session_dir = data .. '/frogman/sessions/' })
+		local old = data .. '/cavediver/sessions/'
+		vim.fn.mkdir(old, 'p')
+		-- named as Misc.load's load reads it: the cwd is its session's name too
+		vim.fn.writefile({ 'x' }, old .. vim.fn.sha256(vim.fn.getcwd(-1, -1) .. '\n' .. vim.fn.getcwd()))
+		return 'planted'
+	]], { vim.env.FRG_TEST_SANDBOX }), 'planted')
+	child.messages()
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	local said = S2.has(child.messages(), "frogman: this session's file is still in cavediver's folder. Run the migration script to move it, nvim --clean -l ")
+	child.lua('vim.fn.delete(vim.fn.stdpath("data") .. "/cavediver", "rf")')
+	eq(said, true)
+end
+
+-- A file from before encryption planted in cavediver's sessions folder, inside the sandbox, and
+-- frogman's session_dir left as it is.
+T['T654 [char] (S2) a load whose file from before encryption is still in cavediver\'s folder points to the migration script'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	eq(child.lua([[
+		local sandbox = ...
+		local data = vim.fn.stdpath('data')
+		if data:sub(1, #sandbox + 1) ~= sandbox .. '/' then return 'outside the sandbox' end
+		_G.FRG_TEST.setup({ session_dir = data .. '/frogman/sessions/' })
+		local old = data .. '/cavediver/sessions/'
+		vim.fn.mkdir(old, 'p')
+		vim.fn.writefile({ '{"buffers":{"window":[],"global":[]},"windows":[],"closed":[],"noname_content":[]}' },
+			old .. vim.fn.sha256(vim.fn.getcwd(-1, -1) .. '\n'):sub(1, 32) .. '.json')
+		return 'planted'
+	]], { vim.env.FRG_TEST_SANDBOX }), 'planted')
+	child.messages()
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	local got = child.lua([[
+		local old = vim.fn.stdpath('data') .. '/cavediver/sessions/' .. vim.fn.sha256(vim.fn.getcwd(-1, -1) .. '\n'):sub(1, 32) .. '.json'
+		return vim.fn.filereadable(old)
+	]])
+	local said = S2.has(child.messages(), "frogman: this session has a file from before encryption. Run the migration script to convert it, nvim --clean -l ")
+	child.lua('vim.fn.delete(vim.fn.stdpath("data") .. "/cavediver", "rf")')
+	eq({ said = said, left = got }, { said = true, left = 1 })
+end
+
+-- T338's old file and resession session, then plant(old_path, cavediver's sessions folder, the
+-- project) puts what the case needs in that folder, inside the sandbox, and the script runs with
+-- --session-dir left as it is, a dry run first. What the real run leaves in frogman's folder goes
+-- afterwards, and so does cavediver's folder. Returns the two runs.
+local function from_cavediver(s, plant)
+	local sandbox = vim.env.FRG_TEST_SANDBOX
+	local data = vim.fn.stdpath('data')
+	eq(data:sub(1, #sandbox + 1) == sandbox .. '/', true)
+	local old_path = old_session(s)
+	local old_sessions, new_sessions = data .. '/cavediver/sessions/', data .. '/frogman/sessions/'
+	vim.fn.mkdir(old_sessions, 'p')
+	plant(old_path, old_sessions, S2.cwd(child))
+	local before = {}
+	for _, entry in ipairs(vim.fn.isdirectory(new_sessions) == 1 and vim.fn.readdir(new_sessions) or {}) do
+		before[entry] = true
+	end
+	local function run(...)
+		return vim.system({ vim.v.progpath, '--clean', '-l', 'scripts/migrate_sessions.lua',
+			'--resession-dir', 'frogman_test_sessions', ... }, { text = true }):wait()
+	end
+	local dry = run('--dry-run')
+	local real = run()
+	for _, entry in ipairs(vim.fn.isdirectory(new_sessions) == 1 and vim.fn.readdir(new_sessions) or {}) do
+		if not before[entry] then vim.fn.delete(new_sessions .. entry, 'rf') end
+	end
+	vim.fn.delete(data .. '/cavediver', 'rf')
+	return dry, real
+end
+
+-- The old file in cavediver's folder, and one more old file there that no session points to.
+T['T655 [char] (S2) a dry run counts what the real run converts when the old files are still in cavediver\'s folder'] = function()
+	local dry, real = from_cavediver(S2.shared(), function(old_path, old_sessions)
+		vim.fn.rename(old_path, old_sessions .. vim.fs.basename(old_path))
+		vim.fn.writefile({ '{}' }, old_sessions .. string.rep('0', 32) .. '.json')
+	end)
+	eq({ dry = dry.stdout:find('would convert 1 session', 1, true) ~= nil,
+		no_file = dry.stdout:find('; 0 with no frogman file', 1, true) ~= nil,
+		leftover = dry.stdout:find('; 1 old file(s) no resession session points to', 1, true) ~= nil,
+		real = real.stdout:find('converted 1 session', 1, true) ~= nil, code = real.code,
+		real_leftover = real.stdout:find('; 1 old file(s) no resession session points to', 1, true) ~= nil },
+		{ dry = true, no_file = true, leftover = true, real = true, code = 0, real_leftover = true })
+end
+
+-- Only the old file's .migrated mark in cavediver's folder.
+T['T656 [char] (S2) a dry run counts an old file converted already whose mark is still in cavediver\'s folder'] = function()
+	local dry, real = from_cavediver(S2.shared(), function(old_path, old_sessions)
+		vim.fn.rename(old_path, old_sessions .. vim.fs.basename(old_path) .. '.migrated')
+	end)
+	eq({ dry = dry.stdout:find('; 1 already converted', 1, true) ~= nil,
+		real = real.stdout:find('; 1 already converted', 1, true) ~= nil },
+		{ dry = true, real = true })
+end
+
+-- The old file and a file under the session's new name in cavediver's folder; only whether that
+-- file is there counts.
+T['T657 [char] (S2) a dry run counts a session with a file in the new format already in cavediver\'s folder'] = function()
+	local dry, real = from_cavediver(S2.shared(), function(old_path, old_sessions, root)
+		vim.fn.rename(old_path, old_sessions .. vim.fs.basename(old_path))
+		vim.fn.writefile({ 'x' }, old_sessions .. vim.fn.sha256(root .. '\n' .. root))
+	end)
+	eq({ dry = dry.stdout:find('would convert 0 session(s); 0 already converted; 1 with a file in the new format already', 1, true) ~= nil,
+		real = real.stdout:find('converted 0 session(s); 0 already converted; 1 with a file in the new format already', 1, true) ~= nil },
+		{ dry = true, real = true })
 end
 
 -- Only a file named the old way is there: the first 32 hex characters of
@@ -1921,7 +2070,7 @@ T['T321 [char] (S2) saves are snapshots: a whole-editor save merges the pools by
 		{ saved = 'x,c,e', live = { 'e', 'x' }, followed = 'c', fresh = 'e,c', after = 'c' })
 end
 
--- No TabClosedPre hook calls save_session here: cavediver writes the session's
+-- No TabClosedPre hook calls save_session here: frogman writes the session's
 -- records itself as the tab closes (the author, 2026-10-23). The load
 -- afterwards brings d back and not c, as a manager would after c was closed.
 T['T322 [char] (S2) a tab session\'s tab closed with nothing wired writes its records, and gives no notice'] = function()
@@ -2147,7 +2296,7 @@ T['T353 [char] (S1) after a load from idle, closes and <M-S-w> use one closed st
 	eq(child.shown(), 'c')
 end
 
--- The session u has no cavediver file; the hint says it's a tab session.
+-- The session u has no frogman file; the hint says it's a tab session.
 T['T354 [char] (S2) a tab session with no file, loaded with the hint, starts only its tab fresh'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
@@ -2447,10 +2596,10 @@ T['T602 [char] (S2) steady typing writes the records once a second'] = function(
 	child.lua([[
 		local R = require('frogman.domains.storage').routines
 		local real = R.write_records
-		_G.CDV_WRITES = 0
-		_G.CDV_AT = {}
+		_G.FRG_WRITES = 0
+		_G.FRG_AT = {}
 		local t0 = vim.uv.hrtime()
-		R.write_records = function(...) _G.CDV_WRITES = _G.CDV_WRITES + 1 table.insert(_G.CDV_AT, (vim.uv.hrtime() - t0) / 1e6) return real(...) end
+		R.write_records = function(...) _G.FRG_WRITES = _G.FRG_WRITES + 1 table.insert(_G.FRG_AT, (vim.uv.hrtime() - t0) / 1e6) return real(...) end
 		local n = 0
 		local t = vim.uv.new_timer()
 		t:start(0, 50, vim.schedule_wrap(function()
@@ -2462,7 +2611,7 @@ T['T602 [char] (S2) steady typing writes the records once a second'] = function(
 	]])
 	child.settle(5500)
 	-- one a second: no two writes close together, as the first change after a second's write was
-	local at = child.lua('return _G.CDV_AT')
+	local at = child.lua('return _G.FRG_AT')
 	local closest = math.huge
 	for i = 2, #at do closest = math.min(closest, at[i] - at[i - 1]) end
 	eq({ some = #at > 0, apart = closest >= 500 }, { some = true, apart = true })
@@ -2894,7 +3043,7 @@ end
 local OPEN_LISTS = [==[
 	for _, win in ipairs(vim.api.nvim_list_wins()) do
 		local buf = vim.api.nvim_win_get_buf(win)
-		if vim.bo[buf].filetype == 'cavediver-closed-lists' then
+		if vim.bo[buf].filetype == 'frogman-closed-lists' then
 			local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 			return { buf = buf, win = win, lines = lines, cursor_line = lines[vim.api.nvim_win_get_cursor(win)[1]] }
 		end
@@ -3281,8 +3430,8 @@ T['T588 [char] (S2) a No Name text discarded by a write that failed only on the 
 	table.remove(lines, e)
 	table.remove(lines, S2.line_of(lines, '[No Name]'))
 	child.lua([[
-		_G.CDV_ASKED = 0
-		vim.fn.confirm = function() _G.CDV_ASKED = _G.CDV_ASKED + 1 return 1 end
+		_G.FRG_ASKED = 0
+		vim.fn.confirm = function() _G.FRG_ASKED = _G.FRG_ASKED + 1 return 1 end
 	]])
 	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
 	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
@@ -3294,7 +3443,7 @@ T['T588 [char] (S2) a No Name text discarded by a write that failed only on the 
 	child.lua('vim.api.nvim_set_current_win(...)', { p.win })
 	child.type_keys('q')
 	child.settle()
-	local got = { asked = child.lua('return _G.CDV_ASKED'), open = child.lua('return vim.api.nvim_win_is_valid(...)', { p.win }) }
+	local got = { asked = child.lua('return _G.FRG_ASKED'), open = child.lua('return vim.api.nvim_win_is_valid(...)', { p.win }) }
 	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
 	eq(got, { asked = 1, open = false })
 end
@@ -3367,7 +3516,7 @@ T['T324 [char] (S2) an oil window comes back as oil, with oil_original_buffer se
 		local oil = ...
 		return {
 			shows_oil = vim.api.nvim_get_current_buf() == oil,
-			original = vim.w.oil_original_buffer == vim.fn.bufnr(_G.CDV_TEST.root .. '/b.txt'),
+			original = vim.w.oil_original_buffer == vim.fn.bufnr(_G.FRG_TEST.root .. '/b.txt'),
 			oil_registered = require('frogman.domains.history').get_hash_from_buffer(oil) ~= nil,
 		}
 	]], { oil })
@@ -3390,7 +3539,7 @@ local function two_closed()
 	eq(child.closed(), 'b,c')
 end
 
-T['T325 [char] (S2) :CavediverClosed opens an editable buffer listing the closed entries, newest first, and no open buffer'] = function()
+T['T325 [char] (S2) :FrogmanClosed opens an editable buffer listing the closed entries, newest first, and no open buffer'] = function()
 	two_closed()
 	local p = S2.picker(child)
 	local c, b = S2.line_of(p.lines, 'c.txt'), S2.line_of(p.lines, 'b.txt')
@@ -3625,9 +3774,9 @@ T['T373 [char] (S2) the picker shows a missing file\'s tag'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.cmd('bdelete b.txt')
 	child.lua([[
-		os.remove(_G.CDV_TEST.root .. '/b.txt')
+		os.remove(_G.FRG_TEST.root .. '/b.txt')
 		local H = require('frogman.domains.history')
-		H.data.missing[H.get_hash_from_filepath(_G.CDV_TEST.root .. '/b.txt')] = 'feature'
+		H.data.missing[H.get_hash_from_filepath(_G.FRG_TEST.root .. '/b.txt')] = 'feature'
 	]])
 	child.settle()
 	local p = S2.picker(child)
@@ -3638,7 +3787,7 @@ end
 T['T374 [char] (S2) with the ASCII glyph set the picker draws nothing outside ASCII'] = function()
 	local s = S2.shared()
 	two_pools(s)
-	child.lua([[_G.CDV_TEST.setup({ session_dir = require('frogman.configs').session_dir, glyphs = { set = 'ascii' } })]])
+	child.lua([[_G.FRG_TEST.setup({ session_dir = require('frogman.configs').session_dir, glyphs = { set = 'ascii' } })]])
 	local p = S2.picker(child)
 	local ascii = true
 	for i = 1, #p.lines do
@@ -3666,21 +3815,21 @@ end
 -- Two nameless tab sessions, in w/app and p/app: one name, one last part.
 T['T504 [char] (S2) two lists of one name and one last part get headers of their own'] = function()
 	child.setup()
-	child.lua('for _, d in ipairs({ "w/app", "p/app" }) do vim.fn.mkdir(_G.CDV_TEST.root .. "/" .. d, "p") end')
+	child.lua('for _, d in ipairs({ "w/app", "p/app" }) do vim.fn.mkdir(_G.FRG_TEST.root .. "/" .. d, "p") end')
 	child.steps({ ':e a' })
 	child.cmd('tcd w/app')
 	child.cmd('edit ../../b.txt')
 	child.cmd('edit ../../c.txt')
 	child.settle()
 	eq(child.lua('return { pcall(require("frogman").save_session, nil, { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
-	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/b.txt")'))
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/b.txt")'))
 	child.cmd('tabnew')
-	child.cmd('tcd ' .. child.lua('return _G.CDV_TEST.root') .. '/p/app')
+	child.cmd('tcd ' .. child.lua('return _G.FRG_TEST.root') .. '/p/app')
 	child.cmd('edit ../../d.txt')
 	child.cmd('edit ../../e.txt')
 	child.settle()
 	eq(child.lua('return { pcall(require("frogman").save_session, nil, { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
-	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/d.txt")'))
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/d.txt")'))
 	child.settle()
 	local before = lists_by_dir()
 	local p = S2.picker(child)
@@ -3696,10 +3845,10 @@ T['T505 [char] (S2) opening the closed lists again keeps an edit not written yet
 	local b = S2.line_of(p.lines, 'b.txt')
 	child.lua('vim.api.nvim_buf_set_lines(..., ' .. (b - 1) .. ', ' .. b .. ', false, {})', { p.buf })
 	child.messages()
-	child.cmd('CavediverClosed')
+	child.cmd('FrogmanClosed')
 	child.settle()
 	local got = child.lua([[
-		local buf = vim.fn.bufnr('cavediver://closed-lists')
+		local buf = vim.fn.bufnr('frogman://closed-lists')
 		return { modified = buf ~= -1 and vim.bo[buf].modified, b = buf ~= -1 and table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n'):find('b.txt', 1, true) ~= nil }
 	]])
 	eq({ got = got, closed = child.closed(), told = S2.has(child.messages(), 'not written') }, { got = { modified = true, b = false }, closed = 'b,c', told = true })
@@ -3726,10 +3875,10 @@ T['T506 [char] (S2, A27) a closed lists key\'s step is about the window it acts 
 	eq(step, { win = source, after = true })
 end
 
-T['T503 [char] (S2) a closed_entry formatter that gives nothing leaves cavediver\'s own text'] = function()
+T['T503 [char] (S2) a closed_entry formatter that gives nothing leaves frogman\'s own text'] = function()
 	local s = S2.shared()
 	two_pools(s)
-	child.lua([[_G.CDV_TEST.setup({ session_dir = require('frogman.configs').session_dir,
+	child.lua([[_G.FRG_TEST.setup({ session_dir = require('frogman.configs').session_dir,
 		formatters = { closed_entry = function() return nil end } })]])
 	local p = S2.picker(child)
 	local timed = false

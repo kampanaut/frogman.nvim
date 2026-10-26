@@ -1,7 +1,7 @@
 ---Ledger domain replay of a flight recorder's dump.
 ---
 ---This module replays a dump into a fresh editor in its project. It plants the snapshot,
----then takes the steps in order. A step from cavediver's keys, or a command that only moves
+---then takes the steps in order. A step from frogman's keys, or a command that only moves
 ---windows and buffers, is driven and checked against its recorded row. Any other step has
 ---its recorded row planted, so a replay writes no file and runs none of the dump's code.
 
@@ -59,12 +59,12 @@ local function tab_windows()
 	end, vim.api.nvim_tabpage_list_wins(0))
 end
 
----Check if a recorded key is one of cavediver's own keymaps.
+---Check if a recorded key is one of frogman's own keymaps.
 ---
 ---A view's keys aren't counted.
 ---
 ---@param lhs string The key, as the step's trigger
----@return boolean own True if cavediver maps it
+---@return boolean own True if frogman maps it
 local function own_key(lhs)
 	for _, key in pairs(require('frogman.configs').keymaps or {}) do
 		if type(key) == "string" and key == lhs then
@@ -180,7 +180,7 @@ local function planter(files)
 	local history = require('frogman.domains.history')
 	local plant = {}
 
-	---Register the path the dump has for a hash, so cavediver knows the file.
+	---Register the path the dump has for a hash, so frogman knows the file.
 	function plant.known(hash)
 		if hash == nil then
 			return
@@ -206,7 +206,7 @@ local function planter(files)
 		local bufnr
 		if path:match("^NONAME_") then
 			bufnr = vim.api.nvim_create_buf(true, false)
-			vim.b[bufnr].cavediver_noname = path:sub(#"NONAME_" + 1)
+			vim.b[bufnr].frogman_noname = path:sub(#"NONAME_" + 1)
 		else
 			bufnr = vim.fn.bufadd(path)
 			vim.bo[bufnr].buflisted = true
@@ -323,7 +323,7 @@ end
 
 ---Replay a dump into this editor.
 ---
----Runs from the directory the dump was written in, in an editor with cavediver set up that
+---Runs from the directory the dump was written in, in an editor with frogman set up that
 ---tracks nothing yet but the empty buffer it started on. A dump that spans more than one tab
 ---is refused. Once a replay starts, this editor's state isn't a session, so `save_session`
 ---refuses and no records are written. The result holds `steps`, `driven`, `matched`,
@@ -335,7 +335,7 @@ function M.run(path)
 	path = vim.fn.fnamemodify(vim.fn.expand(path), ":p")
 	local text, problem = require('frogman.domains.ledger.dump').read(path)
 	if not text then
-		vim.notify("cavediver: " .. vim.fn.fnamemodify(path, ":t") .. " can't be replayed, since "
+		vim.notify("frogman: " .. vim.fn.fnamemodify(path, ":t") .. " can't be replayed, since "
 			.. (problem == "missing" and "there's no such file" or problem == "not a dump" and "it isn't a dump"
 				or "it doesn't open here: a dump opens only from the directory it was written in, unedited") .. ".",
 			vim.log.levels.WARN)
@@ -343,17 +343,17 @@ function M.run(path)
 	end
 	local replay = vim.json.decode(text:match("\nreplay:\n(.*)$") or "{}", { luanil = { object = true, array = true } })
 	if spans_tabs(replay) then
-		vim.notify("cavediver: this dump spans more than one tab, which a replay doesn't recreate.", vim.log.levels.WARN)
+		vim.notify("frogman: this dump spans more than one tab, which a replay doesn't recreate.", vim.log.levels.WARN)
 		return nil
 	end
-	if vim.fn.exists(":CavediverDump") ~= 2 then
-		vim.notify("cavediver: a dump replays once cavediver is set up, and setup() hasn't run in this editor.", vim.log.levels.WARN)
+	if vim.fn.exists(":FrogmanDump") ~= 2 then
+		vim.notify("frogman: a dump replays once frogman is set up, and setup() hasn't run in this editor.", vim.log.levels.WARN)
 		return nil
 	end
 	local settle = require('frogman.settle')
 	settle.drain() -- the start buffer's arrival, still queued when the replay runs straight from startup
 	if not fresh() then
-		vim.notify("cavediver: a dump replays into a fresh editor, started in its project with cavediver set up and no"
+		vim.notify("frogman: a dump replays into a fresh editor, started in its project with frogman set up and no"
 			.. " session loaded, and this one tracks buffers already.", vim.log.levels.WARN)
 		return nil
 	end
@@ -435,7 +435,7 @@ function M.run(path)
 		local n = vim.api.nvim_win_is_valid(b.win) and vim.api.nvim_win_get_number(b.win) or "?"
 		table.insert(result.fired, b.rule .. " broke in win " .. n .. ": " .. b.what)
 	end
-	local words = ("cavediver: replayed %d steps, %d driven, %d matching, %d resynced"):format(result.steps, result.driven,
+	local words = ("frogman: replayed %d steps, %d driven, %d matching, %d resynced"):format(result.steps, result.driven,
 		result.matched, result.resynced)
 	if #result.mismatches > 0 then
 		words = words .. ("; %d didn't match, the first at %s"):format(#result.mismatches, result.mismatches[1].trigger)

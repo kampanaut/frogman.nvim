@@ -32,7 +32,7 @@ local function window_history(win)
 		local entry = H.data.crux_internals.window[...]
 		if entry == nil then return nil end
 		local out = {}
-		for hash in pairs(entry) do out[_G.CDV_X.name(hash)] = true end
+		for hash in pairs(entry) do out[_G.FRG_X.name(hash)] = true end
 		return out
 	]], { win }))
 end
@@ -97,7 +97,7 @@ T['T20 [char] track_buffer(h, t) stores t in the global history'] = function()
 	child.steps({ ':e a' })
 	local got = child.lua([[
 		local H = require('frogman.domains.history')
-		local h = _G.CDV_X.hash('b')
+		local h = _G.FRG_X.hash('b')
 		H.track_buffer(h, 1000)
 		return { stored = H.data.crux_internals.global[h], index = H.data.history_index }
 	]])

@@ -1,7 +1,7 @@
 ---Ledger domain dumps for the failures that shouldn't happen.
 ---
 ---When something that shouldn't happen fires, this module writes the steps that led there to
----a file under stdpath("state")/cavediver/ and shows them in a window. The file is sealed as a
+---a file under stdpath("state")/frogman/ and shows them in a window. The file is sealed as a
 ---session's is, since it's usage data, so it holds things as they are (files by their hashes
 ---and paths, lists by their sessions, windows by number and id).
 
@@ -115,7 +115,7 @@ end
 ---since the last one. The last two are kept, so a dump starts 50 to 100 steps back. Does
 ---nothing while dumps are off.
 ---
----@param step CavediverLedgerStep The step that just began
+---@param step FrogmanLedgerStep The step that just began
 ---@return nil
 function M.began(step)
 	if not enabled() then
@@ -180,7 +180,7 @@ end
 ---(files by hash and path, lists by their sessions, windows by number and id).
 ---
 ---@param what string What fired, in words
----@param failing CavediverLedgerStep|nil The step it fired in
+---@param failing FrogmanLedgerStep|nil The step it fired in
 ---@return string[] rows, string replay
 local function compose(what, failing)
 	local history = require('frogman.domains.history')
@@ -292,11 +292,11 @@ local function compose(what, failing)
 			cycle_winid = snap.cycle, history_view = snap.history_view, splitright = snap.splitright, splitbelow = snap.splitbelow }
 	end
 	local head = {
-		"cavediver: something that shouldn't happen did",
+		"frogman: something that shouldn't happen did",
 		what,
 		os.date("%Y-%m-%d %H:%M:%S"),
 	}
-	-- The settle work still queued: what cavediver hadn't taken in yet when it fired
+	-- The settle work still queued: what frogman hadn't taken in yet when it fired
 	local pending = require('frogman.settle').pending()
 	replay.pending = pending
 	if #pending > 0 then
@@ -315,7 +315,7 @@ end
 ---Open the dump's window once the editor settles.
 ---
 ---The window is a float on a scratch buffer, which the ledger records no step about. It isn't
----entered when a dump fires, and is when `:CavediverDump` opens one. `q` closes it.
+---entered when a dump fires, and is when `:FrogmanDump` opens one. `q` closes it.
 ---
 ---@param name string The dump's name
 ---@param lines string[] The rows to show
@@ -323,12 +323,12 @@ end
 ---@return nil
 local function show(name, lines, enter)
 	vim.schedule(function()
-		local buf = vim.api.nvim_create_buf(false, true) -- Unlisted scratch buffer, so cavediver doesn't track it
-		vim.b[buf].cavediver_dump = true -- Marked first, so the ledger begins no step about it
+		local buf = vim.api.nvim_create_buf(false, true) -- Unlisted scratch buffer, so frogman doesn't track it
+		vim.b[buf].frogman_dump = true -- Marked first, so the ledger begins no step about it
 		vim.bo[buf].buftype = "nofile"
 		vim.bo[buf].bufhidden = "wipe"
 		vim.bo[buf].swapfile = false
-		pcall(vim.api.nvim_buf_set_name, buf, "cavediver://" .. name)
+		pcall(vim.api.nvim_buf_set_name, buf, "frogman://" .. name)
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 		vim.bo[buf].modifiable = false
 		local width = math.max(20, math.min(vim.o.columns - 4, math.floor(vim.o.columns * 0.8)))
@@ -336,7 +336,7 @@ local function show(name, lines, enter)
 		local win = vim.api.nvim_open_win(buf, enter == true, {
 			relative = "editor", width = width, height = height, style = "minimal", border = "rounded",
 			row = math.max(0, vim.o.lines - height - 4), col = math.max(0, vim.o.columns - width - 2),
-			title = " cavediver: something that shouldn't happen did ", title_pos = "center",
+			title = " frogman: something that shouldn't happen did ", title_pos = "center",
 		})
 		vim.wo[win].wrap = false
 		vim.keymap.set("n", "q", function()
@@ -377,7 +377,7 @@ end
 ---
 ---@param key string What makes this failure distinct
 ---@param what string What fired, in words
----@param failing CavediverLedgerStep|nil The step it fired in
+---@param failing FrogmanLedgerStep|nil The step it fired in
 ---@return nil
 function M.fire(key, what, failing)
 	if not enabled() or dumped[key] then
@@ -397,12 +397,12 @@ function M.fire(key, what, failing)
 	end)
 	if not made then
 		vim.schedule(function()
-			vim.notify("cavediver: a dump couldn't be made (" .. tostring(text) .. ").", vim.log.levels.WARN)
+			vim.notify("frogman: a dump couldn't be made (" .. tostring(text) .. ").", vim.log.levels.WARN)
 		end)
 		return
 	end
 	-- Another editor may have written a dump this second, so the number goes past its files
-	local dir = vim.fn.stdpath("state") .. "/cavediver"
+	local dir = vim.fn.stdpath("state") .. "/frogman"
 	local name, path
 	repeat
 		count = count + 1
@@ -422,10 +422,10 @@ function M.fire(key, what, failing)
 	local said = what:match("[^\n]*")
 	vim.schedule(function()
 		if written then
-			vim.notify("cavediver: something that shouldn't happen did (" .. said .. "); its last steps are in " .. path .. ".",
+			vim.notify("frogman: something that shouldn't happen did (" .. said .. "); its last steps are in " .. path .. ".",
 				vim.log.levels.WARN)
 		else
-			vim.notify("cavediver: something that shouldn't happen did (" .. said .. "); its last steps are in the window, "
+			vim.notify("frogman: something that shouldn't happen did (" .. said .. "); its last steps are in the window, "
 				.. "since the file couldn't be written (" .. tostring(err) .. ").", vim.log.levels.WARN)
 		end
 	end)
@@ -434,7 +434,7 @@ end
 ---Read a dump back, decrypted.
 ---
 ---Opens only from the directory the dump was written in, since its key is stretched from it.
----`:CavediverDump` and the replay both read dumps through here.
+---`:FrogmanDump` and the replay both read dumps through here.
 ---
 ---@param path string The dump's file
 ---@return string|nil text The dump's text, or nil when it can't be read here
@@ -473,7 +473,7 @@ function M.open(path)
 		local why = problem == "missing" and "there's no such file"
 			or problem == "not a dump" and "it isn't a dump"
 			or "it doesn't open here: a dump opens only from the directory it was written in, unedited"
-		vim.notify("cavediver: " .. vim.fn.fnamemodify(path, ":t") .. " can't be opened, since " .. why .. ".", vim.log.levels.WARN)
+		vim.notify("frogman: " .. vim.fn.fnamemodify(path, ":t") .. " can't be opened, since " .. why .. ".", vim.log.levels.WARN)
 		return
 	end
 	show(vim.fn.fnamemodify(path, ":t:r"), vim.split(text, "\n", { plain = true }), true)
@@ -539,7 +539,7 @@ end
 ---next event repairs isn't dumped. A step that dumped already marks the breaks it left as
 ---dumped, since its own dump shows them.
 ---
----@param step CavediverLedgerStep The step that closed
+---@param step FrogmanLedgerStep The step that closed
 ---@return nil
 function M.closed(step)
 	if not enabled() then

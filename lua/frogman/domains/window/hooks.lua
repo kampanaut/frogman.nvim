@@ -15,7 +15,7 @@ local storageSM = require('frogman.domains.storage.sm')
 local storageStates = require('frogman.domains.storage.states')
 storageSM:on(storageStates.IDLE, storageStates.BARE, "window_teardown", function()
 	for winid, _ in pairs(data.crux) do
-		-- a window closed while cavediver was off too: what the UI kept of it goes, its winbar only if it's there
+		-- a window closed while frogman was off too: what the UI kept of it goes, its winbar only if it's there
 		require('frogman.domains.ui.routines').remove_winbar_string(winid)
 	end
 	data.crux = {}
@@ -162,12 +162,12 @@ end, 2, true, navigation.states.mode.WINENTER)
 
 local M = {}
 
----Create the window domain's autocmds in cavediver's augroup.
+---Create the window domain's autocmds in frogman's augroup.
 ---
 ---Called by setup(), so nothing runs at require. Calling it again after the group is cleared
 ---replaces them cleanly.
 ---
----@param group integer The cavediver augroup
+---@param group integer The frogman augroup
 ---@return nil
 function M.init_autocmds(group)
 	vim.api.nvim_create_autocmd("WinClosed", {

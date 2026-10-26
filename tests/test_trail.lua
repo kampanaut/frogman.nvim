@@ -1,4 +1,4 @@
--- The trail's view, :CavediverTrail (what-is-cavediver.md, A27, and section 7,
+-- The trail's view, :FrogmanTrail (what-is-cavediver.md, A27, and section 7,
 -- "The ledger"). IDs are the spec's.
 --
 -- The view is a float on a buffer of its own; its keys are buffer-local, so
@@ -22,7 +22,7 @@ local T = MiniTest.new_set({
 local FIND = [==[
 for _, w in ipairs(vim.api.nvim_list_wins()) do
 	local b = vim.api.nvim_win_get_buf(w)
-	if vim.bo[b].filetype == 'cavediver-trail' then return { buf = b, win = w } end
+	if vim.bo[b].filetype == 'frogman-trail' then return { buf = b, win = w } end
 end
 return vim.NIL
 ]==]
@@ -39,7 +39,7 @@ end
 -- The highlight groups drawn on a line (1-based), each with the text it covers.
 local GROUPS = [==[
 local buf, row = ...
-local ns = vim.api.nvim_create_namespace('cavediver_trail')
+local ns = vim.api.nvim_create_namespace('frogman_trail')
 local line = vim.api.nvim_buf_get_lines(buf, row - 1, row, false)[1] or ''
 local out = {}
 for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, ns, { row - 1, 0 }, { row - 1, -1 }, { details = true })) do
@@ -74,7 +74,7 @@ local function line_with(...)
 end
 
 local function open_trail()
-	child.cmd('CavediverTrail')
+	child.cmd('FrogmanTrail')
 	child.settle(100)
 end
 
@@ -93,7 +93,7 @@ local function tab_session(s)
 	eq(S2.load_tab_session(child, 't'), { true })
 end
 
-T['T425 [char] (A27) :CavediverTrail opens the trail, untracked, on today\'s page'] = function()
+T['T425 [char] (A27) :FrogmanTrail opens the trail, untracked, on today\'s page'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
 	child.settle(100)
@@ -141,12 +141,12 @@ T['T426 [char] (A27) H and L go to the older and the newer page'] = function()
 	type_in('L')
 	local newer = lines()[1]
 	eq({ older = older:find('3 days down', 1, true) ~= nil, h_dim = h_dim, newer = newer:find('today', 1, true) ~= nil },
-		{ older = true, h_dim = 'CavediverTrailKeyOff', newer = true })
+		{ older = true, h_dim = 'FrogmanTrailKeyOff', newer = true })
 end
 
 T['T630 [char] (A27) a view key set to false isn\'t named in the trail'] = function()
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ keymaps = { views = { previous_section = false, next_section = false } } })')
+	child.lua('_G.FRG_TEST.setup({ keymaps = { views = { previous_section = false, next_section = false } } })')
 	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
 	child.settle(100)
 	open_trail()
@@ -172,7 +172,7 @@ T['T427 [char] (A27) brightness by surprise: a close onto other lists bright, th
 	child.settle(100)
 	open_trail()
 	local other = group_of(line_with('↓ a.txt'), '↓ ')
-	eq({ own = own, other = other }, { own = 'CavediverTrailDim', other = 'CavediverTrailClosed' })
+	eq({ own = own, other = other }, { own = 'FrogmanTrailDim', other = 'FrogmanTrailClosed' })
 end
 
 T['T428 [char] (A27) more than three of a kind under one step fold to a count'] = function()
@@ -204,7 +204,7 @@ end
 -- The float's width set in cells.
 local function at_width(cols)
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ trail_popup = { width = ... } })', { cols })
+	child.lua('_G.FRG_TEST.setup({ trail_popup = { width = ... } })', { cols })
 	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
 	child.settle(100)
 	open_trail()
@@ -221,7 +221,7 @@ end
 
 T['T430 [char] (A27) the header\'s pieces can be turned off'] = function()
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ trail = { header = { tally = false, gauge = false, shade = false } } })')
+	child.lua('_G.FRG_TEST.setup({ trail = { header = { tally = false, gauge = false, shade = false } } })')
 	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
 	child.settle(100)
 	open_trail()
@@ -233,7 +233,7 @@ end
 
 T['T431 [char] (A27) with the ascii set, the trail draws no character outside ASCII'] = function()
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" } })')
+	child.lua('_G.FRG_TEST.setup({ glyphs = { set = "ascii" } })')
 	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
 	child.settle(100)
 	open_trail()
@@ -248,10 +248,10 @@ end
 -- the dash alone is drawn in the set.
 T['T543 [char] (A27) under the ascii set, a name with a dash in it keeps it'] = function()
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" } })')
-	child.lua('vim.fn.writefile({ "x" }, _G.CDV_TEST.root .. "/notes—draft.txt")')
+	child.lua('_G.FRG_TEST.setup({ glyphs = { set = "ascii" } })')
+	child.lua('vim.fn.writefile({ "x" }, _G.FRG_TEST.root .. "/notes—draft.txt")')
 	child.steps({ ':e a' })
-	child.lua('vim.cmd.edit(vim.fn.fnameescape(_G.CDV_TEST.root .. "/notes—draft.txt"))')
+	child.lua('vim.cmd.edit(vim.fn.fnameescape(_G.FRG_TEST.root .. "/notes—draft.txt"))')
 	child.steps({ ':e b' })
 	child.type_keys(':bdelete notes—draft.txt<CR>')
 	child.settle(300)
@@ -284,49 +284,49 @@ T['T544 [char] (A27) a list\'s name is one piece, whole'] = function()
 	type_in('gf')
 	local list = child.lua('return { ft = vim.bo.filetype, line = vim.api.nvim_get_current_line() }')
 	eq({ piece = piece, ft = list.ft, header = list.line:find('My Project', 1, true) ~= nil },
-		{ piece = 'CavediverTrailList', ft = 'cavediver-closed-lists', header = true })
+		{ piece = 'FrogmanTrailList', ft = 'frogman-closed-lists', header = true })
 end
 
 -- The label comes from a provider: none, then a label with a dot in it, then main. Each change finds
 -- a closed file gone: b under no label, c under sprint · 4.
 T['T545 [char] (A27) under the ascii set, a label keeps its own characters, and a missing label is the set\'s dash'] = function()
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" }, label_provider = function() return _G.CDV_LABEL end })')
+	child.lua('_G.FRG_TEST.setup({ glyphs = { set = "ascii" }, label_provider = function() return _G.FRG_LABEL end })')
 	child.steps({ ':e a', ':e b', ':e c', ':e d' })
 	child.cmd('bdelete b.txt')
 	child.cmd('bdelete c.txt')
 	child.settle()
 	child.cmd('doautocmd FocusGained')
 	child.settle()
-	child.lua('os.remove(_G.CDV_TEST.root .. "/b.txt"); _G.CDV_LABEL = "sprint · 4"; vim.cmd("doautocmd FocusGained")')
+	child.lua('os.remove(_G.FRG_TEST.root .. "/b.txt"); _G.FRG_LABEL = "sprint · 4"; vim.cmd("doautocmd FocusGained")')
 	child.settle(300)
-	child.lua('os.remove(_G.CDV_TEST.root .. "/c.txt"); _G.CDV_LABEL = "main"; vim.cmd("doautocmd FocusGained")')
+	child.lua('os.remove(_G.FRG_TEST.root .. "/c.txt"); _G.FRG_LABEL = "main"; vim.cmd("doautocmd FocusGained")')
 	child.settle(300)
 	open_trail()
 	local row = line_with('@sprint · 4')
 	local drawn = { first = line_with('- -> sprint · 4') ~= nil, second = line_with('sprint · 4 -> main') ~= nil,
 		tag = row and group_of(row, '@sprint · 4') }
 	type_in('q')
-	child.cmd('CavediverTrail c.txt')
+	child.cmd('FrogmanTrail c.txt')
 	child.settle(100)
 	drawn.search = line_with('sprint · 4 -> main  X') ~= nil
-	eq(drawn, { first = true, second = true, tag = 'CavediverTrailTag', search = true })
+	eq(drawn, { first = true, second = true, tag = 'FrogmanTrailTag', search = true })
 end
 
 T['T546 [char] (A27) under the ascii set, a name holding the list\'s or the tag\'s glyph is words'] = function()
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" } })')
+	child.lua('_G.FRG_TEST.setup({ glyphs = { set = "ascii" } })')
 	child.steps({ ':e a' })
-	child.lua('vim.cmd.saveas(vim.fn.fnameescape(_G.CDV_TEST.root .. "/issue#12.md"))')
+	child.lua('vim.cmd.saveas(vim.fn.fnameescape(_G.FRG_TEST.root .. "/issue#12.md"))')
 	child.settle(300)
-	child.lua('vim.cmd.saveas(vim.fn.fnameescape(_G.CDV_TEST.root .. "/logo@2x.png"))')
+	child.lua('vim.cmd.saveas(vim.fn.fnameescape(_G.FRG_TEST.root .. "/logo@2x.png"))')
 	child.settle(300)
 	open_trail()
 	local rows = { line_with('issue#12.md: a copy'), line_with('logo@2x.png: a copy') }
 	local pieces = {}
 	for _, row in ipairs(rows) do
 		for _, g in ipairs(groups(row)) do
-			if g.group == 'CavediverTrailList' or g.group == 'CavediverTrailTag' then table.insert(pieces, g.text) end
+			if g.group == 'FrogmanTrailList' or g.group == 'FrogmanTrailTag' then table.insert(pieces, g.text) end
 		end
 	end
 	eq({ rows = #rows, pieces = pieces }, { rows = 2, pieces = {} })
@@ -340,7 +340,7 @@ T['T547 [char] (A27, S2) under the ascii set, a loaded move\'s file name keeps i
 	eq(Misc.save(child), { true })
 
 	S2.start(child, s)
-	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" } })')
+	child.lua('_G.FRG_TEST.setup({ glyphs = { set = "ascii" } })')
 	child.lua([[
 		local crypto = require('frogman.domains.storage.crypto')
 		local dir, name = vim.fn.getcwd(-1, -1), vim.fn.getcwd()
@@ -348,7 +348,7 @@ T['T547 [char] (A27, S2) under the ascii set, a loaded move\'s file name keeps i
 		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
 		local salt = bytes:sub(5, 4 + crypto.salt_length)
 		local data = require('frogman.domains.storage.routines').read_session(dir, name)
-		local x = _G.CDV_TEST.root .. '/notes · v2.md'
+		local x = _G.FRG_TEST.root .. '/notes · v2.md'
 		local h = vim.fn.sha256(x .. "\n"):sub(1, 16)
 		data.paths[h] = x
 		data.outsiders = data.outsiders or {}
@@ -368,19 +368,19 @@ end
 
 T['T526 [char] (A27) under the ascii set, what a move or a trigger was recorded with is drawn in it'] = function()
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" } })')
+	child.lua('_G.FRG_TEST.setup({ glyphs = { set = "ascii" } })')
 	-- T418's route: a change of label from feature to main tags b.txt gone
 	child.lua([[
-		vim.fn.mkdir(_G.CDV_TEST.root .. '/.git', 'p')
-		vim.fn.writefile({ 'ref: refs/heads/feature' }, _G.CDV_TEST.root .. '/.git/HEAD')
+		vim.fn.mkdir(_G.FRG_TEST.root .. '/.git', 'p')
+		vim.fn.writefile({ 'ref: refs/heads/feature' }, _G.FRG_TEST.root .. '/.git/HEAD')
 	]])
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	child.cmd('bdelete b.txt')
 	child.settle()
 	child.cmd('doautocmd FocusGained')
 	child.settle()
-	child.lua('os.remove(_G.CDV_TEST.root .. "/b.txt")')
-	child.lua('vim.fn.writefile({ "ref: refs/heads/main" }, _G.CDV_TEST.root .. "/.git/HEAD")')
+	child.lua('os.remove(_G.FRG_TEST.root .. "/b.txt")')
+	child.lua('vim.fn.writefile({ "ref: refs/heads/main" }, _G.FRG_TEST.root .. "/.git/HEAD")')
 	child.settle(300)
 	-- a move with no step open begins one with no trigger
 	child.lua('require("frogman").ledger.move("closed", { name = "x.txt", lists = { "editor" } })')
@@ -566,14 +566,14 @@ T['T438 [char] (A27) a search is a name\'s life line across every page, oldest f
 	local bar = results[1] and group_of(results[1], '┃ ')
 	type_in('q')
 	type_in('q')
-	child.cmd('CavediverTrail c.txt')
+	child.cmd('FrogmanTrail c.txt')
 	child.settle(100)
 	local again = lines()[1]
 	eq({
 		named = header:find('c.txt', 1, true) ~= nil, counted = header:find('2 moves over 2 days', 1, true) ~= nil,
 		results = #results, oldest = first:find(older, 1, true) ~= nil, bar = bar,
 		command = again:find('c.txt', 1, true) ~= nil and again:find('2 moves over 2 days', 1, true) ~= nil,
-	}, { named = true, counted = true, results = 2, oldest = true, bar = 'CavediverTrailLifeClosed', command = true })
+	}, { named = true, counted = true, results = 2, oldest = true, bar = 'FrogmanTrailLifeClosed', command = true })
 end
 
 T['T439 [char] (A27) <CR> on a result opens its day on its step, and q goes back'] = function()
@@ -648,7 +648,7 @@ T['T441 [char] (A27) gf acts on the name under the cursor and stays'] = function
 		local ft = vim.bo.filetype
 		return { ft = ft, line = vim.api.nvim_get_current_line() }
 	]])
-	eq({ file = file, window = window, list = list.ft == 'cavediver-closed-lists' and vim.trim(list.line) == '≡t' },
+	eq({ file = file, window = window, list = list.ft == 'frogman-closed-lists' and vim.trim(list.line) == '≡t' },
 		{ file = { opened = 'c', stays = true }, window = true, list = true })
 end
 
@@ -666,7 +666,7 @@ end
 T['T442 [char] (A27) the formatters replace a line\'s look'] = function()
 	child.setup()
 	child.lua([[
-		_G.CDV_TEST.setup({ formatters = {
+		_G.FRG_TEST.setup({ formatters = {
 			trail_move = function(move) if move.kind == 'closed' then return { { 'MOVE ' .. move.kind, 'Normal' } } end end,
 			trail_step = function(step) return { { 'STEP ' .. step.trigger, 'Normal' } } end,
 			trail_header = function() return { { 'HEADER', 'Normal' } } end,
@@ -691,7 +691,7 @@ T['T443 [char] (A27) za opens a step in a search too'] = function()
 	]])
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', '<M-.>' })
 	child.settle(100)
-	child.cmd('CavediverTrail c.txt')
+	child.cmd('FrogmanTrail c.txt')
 	child.settle(100)
 	local older = child.lua('return os.date("%a %d", os.time() - 3 * 86400)')
 	local old_row = line_with(older, '┃')
@@ -717,8 +717,8 @@ end
 T['T444 [char] (A27) * on a file follows that file, and a typed name every file of that name'] = function()
 	child.setup()
 	child.lua([[
-		vim.fn.mkdir(_G.CDV_TEST.root .. '/sub', 'p')
-		vim.fn.writefile({ 'sub c' }, _G.CDV_TEST.root .. '/sub/c.txt')
+		vim.fn.mkdir(_G.FRG_TEST.root .. '/sub', 'p')
+		vim.fn.writefile({ 'sub c' }, _G.FRG_TEST.root .. '/sub/c.txt')
 		vim.ui.input = function(_, on_confirm) on_confirm('c.txt') end
 	]])
 	child.steps({ ':e a', ':e sub/c.txt', '<M-.>', ':e c', '<M-.>' })
@@ -744,7 +744,7 @@ T['T445 [char] (A27) a close by a rename or a repair turns the life line closed'
 	child.steps({ ':e a', ':e b' })
 	child.cmd('saveas g.txt')
 	child.settle(300)
-	child.cmd('CavediverTrail b.txt')
+	child.cmd('FrogmanTrail b.txt')
 	child.settle(100)
 	local copy
 	for _, row in ipairs(results()) do
@@ -755,17 +755,17 @@ T['T445 [char] (A27) a close by a rename or a repair turns the life line closed'
 
 	-- the repair: b's buffer wiped without events, b kept on the editor's list
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ cleanup_interval = 100 })')
+	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 100 })')
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.lua('vim.cmd("noautocmd bwipeout " .. vim.fn.bufnr("b.txt"))')
 	child.settle(500)
-	child.cmd('CavediverTrail b.txt')
+	child.cmd('FrogmanTrail b.txt')
 	child.settle(100)
 	local repair
 	for _, row in ipairs(results()) do
 		if lines()[row]:find('⚒', 1, true) then repair = group_of(row, '┃ ') end
 	end
-	eq({ copy = copy, repair = repair }, { copy = 'CavediverTrailLifeClosed', repair = 'CavediverTrailLifeClosed' })
+	eq({ copy = copy, repair = repair }, { copy = 'FrogmanTrailLifeClosed', repair = 'FrogmanTrailLifeClosed' })
 end
 
 
@@ -780,7 +780,7 @@ T['T455 [char] (A27) a window\'s search follows the window'] = function()
 	child.cmd('wincmd p')
 	child.settle(200)
 	local n = child.lua('return vim.api.nvim_win_get_number(...)', { first })
-	child.cmd('CavediverTrail win ' .. n)
+	child.cmd('FrogmanTrail win ' .. n)
 	child.settle(100)
 	local header = lines()[1]
 	local row = line_with('┃', '⇤')
@@ -790,7 +790,7 @@ T['T455 [char] (A27) a window\'s search follows the window'] = function()
 	type_in('q')
 	type_in('q')
 	child.messages()
-	child.cmd('CavediverTrail win 9')
+	child.cmd('FrogmanTrail win 9')
 	child.settle(100)
 	-- F133: the message the case is about, not any message
 	local said = #vim.tbl_filter(function(m) return m.msg:find("there's no window 9 in this tab.", 1, true) ~= nil end, child.messages()) > 0
@@ -826,7 +826,7 @@ T['T517 [char] (A27) a day\'s first step opens from the trail\'s line before it 
 	type_in('za')
 	local day = { after = line_with('<M-f>') ~= nil, before = line_with('BufEnter d.txt') ~= nil }
 	type_in('q')
-	child.cmd('CavediverTrail a.txt')
+	child.cmd('FrogmanTrail a.txt')
 	child.settle(100)
 	cursor_to(line_with('┃', '▸') or 1)
 	type_in('za')
@@ -853,10 +853,10 @@ T['T518 [char] (A27) a day that gets its first move while the trail is open is r
 	local l = lines()[1]:find('today', 1, true) ~= nil
 	type_in('q')
 	-- again for a search's <CR>: today's steps set aside by hand while the trail opens, then put back
-	child.lua('local d = require("frogman").ledger.data.days; _G.CDV_TODAY = d[os.date("%Y-%m-%d")]; d[os.date("%Y-%m-%d")] = nil')
+	child.lua('local d = require("frogman").ledger.data.days; _G.FRG_TODAY = d[os.date("%Y-%m-%d")]; d[os.date("%Y-%m-%d")] = nil')
 	open_trail()
 	local reopened = lines()[1]:find('3 days down', 1, true) ~= nil
-	child.lua('require("frogman").ledger.data.days[os.date("%Y-%m-%d")] = _G.CDV_TODAY')
+	child.lua('require("frogman").ledger.data.days[os.date("%Y-%m-%d")] = _G.FRG_TODAY')
 	child.lua('require("frogman.domains.ui.trail").search("b.txt")')
 	child.settle(100)
 	cursor_to(results()[1] or 1)
@@ -884,7 +884,7 @@ T['T519 [char] (A27) a window\'s search and gf stay in this editor'] = function(
 	child.steps({ ':e d' })
 	child.cmd('bdelete d.txt') -- a landing on the window of the same id, in this editor
 	child.settle(300)
-	child.cmd('CavediverTrail win')
+	child.cmd('FrogmanTrail win')
 	child.settle(100)
 	local header = lines()[1]
 	type_in('q')
@@ -921,7 +921,7 @@ end
 T['T458 [char] (M13) the glyph sets are in the config, and a pair is changed there'] = function()
 	child.setup()
 	local defaults = child.lua('local g = require("frogman.configs").glyphs; return { g.unicode and g.unicode.row_t, g.ascii and g.ascii.row_t }')
-	child.lua('_G.CDV_TEST.setup({ glyphs = { unicode = { row_t = { "<", ">" } }, closed = "v" } })')
+	child.lua('_G.FRG_TEST.setup({ glyphs = { unicode = { row_t = { "<", ">" } }, closed = "v" } })')
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.cmd('bdelete c.txt')
 	child.settle(300)

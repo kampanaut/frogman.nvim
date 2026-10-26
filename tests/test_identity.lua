@@ -37,7 +37,7 @@ T['T9 [char] a path with ", $HOME or a backslash hashes to sha256(path .. "\\n")
 		local names = { quote = 'q"uote.txt', dollar_home = '$HOME.txt', backslash = 'back\\\\slash.txt' }
 		local got, want = {}, {}
 		for label, n in pairs(names) do
-			local path = _G.CDV_TEST.root .. '/' .. n
+			local path = _G.FRG_TEST.root .. '/' .. n
 			vim.fn.writefile({ label }, path)
 			vim.cmd('edit ' .. vim.fn.fnameescape(path))
 			vim.wait(10) -- the arrival is slotted once the editor settles
@@ -87,7 +87,7 @@ T['T11 [char] an entered No Name buffer is registered as NONAME_<id>, its id kep
 		local H = require('frogman.domains.history')
 		local buf = vim.api.nvim_get_current_buf()
 		local hash = H.get_hash_from_buffer(buf)
-		return { path = hash and H.get_filepath_from_hash(hash), want = 'NONAME_' .. tostring(vim.b[buf].cavediver_noname) }
+		return { path = hash and H.get_filepath_from_hash(hash), want = 'NONAME_' .. tostring(vim.b[buf].frogman_noname) }
 	]])
 	eq(got.path, got.want)
 	eq(got.path ~= 'NONAME_' .. child.lua('return vim.api.nvim_get_current_buf()'), true)
@@ -99,12 +99,12 @@ T['T12 [char] registering a second buffer under the same hash binds it to the ne
 	local got = child.lua([[
 		local H = require('frogman.domains.history')
 		local reg = H.data.hash_buffer_registry
-		local path = _G.CDV_TEST.root .. '/same.txt'
+		local path = _G.FRG_TEST.root .. '/same.txt'
 		vim.o.eventignore = 'all'
 		local older = vim.api.nvim_create_buf(true, false)
 		vim.api.nvim_buf_set_name(older, path)
 		local hash = H.register_buffer(older)
-		vim.api.nvim_buf_set_name(older, _G.CDV_TEST.root .. '/moved.txt')
+		vim.api.nvim_buf_set_name(older, _G.FRG_TEST.root .. '/moved.txt')
 		local newer = vim.api.nvim_create_buf(true, false)
 		vim.api.nvim_buf_set_name(newer, path)
 		local hash2 = H.register_buffer(newer)

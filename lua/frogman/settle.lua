@@ -1,7 +1,7 @@
----Settle queue for the work cavediver puts off until the editor settles.
+---Settle queue for the work frogman puts off until the editor settles.
 ---
----This module queues the work an event leaves for later when that work changes what cavediver
----knows about the editor. While anything is queued, cavediver isn't settled. A key runs what's
+---This module queues the work an event leaves for later when that work changes what frogman
+---knows about the editor. While anything is queued, frogman isn't settled. A key runs what's
 ---still queued before acting, so keys in one batch (a macro, a mapping) act as if they were
 ---typed by hand.
 ---
@@ -16,8 +16,8 @@ local M = {}
 ---@type { name: string, fn: function, done: boolean }[]
 local queue = {}
 
----How many of cavediver's key jobs and queued items are running now. At 0 a drain may run the
----queue. 1 is one job or one item, the most cavediver's own code reaches. 2 or more is a job
+---How many of frogman's key jobs and queued items are running now. At 0 a drain may run the
+---queue. 1 is one job or one item, the most frogman's own code reaches. 2 or more is a job
 ---running inside another, when code a job calls (a provider, a formatter, an autocmd on an event
 ---the job causes) runs a key's job of its own.
 ---@type integer
@@ -94,7 +94,7 @@ function M.drain()
 	end
 end
 
----Run a key's job once cavediver has settled.
+---Run a key's job once frogman has settled.
 ---
 ---Drains the queue, then runs the job. No drain starts until the job is done, so the work
 ---the key queues itself keeps its order. The job's error is raised again as it was raised, and

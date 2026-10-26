@@ -71,12 +71,12 @@ end, 1, true, states.mode.WINENTER)
 
 local M = {}
 
----Create the navigation domain's autocmds in cavediver's augroup.
+---Create the navigation domain's autocmds in frogman's augroup.
 ---
 ---Called by setup(), so nothing runs at require. Calling it again after the group is cleared
 ---replaces them cleanly.
 ---
----@param group integer The cavediver augroup
+---@param group integer The frogman augroup
 ---@return nil
 function M.init_autocmds(group)
 	vim.api.nvim_create_autocmd("WinEnter", {

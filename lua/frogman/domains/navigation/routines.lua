@@ -15,7 +15,7 @@ function M.cycle_buffer(direction)
 
 	local ok, _ = pcall(require, 'cokeline.mappings')
 	if not ok then
-		-- without cokeline, the cycle steps through cavediver's own order, in the same directions:
+		-- without cokeline, the cycle steps through frogman's own order, in the same directions:
 		-- left (1) toward newer buffers, right (2) toward older ones.
 		if direction ~= 1 and direction ~= 2 then
 			error("Invalid direction for cycling mode, must be 1 (left) or 2 (right).")
