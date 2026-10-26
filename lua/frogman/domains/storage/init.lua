@@ -188,7 +188,7 @@ function M.init_autocmds(group)
 			local history = require('frogman.domains.history')
 			local filehash = history.get_hash_from_buffer(args.buf)
 			if vim.api.nvim_buf_get_name(args.buf) == "" and filehash then
-				routines.enforce_noname_text_policy(filehash) -- the sessions that hold the text, and no other
+				routines.noname_text_changed(filehash) -- the sessions that hold the text, and no other
 			end
 		end,
 	})

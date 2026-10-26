@@ -33,13 +33,13 @@ history.sm:on("*", "*", "ensure_curwin_crux", function(context, _, _)
 	end
 end, 1, true, history.states.mode.UPDATE)
 
-history.sm:on("*", "*", "cleanup_triquetras", function(context, _, _)
+history.sm:on("*", "*", "enforce_editor_policy", function(context, _, _)
 	-- the filepath-hash registry is the source of truth. If it don't exist, then it shouldn't be in the triquetra.
 	-- It's an close empty noname buffer. And We don't really want this to be tracked when it's closed.
 	if (context.mode == history.states.mode.DELETE) and context.buf then
-		routines.cleanup_triquetras(context.buf)
+		routines.enforce_editor_policy(context.buf)
 	else
-		routines.cleanup_triquetras()
+		routines.enforce_editor_policy()
 	end
 end, 1.8, true)
 
@@ -77,7 +77,7 @@ history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_ma
 		end
 		triquetra.secondary_slot = triquetra.current_slot
 		triquetra.current_slot = new_filehash
-		routines.keep_older_ternary_note(triquetra, new_filehash, left, ternary, ternary)
+		routines.enforce_ternary_map_policy(triquetra, new_filehash, left, ternary, ternary)
 	elseif triquetra.current_slot ~= new_filehash then
 		-- Only create displacement mapping if NOT in cycling mode
 		-- and the new bufnr is not the current alternative slot.
@@ -120,7 +120,7 @@ history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_ma
 		-- Always update slots
 		triquetra.ternary_slot = triquetra.current_slot
 		triquetra.current_slot = new_filehash
-		routines.keep_older_secondary_note(triquetra, new_filehash, triquetra.secondary_slot)
+		routines.enforce_secondary_map_policy(triquetra, new_filehash, triquetra.secondary_slot)
 	end
 	if arriving then -- entering the current buffer again is no arrival, and keeps the last one
 		routines.seal_arrival(winid, triquetra)
