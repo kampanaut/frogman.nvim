@@ -1518,7 +1518,7 @@ spec: (D18, D22, D24) STATUS and the old project `CLAUDE.md` live in `archive/`,
 
 **T291 [char]** (D8, D13) README:15 and README:355 stay as written  
 → `eq({`  
-spec: (D8, D13) README:15 ("Closed buffers reopen when accessed through relationships") and README:565 ("Every time you jump to secondary…") stay as written. A doc check, matched by text.  
+spec: (D8, D13) README:15 ("Closed buffers reopen when accessed through relationships") and README:578 ("Every time you jump to secondary…") stay as written. A doc check, matched by text.  
 `tests/test_decisions.lua:873`
 
 ## tests/test_docs.lua (26 cases: 26 char)
