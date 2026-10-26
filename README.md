@@ -154,6 +154,19 @@ before it converts anything, so run it once as above. A file frogman's folder ha
 script names it. With `--session-dir` naming a folder of your own, the session files aren't moved. A load that finds
 its session's file still in cavediver's folder tells you to run the script.
 
+#### A config written for cavediver
+
+The old names are gone, with nothing standing in for them, so a config written for cavediver changes these once:
+- `require('cavediver')` becomes `require('frogman')`, the session manager's hooks included
+- the commands, `:CavediverClosed`, `:CavediverTrail`, `:CavediverWinbar` and the rest, become `:FrogmanClosed`,
+  `:FrogmanTrail`, `:FrogmanWinbar` and so on
+- the highlight groups of the trail and the closed lists, `CavediverTrail*`, become `FrogmanTrail*`
+- the filetypes, `cavediver-closed-lists`, `cavediver-primary-buffer-history` and `cavediver-trail`, become
+  `frogman-closed-lists`, `frogman-primary-buffer-history` and `frogman-trail`
+- the augroup, `cavediver`, becomes `frogman`
+
+The options `setup()` takes keep their names.
+
 ### nvim-cokeline setup
 
 The frogman plugin can work without the bufferline, but it reduces the experience a lot. 
