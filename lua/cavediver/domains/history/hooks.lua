@@ -39,6 +39,12 @@ historySM:on(states.ATTACHED, states.DETACHED, "detach_history", function(contex
 end, 2, true)
 
 
+-- No Name buffers deleted in this batch of events. One that's written under a name in the same batch
+-- (:w name) was renamed, not closed; anything else, like :e reusing an empty one, wasn't, and its
+-- close, made quietly at the delete, is recorded once the note goes.
+---@type table<Bufnr, { hash: Filehash, history: table, targets: table|nil }>
+local noname_deleted = {}
+
 historySM:on("*", "*", "handle_deletion", function(context, from, to)
 	-- Handle deletion immediately, regardless of state
 	-- print("FUCK")
@@ -50,15 +56,18 @@ historySM:on("*", "*", "handle_deletion", function(context, from, to)
 	local filehash = routines.get_hash_from_buffer(context.buf)
 	if filehash then -- if it's registered, then we untrack it. Ignore the untegistered, because they are unrecongised by BufEnter.
 		-- print("Deleting buffer: " .. context.buf .. " with filehash: " .. filehash .. "\n" .. debug.traceback())
-		if routines.track_closing_filehash(filehash) then
+		local note = noname_deleted[context.buf]
+		local closed, targets = routines.track_closing_filehash(filehash, note ~= nil)
+		if note then
+			note.targets = targets
+		end
+		if closed then
 			-- closed, it's still known, so its history stays; it leaves the bufferline.
 			routines.unregister_buffer(context.buf)
 			routines.update_buffer_history_ordered()
 			routines.update_buffer_history_ordered_nonharpooned()
-		else
-			routines.untrack_buffer(context.buf)
-			routines.unregister_buffer(context.buf)
 		end
+		-- not closed, an empty No Name buffer: its close untracked and forgot it already
 	end
 end, 0, true, states.mode.DELETE)
 
@@ -77,11 +86,6 @@ end, 3, true, navigationSMStates.mode.WINENTER)
 -- renames on their way: the old hash, kept from BufFilePre until the rename settles.
 ---@type table<Bufnr, { hash: Filehash, history: table|nil }>
 local renames = {}
-
--- No Name buffers deleted in this batch of events. One that's written under a name in the same batch
--- (:w name) was renamed, not closed; anything else, like :e reusing an empty one, wasn't.
----@type table<Bufnr, { hash: Filehash, history: table }>
-local noname_deleted = {}
 
 ---Settle a rename once the command that made it is over.
 ---
@@ -113,7 +117,8 @@ local function settle_rename(bufnr, rename)
 	if moved_from then
 		ledger.move("moved", { subject = rename.hash, name = old_name, words = moved_from:match("^NONAME_") and
 			"written as " .. new_label .. ": a move" or "renamed to " .. new_label .. ": a move" })
-	elseif routines.get_hash_from_buffer(bufnr) == rename.hash then
+	elseif routines.get_hash_from_buffer(bufnr) == rename.hash and routines.is_trackable(bufnr) then
+		-- a new name cavediver doesn't track is no copy: the old name is closed all the same, and its close says so
 		ledger.move("copied", { subject = rename.hash, name = old_name,
 			words = "renamed to " .. new_label .. ": a copy, " .. (old_name or "the old name") .. " is still on disk" })
 	end
@@ -124,7 +129,9 @@ local function settle_rename(bufnr, rename)
 	if routines.is_trackable(bufnr) and not routines.get_hash_from_buffer(bufnr) then
 		routines.register_buffer(bufnr) -- known by its new name, whatever the history state (a cycle).
 	end
+	-- the window that shows it, the current tab's first, then any tab's
 	local winid = vim.fn.bufwinid(bufnr)
+	winid = winid ~= -1 and winid or (vim.fn.win_findbuf(bufnr)[1] or -1)
 	if winid ~= -1 then
 		vim.api.nvim_win_call(winid, function()
 			historySM:to(historySM:state(), { buf = bufnr }, states.mode.UPDATE)
@@ -146,12 +153,12 @@ local M = {}
 ---@return nil
 function M.init_autocmds(group)
 	-- where you are can change without cavediver seeing it: the label is read again at these
-	-- settle points, and the files gone from disk are marked with it.
+	-- settle points, and the files gone from disk are marked with it, checked as a tick checks them.
 	vim.api.nvim_create_autocmd({ "FocusGained", "ShellCmdPost", "TermLeave", "DirChanged" }, {
 		group = group,
 		callback = function()
 			if not routines.refresh_label() then
-				routines.mark_missing(data.last_label)
+				routines.mark_missing(data.last_label, true)
 			end
 		end,
 	})
@@ -181,9 +188,21 @@ function M.init_autocmds(group)
 			local path = hash and routines.get_filepath_from_hash(hash)
 			if path and path:match("^NONAME_") then
 				noname_deleted[args.buf] = { hash = hash, history = routines.history_of(hash) }
-				require('cavediver.settle').later("No Name note", function()
+				local function drop_note()
+					if vim.fn.state("x") ~= "" then
+						-- still inside an autocommand, a write's own BufWritePre waiting among them: the
+						-- batch isn't over, so the write may yet claim the note. Asked again a moment later,
+						-- by a timer: queued again at once, it would run at once, inside the same wait.
+						vim.defer_fn(function() require('cavediver.settle').later("No Name note", drop_note) end, 10)
+						return
+					end
+					local note = noname_deleted[args.buf]
 					noname_deleted[args.buf] = nil
-				end)
+					if note and note.targets then
+						routines.ledger_record_close(note.hash, note.targets) -- no write claimed it: a close after all
+					end
+				end
+				require('cavediver.settle').later("No Name note", drop_note)
 			end
 			historySM:to(historySM:state(), { buf = args.buf }, states.mode.DELETE)
 		end,
@@ -208,6 +227,7 @@ function M.init_autocmds(group)
 				-- Only process normal file buffers with valid filenames: an arrival in the window that shows
 				-- it, or just registered when none does, so a write of buffers never entered moves no slots
 				local winid = vim.fn.bufwinid(args.buf)
+				winid = winid ~= -1 and winid or (vim.fn.win_findbuf(args.buf)[1] or -1) -- or one in another tab
 				if winid ~= -1 then
 					vim.api.nvim_win_call(winid, function()
 						historySM:to(historySM:state(), { buf = args.buf }, states.mode.UPDATE)

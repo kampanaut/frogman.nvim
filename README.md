@@ -19,7 +19,7 @@ This is the kind of problem this plugin solves for you. We introduce mainly **Tr
 ## New Feature
 
 1. **Multi-version primary buffer**
-    You can backtrack now your previous primary buffer. Every time you set a new buffer as a primary, it is put in the first of a queue (primary_buffers). The first one is always the primary, the others are the "previous".
+    You can backtrack now your previous primary buffer. Every time you set a new buffer as a primary, it is put in the first of a queue (primary_buffer). The first one is always the primary, the others are the "previous".
     - You can now then manage it with a window pop-up, it is editable like that in harpoon window. 
         - Delete-yank and then paste it in another place to reorder... 
         - Or just delete, to really remove it.
@@ -27,8 +27,8 @@ This is the kind of problem this plugin solves for you. We introduce mainly **Tr
             - The system validates if it is readable. If it is readable, it registers it.
             - If not, then vim.notify() an error for that line, the other lines still get saved.
         - If you press enter while under a line (in normal mode), that line will be put on top which will be promoted as the current primary buffer.
-    - The default keybind `<m-;><m-f>` will now just always select the first element `primary_buffers[1]`
-    - If you disable primary buffer, you can still use the pop-up window to set a primary buffer from the queue, but `<m-;><m-f>` will just act like `<m-f>`, until you set it to active again..
+    - The default keybind `<m-;><m-f>` will now just always select the first element `primary_buffer[1]`
+    - If you disable primary buffer, `<m-;><m-f>` will just act like `<m-f>`, until you set it to active again. Setting a new primary from the pop-up window (a new first line, saved) sets it active again too.
     - You can open the popup floating window with `<m-;>F`
 
 
@@ -135,6 +135,17 @@ and `:mksession!` before you `:source` another one.
 
 Call `save_session()` yourself, like on `VimLeavePre`, and `load_session()` when you want it back.
 
+#### Session files from before encryption
+
+Convert them once, with none of your config loaded:
+
+```sh
+nvim --clean -l <cavediver's directory>/scripts/migrate_sessions.lua
+```
+
+A load that finds an old file tells you the command with the path for your install. `--dry-run` shows what would
+change. If your setup sets them, pass `--session-dir`, `--resession-dir` and `--libcrypto-path` too.
+
 ### nvim-cokeline setup
 
 The cavediver plugin can work without the bufferline, but it reduces the experience a lot. 
@@ -234,7 +245,7 @@ to your current buffer.
             end
             return cached
         end
-    end
+    end,
     dependencies = {
         "nvim-lua/plenary.nvim", -- Required for v0.4.0+
         "nvim-tree/nvim-web-devicons", -- If you want devicons
@@ -254,7 +265,8 @@ You can start by just modifying the base colors
 local defaults = {
     session_dir = vim.fn.stdpath("data") .. "/cavediver/sessions/",
     -- libcrypto_path: OpenSSL's libcrypto, a full path or a name the system finds, tried before
-    -- cavediver's own list (nil tries the list alone); read once, the first time it's needed
+    -- cavediver's own list (nil tries the list alone); ~ and $HOME in it are expanded. It's read
+    -- the first time it's needed, and again only when no libcrypto loaded and it has changed since
     bufferline = {
         history_view = "global" -- "global" | "window"
     },
@@ -468,6 +480,7 @@ local defaults = {
             pick = "<M-e>", -- the primary pop-up's: add files through the picker
             search = "s", -- the trail's: search every page for a name
             search_word = "*", -- the trail's: search for the name under the cursor
+            write = "<C-s>", -- the closed lists' and the primary pop-up's: write the edits
         },
     },
     -- the ledger: `ring`, how many of the last steps are kept in memory, and `dump`, whether something
@@ -518,7 +531,7 @@ local defaults = {
 
 ### Window Triquetras
 
-The cavediver plugin tracks windows showing regular file buffers. When a window switches to a non-regular buffer then it will keep the triquetra associated to that window, and the current slot stays on the file you were on, so `<m-f>` brings you back to it. The winbar shows it like `main.lua ← [help]`. Each window has their own triquetra. 
+The cavediver plugin tracks windows showing regular file buffers. When a window switches to a non-regular buffer then it will keep the triquetra associated to that window, and the current slot stays on the file you were on, so `<m-f>` brings you back to it. The winbar shows it like `main.lua ← [15 help]`, the visited buffer's number first. Each window has their own triquetra. 
 
 A window triquetra is a data structure that stores the window's triquetra slots: current buffer, ternary buffer, secondary buffer, and primary buffer. Each type of slot has their own means of updating themselves.
 

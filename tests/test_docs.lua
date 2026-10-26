@@ -94,7 +94,7 @@ T['D26 [char] README\'s triquetra sentence follows the visiting rule, and "tique
 	local r = flat(read(README))
 	local new = 'When a window switches to a non-regular buffer then it will keep the triquetra associated to that '
 		.. 'window, and the current slot stays on the file you were on, so `<m-f>` brings you back to it. '
-		.. 'The winbar shows it like `main.lua ← [help]`.'
+		.. 'The winbar shows it like `main.lua ← [15 help]`, the visited buffer\'s number first.'
 	eq({ has(r, new), has(r, 'it will clean the triquetra'), has(r, 'tiquetra') }, { true, false, false })
 end
 
@@ -236,6 +236,20 @@ T['A26 [char] README says how to read a replay\'s line'] = function()
 		has(r, 'When it\'s done, it says what it did in one line, such as `cavediver: replayed 12 steps, 5 driven, 5 matching, 0 resynced`'),
 		has(r, 'a resync is a step the replay first put back where the dump says it began'),
 	}, { true, true })
+end
+
+T['T592 [char] README\'s Lua blocks each parse'] = function()
+	local r = read(README)
+	local broken = {}
+	local n = 0
+	for block in r:gmatch('```lua[^\n]*\n(.-)\n```') do
+		n = n + 1
+		-- a statement, an expression, or a table's items, as a lazy.nvim spec is
+		if not (loadstring(block) or loadstring('return ' .. block) or loadstring('return {' .. block .. '}')) then
+			table.insert(broken, (block:match('^[^\n]*')))
+		end
+	end
+	eq({ some = n > 0, broken = broken }, { some = true, broken = {} })
 end
 
 -- The engine (Q20) ----------------------------------------------------------

@@ -131,7 +131,8 @@ local function scratch_reader(path, key, filehash)
 		if not plaintext or not ok or type(text) ~= "table" then
 			if not said then -- said once for the text, however often it's read
 				said = true
-				vim.notify("cavediver: a No Name text's file failed its integrity check (edited or corrupted), so that text is lost.", vim.log.levels.WARN)
+				vim.notify(bytes == nil and "cavediver: a No Name text's file is missing, so that text is lost."
+					or "cavediver: a No Name text's file failed its integrity check (edited or corrupted), so that text is lost.", vim.log.levels.WARN)
 			end
 			return nil
 		end
@@ -434,24 +435,6 @@ local function serialise_window_relationships(outsiders, tabpage)
 	local compressed = {}
 	local entry_wins = {} -- the window each entry was written from
 
-	local function get_keys(tbl)
-		local keys = {}
-		for k, _ in pairs(tbl) do
-			table.insert(keys, k)
-		end
-		return keys
-	end
-
-	---@type Filehash[]
-	local bufnr_list = get_keys(history.get_buffer_history())
-	table.sort(bufnr_list)
-
-	---@type WinId[]>
-	local winid_list = get_keys(window.get_window_relationships())
-	table.sort(winid_list)
-
-	---@type table<WinId, boolean>
-
 	local compressed_index = 1
 	for _, winid in pairs(tabpage and vim.api.nvim_tabpage_list_wins(tabpage) or vim.api.nvim_list_wins()) do
 		if window.data.crux[winid] ~= nil then -- yes, a direct existence check sorry for breaking encapsulation
@@ -612,9 +595,10 @@ end
 
 ---Check if a pool owns an open No Name text.
 ---
----A pool owns the texts its tabs visited, those a window of its tabs shows or has in its history.
----The editor's pool also owns the ones no tab session's tab visited. With no pool, every text is
----owned, as the whole editor's session holds them all while it covers every tab.
+---A pool owns the texts its tabs visited, those a window of its tabs shows or has in its history, and
+---a tab session's pool the ones its visits hold, once the window that visited one has closed. The
+---editor's pool also owns the ones no tab session visited, by its windows or its visits. With no
+---pool, every text is owned, as the whole editor's session holds them all while it covers every tab.
 ---
 ---@param owner Pool|nil The pool (nil = every text)
 ---@param filehash Filehash The No Name buffer's hash
@@ -630,12 +614,17 @@ local function owned(owner, filehash)
 		end
 	end
 	if owner.id ~= "" then
-		return false
+		return owner.visits[filehash] ~= nil -- visited in its tab, though the window that did is gone
 	end
 	for tabpage, _ in pairs(visited) do
 		local pool = history.routines.pool_of_tab(tabpage)
 		if pool.id ~= "" and not pool.detached then
 			return false -- a tab session's text
+		end
+	end
+	for id, pool in pairs(history.routines.pools()) do
+		if id ~= "" and not pool.detached and pool.visits[filehash] then
+			return false -- a tab session's text, by its visits
 		end
 	end
 	return true
@@ -685,7 +674,7 @@ end
 ---Each file is encrypted, and the main file keeps its name. A file is named after its text, so
 ---only a text that changed is written. A closed text never read since the load keeps its file,
 ---unless it was saved under another session or key, when it's read, written again here and kept
----read. One whose file has gone, swept by another editor's save, is dropped.
+---read. One whose file has gone, swept by another editor's save, is dropped, in memory too.
 ---
 ---@param texts table<Filehash, NoNameBufferContent> The texts, `reopen` marking the open ones
 ---@param key string The session's key
@@ -709,7 +698,10 @@ local function write_noname_texts(texts, key, scratch_dir)
 					history.routines.discard_from_pools(filehash)
 				end
 			elseif vim.uv.fs_stat(scratch_dir .. name) == nil then
-				text = nil -- its file is gone, swept by another editor's save: nothing is left to keep
+				-- its file is gone, swept by another editor's save: nothing is left to keep, here or in memory
+				text = nil
+				history.data.noname_content[filehash] = nil
+				history.routines.discard_from_pools(filehash)
 			end
 		end
 		if text and text.lines then
@@ -766,7 +758,9 @@ end
 local function reopen_noname_buffers(noname_content, key, scratch_dir)
 	for filehash, entry in pairs(noname_content) do
 		local filepath = history.get_filepath_from_hash(filehash)
-		if entry.reopen and filepath then
+		-- one memory holds closed stays closed: a session open in another tab may have closed it since
+		-- its file was written
+		if entry.reopen and filepath and not history.routines.is_filehash_closed(filehash) then
 			local bufnr = noname_already_back(filehash)
 			local content = bufnr == nil and scratch_reader(scratch_dir .. entry.scratch, key, filehash)()
 			if bufnr == nil and not content then
@@ -816,7 +810,6 @@ local function load_closed_buffers(closed_buffers, noname_content, key, scratch_
 	end
 	local at = 1
 
-	-- TODO: Open closed no name buffers with their content.
 	if closed_buffers == nil then
 		return
 	end
@@ -863,8 +856,8 @@ end
 
 ---Get a session's file path from its directory and name.
 ---
----The file is named after a hash of the two, in the configured session directory, which is made
----when it's missing.
+---The file is named after a hash of the two, in the configured session directory. Nothing is made:
+---the directory comes with the first write into it.
 ---
 ---@param directory string The session's directory
 ---@param name string|nil The session's name (nil for a nameless save)
@@ -877,11 +870,8 @@ local function get_session_filepath(directory, name)
 	-- the separator keeps a session "a" in /proj apart from a nameless save in /proja
 	local session_hash = vim.fn.sha256(name and (directory .. "\n" .. name) or directory)
 
-	-- TODO: implement configurable path for session storage
 	local session_dir = configs.session_dir
 	local project_filepath = session_dir .. session_hash
-
-	vim.fn.mkdir(session_dir, "p")
 
 	return project_filepath
 end
@@ -896,6 +886,10 @@ local keys, key_of = {}, {}
 -- read name. A sweep takes one of these at once, and another editor's, written a moment before its own
 -- main file lands, only once it's a minute old.
 local own_files = {}
+
+-- the No Name texts each main file held at its last write, by the file's path (path → hash → true),
+-- so an edit also reaches a file that holds a text no longer its own, which is then written without it
+local noname_held = {}
 
 ---Get a sealed file's key, made once for its directory and salt.
 ---
@@ -1163,22 +1157,31 @@ local function join_detached(tabpage, pool)
 	pool.tabs[tabpage] = true
 end
 
+---Get the names of the detached lists in memory.
+---
+---@return table<string, boolean> names Each detached list's name in memory → true
+local function detached_tab_sessions()
+	local names = {}
+	for _, pool in pairs(history.data.pools) do
+		if pool.detached then
+			names[pool.name] = true
+		end
+	end
+	return names
+end
+
 ---Get the next free name for a detached list of a session.
 ---
 ---The names go `t_DETACHED`, then `t_DETACHED_2`, and so on, after the session's name (or its
 ---directory's), counting the names in memory and in the whole editor's file.
 ---
 ---@param pool Pool The session's pool
+---@param in_file table[] The detached lists the whole editor's file holds (`file_detached_lists()`)
 ---@return string label The free name
-local function detached_label(pool)
+local function detached_label(pool, in_file)
 	local base = (pool.name or vim.fn.fnamemodify(pool.directory or "", ":t")) .. "_DETACHED"
-	local taken = {}
-	for _, other in pairs(history.data.pools) do
-		if other.detached then
-			taken[other.name] = true
-		end
-	end
-	for _, list in ipairs(file_detached_lists()) do
+	local taken = detached_tab_sessions()
+	for _, list in ipairs(in_file) do
 		taken[list.label] = true
 	end
 	local label, n = base, 1
@@ -1198,9 +1201,11 @@ end
 ---@param tabpage integer The tab the session is in now
 ---@return nil
 local function push_out(pool, tabpage)
+	local in_file -- the whole editor's file, read once however many tabs are pushed out
 	for other, _ in pairs(vim.deepcopy(pool.tabs)) do
 		if other ~= tabpage and vim.api.nvim_tabpage_is_valid(other) then
-			local detached = new_detached_pool(detached_label(pool), pool.id)
+			in_file = in_file or file_detached_lists()
+			local detached = new_detached_pool(detached_label(pool, in_file), pool.id)
 			detached.closed, detached.times, detached.visits = vim.deepcopy(pool.closed), vim.deepcopy(pool.times), vim.deepcopy(pool.visits)
 			join_detached(other, detached)
 			history.routines.pool_changed(detached)
@@ -1222,7 +1227,8 @@ end
 ---@return table[] lists The detached lists to write
 ---@return table<string, boolean> live The names of the lists in memory
 local function detached_lists(old, windows_of)
-	local lists, live, old_windows, pools = {}, {}, {}, {}
+	local lists, old_windows, pools = {}, {}, {}
+	local live = detached_tab_sessions()
 	for _, list in ipairs(old and old.detached or {}) do
 		old_windows[list.label] = list.windows
 	end
@@ -1233,7 +1239,6 @@ local function detached_lists(old, windows_of)
 	end
 	table.sort(pools, function(a, b) return a.id < b.id end)
 	for _, pool in ipairs(pools) do
-		live[pool.name] = true
 		local closed, times = serialise_closed_buffers({ pool })
 		table.insert(lists, {
 			label = pool.name, of = pool.of, closed = closed, closed_times = times,
@@ -1411,6 +1416,9 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 	for _, filehash in ipairs(saved_data.unwritten or {}) do
 		history.data.unwritten[filehash] = true
 	end
+	-- the tab's windows' histories and the pool's visits were replaced in place, so the next view is
+	-- built afresh, even for the window the last one was built for.
+	history.routines.construct_crux(nil)
 	return matched
 end
 
@@ -1446,15 +1454,18 @@ function M.load_history(cwd, name)
 		saved_data, key, problem, fixed = read_session_file(file_path, cwd)
 	end
 	prepared = nil
+	-- the migration script as it runs in this install: its path in the plugin's directory, on the runtimepath
+	local migrate = "nvim --clean -l " ..
+		(vim.api.nvim_get_runtime_file("scripts/migrate_sessions.lua", false)[1] or "scripts/migrate_sessions.lua")
 	if problem == "newer" then
 		vim.notify("cavediver: this session's file was made by a newer cavediver. It's left alone, and the session starts fresh.", vim.log.levels.WARN)
 	elseif problem == "unencrypted" then
-		vim.notify("cavediver: this session's file is in the format from before encryption. Run the migration script, scripts/migrate_sessions.lua, to convert it; the session starts fresh.", vim.log.levels.WARN)
+		vim.notify("cavediver: this session's file is in the format from before encryption. Run the migration script to convert it, " .. migrate .. "; the session starts fresh.", vim.log.levels.WARN)
 	elseif problem == "integrity" then
 		vim.notify("cavediver: this session's file failed its integrity check (edited or corrupted). The session starts fresh, and the next save replaces the file.", vim.log.levels.WARN)
 	elseif problem == "missing" and vim.uv.fs_stat(configs.session_dir .. vim.fn.sha256(cwd .. "\n"):sub(1, 32) .. ".json") then
 		-- a file named the way it was before sessions had names and were encrypted: left as it is
-		vim.notify("cavediver: this session has a file from before encryption. Run the migration script, scripts/migrate_sessions.lua, to convert it; the session starts fresh.", vim.log.levels.WARN)
+		vim.notify("cavediver: this session has a file from before encryption. Run the migration script to convert it, " .. migrate .. "; the session starts fresh.", vim.log.levels.WARN)
 	end
 	if saved_data and not (saved_data.paths and saved_data.buffers and saved_data.windows) then
 		saved_data = nil
@@ -1575,6 +1586,16 @@ function M.load_history(cwd, name)
 		for _, triquetra in pairs(window.data.crux) do
 			window.routines.check_notes_under_current(triquetra)
 		end
+		if not window.data.crux[window.data.last_valid_window] then
+			-- the focused window has none (a help or quickfix window): the last valid window is one that has,
+			-- as a fresh start's is
+			for _, winid in ipairs(vim.api.nvim_list_wins()) do
+				if window.data.crux[winid] then
+					window.data.last_valid_window = winid
+					break
+				end
+			end
+		end
 	else
 		populate_history()
 		data.editor_session, data.unnamed = { name = name, directory = cwd }, nil
@@ -1649,28 +1670,39 @@ end
 local function commit_session(file_path, key, salt, storage, kept)
 	enforce_session_file_policy(storage) -- whichever writer made the data, the file keeps its rules
 	M.seal_file(file_path, key, salt, vim.json.encode(storage))
+	noname_held[file_path] = {}
+	for filehash, _ in pairs(storage.noname_content or {}) do
+		noname_held[file_path][filehash] = true
+	end
 
 	local scratch_dir = file_path .. ".d/"
 	for name, _ in pairs(kept) do
 		own_files[scratch_dir .. name] = true
+	end
+	-- a file a closed No Name text held unread still reads from stays until that text is read
+	local held = {}
+	for _, text in pairs(history.data.noname_content) do
+		if text.lines == nil and text.source then
+			held[text.source] = true
+		end
 	end
 	if vim.fn.isdirectory(scratch_dir) == 1 then
 		for _, entry in ipairs(vim.fn.readdir(scratch_dir)) do
 			local path = scratch_dir .. entry
 			-- this editor's own goes at once; another editor's, written a moment ago, once a minute old
 			local stat = not kept[entry] and not own_files[path] and vim.uv.fs_stat(path)
-			if not kept[entry] and (own_files[path] or (stat and stat.mtime.sec <= os.time() - 60)) then
+			if not kept[entry] and not held[path] and (own_files[path] or (stat and stat.mtime.sec <= os.time() - 60)) then
 				vim.uv.fs_unlink(path)
 				own_files[path] = nil
 			end
 		end
 	end
-	-- a crash's leftovers, a minute old or more: a younger one is another editor's write in flight
-	local base = vim.fn.fnamemodify(file_path, ":t")
-	for _, entry in ipairs(vim.fn.readdir(configs.session_dir)) do
-		local stat = entry:sub(1, #base + 4) == base .. ".tmp" and vim.uv.fs_stat(configs.session_dir .. entry)
+	-- a crash's leftovers, a minute old or more: a younger one is another editor's write in flight. They're
+	-- found by name, so the session directory isn't listed
+	for _, leftover in ipairs(vim.fn.glob(vim.fn.escape(file_path, "\\*?[]{}") .. ".tmp*", true, true)) do
+		local stat = vim.uv.fs_stat(leftover)
 		if stat and stat.mtime.sec <= os.time() - 60 then
-			vim.uv.fs_unlink(configs.session_dir .. entry)
+			vim.uv.fs_unlink(leftover)
 		end
 	end
 end
@@ -1834,10 +1866,29 @@ local trail_warned = false
 ---@type fun(file_path: string, steps: CavediverLedgerStep[])
 local settle_days
 
+---Check if a step read from a trail page stays beside the day's steps in memory.
+---
+---This editor's steps stay when the ledger let them go, and the ones still in memory come from
+---there instead. Another editor's stay when it started before this one; a later editor's are left
+---to it, the last writer winning. A step with no mark, from a page written before steps had one,
+---goes by its own time.
+---
+---@param step table A step as its page holds it
+---@param in_memory table<integer, boolean> The numbers of this editor's steps of that day in memory
+---@return boolean stays True if it stays
+local function page_keeps(step, in_memory)
+	local ledger = require('cavediver.domains.ledger')
+	if ledger.of_this_editor(step) then
+		return not in_memory[step.seq]
+	end
+	local began = type(step.epoch) == "string" and tonumber(step.epoch:match("^([%d.]+)")) or step.time
+	return type(began) == "number" and began < ledger.data.started
+end
+
 ---Write the trail pages a session's file keeps.
 ---
 ---Writes a page for each day the ledger holds steps of the session: the steps earlier editors wrote
----that day and this editor's the ledger let go (`paged_out`), then this editor's in memory. A day
+---that day and this editor's the ledger let go (`page_keeps`), then this editor's in memory. A day
 ---with nothing new isn't written again, and earlier days' pages stay as they are.
 ---
 ---@param file_path string The session's main file
@@ -1868,10 +1919,13 @@ local function write_trail_pages(file_path, old_trail, owner, session, key, kept
 		if #mine > 0 and not (written and written.key == key and written.count == count and trail[day] == name) then
 			if not (written and written.key == key) then
 				-- what editors before this one wrote that day stays, and so do this editor's the ledger let go
-				local receipt = ledger.data.paged_out[day] or {}
+				local in_memory = {}
+				for _, step in ipairs(ledger.trail(day)) do
+					in_memory[step.seq] = true
+				end
 				local before = {}
 				for _, step in ipairs(trail[day] and read_page(scratch_dir .. trail[day], key, day) or {}) do
-					if type(step.time) == "number" and (step.time < ledger.data.started or receipt[step.seq] == step.time) then
+					if page_keeps(step, in_memory) then
 						table.insert(before, step)
 					end
 				end
@@ -1880,8 +1934,9 @@ local function write_trail_pages(file_path, old_trail, owner, session, key, kept
 			local page = vim.list_slice(written.before, 1, #written.before)
 			for _, step in ipairs(mine) do
 				table.insert(page, {
-					seq = step.seq, time = step.time, cause = step.cause, trigger = step.trigger, labels = step.labels,
-					pool = step.pool, names = step.names, events = step.events, moves = step.moves, torn = step.torn,
+					seq = step.seq, time = step.time, epoch = step.epoch, cause = step.cause, trigger = step.trigger,
+					labels = step.labels, pool = step.pool, names = step.names, events = step.events, moves = step.moves,
+					torn = step.torn,
 				})
 			end
 			vim.fn.mkdir(scratch_dir, "p", 448) -- 0700
@@ -2047,6 +2102,10 @@ end
 -- tab closed, waiting for the next tick (pool id → pool)
 local dirty, writing, generation, quiet, told, closing = {}, false, 0, nil, {}, {}
 
+-- the No Name texts whose sessions an edit has marked since the records were last written: the next
+-- edit of one finds them marked already (hash → true)
+local noname_edited = {}
+
 ---Get the whole editor's session, if there's one.
 ---
 ---It covers every tab, so every pool, until tab sessions start after its last save or load. From
@@ -2066,6 +2125,9 @@ end
 
 -- what the last look at the whole editor's file found, for an entry moved out of a list there
 local file_view = nil
+-- each No Name text's first line and filetype on a list in the file alone, by its file: a file's name
+-- follows its text, so one read stands for every draw, and a lost one is said once
+local file_only_texts = {}
 
 ---Get the detached lists the whole editor's file holds alone, as the closed lists show them.
 ---
@@ -2086,20 +2148,19 @@ function M.file_only_lists()
 	end
 	local scratch_dir = file_path .. ".d/"
 	file_view = { paths = saved.paths or {}, noname_content = saved.noname_content or {}, key = key, scratch_dir = scratch_dir }
-	local in_memory, lists = {}, {}
-	for _, pool in pairs(history.data.pools) do
-		if pool.detached then
-			in_memory[pool.name] = true
-		end
-	end
+	local in_memory, lists = detached_tab_sessions(), {}
 	for _, list in ipairs(saved.detached) do
 		if not in_memory[list.label] then
 			local texts = {}
 			for _, filehash in ipairs(list.closed or {}) do
 				local entry = file_view.noname_content[filehash]
 				if entry then
-					local text = scratch_reader(scratch_dir .. entry.scratch, key, filehash)()
-					texts[filehash] = { first = text and text.lines and text.lines[1] or "", filetype = text and text.filetype }
+					local path = scratch_dir .. entry.scratch
+					if file_only_texts[path] == nil then
+						local text = scratch_reader(path, key, filehash)()
+						file_only_texts[path] = { first = text and text.lines and text.lines[1] or "", filetype = text and text.filetype }
+					end
+					texts[filehash] = file_only_texts[path]
 				end
 			end
 			table.insert(lists, { label = list.label, closed = list.closed or {}, times = list.closed_times or {}, paths = file_view.paths, texts = texts })
@@ -2123,12 +2184,7 @@ function M.file_only_closed()
 	if not saved or not saved.detached then
 		return closed
 	end
-	local in_memory = {}
-	for _, pool in pairs(history.data.pools) do
-		if pool.detached then
-			in_memory[pool.name] = true
-		end
-	end
+	local in_memory = detached_tab_sessions()
 	for _, list in ipairs(saved.detached) do
 		if not in_memory[list.label] then
 			for _, filehash in ipairs(list.closed or {}) do
@@ -2226,12 +2282,22 @@ end
 ---@return nil
 settle_days = function(file_path, steps)
 	local ledger = require('cavediver.domains.ledger')
-	for _, step in ipairs(steps or {}) do
-		step.written_to = step.written_to or {}
-		step.written_to[file_path] = true
-	end
 	local today, open = os.date("%Y-%m-%d"), ledger.data.open
+	for _, step in ipairs(steps or {}) do
+		if step ~= open then -- the open step may make more moves, which no page has yet
+			step.written_to = step.written_to or {}
+			step.written_to[file_path] = true
+		end
+	end
+	local past = false
+	for _, day in ipairs(ledger.trail_days()) do
+		past = past or day < today
+	end
+	if not past then
+		return -- no day to let go
+	end
 	local open_day = open and os.date("%Y-%m-%d", math.floor(open.time))
+	local unclaimed = whole_editor_session() == nil
 	local ringed = {}
 	for _, step in ipairs(ledger.steps()) do
 		ringed[step] = true
@@ -2243,8 +2309,13 @@ settle_days = function(file_path, steps)
 	end
 	for _, day in ipairs(ledger.trail_days()) do
 		local settled = day < today and day ~= open_day
-		for _, step in ipairs(settled and ledger.trail(day) or {}) do
+		local day_steps = settled and ledger.trail(day) or {}
+		-- newest first: a day with a step still in the ring can't go, and those are its newest. A step made
+		-- before any whole-editor session waits to be claimed by the first one, so its day stays too.
+		for i = #day_steps, 1, -1 do
+			local step = day_steps[i]
 			settled = not ringed[step] and step.written_to ~= nil and next(step.written_to) ~= nil
+				and not (unclaimed and step.session == nil)
 			for _, session in ipairs(settled and sessions or {}) do
 				if not step.written_to[session.file] and #steps_kept(session.owner, { step }, session.key) > 0 then
 					settled = false
@@ -2379,6 +2450,7 @@ function M.write_records(all)
 	if not writing or require('cavediver.domains.storage.sm'):state() ~= "idle" then
 		return
 	end
+	noname_edited = {} -- an edit from here on is a new one, its sessions worked out again
 	if all then
 		for _, pool in pairs(closing) do
 			close_now(pool)
@@ -2418,24 +2490,35 @@ function M.records_changed(id)
 		end
 	end)
 	quiet = quiet or vim.uv.new_timer()
-	quiet:start(1000, 0, vim.schedule_wrap(function()
-		if mine == generation then
+	local function second_over()
+		if mine == generation and next(dirty) ~= nil then
 			M.write_records()
+			-- changes kept coming: another second, so the next one isn't taken for the first after a quiet
+			-- spell and written at once
+			quiet:start(1000, 0, vim.schedule_wrap(second_over))
 		end
-	end))
+	end
+	quiet:start(1000, 0, vim.schedule_wrap(second_over))
 end
 
 ---Mark changed the sessions whose files hold an edited No Name text, and no other.
 ---
 ---A session's file holds the texts its save would write: every text while the whole editor's
 ---session covers every tab, and otherwise the texts its list owns. So the edit is written with those
----sessions' records, and no other session's file is read and written again for it.
+---sessions' records, and no other session's file is read and written again for it, but for one whose
+---last write held the text, which is then written without it. The sessions are worked out at the
+---text's first edit since the records were last written; the edits after it find them marked.
 ---
 ---@param filehash Filehash The No Name buffer's hash
 ---@return nil
 function M.enforce_noname_text_policy(filehash)
+	if noname_edited[filehash] then
+		return
+	end
+	noname_edited[filehash] = true
 	for _, session in ipairs(known_sessions()) do
-		if owned(session.owner, filehash) then
+		local held = noname_held[get_session_filepath(session.directory, session.name)]
+		if owned(session.owner, filehash) or (held and held[filehash]) then
 			M.records_changed(session.id)
 		end
 	end
@@ -2513,6 +2596,7 @@ function M.save_history(cwd, name, tab)
 	history.cleanup_system()
 
 	local file_path = get_session_filepath(cwd, name)
+	vim.fn.mkdir(configs.session_dir, "p") -- made at its first write, as the umask allows, before a text's folder in it
 	-- one read: the salt, the detached lists and the trail's pages come from the same bytes
 	local bytes = read_file(file_path)
 	local key, salt = session_key(file_path, cwd, bytes)
@@ -2663,8 +2747,9 @@ end
 ---
 ---The session's main file is read once, and each page once, when it's asked for, so a view reads
 ---only the pages it shows. A day's steps are the page's steps from editors before this one and this
----editor's the ledger let go (`paged_out`), then this editor's in memory that the session's file
----keeps, by the same rule its pages are written by.
+---editor's the ledger let go (`page_keeps`), then this editor's in memory that the session's file
+---keeps, by the same rule its pages are written by. The page is kept as read, and sorted at each
+---call, so a day the ledger lets go while the view is open is read from its page then.
 ---
 ---@return {days: fun(): string[], steps: fun(day: string): table[]} reader
 function M.trail_reader()
@@ -2697,18 +2782,19 @@ function M.trail_reader()
 	---Get a day's steps, oldest first, reading its page only the first time.
 	function reader.steps(day)
 		if pages[day] == nil then
-			local receipt = ledger.data.paged_out[day] or {}
-			local steps = {}
-			if trail[day] and key then
-				for _, step in ipairs(read_page(file_path .. ".d/" .. trail[day], key, day) or {}) do
-					if type(step.time) == "number" and (step.time < ledger.data.started or receipt[step.seq] == step.time) then
-						table.insert(steps, step)
-					end
-				end
-			end
-			pages[day] = steps
+			pages[day] = trail[day] and key and read_page(file_path .. ".d/" .. trail[day], key, day) or {}
 		end
-		return vim.list_extend(vim.list_slice(pages[day], 1, #pages[day]), steps_kept(owner, ledger.trail(day), whole))
+		local in_memory = {}
+		for _, step in ipairs(ledger.trail(day)) do
+			in_memory[step.seq] = true
+		end
+		local steps = {}
+		for _, step in ipairs(pages[day]) do
+			if page_keeps(step, in_memory) then
+				table.insert(steps, step)
+			end
+		end
+		return vim.list_extend(steps, steps_kept(owner, ledger.trail(day), whole))
 	end
 	---Check if a step of this editor's is the trail's, by the rule its pages are written by.
 	function reader.keeps(step)
@@ -2729,6 +2815,7 @@ end
 ---@return nil
 function M.write_session(directory, name, storage, texts)
 	local file_path = get_session_filepath(directory, name)
+	vim.fn.mkdir(configs.session_dir, "p") -- made at its first write, as the umask allows, before a text's folder in it
 	local key, salt = session_key(file_path, directory, read_file(file_path))
 	local noname_content, kept = write_noname_texts(texts, key, file_path .. ".d/")
 	storage.noname_content = noname_content

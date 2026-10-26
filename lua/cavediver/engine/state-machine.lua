@@ -343,7 +343,7 @@ end
 ---@return nil
 function StateMachine:off(from_state, to_state, name)
 	if self.hooks[name] == nil then
-		error("Cannot remove hook with name '" .. name .. "': not found", vim.log.levels.WARN)
+		error("Cannot remove hook with name '" .. name .. "': not found", 2) -- the caller's line
 	end
 
 	---@type transitionPattern
@@ -398,7 +398,7 @@ end
 function StateMachine:enable_hook(name)
 	helper.validate_param(name, "name", "string", false)
 	if self.hooks[name] == nil then
-		error("Cannot enable hook: '" .. name .. "': not found", vim.log.levels.WARN)
+		error("Cannot enable hook: '" .. name .. "': not found", 2) -- the caller's line
 	end
 
 	self.hooks[name].enabled = true
@@ -415,7 +415,7 @@ end
 function StateMachine:make_hook_critical(name)
 	helper.validate_param(name, "name", "string", false)
 	if self.hooks[name] == nil then
-		error("Cannot make hook critical: '" .. name .. "': not found", vim.log.levels.WARN)
+		error("Cannot make hook critical: '" .. name .. "': not found", 2) -- the caller's line
 	end
 
 	self.hooks[name].critical = true
@@ -431,7 +431,7 @@ end
 function StateMachine:disable_hook(name)
 	helper.validate_param(name, "name", "string", false)
 	if self.hooks[name] == nil then
-		error("Cannot disable hook: '" .. name .. "': not found", vim.log.levels.WARN)
+		error("Cannot disable hook: '" .. name .. "': not found", 2) -- the caller's line
 	end
 
 	self.hooks[name].enabled = false
@@ -498,7 +498,7 @@ function StateMachine:to(next_state, context_arg, mode)
 	helper.validate_param(context_arg, "context", "table", true)
 	helper.validate_mode_pattern(mode, self)
 	if not self:is_state_registered(next_state) then
-		error("Cannot transition to unregistered state: " .. next_state, vim.log.levels.ERROR)
+		error("Cannot transition to unregistered state: " .. next_state, 2) -- the caller's line
 	end
 
 	local context = vim.deepcopy(context_arg or {})

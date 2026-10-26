@@ -209,13 +209,20 @@ end
 
 -- T190: I23 after every action of seeded random walks (see K.walk).
 local WALKS, KEYS = 30, 20
+-- each walk set's key errors, as T190's walks counted them, for T335 to read (view .. multi → { errors, keys })
+local key_errors = {}
+
 local function walks(view, multi, seed0)
 	local errors, hook_failures, steps = 0, 0, 0
+	local first_keys
 	for i = 1, WALKS do
 		child.setup({ history_view = view })
 		local r = K.walk(child, seed0 + i, KEYS, multi)
 		steps = steps + r.steps
 		errors, hook_failures = errors + r.errors, hook_failures + r.hook_failures
+		if r.errors > 0 and not first_keys then
+			first_keys = { walk = i, keys = table.concat(r.actions, ', ') }
+		end
 		if r.brk then
 			local b = r.brk
 			error(string.format(
@@ -225,6 +232,7 @@ local function walks(view, multi, seed0)
 		end
 	end
 	MiniTest.add_note(string.format('%d steps, %d key errors, %d hook failures', steps, errors, hook_failures))
+	key_errors[view .. tostring(multi)] = { errors = errors, first = first_keys }
 end
 
 T['T190 [char] I23 over random walks: one window, global view'] = function() walks('global', false, 7000) end
@@ -234,12 +242,13 @@ T['T190 [char] I23 over random walks: several windows, window view'] = function(
 
 -- T335: the same walks, and no key raises anything: any route that reaches a throw is a bug (Q13).
 local function no_key_errors(view, multi, seed0)
-	for i = 1, WALKS do
-		child.setup({ history_view = view })
-		local r = K.walk(child, seed0 + i, KEYS, multi)
-		if r.errors > 0 then
-			error(string.format('%d key error(s) in walk %d\n  keys: %s', r.errors, i, table.concat(r.actions, ', ')), 0)
-		end
+	-- T190's walks are the same walks: their count is read, and they're walked here only when T335 runs alone
+	if not key_errors[view .. tostring(multi)] then
+		walks(view, multi, seed0)
+	end
+	local found = key_errors[view .. tostring(multi)]
+	if found.errors > 0 then
+		error(string.format('%d key error(s), the first in walk %d\n  keys: %s', found.errors, found.first.walk, found.first.keys), 0)
 	end
 end
 

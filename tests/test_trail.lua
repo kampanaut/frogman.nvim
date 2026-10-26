@@ -144,6 +144,17 @@ T['T426 [char] (A27) H and L go to the older and the newer page'] = function()
 		{ older = true, h_dim = 'CavediverTrailKeyOff', newer = true })
 end
 
+T['T630 [char] (A27) a view key set to false isn\'t named in the trail'] = function()
+	child.setup()
+	child.lua('_G.CDV_TEST.setup({ keymaps = { views = { previous_section = false, next_section = false } } })')
+	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
+	child.settle(100)
+	open_trail()
+	local header = lines()[1]
+	eq({ h = header:find('<<< H', 1, true) ~= nil, l = header:find('L >>>', 1, true) ~= nil, older = header:find('<<<', 1, true) ~= nil },
+		{ h = false, l = false, older = true })
+end
+
 T['T427 [char] (A27) brightness by surprise: a close onto other lists bright, the tab\'s own dim'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
@@ -637,8 +648,19 @@ T['T441 [char] (A27) gf acts on the name under the cursor and stays'] = function
 		local ft = vim.bo.filetype
 		return { ft = ft, line = vim.api.nvim_get_current_line() }
 	]])
-	eq({ file = file, window = window, list = list.ft == 'cavediver-closed-lists' and list.line:find('t', 1, true) ~= nil },
+	eq({ file = file, window = window, list = list.ft == 'cavediver-closed-lists' and vim.trim(list.line) == '≡t' },
 		{ file = { opened = 'c', stays = true }, window = true, list = true })
+end
+
+T['T634 [char] (A27) <CR> on a day\'s line does what gf does'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
+	child.settle(100)
+	local from = child.lua('return vim.api.nvim_get_current_win()')
+	open_trail()
+	cursor_to(line_with('↓ c.txt') or 1, 12)
+	type_in('<CR>')
+	eq({ opened = child.shown(from), stays = view() ~= vim.NIL }, { opened = 'c', stays = true })
 end
 
 T['T442 [char] (A27) the formatters replace a line\'s look'] = function()
@@ -753,10 +775,12 @@ T['T455 [char] (A27) a window\'s search follows the window'] = function()
 	child.cmd('vsplit')
 	child.steps({ ':e x' })
 	child.cmd('wincmd p')
+	local first = child.lua('return vim.api.nvim_get_current_win()')
 	child.steps({ ':e c', '<M-n>' })
 	child.cmd('wincmd p')
 	child.settle(200)
-	child.cmd('CavediverTrail win 2')
+	local n = child.lua('return vim.api.nvim_win_get_number(...)', { first })
+	child.cmd('CavediverTrail win ' .. n)
 	child.settle(100)
 	local header = lines()[1]
 	local row = line_with('┃', '⇤')
@@ -768,8 +792,9 @@ T['T455 [char] (A27) a window\'s search follows the window'] = function()
 	child.messages()
 	child.cmd('CavediverTrail win 9')
 	child.settle(100)
-	local said = #child.messages() > 0
-	eq({ header = header:find('win 2', 1, true) ~= nil and header:find('1 move over 1 day', 1, true) ~= nil, row = row ~= nil,
+	-- F133: the message the case is about, not any message
+	local said = #vim.tbl_filter(function(m) return m.msg:find("there's no window 9 in this tab.", 1, true) ~= nil end, child.messages()) > 0
+	eq({ header = header:find('win ' .. n, 1, true) ~= nil and header:find('1 move over 1 day', 1, true) ~= nil, row = row ~= nil,
 		star = star:find('1 move over 1 day', 1, true) ~= nil, said = said, searched = (lines()[1] or ''):find('⌕', 1, true) == nil },
 		{ header = true, row = true, star = true, said = true, searched = true })
 end
@@ -879,12 +904,15 @@ T['T519 [char] (A27) a window\'s search and gf stay in this editor'] = function(
 	cursor_to(row or 1, 12)
 	child.messages()
 	type_in('gf')
-	local gf = { stays = view() ~= vim.NIL and child.lua('return vim.api.nvim_get_current_win()') == view().win, said = #child.messages() > 0 }
+	local function earlier_said()
+		return #vim.tbl_filter(function(m) return m.msg:find('was a window in an earlier editor', 1, true) ~= nil end, child.messages()) > 0
+	end
+	local gf = { stays = view() ~= vim.NIL and child.lua('return vim.api.nvim_get_current_win()') == view().win, said = earlier_said() }
 	open_trail()
 	cursor_to(earlier_landing() or 1, 12)
 	child.messages()
 	type_in('*')
-	local star = { searched = (lines()[1] or ''):find('⌕', 1, true) ~= nil, said = #child.messages() > 0 }
+	local star = { searched = (lines()[1] or ''):find('⌕', 1, true) ~= nil, said = earlier_said() }
 	eq({ same = first == again, row = row ~= nil, header = header:find('1 move over 1 day', 1, true) ~= nil,
 		typed = typed:find('1 move over 1 day', 1, true) ~= nil, gf = gf, star = star },
 		{ same = true, row = true, header = true, typed = true, gf = { stays = true, said = true }, star = { searched = false, said = true } })

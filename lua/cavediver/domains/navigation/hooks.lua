@@ -35,6 +35,9 @@ navigationSM:on(states.CYCLING, states.NORMAL, "stop_cycling", function(context)
 	local ui = require('cavediver.domains.ui')
 	---@cast context transitionContextArg
 	history.sm:to(history.states.ATTACHED, { buf = context.history.cbufnr, pick = true }, history.states.mode.UPDATE)
+	if data.cycling_window then
+		history.data.cycling_origins[data.cycling_window] = nil -- the cycle's start, picked from now
+	end
 	data.cycling_window = nil
 	ui.sm.loop:to(ui.states.LOOP.SELF)
 end, 1, true, states.mode.CYCLE)

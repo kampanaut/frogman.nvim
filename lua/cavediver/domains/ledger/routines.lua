@@ -31,6 +31,9 @@ function M.now()
 end
 
 data.started = M.now()
+-- when this editor started, and a few digits of the machine's own counter, so two editors started in
+-- the same microsecond still differ
+data.epoch = string.format("%.6f-%04d", data.started, vim.uv.hrtime() % 10000)
 
 ---Get a file's name as the trail shows it.
 ---
@@ -104,21 +107,16 @@ end
 ---@param names table<Filehash, string> The names to fill in, a step's own
 ---@return CavediverLedgerRow|nil row The window's row, or nil if there's no triquetra for it
 local function row_of(winid, names)
-	local triquetra = winid and require('cavediver.domains.window.data').crux[winid]
-	if not triquetra then
+	-- the slots a move's row has, then the notes and what the window shows
+	local row = M.slots(winid)
+	if not row then
 		return nil
 	end
-	local row = {
-		c = triquetra.current_slot,
-		s = triquetra.secondary_slot,
-		t = triquetra.ternary_slot,
-		p = vim.deepcopy(triquetra.primary_buffer or {}),
-		on = triquetra.primary_enabled and true or false,
-		dtm = vim.deepcopy(triquetra.displacement_ternary_map or {}),
-		dsm = vim.deepcopy(triquetra.displacement_secondary_map or {}),
-		shows = vim.api.nvim_win_is_valid(winid)
-			and require('cavediver.domains.history').get_hash_from_buffer(vim.api.nvim_win_get_buf(winid)) or nil,
-	}
+	local triquetra = require('cavediver.domains.window.data').crux[winid]
+	row.dtm = vim.deepcopy(triquetra.displacement_ternary_map or {})
+	row.dsm = vim.deepcopy(triquetra.displacement_secondary_map or {})
+	row.shows = vim.api.nvim_win_is_valid(winid)
+		and require('cavediver.domains.history').get_hash_from_buffer(vim.api.nvim_win_get_buf(winid)) or nil
 	local function keep(filehash)
 		if filehash then
 			local base = filehash:gsub("%-swap$", "")
@@ -216,6 +214,7 @@ local function new_step(cause, trigger, winid)
 			and vim.api.nvim_tabpage_get_number(vim.api.nvim_win_get_tabpage(winid)) or nil,
 		pool = nil,
 		session = data.session, -- the whole editor's session then, whose file keeps it
+		epoch = data.epoch, -- the editor that made it, kept on its page too
 		names = {},
 		events = {},
 		moves = {},
@@ -632,17 +631,24 @@ end
 ---Let a past day's steps go from memory.
 ---
 ---Storage calls it once the day's steps are all on their pages, and the trail reads the day from
----there. Each step's number and time stay behind, in `paged_out`, so this editor's steps are told
----apart on a page from another editor's that share their numbers.
+---there, taking this editor's steps on a page by the mark each step carries (`M.of_this_editor()`).
 ---
 ---@param day string The day as `YYYY-MM-DD`
 ---@return nil
 function M.forget_day(day)
-	data.paged_out[day] = data.paged_out[day] or {}
-	for _, step in ipairs(data.days[day] or {}) do
-		data.paged_out[day][step.seq] = step.time
-	end
 	data.days[day] = nil
+end
+
+---Check if a step is this editor's.
+---
+---Every step carries the mark of the editor that made it, onto its trail page too, so the answer
+---holds whatever the clock does. A step with no mark, from a page written before steps had one, is
+---an earlier editor's.
+---
+---@param step CavediverLedgerStep The step
+---@return boolean mine True if this editor made it
+function M.of_this_editor(step)
+	return step.epoch ~= nil and step.epoch == data.epoch
 end
 
 ---Get the days the trail holds steps for.

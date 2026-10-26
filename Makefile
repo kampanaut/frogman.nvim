@@ -1,6 +1,6 @@
 NVIM ?= nvim
 RUN = tmp=$$(mktemp -d) && \
-	XDG_CONFIG_HOME=$$tmp/config XDG_DATA_HOME=$$tmp/data XDG_STATE_HOME=$$tmp/state XDG_CACHE_HOME=$$tmp/cache \
+	CDV_TEST_SANDBOX=$$tmp XDG_CONFIG_HOME=$$tmp/config XDG_DATA_HOME=$$tmp/data XDG_STATE_HOME=$$tmp/state XDG_CACHE_HOME=$$tmp/cache \
 	$(NVIM) --headless --noplugin -u scripts/minimal_init.lua -c "lua MiniTest.run(dofile('scripts/test_opts.lua'))"; \
 	status=$$?; rm -rf $$tmp; exit $$status
 

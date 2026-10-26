@@ -195,6 +195,10 @@ T['T143 [char] a save into a read-only directory throws to the caller'] = functi
 	local s = shared()
 	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
 	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
+	if vim.fn.filewritable(s.session_dir) == 2 then -- root writes through a read-only folder
+		vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+		MiniTest.skip('a read-only folder is still writable: the suite runs as root')
+	end
 	start(s)
 	child.steps({ ':e a' })
 	local got = Misc.save(child)

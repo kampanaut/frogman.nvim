@@ -212,6 +212,23 @@ T['T396 [char] (A27) a path typed on the command line is kept as its last part']
 		{ cut = true, whole = false })
 end
 
+-- Each line is entered for real, so CmdlineLeave sees it; the step it begins is
+-- read while it's still open.
+T['T590 [char] (A27) a command line keeps its command, range and pattern, and a slash-ended path its last part'] = function()
+	child.setup()
+	child.steps({ ':e a' })
+	local got = child.lua([[
+		local L = require('cavediver.domains.ledger')
+		local out = {}
+		for _, keys in ipairs({ ':.,$s/zzz/b/e\r', ':" ./sub/\r' }) do
+			pcall(vim.api.nvim_feedkeys, keys, 'xt', false)
+			table.insert(out, L.data.open and L.data.open.trigger or vim.NIL)
+		end
+		return out
+	]])
+	eq(got, { ':.,$s/zzz/b/e', ':" sub' })
+end
+
 T['T397 [char] (A27) a step that changes no row and makes no move is not kept'] = function()
 	child.setup()
 	child.lua('_G.CDV_TEST.setup({ cleanup_interval = 100 })')
@@ -452,6 +469,8 @@ T['T406 [char] (A27, A21) a triquetra dropped is a move'] = function()
 	child.setup()
 	child.steps({ ':e a', ':enew' })
 	local n = child.lua('return vim.api.nvim_get_current_buf()')
+	child.cmd('bdelete a.txt') -- closed, so nothing open is left to come back to
+	child.settle()
 	-- a scratch shown in the window: it's visiting, with the empty No Name buffer hidden as its current slot
 	child.lua('vim.api.nvim_win_set_buf(0, vim.api.nvim_create_buf(false, true))')
 	child.settle(100)
@@ -508,13 +527,15 @@ T['T411 [char] (A27, A12) the cancel on a window jump is a move on the jump\'s s
 	child.setup()
 	child.steps({ ':e a', ':e b' })
 	child.cmd('vsplit')
+	local split = child.lua('return vim.api.nvim_get_current_win()')
 	child.steps({ ':e x' })
 	child.cmd('wincmd p')
 	child.steps({ ':e c', '<M-n>' })
 	child.cmd('wincmd p')
 	child.settle(200)
 	local m = found('cancelled')
-	eq({ trigger = m and m.trigger, words = m and m.words }, { trigger = 'WinEnter win 1', words = 'cycle cancelled; back on c.txt' })
+	local number = child.lua('return vim.api.nvim_win_get_number(...)', { split })
+	eq({ trigger = m and m.trigger, words = m and m.words }, { trigger = 'WinEnter win ' .. number, words = 'cycle cancelled; back on c.txt' })
 end
 
 T['T412 [char] (A27, S1) a load\'s moves: windows matched, references closed'] = function()
@@ -651,6 +672,32 @@ T['T417 [char] (A27, A20) renames are moves: a copy, and a No Name buffer writte
 	local move = found('moved', '[No Name]')
 	eq({ copy = copy and copy.words, move = move and move.words },
 		{ copy = 'renamed to g.txt: a copy, b.txt is still on disk', move = 'written as new.txt: a move' })
+end
+
+-- A format-on-save run synchronously waits inside BufWritePre, which runs what
+-- was scheduled; here a BufWritePre that does the same.
+T['T579 [char] (A20) :w name from a No Name buffer is a move with a BufWritePre that waits'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b', ':enew' })
+	child.lua([[
+		vim.api.nvim_buf_set_lines(0, 0, -1, false, { "draft" })
+		vim.api.nvim_create_autocmd('BufWritePre', { callback = function() vim.wait(30) end })
+	]])
+	child.messages()
+	child.cmd('write new.txt')
+	child.settle(300)
+	eq({ slots = child.slots(), closed = child.closed(), healed = told('Healed the triquetra') },
+		{ slots = '⦉b⦊ [new] ⟦-⟧', closed = '', healed = false })
+end
+
+T['T580 [char] (A20, A27) :w name from a No Name buffer records no close'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b', ':enew' })
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "draft" })')
+	child.cmd('write new.txt')
+	child.settle(300)
+	local move, closed = found('moved', '[No Name]'), found('closed', '[No Name]')
+	eq({ move = move and move.words, closed = closed ~= nil }, { move = 'written as new.txt: a move', closed = false })
 end
 
 T['T418 [char] (A27, M14) a change of label is a step, and tags are moves'] = function()
@@ -818,14 +865,16 @@ T['T423 [char] (A27) pages outlive the editor that wrote them'] = function()
 		{ closes = { 'closed c.txt', 'closed b.txt' }, earlier = true })
 end
 
--- The editor's ledger made to start three days ago, so the planted steps are this editor's.
+-- A step planted n days back, marked with this editor's epoch, so it's this editor's.
 local PLANT = [==[
 local L, n, trigger, ringed = require('cavediver').ledger, ...
-local t = os.time() - n * 86400 + 60
+local d = os.date('*t', os.time() - n * 86400)
+d.hour, d.min, d.sec = 12, 0, 0 -- noon that day, whatever the time of the run
+local t = os.time(d)
 local day = os.date('%Y-%m-%d', t)
 local step = { seq = -n * 100 - #trigger, time = t, cause = 'keymap', trigger = trigger, names = {},
 	events = {}, moves = { { kind = 'closed', name = trigger .. '.txt', lists = { 'editor' } } },
-	session = L.session_of(nil, vim.fn.getcwd(-1, -1)) }
+	session = L.session_of(nil, vim.fn.getcwd(-1, -1)), epoch = L.data.epoch }
 L.data.days[day] = L.data.days[day] or {}
 table.insert(L.data.days[day], step)
 if ringed then table.insert(L.data.ring, 1, step) end
@@ -888,6 +937,105 @@ T['T570 [char] (A27) another editor\'s step on a shared page isn\'t read as this
 		return { forgotten = #L.trail(day) == 0, triggers = triggers }
 	]], { yesterday })
 	eq(read, { forgotten = true, triggers = { 'yesterday' } })
+end
+
+-- The ledger's start a minute after now, as a clock set back after the editor started leaves it.
+T['T603 [char] (A27) a clock set back leaves this editor\'s steps its own'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.lua('local L = require("cavediver").ledger; L.data.started = L.now() + 60')
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child), { true })
+	child.cmd('bdelete b.txt')
+	child.settle(300)
+	eq(S2.save(child), { true })
+	local got = child.lua([[
+		local L, st = require('cavediver').ledger, require('cavediver.domains.storage').routines
+		local n, mine = 0, true
+		for _, step in ipairs(st.trail_reader().steps(os.date('%Y-%m-%d'))) do
+			for _, m in ipairs(step.moves or {}) do
+				if m.kind == 'closed' and m.name == 'b.txt' then
+					n = n + 1
+					mine = mine and L.of_this_editor(step)
+				end
+			end
+		end
+		return { closes = n, mine = mine }
+	]])
+	eq(got, { closes = 1, mine = true })
+end
+
+-- Yesterday's step on its page but still in the ring, so the day stays until the view is open; then the
+-- ring passes it, as a thousand later steps would, and a records write lets the day go.
+T['T604 [char] (A27) a day let go while the view is open is still shown'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.lua('require("cavediver").ledger.data.started = os.time() - 3 * 86400')
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(S2.save(child), { true })
+	local yesterday = child.lua(PLANT, { 1, 'yesterday', true })
+	eq(S2.save(child), { true })
+	local shown = child.lua([[
+		local day = ...
+		local L = require('cavediver').ledger
+		_G.CDV_READER = require('cavediver.domains.storage').routines.trail_reader()
+		local n = #_G.CDV_READER.steps(day)
+		for i, step in ipairs(L.data.ring) do
+			if step.trigger == 'yesterday' then table.remove(L.data.ring, i) break end
+		end
+		return { held = #L.trail(day), n = n }
+	]], { yesterday })
+	child.cmd('bdelete b.txt')
+	child.settle(1500)
+	local got = child.lua([[
+		local day = ...
+		local triggers = {}
+		for _, step in ipairs(_G.CDV_READER.steps(day)) do table.insert(triggers, step.trigger) end
+		return { forgotten = #require('cavediver').ledger.trail(day) == 0, triggers = triggers }
+	]], { yesterday })
+	eq({ shown = shown, got = got }, { shown = { held = 1, n = 1 }, got = { forgotten = true, triggers = { 'yesterday' } } })
+end
+
+T['T605 [char] (A27) a step still open isn\'t noted as on a page'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child), { true })
+	local got = child.lua([[
+		local L = require('cavediver.domains.ledger')
+		L.begin('keymap', 'hold', vim.api.nvim_get_current_win())
+		local step = L.data.open
+		L.move('repair', { subject = 'x', name = 'x' })
+		require('cavediver.domains.storage').routines.write_records(true)
+		return { open = L.data.open == step, noted = step.written_to ~= nil }
+	]])
+	eq(got, { open = true, noted = false })
+end
+
+-- An editor that only loaded a tab session: no whole-editor session yet, so its first one's save or
+-- load claims the steps made before it, yesterday's included.
+T['T606 [char] (A27) a day\'s steps made before any whole-editor session stay until one claims them'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	local unclaimed = child.lua([[
+		local L, H = require('cavediver').ledger, require('cavediver.domains.history').routines
+		local d = os.date('*t', os.time() - 86400)
+		d.hour, d.min, d.sec = 12, 0, 0 -- yesterday's noon, whatever the time of the run
+		local t = os.time(d)
+		_G.CDV_DAY = os.date('%Y-%m-%d', t)
+		_G.CDV_STEP = { seq = -500, time = t, cause = 'keymap', trigger = 'early', names = {}, events = {},
+			moves = { { kind = 'closed', name = 'early.txt', lists = { 't' } } },
+			pool = H.pool_of_tab(vim.api.nvim_get_current_tabpage()).id, epoch = L.data.epoch }
+		L.data.days[_G.CDV_DAY] = { _G.CDV_STEP }
+		local data = require('cavediver.domains.storage').data
+		return data.unnamed == nil and data.editor_session == nil
+	]])
+	child.cmd('bdelete c.txt')
+	child.settle(1500)
+	local got = child.lua([[
+		return { noted = _G.CDV_STEP.written_to ~= nil, held = #require('cavediver').ledger.trail(_G.CDV_DAY) }
+	]])
+	eq({ unclaimed = unclaimed, got = got }, { unclaimed = true, got = { noted = true, held = 1 } })
 end
 
 T['T424 [char] (A27) each file keeps its own moves'] = function()

@@ -2,7 +2,7 @@
 --
 -- Run it once, with nothing else of your config loaded:
 --
---   nvim --clean -l scripts/migrate_sessions.lua [--resession-dir <dir>] [--session-dir <path>] [--dry-run] [--replace]
+--   nvim --clean -l scripts/migrate_sessions.lua [--resession-dir <dir>] [--session-dir <path>] [--libcrypto-path <path>] [--dry-run] [--replace]
 --
 -- Files from before encryption are plain JSON with paths XOR'd with the cwd, named after the first
 -- 32 hex characters of sha256(cwd .. "\n"). The script finds which directory and session name each
@@ -18,7 +18,11 @@
 -- unless you pass --replace.
 --
 -- --session-dir is cavediver's session_dir, stdpath("data")/cavediver/sessions/ unless your setup()
--- sets another. --dry-run reports what would be converted and writes nothing.
+-- sets another, and --libcrypto-path its libcrypto_path, for a libcrypto the system's search doesn't
+-- find. --dry-run reports what would be converted and writes nothing. The old editor hashed a
+-- directory through the shell's echo, so one holding $, a backtick, a double quote or a backslash
+-- has its old file under a name the script can't work out: such a session is named, not converted.
+-- The script exits with 1 when an old file couldn't be read or written, and 0 otherwise.
 
 local script_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h")
 vim.opt.runtimepath:prepend(vim.fn.fnamemodify(script_dir, ":h"))
@@ -26,17 +30,27 @@ vim.opt.runtimepath:prepend(vim.fn.fnamemodify(script_dir, ":h"))
 local options = {
 	resession_dir = "session",
 	session_dir = vim.fn.stdpath("data") .. "/cavediver/sessions/",
+	libcrypto_path = nil,
 	dry_run = false,
 	replace = false,
 }
 local i = 1
 while i <= #_G.arg do
 	local a = _G.arg[i]
+	-- a flag's value is the next argument, which must be there and not be another flag
+	if (a == "--resession-dir" or a == "--session-dir" or a == "--libcrypto-path")
+		and (_G.arg[i + 1] == nil or _G.arg[i + 1]:sub(1, 2) == "--") then
+		io.stderr:write(a .. " needs a value\n")
+		os.exit(2)
+	end
 	if a == "--resession-dir" then
 		options.resession_dir = _G.arg[i + 1]
 		i = i + 1
 	elseif a == "--session-dir" then
 		options.session_dir = _G.arg[i + 1]
+		i = i + 1
+	elseif a == "--libcrypto-path" then
+		options.libcrypto_path = _G.arg[i + 1]
 		i = i + 1
 	elseif a == "--dry-run" then
 		options.dry_run = true
@@ -53,6 +67,7 @@ if options.session_dir:sub(-1) ~= "/" then
 end
 
 require("cavediver.configs").session_dir = options.session_dir
+require("cavediver.configs").libcrypto_path = options.libcrypto_path
 local storage = require("cavediver.domains.storage.routines")
 local filehash = require("cavediver.domains.history").routines.get_filehash -- as the editor hashes a name
 
@@ -210,8 +225,11 @@ if vim.fn.isdirectory(resession_dir) == 0 then
 	os.exit(1)
 end
 
-local report = { converted = 0, already = 0, conflict = 0, no_file = 0, unnamed = 0, dropped = 0, unreadable = 0, failed = 0 }
+local report = { converted = 0, already = 0, conflict = 0, no_file = 0, renamed_by_shell = 0, unnamed = 0, dropped = 0, unreadable = 0, failed = 0 }
 local used = {}
+-- each old file converted, marked once every session is through, since two sessions can share one;
+-- one a session failed to write for stays unmarked
+local to_mark, unmarked = {}, {}
 for _, entry in ipairs(vim.fn.readdir(resession_dir)) do
 	local stem = entry:match("^(.+)%.json$")
 	local session = stem and read_json(resession_dir .. entry)
@@ -239,11 +257,16 @@ for _, entry in ipairs(vim.fn.readdir(resession_dir)) do
 		if old_path == nil then
 			if migrated then
 				report.already = report.already + 1
+			elseif directory:find('[%$`"\\]') then
+				-- the old editor's shell changed that character before hashing, so the old file has another name
+				report.renamed_by_shell = report.renamed_by_shell + 1
+				io.stdout:write(entry .. "'s directory holds a character the old editor's shell changed before hashing it ($, a backtick, a double quote or a backslash), so its old file can't be found by name: " .. directory .. "\n")
 			else
 				report.no_file = report.no_file + 1
 			end
 		elseif name == nil then
 			report.unnamed = report.unnamed + 1
+			used[old_path.path] = true
 			io.stdout:write("can't tell the session name of " .. entry .. "; left as it is\n")
 		elseif storage.session_exists(directory, name) and not options.replace then
 			-- a session saved on the encrypted format before the script ran: not a conversion
@@ -268,11 +291,9 @@ for _, entry in ipairs(vim.fn.readdir(resession_dir)) do
 					-- that fails leaves it as it was
 					ok, err = pcall(storage.write_session, directory, name, data, texts)
 					if ok then
-						-- kept under a new name, the script's record of what it has converted
-						local renamed, why = os.rename(old_path.path, old_path.path .. ".migrated")
-						if not renamed then
-							io.stdout:write(entry .. "'s old file couldn't be marked converted (" .. tostring(why) .. ")\n")
-						end
+						to_mark[old_path.path] = to_mark[old_path.path] or entry
+					else
+						unmarked[old_path.path] = true
 					end
 				end
 				if ok then
@@ -291,6 +312,17 @@ for _, entry in ipairs(vim.fn.readdir(resession_dir)) do
 	end
 end
 
+-- kept under a new name, the script's record of what it has converted
+for path, entry in pairs(to_mark) do
+	if not unmarked[path] then
+		local renamed, why = os.rename(path, path .. ".migrated")
+		if not renamed then
+			report.failed = report.failed + 1
+			io.stdout:write(entry .. "'s old file couldn't be marked converted (" .. tostring(why) .. "); rename it with .migrated added, or the next run takes its new file for one saved before this script\n")
+		end
+	end
+end
+
 local leftover = 0
 for _, entry in ipairs(vim.fn.isdirectory(options.session_dir) == 1 and vim.fn.readdir(options.session_dir) or {}) do
 	if entry:match("^%x+%.json$") and not used[options.session_dir .. entry] then
@@ -299,8 +331,10 @@ for _, entry in ipairs(vim.fn.isdirectory(options.session_dir) == 1 and vim.fn.r
 end
 
 io.stdout:write(string.format(
-	"%s %d session(s); %d already converted; %d with a file in the new format already (--replace converts over them); %d with no cavediver file; %d with a name that can't be told; %d old file(s) no resession session points to; %d reference(s) with no known path dropped; %d old file(s) that can't be read; %d that couldn't be written\n",
+	"%s %d session(s); %d already converted; %d with a file in the new format already (--replace converts over them); %d with no cavediver file; %d whose directory the old shell changed; %d with a name that can't be told; %d old file(s) no resession session points to; %d reference(s) with no known path dropped; %d old file(s) that can't be read; %d that couldn't be written\n",
 	options.dry_run and "would convert" or "converted",
-	report.converted, report.already, report.conflict, report.no_file, report.unnamed, leftover, report.dropped,
+	report.converted, report.already, report.conflict, report.no_file, report.renamed_by_shell, report.unnamed, leftover, report.dropped,
 	report.unreadable, report.failed
 ))
+-- a wrapper can tell a run that left files behind from one that didn't
+os.exit((report.unreadable > 0 or report.failed > 0) and 1 or 0)

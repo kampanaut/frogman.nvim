@@ -73,18 +73,23 @@ local function load(name, opts, restart)
 		end
 	end
 	local session = { name = name, directory = directory }
-	local batch = data.loading_batch
-	if not restart and batch and batch.name == name and batch.directory == directory then
-		return -- a repeat inside one restore: a native session calls once per loaded buffer
+	for _, loaded in ipairs(not restart and data.loading_batch or {}) do
+		if loaded.name == name and loaded.directory == directory then
+			return -- a repeat inside one restore: a native session calls once per loaded buffer
+		end
 	end
-	data.loading_batch = session
+	if not data.loading_batch then
+		-- once the restore's batch is over the next call is a full load again
+		vim.schedule(function()
+			data.loading_batch = false
+		end)
+	end
+	data.loading_batch = data.loading_batch or {}
+	table.insert(data.loading_batch, session)
 	data.last_loaded = { name = name, tab = hint }
-	-- once the restore's batch is over: the next call is a full load again, and the window the
-	-- restore left focused is taken in. Only the second is settle work: a key may take the window
-	-- in sooner, but the flag must wait for the batch to be over, or a native restore loads twice.
-	vim.schedule(function()
-		data.loading_batch = false
-	end)
+	-- once the batch is over, the window the restore left focused is taken in too. Only that is settle
+	-- work: a key may take the window in sooner, but the flag must wait for the batch to be over, or a
+	-- native restore loads twice.
 	require('cavediver.settle').later("load's follow-up", function()
 		routines.after_restore()
 	end)

@@ -412,8 +412,15 @@ function M.run(path)
 			if same(got, step.after) then
 				result.matched = result.matched + 1
 			else
-				table.insert(result.mismatches, { seq = step.seq, trigger = step.trigger, want = require('cavediver.domains.ledger.routines').draw_row(step.after),
-					got = require('cavediver.domains.ledger.routines').draw_row(got) })
+				local want, have = require('cavediver.domains.ledger.routines').draw_row(step.after),
+					require('cavediver.domains.ledger.routines').draw_row(got)
+				if want == have then
+					-- rows that draw alike (two files of one name, a file with no path here, a field the drawing
+					-- leaves out) are told apart by the rows themselves
+					want = want .. " " .. vim.inspect(step.after, { newline = "", indent = "" })
+					have = have .. " " .. vim.inspect(got, { newline = "", indent = "" })
+				end
+				table.insert(result.mismatches, { seq = step.seq, trigger = step.trigger, want = want, got = have })
 			end
 		else
 			plant.row(winid, step.after)

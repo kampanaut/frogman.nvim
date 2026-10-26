@@ -4,8 +4,6 @@
 ---
 ---@class UIState Visual interface component state
 ---@field bufferline_state BufferlineCache Pre-computed data for bufferline performance
----@field hidden_components table<string, boolean> Which UI components are currently hidden
----@field display_settings UIDisplaySettings Current visual display configuration
 
 ---@class BufferlineCache Pre-computed buffer state for performance optimization
 ---@field harpooned_buffers table<number, boolean> Buffer number to harpoon status mapping
@@ -49,11 +47,6 @@
 ---@field current_slot_bufnr "WinbarBase"|"WinbarBaseNC"|"WinbarBufnrCurrent"|"WinbarBufnrCurrentNC"|"WinbarBufnrPrimary"|"WinbarBufnrPrimaryNC"|"WinbarBufnrPrimaryDisabled"
 ---@field secondary_slot_bufnr "WinbarBase"|"WinbarBufnrSecondary"|"WinbarBufnrSecondaryNC"|"WinbarBufnrPrimary"|"WinbarBufnrPrimaryNC"|"WinbarBufnrPrimaryDisabled"
 ---@field ternary_slot_bufnr "WinbarBase"|"WinbarBufnrTernary"|"WinbarBufnrTernaryNC"|"WinbarBufnrPrimary"|"WinbarBufnrPrimaryNC"|"WinbarBufnrPrimaryDisabled"
-
----@class UIDisplaySettings Current UI component display configuration
----@field bufferline_enabled boolean Whether bufferline should be shown
----@field winbar_enabled boolean Whether winbars should be shown
----@field indicators_enabled boolean Whether buffer indicators should be shown
 
 local M = {}
 
@@ -111,55 +104,20 @@ local winbar_themes = {
 ---@type table<WinId, UIWindowTriquetra>
 local window_display_cache = {}
 
--- Component visibility state
-local hidden_components = {
-    bufferline = false,
-    winbar = false,
-    indicators = false,
-}
-
--- Display configuration
-local display_settings = {
-    bufferline_enabled = true,
-    winbar_enabled = true, 
-    indicators_enabled = true,
-}
-
 -- Simple basename display cache - cleared on buffer changes
 ---@type table<Filehash, Filepath>
 local display_name_cache = {}
 
 ---Reset bufferline cache to empty state.
 ---
+---It's cleared in place, so every reader holding the table sees it empty.
+---
 ---@return nil
 function M.clear_bufferline_cache()
-    bufferline_state = {
-        harpooned_buffers = {},
-        harpooned_lookup = {},
-        recent_buffers = {},
-        buffer_ranking = {},
-        current_buf = nil,
-        current_window_triquetra = nil,
-        initialized = false,
-        history_detached = false,
-    }
-end
-
----Check if a UI component is currently hidden.
----
----@param component string Component name ("bufferline", "winbar", "indicators")
----@return boolean hidden True if component is hidden
-function M.is_component_hidden(component)
-    return hidden_components[component] or false
-end
-
----Set the visibility state of a UI component.
----
----@param component string Component name ("bufferline", "winbar", "indicators")  
----@param hidden boolean Whether the component should be hidden
----@return nil
-function M.set_component_visibility(component, hidden)
-    hidden_components[component] = hidden
+    bufferline_state.harpooned_buffers, bufferline_state.harpooned_lookup = {}, {}
+    bufferline_state.recent_buffers, bufferline_state.buffer_ranking = {}, {}
+    bufferline_state.current_buf, bufferline_state.current_window_triquetra = nil, nil
+    bufferline_state.initialized, bufferline_state.history_detached = false, false
 end
 
 ---Clear the display name cache (called on buffer changes).
@@ -210,10 +168,6 @@ function M.clear_window_display_cache(winid)
 end
 
 M.bufferline_state = bufferline_state
-
-M.hidden_components = hidden_components
-
-M.display_settings = display_settings
 
 M.display_name_cache = display_name_cache
 

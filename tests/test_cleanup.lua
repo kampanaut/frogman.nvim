@@ -375,4 +375,173 @@ T['T523 [char] (A21, M5) the first :e after the start buffer was taken in leaves
 		{ taken = true, slots = '⦉-⦊ [a] ⟦-⟧', healed = false, said = { 'No ternary buffer to swap with.' } })
 end
 
+-- An oil listing unlists its buffer as it reads it; this acwrite buffer's read
+-- does what oil's does. :edit reuses the empty buffer for it, with the delete
+-- events of a buffer going, though the window still shows the same number.
+T['T575 [char] (A19, A21) an :edit that reuses the empty buffer for a listing that unlists itself isn\'t a delete'] = function()
+	child.steps({ ':e a' })
+	child.cmd('enew')
+	child.settle()
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	eq(child.slots(win):match('^⦉a⦊ %[NONAME_%d+%] ⟦%-⟧$') ~= nil, true)
+	child.lua([[
+		vim.api.nvim_create_autocmd('BufReadCmd', { pattern = 'oilish://*', callback = function(args)
+			vim.bo[args.buf].buftype = 'acwrite'
+			vim.bo[args.buf].buflisted = false
+			vim.bo[args.buf].bufhidden = 'hide'
+			vim.api.nvim_buf_set_lines(args.buf, 0, -1, false, { 'a.txt' })
+			vim.bo[args.buf].modified = false
+		end })
+		vim.api.nvim_create_autocmd('BufWriteCmd', { pattern = 'oilish://*', callback = function() end })
+	]])
+	child.cmd('edit oilish://' .. child.lua('return _G.CDV_TEST.root') .. '/')
+	child.settle(300)
+	local shown = child.lua('return vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(...))', { win })
+	eq({ shown = shown:match('^oilish://') ~= nil, slots = child.slots(win) }, { shown = true, slots = '⦉-⦊ [a] ⟦-⟧' })
+end
+
+-- b's buffer is unlisted without events, as a plugin doing it with noautocmd
+-- leaves it: still registered, no longer trackable. The split visits an acwrite
+-- buffer, so N's wipe from the first window goes to the heal.
+T['T576 [char] (A21) the heal leaves a slot that isn\'t open in its place'] = function()
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.steps({ ':e b' })
+	child.cmd('enew')
+	child.settle()
+	local noname = child.lua('return vim.api.nvim_get_current_buf()')
+	local w2 = child.lua('return vim.api.nvim_get_current_win()')
+	eq(child.slots(w2):match('^⦉b⦊ %[NONAME_%d+%] ⟦%-⟧$') ~= nil, true)
+	child.lua([[
+		local buf = vim.api.nvim_create_buf(true, false)
+		vim.bo[buf].buftype = 'acwrite'
+		vim.api.nvim_buf_set_name(buf, 'acw://scratch')
+		vim.api.nvim_create_autocmd('BufWriteCmd', { buffer = buf, callback = function() end })
+		vim.api.nvim_set_current_buf(buf)
+	]])
+	child.settle(200)
+	child.lua([[vim.cmd('noautocmd lua vim.bo[vim.fn.bufnr(_G.CDV_TEST.root .. "/b.txt")].buflisted = false')]])
+	child.cmd('wincmd p')
+	child.settle()
+	child.cmd('bwipeout ' .. noname)
+	child.settle(300)
+	eq(child.slots(w2), '⦉b⦊ [a] ⟦-⟧')
+end
+
+-- The switch-then-delete of bufremove-style helpers: a new listed buffer into
+-- the window, then the old one deleted, in one call, so the new one's arrival
+-- hasn't settled when the delete runs.
+T['T577 [char] (A21) a delete helper that switches the window first doesn\'t lose the slots'] = function()
+	child.steps({ ':e a', ':e b', '<M-;><M-c>' })
+	child.cmd('enew')
+	child.settle()
+	child.cmd('bdelete a.txt')
+	child.cmd('bdelete b.txt')
+	child.settle()
+	local before = child.slots()
+	eq({ before:match('^⦉b⦊ %[NONAME_%d+%] ⟦%-⟧$') ~= nil, child.primary() }, { true, '[b]on' })
+	child.lua([[
+		local old = vim.api.nvim_get_current_buf()
+		vim.api.nvim_win_set_buf(0, vim.api.nvim_create_buf(true, false))
+		vim.cmd('bdelete ' .. old)
+	]])
+	child.settle(300)
+	local after = child.slots()
+	eq({ kept = after:match('^⦉b⦊ %[NONAME_%d+%] ⟦%-⟧$') ~= nil, new = after ~= before, primary = child.primary() },
+		{ kept = true, new = true, primary = '[b]on' })
+end
+
+-- b.txt deleted from disk, then its buffer given a name cavediver doesn't track, as a plugin's scratch takes one.
+T['T635 [char] (A20) a rename to a name cavediver doesn\'t track closes the old name, and claims no copy'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.lua([[
+		local root = _G.CDV_TEST.root
+		os.remove(root .. '/b.txt')
+		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/b.txt'), 'scratch://b')
+	]])
+	child.settle(300)
+	local kinds = child.lua([[
+		local out = {}
+		for _, step in ipairs(require('cavediver').ledger.trail()) do
+			for _, m in ipairs(step.moves) do
+				if m.name == 'b.txt' then out[m.kind] = true end
+			end
+		end
+		return out
+	]])
+	eq({ copied = kinds.copied == true, closed = kinds.closed == true, list = vim.tbl_contains(vim.split(child.closed(), ','), 'b') },
+		{ copied = false, closed = true, list = true })
+end
+
+-- b.txt shown in the first tab; from a second tab its buffer takes the name g.txt, b.txt still on disk.
+T['T636 [char] (A20) a copy\'s arrival lands in the window that shows it, in another tab too'] = function()
+	child.steps({ ':e a', ':e b' })
+	local w1 = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('tabnew')
+	child.steps({ ':e c' })
+	child.lua('vim.api.nvim_buf_set_name(vim.fn.bufnr(_G.CDV_TEST.root .. "/b.txt"), _G.CDV_TEST.root .. "/g.txt")')
+	child.settle(300)
+	-- an arrival records the visit in the window's own history, as a heal doesn't (T558)
+	local visited = child.lua([[
+		local H = require('cavediver.domains.history')
+		local g = H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/g.txt'))
+		return H.data.crux_internals.window[...][g] ~= nil
+	]], { w1 })
+	eq({ current = child.slots(w1):match('%[(.-)%]'), visited = visited }, { current = 'g', visited = true })
+end
+
+-- b visited first, closed, and c, visited after a, then moved over b.txt on disk with no window
+-- showing it, its buffer given b's name, as a file manager's move does.
+T['T637 [char] (A20) a move onto a closed name takes it off the lists and keeps the newer visit'] = function()
+	child.steps({ ':e b', ':e a', ':e c' })
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/b.txt")'))
+	child.steps({ ':e d' })
+	eq(vim.tbl_contains(vim.split(child.closed(), ','), 'b'), true)
+	local c_visits = child.lua([[
+		local H = require('cavediver.domains.history')
+		local c = H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/c.txt'))
+		return { global = H.data.crux_internals.global[c], window = H.data.crux_internals.window[vim.api.nvim_get_current_win()][c] }
+	]])
+	child.lua([[
+		local root = _G.CDV_TEST.root
+		os.rename(root .. '/c.txt', root .. '/b.txt')
+		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/c.txt'), root .. '/b.txt')
+	]])
+	child.settle(300)
+	local b_visits = child.lua([[
+		local H = require('cavediver.domains.history')
+		local b = H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/b.txt'))
+		return { global = H.data.crux_internals.global[b], window = H.data.crux_internals.window[vim.api.nvim_get_current_win()][b] }
+	]])
+	eq({ closed = vim.tbl_contains(vim.split(child.closed(), ','), 'b'), visits = b_visits }, { closed = false, visits = c_visits })
+end
+
+-- :e from an empty No Name buffer, which Neovim deletes, and a refresh at once, before c's arrival
+-- settles: the current slot names the forgotten No Name buffer while the window shows c.
+T['T647 [char] (A21, M12) a refresh before a window\'s arrival settles finds nothing impossible'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('enew')
+	child.settle()
+	local dumps = child.dump_files()
+	child.lua([[
+		vim.cmd('edit ' .. _G.CDV_TEST.root .. '/c.txt')
+		local ui = require('cavediver.domains.ui')
+		ui.sm.loop:to(ui.states.LOOP.SELF)
+	]])
+	child.settle(300)
+	eq({ dump = child.dumped_since(dumps), current = child.slots():match('%[(.-)%]') }, { dump = nil, current = 'c' })
+end
+
+-- d's arrival is followed by <M-;><M-c>, so the window's triquetra has changed
+-- since and the undo takes the next slot in line instead of the one from before.
+T['T578 [char] (I10) an arrival undone takes the next open slot'] = function()
+	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d', '<M-;><M-c>' })
+	child.cmd('bdelete c.txt')
+	child.settle()
+	eq({ child.slots(), child.closed() }, { '⦉c⦊ [d] ⟦b⟧', 'c' })
+	child.cmd('setlocal buftype=nofile')
+	child.settle(300)
+	eq(child.slots(), '⦉c⦊ [b] ⟦-⟧')
+end
+
 return T

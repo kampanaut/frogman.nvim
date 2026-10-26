@@ -206,10 +206,13 @@ function M.is_hidden(component, kind)
 	elseif component == "winbar" then
 		return ui_machines.winbar:state() == states.WINBAR.MINIMAL
 	elseif component == "indicators" then
+		local off = ui_machines.indicators:state() == states.INDICATORS.OFF
 		if kind then
-			return hidden_indicators[kind] == true
+			-- the machine speaks for every kind when it's off, and when it was turned on with every kind off
+			local all = hidden_indicators.roles and hidden_indicators.harpoon
+			return off or (not all and hidden_indicators[kind] == true)
 		end
-		return ui_machines.indicators:state() == states.INDICATORS.OFF
+		return off
 	end
 	return false
 end
@@ -393,7 +396,10 @@ function M.bufferline.cokeline.create_buffer_components()
 		error("cokeline is not installed. Please install 'willothy/nvim-cokeline' to use this function.")
 	end
 	local get_hex = require('cokeline.hlgroups').get_hl_attr
-	local comment = get_hex('Comment', 'fg')
+	-- read at each draw, so a colorscheme loaded after the components were made gives its own
+	local function comment()
+		return get_hex('Comment', 'fg')
+	end
 	local diagnostic_errors = configs.colors.cokeline.diagnostics.error
 	local diagnostic_warnings = configs.colors.cokeline.diagnostics.warning
 	local diagnostic_infos = configs.colors.cokeline.diagnostics.info
@@ -419,7 +425,8 @@ function M.bufferline.cokeline.create_buffer_components()
 			text = function(buffer)
 				local filehash = history.get_hash_from_buffer(buffer.number)
 				local tag = filehash and history.data.missing[filehash]
-				return tag and ('⎇' .. routines.escape_renderline(tag) .. ' ') or '' -- the tabline's own `%`, doubled
+				-- a % drawn full-width: cokeline measures and cuts the text before the tabline reads it
+				return tag and ('⎇' .. tostring(tag):gsub("%%", "％") .. ' ') or ''
 			end,
 			fg = comment,
 			truncation = { priority = 1 }
@@ -494,7 +501,7 @@ function M.bufferline.cokeline.create_buffer_components()
 					buffer.number == ctriquetra.primary_bufnr and
 					ctriquetra.has_primary == false
 				then
-					return comment
+					return comment()
 				else
 					return nil
 				end
@@ -503,7 +510,7 @@ function M.bufferline.cokeline.create_buffer_components()
 		},
 		unique_prefix = {
 			text = function(buffer)
-				return routines.escape_renderline(buffer.unique_prefix) -- the tabline's own `%`, doubled
+				return (buffer.unique_prefix:gsub("%%", "％")) -- a % drawn full-width, as the file name's
 			end,
 			fg = comment,
 			style = 'italic',
@@ -517,7 +524,9 @@ function M.bufferline.cokeline.create_buffer_components()
 				return get_theme_fg_by_slot(buffer.number)
 			end,
 			text = function(buffer)
-				local filename = routines.escape_renderline(buffer.filename) -- the tabline's own `%`, doubled
+				-- a % drawn full-width: cokeline measures and cuts the text before the tabline reads it, so a
+				-- doubled one would count two columns and could be cut apart
+				local filename = buffer.filename:gsub("%%", "％")
 				if bufferline_state.harpooned_buffers[buffer.number] and not M.is_hidden("indicators", "harpoon") then
 					return filename .. " ⥤ {" .. bufferline_state.harpooned_lookup[buffer.number] .. "}"
 				else
