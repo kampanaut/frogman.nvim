@@ -35,7 +35,7 @@ end
 -- holds, or which map breaks it.
 Neg.i23 = function(child, winid)
 	local v = child.lua([[
-		local t = require('cavediver.domains.window').data.crux[... or vim.api.nvim_get_current_win()]
+		local t = require('frogman.domains.window').data.crux[... or vim.api.nvim_get_current_win()]
 		if not t then return 'no triquetra' end
 		local x = t.current_slot
 		for _, m in ipairs({
@@ -57,7 +57,7 @@ end
 Neg.in_slots = function(child, hash, winid)
 	return child.lua([[
 		local h, w = ...
-		local t = require('cavediver.domains.window').data.crux[w or vim.api.nvim_get_current_win()]
+		local t = require('frogman.domains.window').data.crux[w or vim.api.nvim_get_current_win()]
 		return t ~= nil and (t.current_slot == h or t.secondary_slot == h or t.ternary_slot == h)
 	]], { hash, winid })
 end
@@ -65,7 +65,7 @@ end
 -- Gaps in a window's primary queue: indexes up to its highest one that hold nil.
 Neg.queue_holes = function(child, winid)
 	return child.lua([[
-		local q = require('cavediver.domains.window').data.crux[...].primary_buffer
+		local q = require('frogman.domains.window').data.crux[...].primary_buffer
 		local holes = 0
 		for i = 1, table.maxn(q) do if q[i] == nil then holes = holes + 1 end end
 		return holes
@@ -90,8 +90,8 @@ end
 -- first one. Returns { steps, actions, brk = nil | { window, entry, slots, notes } }.
 local SELF_WALK = [==[
 local seed, nkeys, multi = ...
-local H = require('cavediver.domains.history')
-local W = require('cavediver.domains.window')
+local H = require('frogman.domains.history')
+local W = require('frogman.domains.window')
 local state = seed % 2147483647
 if state <= 0 then state = state + 2147483646 end
 local function rnd(k)
@@ -177,7 +177,7 @@ Neg.self_walk = function(child, seed, nkeys, multi)
 	local res = child.lua(SELF_WALK, { seed, nkeys, multi or false })
 	-- its keys come back to back, so the queue is checked once, after the editor settles at the end
 	child.settle(50)
-	local queued = child.lua('return require("cavediver.settle").pending()')
+	local queued = child.lua('return require("frogman.settle").pending()')
 	if #queued > 0 then
 		error(string.format('walk (seed %d) left the settle queue not empty once settled: %s\n  keys: %s', seed,
 			table.concat(queued, ', '), table.concat(res.actions, ', ')), 0)

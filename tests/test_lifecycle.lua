@@ -86,8 +86,8 @@ T['T25 [char] closing a window drops its triquetra and its UI cache'] = function
 		return child.lua([[
 			local w = ...
 			return {
-				triquetra = require('cavediver.domains.window').data.crux[w] ~= nil,
-				ui_cache = require('cavediver.domains.ui.data').window_display_cache[w] ~= nil,
+				triquetra = require('frogman.domains.window').data.crux[w] ~= nil,
+				ui_cache = require('frogman.domains.ui.data').window_display_cache[w] ~= nil,
 			}
 		]], { w2 })
 	end
@@ -105,7 +105,7 @@ T['T26 [char] :terminal in a window with {c=c s=b} keeps its triquetra, and the 
 	child.settle(300)
 	eq(child.lua('return vim.bo.buftype'), 'terminal')
 	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')
-	eq(child.lua('return require("cavediver.domains.history").get_hash_from_buffer(vim.api.nvim_get_current_buf()) == nil'), true)
+	eq(child.lua('return require("frogman.domains.history").get_hash_from_buffer(vim.api.nvim_get_current_buf()) == nil'), true)
 end
 
 T['T27 [char] the window keeps {c=c s=b} while it shows a terminal, and :e c returns to it intact'] = function()
@@ -139,7 +139,7 @@ T['T513 [char] (M6) under the window view, closing a window rebuilds the view fo
 	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")'))
 	child.settle(300)
 	local dumps = child.dump_files()
-	local ok = child.lua([[return { pcall(require('cavediver').toggle_secondary) }]])
+	local ok = child.lua([[return { pcall(require('frogman').toggle_secondary) }]])
 	child.settle(200)
 	eq({ ok = ok[1], dump = child.dumped_since(dumps) }, { ok = true, dump = nil })
 end
@@ -160,7 +160,7 @@ T['T619 [char] (M6, M10) a window closed hands the view to a window with a triqu
 	child.settle()
 	local got = child.lua([[
 		vim.cmd('close')
-		return require('cavediver.domains.window').data.last_valid_window
+		return require('frogman.domains.window').data.last_valid_window
 	]])
 	eq(got, first)
 end
@@ -168,8 +168,8 @@ end
 T['T620 [char] (M6) window 0 is the current window'] = function()
 	child.steps({ ':e a' })
 	eq(child.lua([[
-		local t = require('cavediver').get_window_triquetra(0)
-		local crux = require('cavediver.domains.window').data.crux
+		local t = require('frogman').get_window_triquetra(0)
+		local crux = require('frogman.domains.window').data.crux
 		return { zero = crux[0] ~= nil, same = t == crux[vim.api.nvim_get_current_win()] }
 	]]), { zero = false, same = true })
 end
@@ -192,14 +192,14 @@ end
 -- Two loads of sessions with no file, the second with a help window focused: each is a fresh start.
 T['T515 [char] (M6) a fresh start leaves a window in last_valid_window'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
-	child.lua('require("cavediver").load_session("fresh-1")')
+	child.lua('require("frogman").load_session("fresh-1")')
 	child.settle(100)
 	child.cmd('help')
 	child.settle()
-	child.lua('require("cavediver").load_session("fresh-2")')
+	child.lua('require("frogman").load_session("fresh-2")')
 	child.settle(200)
 	eq(child.lua([[
-		local W = require('cavediver.domains.window').data
+		local W = require('frogman.domains.window').data
 		local w = W.last_valid_window
 		return { valid = w ~= nil and vim.api.nvim_win_is_valid(w), tracked = w ~= nil and W.crux[w] ~= nil }
 	]]), { valid = true, tracked = true })
@@ -209,26 +209,26 @@ T['T624 [char] (M6) a fresh start gives a float no triquetra'] = function()
 	child.steps({ ':e a', ':e b' })
 	local float = child.lua([[return vim.api.nvim_open_win(vim.fn.bufnr(_G.CDV_TEST.root .. '/a.txt'), false,
 		{ relative = 'editor', row = 1, col = 1, width = 20, height = 3 })]])
-	child.lua('require("cavediver").load_session("fresh-1")')
+	child.lua('require("frogman").load_session("fresh-1")')
 	child.settle(200)
-	eq(child.lua('return require("cavediver.domains.window").data.crux[...] ~= nil', { float }), false)
+	eq(child.lua('return require("frogman.domains.window").data.crux[...] ~= nil', { float }), false)
 end
 
 -- A split's winbar drawn, then cavediver off, the split closed, cavediver set up again and a load: the
 -- first from bare, a fresh start, and the second from idle, which tears down first.
 T['T626 [char] (M6, S1) a load lets go what the UI kept of a window closed while cavediver was off'] = function()
-	local SEGMENT = 'return require("cavediver.domains.ui.routines").winbar_segment(...) ~= ""'
+	local SEGMENT = 'return require("frogman.domains.ui.routines").winbar_segment(...) ~= ""'
 	local function closed_while_off(session)
 		child.cmd('vsplit')
 		child.steps({ ':e b' })
 		local split = child.lua('return vim.api.nvim_get_current_win()')
 		child.settle(300)
 		local before = child.lua(SEGMENT, { split })
-		child.lua('require("cavediver").disable()')
+		child.lua('require("frogman").disable()')
 		child.cmd('close')
 		child.lua('_G.CDV_TEST.setup()')
-		local from = child.lua('return require("cavediver.domains.storage.sm"):state()')
-		child.lua('require("cavediver").load_session(...)', { session })
+		local from = child.lua('return require("frogman.domains.storage.sm"):state()')
+		child.lua('require("frogman").load_session(...)', { session })
 		child.settle(200)
 		return { from = from, before = before, after = child.lua(SEGMENT, { split }) }
 	end

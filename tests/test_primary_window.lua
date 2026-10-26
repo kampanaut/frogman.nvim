@@ -198,8 +198,8 @@ T['T553 [char] a picked file whose path reads like another entry\'s short name g
 	child.cmd('write')
 	child.settle()
 	local queue = child.lua([[
-		local H = require('cavediver.domains.history')
-		local t = require('cavediver.domains.window').data.crux[...]
+		local H = require('frogman.domains.history')
+		local t = require('frogman.domains.window').data.crux[...]
 		return vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_hash(h), ':.') end, t.primary_buffer)
 	]], { w })
 	eq({ shown = shown, picked = picked, queue = queue },
@@ -221,8 +221,8 @@ T['T583 [char] two queued files of one name keep their own lines'] = function()
 	local w = child.win()
 	local function queue()
 		return child.lua([[
-			local H = require('cavediver.domains.history')
-			local t = require('cavediver.domains.window').data.crux[...]
+			local H = require('frogman.domains.history')
+			local t = require('frogman.domains.window').data.crux[...]
 			return vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_hash(h), ':.') end, t.primary_buffer)
 		]], { w })
 	end
@@ -257,8 +257,8 @@ T['T584 [char] a picked file keeps its line through a second write'] = function(
 	child.cmd('write')
 	child.settle()
 	local queue = child.lua([[
-		local H = require('cavediver.domains.history')
-		local t = require('cavediver.domains.window').data.crux[...]
+		local H = require('frogman.domains.history')
+		local t = require('frogman.domains.window').data.crux[...]
 		return vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_hash(h), ':.') end, t.primary_buffer)
 	]], { w })
 	eq({ queue = queue, errors = Extra.at_least(child.messages()) }, { queue = { 'init.lua', 'sub/init.lua' }, errors = {} })
@@ -339,8 +339,8 @@ T['T452 [char] (A18, A27) the pop-up in the trail\'s language'] = function()
 	child.lua([[
 		-- b.txt gone from disk after the start (each start writes the project's files again), tagged by hand
 		os.remove(_G.CDV_TEST.root .. '/b.txt')
-		local hash = require('cavediver.domains.history').get_hash_from_filepath(_G.CDV_TEST.root .. '/b.txt')
-		require('cavediver.domains.history').data.missing[hash] = 'feature'
+		local hash = require('frogman.domains.history').get_hash_from_filepath(_G.CDV_TEST.root .. '/b.txt')
+		require('frogman.domains.history').data.missing[hash] = 'feature'
 	]])
 	open()
 	local lines, on = child.popup_lines(), child.lua(DECORATION)
@@ -383,7 +383,7 @@ T['T568 [char] (A18, M13) opening the primary pop-up leaves its size setting as 
 	queue_ba()
 	open()
 	local got = child.lua([[return { width = vim.api.nvim_win_get_width(0), columns = vim.o.columns,
-		setting = require('cavediver.configs').primary_buffer_history_popup.width }]])
+		setting = require('frogman.configs').primary_buffer_history_popup.width }]])
 	eq({ half = got.width == math.floor(got.columns * 0.5), setting = got.setting }, { half = true, setting = -0.5 })
 end
 
@@ -411,7 +411,7 @@ T['T631 [char] (A18, A27) the pop-up\'s keys begin steps of their own'] = functi
 	child.steps({ '<CR>' })
 	settle_close()
 	eq(child.lua([[
-		for _, step in ipairs(require('cavediver').ledger.steps()) do
+		for _, step in ipairs(require('frogman').ledger.steps()) do
 			if step.cause == 'keymap' and step.trigger == '<CR>' then return true end
 		end
 		return false
@@ -490,8 +490,8 @@ T['T495 [char] (A18) a path that a longer open buffer\'s name begins with is its
 	child.cmd('write')
 	child.settle()
 	local first = child.lua([[
-		local t = require('cavediver.domains.window').data.crux[...]
-		return vim.fs.basename(require('cavediver.domains.history').get_filepath_from_hash(t.primary_buffer[1]) or '')
+		local t = require('frogman.domains.window').data.crux[...]
+		return vim.fs.basename(require('frogman.domains.history').get_filepath_from_hash(t.primary_buffer[1]) or '')
 	]], { w })
 	eq({ primary = child.primary(w), first = first, errors = Extra.at_least(child.messages()) },
 		{ primary = '[idx,b,a]on', first = 'idx.js', errors = {} })

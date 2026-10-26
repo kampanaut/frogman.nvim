@@ -28,7 +28,7 @@ end
 -- The window's own history entry, as a set of file stems, or nil.
 local function window_history(win)
 	return X.unnil(child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local entry = H.data.crux_internals.window[...]
 		if entry == nil then return nil end
 		local out = {}
@@ -96,7 +96,7 @@ end
 T['T20 [char] track_buffer(h, t) stores t in the global history'] = function()
 	child.steps({ ':e a' })
 	local got = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local h = _G.CDV_X.hash('b')
 		H.track_buffer(h, 1000)
 		return { stored = H.data.crux_internals.global[h], index = H.data.history_index }
@@ -133,7 +133,7 @@ local function walk(view, seed)
 		table.insert(keys, key)
 		child.step(key)
 		-- once the editor has settled, nothing is left on the settle queue
-		local queued = child.lua('return require("cavediver.settle").pending()')
+		local queued = child.lua('return require("frogman.settle").pending()')
 		if #queued > 0 then
 			return string.format('seed %d, step %d: the settle queue is not empty once settled: %s after %s', seed, #keys,
 				table.concat(queued, ', '), table.concat(keys, ', '))

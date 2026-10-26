@@ -484,7 +484,7 @@ spec: (A15, P2) The close key's delete leaves a buffer a later command brought b
 → `eq(child.lua('return vim.bo.modified'), true)`  
 → `eq(child.lua('return vim.api.nvim_win_get_cursor(0)'), { 2, 1 })`  
 `<M-.>` → `eq(child.lua('return vim.api.nvim_buf_is_valid(...)', { buf }), false)`  
-→ `eq(child.lua('return require("cavediver.domains.history").data.closed_buffers'), { h })`  
+→ `eq(child.lua('return require("frogman.domains.history").data.closed_buffers'), { h })`  
 → `eq(`  
 note: delete_buffer keeps the cursor before it switches the window away (history/routines.lua), so the cache doesn't fall back to {1,0}.  
 spec: On a modified No Name buffer it closes it and caches its lines, filetype and cursor. `delete_buffer` switches the window away before the wipe, so it keeps the cursor on the buffer first (`vim.b[bufnr].cavediver_cursor`), and the cursor doesn't come back as `{1,0}` (bug, found 202…  
@@ -560,12 +560,12 @@ spec: A reopened No Name buffer gets its cursor in its own window, with no "Inva
 
 **T91 [char]** after a No Name buffer is reopened, its old hash is renamed everywhere ⚑ state set by hand  
 `:e a`, `:e b`, `:e c`, `<M-.>` → `shown = 'c'`  
-→ `eq(child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()].ternary_slot'), old)`  
-→ `eq(child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()].displacement_ternary_map[...]', { child.hash_of('b'`  
+→ `eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()].ternary_slot'), old)`  
+→ `eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()].displacement_ternary_map[...]', { child.hash_of('b') `  
 `<M-S-w>` → `eq(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), { 'scratch text' })`  
 → `eq(new ~= old, true)`  
 → `eq(child.refs(old), {})`  
-→ `eq(child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()].displacement_ternary_map[...]', { child.hash_of('b'`  
+→ `eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()].displacement_ternary_map[...]', { child.hash_of('b') `  
 note: b is left while the No Name buffer is its ternary, so dtm[b] names it; then the No Name buffer is closed from c, where it lands in the ternary.  
 spec: After a No Name buffer is reopened, every slot and map entry that held its old hash holds the new one.  
 `tests/test_closing.lua:296`
@@ -875,8 +875,8 @@ spec: (A26) A session load and a cleanup re-point appear in the dump as steps ta
 → `eq(#Extra.new_files(files_before, child.dumps()), 1)`  
 → `eq(#scratch > 0, true)`  
 → `eq(child.lua('return { vim.bo[...].buftype, vim.bo[...].buflisted }', { b, b }), { 'nofile', false })`  
-→ `eq(child.lua('return require("cavediver.domains.history").get_hash_from_buffer(...)', { b }), vim.NIL)`  
-→ `eq(child.lua('return require("cavediver.domains.window").data.crux[...] == nil', { w }), true)`  
+→ `eq(child.lua('return require("frogman.domains.history").get_hash_from_buffer(...)', { b }), vim.NIL)`  
+→ `eq(child.lua('return require("frogman.domains.window").data.crux[...] == nil', { w }), true)`  
 → `ordered = ''`  
 `:wincmd p`, `:e a`, `:e b` → `eq(#second > 0, true)`  
 … and 2 more  
@@ -994,14 +994,14 @@ spec: (A12, T459) The command-line window doesn't cancel a cycle: `:e a`, `:e b`
 `tests/test_cycling.lua:1055`
 
 **T512 [char]** a tab session's load into a tab cycling there ends the cycle  
-`:e a`, `:e b`, `:e c` → `eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
+`:e a`, `:e b`, `:e c` → `eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
 `:e d`, `<M-n>` → `eq(child.state(), CYCLING)`  
 `<M-n>` → `eq({ state = state, slots = child.slots() }, { state = NORMAL, slots = before })`  
 spec: (A12, S1 Load) A tab session's load ends a cycle, in the tab it loads into and elsewhere: `:e a`, `:e b`, `:e c` saved as tab session t, `:e d`, `<M-n>`, then t loaded into that tab, or into a second tab from the cycling one, leave navigation `normal` and history attached, and th…  
 `tests/test_cycling.lua:1066`
 
 **T512 [char]** a tab session's load into another tab ends a cycle running elsewhere ⚑ state set by hand  
-`:e a`, `:e b`, `:e c` → `eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
+`:e a`, `:e b`, `:e c` → `eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
 `:e d`, `<M-n>` → `eq(child.state(), CYCLING)`  
 `<M-n>` → `eq({ state = state, slots = child.slots() }, { state = NORMAL, slots = before })`  
 note: The cycle runs in the first tab, and the session loads into a second one from there.  
@@ -1044,7 +1044,7 @@ spec: (A26) A replay's editor isn't saved: after T201's replay, `save_session()`
 `tests/test_cycling.lua:1207`
 
 **T471 [char]** a replay goes into an editor that has taken in the empty buffer it started on  
-`:e a`, `:doautocmd BufEnter` → `eq({ registered = child.lua('return require("cavediver.domains.history").data.hash_buffer_registry.hashes[...] ~= nil', { start }),`  
+`:e a`, `:doautocmd BufEnter` → `eq({ registered = child.lua('return require("frogman.domains.history").data.hash_buffer_registry.hashes[...] ~= nil', { start }),`  
 → `eq({`  
 note: as a config that calls setup() at startup has it: the start buffer entered once cavediver is set up  
 spec: (A26) A replay goes into an editor that has taken in the empty buffer it started on, as one whose config calls `setup()` at startup has: T468's dump, a fresh editor in its project whose empty start buffer is entered once cavediver is set up, so it's registered and its window has …  
@@ -1088,7 +1088,7 @@ spec: (A26) With a short ring the dump's snapshot and steps still meet: with `le
 `tests/test_cycling.lua:1362`
 
 **T493 [char]** a replayed editor writes no records as a tab session's tab closes  
-`:e a`, `:e a`, `:tabnew`, `:e b` → `eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
+`:e a`, `:e a`, `:tabnew`, `:e b` → `eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
 `:tabnew`, `:e c`, `:tabclose` → `eq(raw(main) == bytes, true)`  
 spec: (A26, S1 Records) A replayed editor writes no records as a tab session's tab closes: a tab session saved in one editor; a fresh editor replays a dump, loads that session into a new tab and closes it, and the session's file is as it was.  
 `tests/test_cycling.lua:1380`
@@ -1107,7 +1107,7 @@ spec: (A26) A dump that spans more than one tab isn't replayed: a dump made with
 **T463 [char]** an export called from a user's mapping runs the cancel first too  
 → `eq({ ok = ok, dumps = #Extra.new_files(before, child.dumps()), split = child.shown(split), first = child.slots(first) },`  
 note: A user's own Lua mapping: a window jump and an export, in one function.  
-spec: (A12) An export called from a user's mapping runs the cancel first too: T461's setup, then `vim.cmd.wincmd('w')` and `require('cavediver').jump_to_primary()` in one function: nothing throws and nothing dumps, the split shows c again, and the other window is `⦉b⦊ [a] ⟦-⟧`.  
+spec: (A12) An export called from a user's mapping runs the cancel first too: T461's setup, then `vim.cmd.wincmd('w')` and `require('frogman').jump_to_primary()` in one function: nothing throws and nothing dumps, the split shows c again, and the other window is `⦉b⦊ [a] ⟦-⟧`.  
 `tests/test_cycling.lua:1455`
 
 **T462 [char]** a jump's cancel says so  
@@ -1117,7 +1117,7 @@ spec: (A12) A jump's cancel says so: T461's setup, `<M-m>` in the split, then `<
 
 **T615 [char]** (D15) a cycle's end, a pick or a cancel, lets its window's start go  
 `<M-v>`, `<M-m>` → `eq(child.state(), CYCLING)`  
-`:wincmd w` → `eq({ picked = picked, cancelled = child.lua('return next(require("cavediver.domains.history").data.cycling_origins) == nil') },`  
+`:wincmd w` → `eq({ picked = picked, cancelled = child.lua('return next(require("frogman.domains.history").data.cycling_origins) == nil') },`  
 spec: (D15) A cycle's end, a pick or a cancel, lets its window's start go: T462's setup, `<M-v>`, then `<M-m>` and `<C-w>w`: after the pick the split has no `cycling_origins` entry, and after the cancel none is left.  
 `tests/test_cycling.lua:1479`
 
@@ -1157,10 +1157,10 @@ spec: (P2, A1) The slotting happens after the event, not inside it: with `⦉-�
 **T250 [char]** (P2, A1) a buffer that turns into a terminal or help after its BufEnter is never slotted as a file  
 `:e a`, `:e b` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
 `:terminal` → `eq(term.bt, 'terminal')`  
-→ `eq(child.lua('return require("cavediver.domains.history").get_hash_from_buffer(...) == nil', { term.buf }), true)`  
+→ `eq(child.lua('return require("frogman.domains.history").get_hash_from_buffer(...) == nil', { term.buf }), true)`  
 → `eq(child.slots():find('NONAME', 1, true), nil)`  
 `:buffer b.txt`, `:help` → `eq(help.bt, 'help')`  
-→ `eq(child.lua('return require("cavediver.domains.history").get_hash_from_buffer(...) == nil', { help.buf }), true)`  
+→ `eq(child.lua('return require("frogman.domains.history").get_hash_from_buffer(...) == nil', { help.buf }), true)`  
 → `slots = 'no triquetra'`  
 note: T250's purpose: what settling protects. A buffer that only becomes a terminal or help after its BufEnter is never slotted or registered as a file (the author, 2026-10-21: "Both"). The terminal isn't registered and sits in no slot (whether the window keeps its slots while visiting is the visiting rul  
 spec: (P2, A1) The slotting happens after the event, not inside it: with `⦉-⦊ [a] ⟦-⟧`, a `BufEnter` autocmd of the user's, made after `setup()`, still sees `⦉-⦊ [a] ⟦-⟧` while `:e b` runs, and the window has `⦉a⦊ [b] ⟦-⟧` once the editor settles. Its purpose is tested too: a buffer th…  
@@ -1177,9 +1177,9 @@ spec: (P3) The load matches windows by what they show, not by position: two wind
 `tests/test_decisions.lua:86`
 
 **T252 [char]** (P10, I17) a closed file still on the closed stack keeps its history entry  
-`:e a`, `:e b`, `:e c` → `eq(child.lua('return require("cavediver.domains.history").data.crux_internals.global[...] ~= nil', { h }), true)`  
+`:e a`, `:e b`, `:e c` → `eq(child.lua('return require("frogman.domains.history").data.crux_internals.global[...] ~= nil', { h }), true)`  
 `:bdelete b.txt` → `closed = 'b'`  
-→ `eq(child.lua('return require("cavediver.domains.history").data.crux_internals.global[...] ~= nil', { h }), true)`  
+→ `eq(child.lua('return require("frogman.domains.history").data.crux_internals.global[...] ~= nil', { h }), true)`  
 note: b is closed and stays known through the closed stack.  
 spec: (P10, I17) History follows along and doesn't let go early: `:e a`, `:e b`, `:e c`, `:bdelete b.txt` leave b on the closed stack, still known, and its global history entry stays. "Known" means cavediver still remembers the file (registered, e.g. on the closed stack), not that it's…  
 `tests/test_decisions.lua:108`
@@ -1192,12 +1192,12 @@ spec: (P11) A bug inside a hook is caught with a stack trace: a hook that throws
 
 **T254 [char]** (P12, A25) require creates no user commands and starts no timers  
 → `eq(got, { commands = {}, timers = 0 })`  
-spec: (P12, A25) Nothing runs at `require`, and `setup()` makes everything inside the `cavediver` augroup: `require('cavediver')` alone creates no `Cavediver*` user command and starts no timer, and every autocmd `setup()` creates is in the `cavediver` augroup, with the commands made.  
+spec: (P12, A25) Nothing runs at `require`, and `setup()` makes everything inside the `cavediver` augroup: `require('frogman')` alone creates no `Cavediver*` user command and starts no timer, and every autocmd `setup()` creates is in the `cavediver` augroup, with the commands made.  
 `tests/test_decisions.lua:137`
 
 **T254 [char]** (P12, A25) setup() puts every autocmd it makes in the cavediver augroup, and makes the commands  
 → `eq(got, { made = true, outside = 0, command = true })`  
-spec: (P12, A25) Nothing runs at `require`, and `setup()` makes everything inside the `cavediver` augroup: `require('cavediver')` alone creates no `Cavediver*` user command and starts no timer, and every autocmd `setup()` creates is in the `cavediver` augroup, with the commands made.  
+spec: (P12, A25) Nothing runs at `require`, and `setup()` makes everything inside the `cavediver` augroup: `require('frogman')` alone creates no `Cavediver*` user command and starts no timer, and every autocmd `setup()` creates is in the `cavediver` augroup, with the commands made.  
 `tests/test_decisions.lua:151`
 
 **T255 [char]** (M1) the session file is named sha256(directory .. "\\n" .. name)  
@@ -1508,7 +1508,7 @@ spec: (D11, bug found while porting) Under the window view, `:close` leaves no t
 
 **T289 [char]** (D25) the window machine is gone: its file, its SHOWING_ constants and its require  
 → `eq({`  
-spec: (D25) The window machine goes: no `window/sm.lua`, no `SHOWING_` constants in `window/states.lua`, and nothing requires `cavediver.domains.window.sm`. A doc check, matched by text.  
+spec: (D25) The window machine goes: no `window/sm.lua`, no `SHOWING_` constants in `window/states.lua`, and nothing requires `frogman.domains.window.sm`. A doc check, matched by text.  
 `tests/test_decisions.lua:850`
 
 **T290 [char]** (D18, D22, D24) STATUS and the old project CLAUDE.md live in archive/  
@@ -1840,7 +1840,7 @@ spec: (A27) A step the ring drops drops its rows: with `ledger = { ring = 5 }`, 
 `tests/test_ledger.lua:102`
 
 **T392 [char]** (A27, A26) the ring keeps the last N steps, N from ledger.ring, 1,000 by default  
-→ `eq(child.lua('return require("cavediver.configs").ledger.ring'), 1000)`  
+→ `eq(child.lua('return require("frogman.configs").ledger.ring'), 1000)`  
 `:e a`, `:e b`, `<M-f>` → `eq({ triggers = triggers, ordered = ordered },`  
 spec: (A27, A26) The ring keeps the last N steps, N from `ledger.ring`, 1,000 by default: with `ledger = { ring = 5 }`, `:e a`, `:e b` and eight `<M-f>` leave five steps, the last five `<M-f>` steps, oldest first.  
 `tests/test_ledger.lua:124`
@@ -1936,7 +1936,7 @@ spec: (A27, I10) An arrival undone is a move: T217's first route (`:e a`, `:enew
 `tests/test_ledger.lua:457`
 
 **T406 [char]** (A27, A21) a triquetra dropped is a move ⚑ state set by hand  
-`:e a`, `:enew`, `:bdelete a.txt` → `eq({ dropped = m ~= nil, triquetra = child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()] ~= nil') },`  
+`:e a`, `:enew`, `:bdelete a.txt` → `eq({ dropped = m ~= nil, triquetra = child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()] ~= nil') },`  
 note: a scratch shown in the window: it's visiting, with the empty No Name buffer hidden as its current slot  
 spec: (A27, A21) A triquetra dropped is a move: `:e a`, `:enew`, `:bdelete a.txt`, so nothing open is left to come back to (A21), a `nofile` scratch shown in the window, which is then visiting it with the empty No Name buffer as its current slot, and that buffer wiped give a "dropped" …  
 `tests/test_ledger.lua:468`
@@ -2183,7 +2183,7 @@ spec: Closing a window drops its triquetra and its UI cache.
 `:e a`, `:e b`, `:e c`, `<M-f>` → `slots = '⦉-⦊ [c] ⟦b⟧'`  
 `:terminal` → `eq(child.lua('return vim.bo.buftype'), 'terminal')`  
 → `slots = '⦉-⦊ [c] ⟦b⟧'`  
-→ `eq(child.lua('return require("cavediver.domains.history").get_hash_from_buffer(vim.api.nvim_get_current_buf()) == nil'), true)`  
+→ `eq(child.lua('return require("frogman.domains.history").get_hash_from_buffer(vim.api.nvim_get_current_buf()) == nil'), true)`  
 spec: `:terminal` in a window with `{c=c s=b}` keeps its triquetra, and the terminal stays untracked (the visiting rule, A2). T27 covers coming back.  
 `tests/test_lifecycle.lua:100`
 
@@ -2225,7 +2225,7 @@ spec: (M6) A fresh start leaves a window in `last_valid_window`: `:e a`, `:e b`,
 `tests/test_lifecycle.lua:193`
 
 **T624 [char]** (M6) a fresh start gives a float no triquetra ⚑ state set by hand  
-`:e a`, `:e b` → `eq(child.lua('return require("cavediver.domains.window").data.crux[...] ~= nil', { float }), false)`  
+`:e a`, `:e b` → `eq(child.lua('return require("frogman.domains.window").data.crux[...] ~= nil', { float }), false)`  
 spec: (M6) A fresh start gives a float no triquetra: at `:e a`, `:e b`, a float showing a.txt, unfocused, then a load of a session with no file: the float has no triquetra.  
 `tests/test_lifecycle.lua:208`
 
@@ -2527,8 +2527,8 @@ spec: (I19, Q14) An empty queue that's switched on stays on: from `p=[]on`, `:e 
 → `eq(got, { hide_winbar = true, show_winbar = true, hide_indicators = true, show_indicators = true })`  
 → `eq(child.lua('return vim.wo.winbar'), '')`  
 → `eq(child.lua('return vim.wo.winbar ~= ""'), true)`  
-→ `eq(child.lua('return require("cavediver").ui.is_hidden("indicators")'), true)`  
-→ `eq(child.lua('return require("cavediver").ui.is_hidden("indicators")'), false)`  
+→ `eq(child.lua('return require("frogman").ui.is_hidden("indicators")'), true)`  
+→ `eq(child.lua('return require("frogman").ui.is_hidden("indicators")'), false)`  
 note: Decided 2026-10-21: the toggles are built (how they're exposed, key or command, comes later). Hidden stays hidden through the refresh, and shown comes back.  
 spec: (M11, D23) The winbar and indicator toggles work at runtime: `hide_winbar()` empties the winbar and it stays empty through the refresh, `show_winbar()` brings it back, and `hide_indicators()`/`show_indicators()` switch the indicators off and on. Decided 2026-10-21: build them (th…  
 `tests/test_negative.lua:315`
@@ -2784,10 +2784,10 @@ spec: (S2) A session file with a newer header gives "made by a newer cavediver" 
 
 **T246 [char]** (S2) a No Name buffer closed with <M-.> stays on the closed stack across a save and a load  
 `:e a`, `:enew`, `<M-.>` → `shown = 'a'`  
-→ `eq(#child.lua('return require("cavediver.domains.history").data.closed_buffers'), 1)`  
+→ `eq(#child.lua('return require("frogman.domains.history").data.closed_buffers'), 1)`  
 → `eq(Misc.save(child), { true })`  
 → `eq(Misc.load(child), { true })`  
-→ `eq(#child.lua('return require("cavediver.domains.history").data.closed_buffers'), 1)`  
+→ `eq(#child.lua('return require("frogman.domains.history").data.closed_buffers'), 1)`  
 `<M-S-w>` → `eq(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), { 'kept text' })`  
 note: It held before the encrypted format and holds with it.  
 spec: (S2) A No Name buffer closed with `<M-.>` stays on the closed stack across a save and a load, and `<M-S-w>` then brings its text back. It held before save-as-closed was built (found 2026-10-21), and holds with it (step 4) and with the encrypted format, which reads the text from i…  
@@ -3225,7 +3225,7 @@ spec: (S2 Contract and API; DESK:758, DESK:1146) A whole-editor save is keyed by
 `tests/test_s2.lua:49`
 
 **T294 [char]** (S2) a tab session is keyed by its tab's directory  
-`:e a`, `:tabnew`, `:tcd sub`, `:edit ../b.txt` → `eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
+`:e a`, `:tabnew`, `:tcd sub`, `:edit ../b.txt` → `eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
 → `eq(S2.main_file(session_dir(), tab, 't') ~= nil, true)`  
 spec: (S2 Contract and API, Tab sessions; DESK:949, DESK:1074) A tab session is keyed by its tab's directory: `save_session('t', { tab = … })` from a tab with `:tcd sub` writes a file whose name starts with `sha256(<project>/sub .. "\n" .. 't')`. The spec makes the scope's directory th…  
 `tests/test_s2.lua:64`
@@ -3400,7 +3400,7 @@ spec: (S2 The file) A save leaves another editor's write in flight alone, and sw
 **T563 [char]** (S2) a save reads its main file once  
 `:e a` → `eq(Misc.save(child), { true })`  
 `:tabnew`, `:tcd sub`, `:edit ../b.txt` → `eq(child.lua('return { pcall(loadstring(...)) }', { tab_save }), { true })`  
-`:tabprevious` → `eq(reads_during(whole, 'require("cavediver").save_session(vim.fn.getcwd())'), { true, 1 })`  
+`:tabprevious` → `eq(reads_during(whole, 'require("frogman").save_session(vim.fn.getcwd())'), { true, 1 })`  
 `:tabnext` → `eq(reads_during(tab, tab_save), { true, 1 })`  
 note: Each save runs in one call, with io.open counted on its main file meanwhile.  
 spec: (S2 Save) A save reads its main file once: with the session saved once, a whole-editor save and then a tab session's save each open the main file for reading once.  
@@ -3552,7 +3552,7 @@ spec: (M14) The label looks for `.git` once when there's none: in a project with
 
 **T611 [char]** (S2 The file) session_dir is read as a path: its variables expanded, with or without its trailing slash  
 `:e a`, `:e b` → `eq(S2.save(child), { true })`  
-→ `eq({ inside = S2.main_file(s.session_dir, S2.cwd(child), nil) ~= nil, dir = child.lua('return require("cavediver.configs").session_dir') },`  
+→ `eq({ inside = S2.main_file(s.session_dir, S2.cwd(child), nil) ~= nil, dir = child.lua('return require("frogman.configs").session_dir') },`  
 spec: (S2 The file) `session_dir` is read as a path: set to `$CDV_T611` with no trailing slash, `CDV_T611` naming the session folder, a save writes its main file inside that folder, and `session_dir` reads as the folder with its slash.  
 `tests/test_s2.lua:1026`
 
@@ -3630,7 +3630,7 @@ spec: (S2 Save-as-closed, Loading) A saved-open No Name text whose buffer turned
 **T477 [char]** (S1) a load whose file can't be read for an environment reason fails inside its hook  
 `:e a`, `:e b` → `eq(Misc.save(child), { true })`  
 → `eq(Misc.load(child), { true })`  
-→ `eq({ failed = S2.has(msgs, 'failed during transition'), state = child.lua('return require("cavediver.domains.storage").sm:state()') },`  
+→ `eq({ failed = S2.has(msgs, 'failed during transition'), state = child.lua('return require("frogman.domains.storage").sm:state()') },`  
 note: libcrypto made unloadable in the fresh editor before anything has needed it.  
 spec: (S1 State machine) A load whose file can't be read for an environment reason fails inside its hook: a session saved, then in a fresh editor with libcrypto made unloadable, `load_session` returns normally, a notification names the hook's failure, and storage is `idle`.  
 `tests/test_s2.lua:1251`
@@ -3727,7 +3727,7 @@ spec: (S2 Contents; DESK:1440) Windows on the same file keep their saved order, 
 
 **T316 [char]** (S2) a No Name buffer reopened at load gets a fresh id, and every reference to the old one is renamed ⚑ state set by hand  
 `:e a`, `:e b` → `eq(type(old), 'string')`  
-→ `eq(child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()].ternary_slot == ...',`  
+→ `eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()].ternary_slot == ...',`  
 → `eq(Misc.save(child), { true })`  
 → `eq(Misc.load(child), { true })`  
 → `eq(back ~= nil, true)`  
@@ -3866,7 +3866,7 @@ spec: (S2 Tab sessions; DESK:956, the author's 2026-10-23 answer) A tab session'
 `:e x`, `:e t` → `slots = '⦉x⦊ [t] ⟦-⟧'`  
 → `eq(S2.save(child), { true })`  
 → `eq(S2.load_tab_session(child, 't'), { true })`  
-`:tabprevious`, `:bdelete x.txt`, `:e e`, `:tabnext` → `eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
+`:tabprevious`, `:bdelete x.txt`, `:e e`, `:tabnext` → `eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
 → `eq(child.lua([[`  
 → `eq(S2.load(child), { true })`  
 → `eq({ closed = child.closed(), slots = child.slots() }, { closed = 'x', slots = '⦉x⦊ [t] ⟦-⟧' })`  
@@ -3875,7 +3875,7 @@ spec: (S2 Tab sessions, Errors and drift; DESK:957, DESK:1068) A tab-session sav
 `tests/test_s2.lua:1948`
 
 **T332 [char]** (S2) a tab session's file holds the No Name texts its own tab owns, and not another tab's  
-`:e d`, `:tabprevious`, `:e t`, `:tabnext` → `eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
+`:e d`, `:tabprevious`, `:e t`, `:tabnext` → `eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
 `:e x` → `eq(S2.load_tab_session(child, 't'), { true })`  
 → `eq({ session_text = S2.holding(child, 'session text'), first_text = S2.holding(child, 'first text') },`  
 note: In T318's state, a No Name text made in the session's tab and left there (the window goes back to d), and another made in the first tab and left there (back to t). Only the tab session is saved; a fresh process loads it into a second tab.  
@@ -3902,7 +3902,7 @@ spec: (S2 Tab sessions; DESK:956) A tab session's tab closed with its save wired
 
 **T352 [char]** (S2) a tab session saved from a tab with a :tcd of its own is found at load in that tab ⚑ state set by hand  
 `:tabnew`, `:tcd sub`, `:e ../c.txt`, `:e ../d.txt` → `slots = '⦉c⦊ [d] ⟦-⟧'`  
-→ `eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
+→ `eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
 → `eq({ got = got, slots = child.slots() }, { got = { true }, slots = '⦉c⦊ [d] ⟦-⟧' })`  
 note: The tab's own directory is sub, in the save and in the load, as the manager restores it.  
 spec: (S2 Contract and API, Tab sessions; DESK:949) A tab session saved from a tab with a `:tcd` of its own is found at load in that tab: saved as `t` from a tab with `:tcd sub` at `⦉c⦊ [d] ⟦-⟧`, and loaded by name into a new tab of a fresh process whose `:tcd` is `sub` too, as the man…  
@@ -3916,8 +3916,8 @@ spec: (S2 Tab sessions, Save-as-closed) A session loaded while it's open doesn't
 `tests/test_s2.lua:2099`
 
 **T582 [char]** (S2) a tab session loaded into the window that built the last view ranks the session's visits at once  
-`:e a`, `:e b`, `:e c`, `:tabnew`, `:e d`, `:e e` → `eq(child.lua('return { pcall(require("cavediver").save_session, "t1", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
-`:tabclose`, `:e a` → `eq(child.lua('return { pcall(require("cavediver").load_session, "t1", { tab = ... }) }', { tab1 }), { true })`  
+`:e a`, `:e b`, `:e c`, `:tabnew`, `:e d`, `:e e` → `eq(child.lua('return { pcall(require("frogman").save_session, "t1", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
+`:tabclose`, `:e a` → `eq(child.lua('return { pcall(require("frogman").load_session, "t1", { tab = ... }) }', { tab1 }), { true })`  
 → `eq(got, child.ordered())`  
 spec: (S2 Tab sessions, M4) A tab session loaded into the window that built the last view ranks the session's visits at once: tab 1 visits a, b and c; tab 2 visits d and e and is saved as t1, then closed; back in tab 1, `:e a` and t1 loaded into tab 1 give the bufferline order a view b…  
 `tests/test_s2.lua:2113`
@@ -3931,7 +3931,7 @@ spec: (S1, I22) After a load from idle, closes and `<M-S-w>` use one closed stac
 
 **T354 [char]** (S2) a tab session with no file, loaded with the hint, starts only its tab fresh ⚑ state set by hand  
 `:e a`, `:e x`, `:e t`, `:bdelete a.txt` → `eq(S2.save(child), { true })`  
-→ `eq(child.lua('return { pcall(require("cavediver").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
+→ `eq(child.lua('return { pcall(require("frogman").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
 → `eq(state, { got = { true }, session_tab = '⦉-⦊ [d] ⟦-⟧', first_tab = '⦉x⦊ [t] ⟦-⟧', closed = 'a', notices = {} })`  
 note: The session u has no cavediver file; the hint says it's a tab session.  
 spec: (S2 Contract and API; the author's 2026-10-23 answer, "A hint in the call") A tab session with no cavediver file, loaded with the hint, starts only its tab fresh: in T318's first tab at `⦉x⦊ [t] ⟦-⟧`, after a whole-editor save in that process, a session `u` that has no file, load…  
@@ -4005,7 +4005,7 @@ spec: (S1 Records, M11) A No Name edit marks only the sessions whose files hold 
 `tests/test_s2.lua:2346`
 
 **T599 [char]** (S2) a tab session keeps owning a No Name text its tab visited after the window that showed it closes  
-`:split`, `:e x` → `eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
+`:split`, `:e x` → `eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
 `:close` → `eq({ first = first, after = texts() }, { first = 1, after = 1 })`  
 spec: (S2 Tab sessions, F027) A tab session keeps owning a No Name text its tab visited after the window that showed it closes: tab 2 saved as t2, `:split`, `:enew` holding `draft`, `:e x`, t2 saved (one text), the split closed and t2 saved again: still one text in t2's file.  
 `tests/test_s2.lua:2364`
@@ -4056,7 +4056,7 @@ spec: (S2 Errors and drift, A25) `disable()` stops the writes: after `disable()`
 
 **T365 [char]** (S2) a whole-editor switch keeps the manager's teardown out of an open tab session's file  
 `:e a`, `:e b` → `eq(S2.save(child, 'main'), { true })`  
-`:tabnew`, `:e c`, `:e d` → `eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
+`:tabnew`, `:e c`, `:e d` → `eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
 `:tabprevious` → `eq(closed, '')`  
 note: The whole editor is saved at ⦉a⦊ [b], and t from a second tab at ⦉c⦊ [d], in one process, so c's buffer comes before d's. Back in the first tab, in one go, as resession switches: a scratch buffer in the window, every listed buffer deleted with events on, in buffer order (c goes on t's list, then del  
 spec: (S2 Errors and drift, Tab sessions) A whole-editor switch keeps the manager's teardown out of an open tab session's file: with `t` open in a second tab, the manager's switch, all in one go (every buffer deleted with events on, the other tabs closed, then a load of another session…  
@@ -4064,7 +4064,7 @@ spec: (S2 Errors and drift, Tab sessions) A whole-editor switch keeps the manage
 
 **T366 [char]** (S2) a tab saved as another session writes the one it leaves, and carries the closed files its slots hold ⚑ state set by hand  
 `:bdelete c.txt` → `slots = '⦉c⦊ [d] ⟦-⟧'`  
-→ `eq(child.lua('return { pcall(require("cavediver").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
+→ `eq(child.lua('return { pcall(require("frogman").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
 `<M-S-w>` → `eq(state, { pool = 'u', u = 'c', tabless = 0, slots = '⦉c⦊ [d] ⟦-⟧', got = { true }, reopened = 'c' })`  
 note: In T318's state, c is closed in the session's tab and stays in its ternary; that tab is then saved as u ("save as"), so t has no tab left. The load of t afterwards brings d back and not c, as a manager would after c was closed.  
 spec: (S2 Tab sessions; the author's 2026-10-23 answer, "Carry slot entries") A tab saved as another session writes the session it leaves, lets its list go when no tab is left in it, and carries the closed files its slots hold: in T318's state, `:bdelete c.txt` in the session's tab (`⦉…  
@@ -4072,7 +4072,7 @@ spec: (S2 Tab sessions; the author's 2026-10-23 answer, "Carry slot entries") A 
 
 **T368 [char]** (S2) a tab saved as a session for the first time carries the closed files its slots hold  
 `:e a`, `:e b`, `:e c`, `:bdelete b.txt` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
-→ `eq(child.lua('return { pcall(require("cavediver").save_session, "notes", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
+→ `eq(child.lua('return { pcall(require("frogman").save_session, "notes", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
 `<M-S-w>` → `eq({ lists = lists, reopened = child.shown() }, { lists = 'editor,notes', reopened = 'b' })`  
 note: Case A: the first tab is in no session, so b is closed on the editor's list; the tab is then saved as notes.  
 spec: (S2 Tab sessions; the author's 2026-10-23 answers, "Carry a copy" twice) A tab saved under a session it wasn't in carries the closed files its slots hold onto that session's list, and the list it leaves keeps its copy while a tab is still in it. Case A, a tab in no session saved …  
@@ -4080,7 +4080,7 @@ spec: (S2 Tab sessions; the author's 2026-10-23 answers, "Carry a copy" twice) A
 
 **T368 [char]** (S2) a tab whose session another tab took, saved as a new session, carries the closed files its slots hold  
 → `eq(S2.load_tab_session(child, 't'), { true })`  
-`:tabprevious`, `:bdelete c.txt` → `eq(child.lua('return { pcall(require("cavediver").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
+`:tabprevious`, `:bdelete c.txt` → `eq(child.lua('return { pcall(require("frogman").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'),`  
 `<M-S-w>` → `eq({ lists = lists, reopened = child.shown() }, { lists = 't,t_DETACHED (no tab),u', reopened = 'c' })`  
 note: Case B: t is open in the second tab and, loaded again, into a third, which takes it (T369), so the second holds t_DETACHED; c is closed in the second, which is then saved as u. No whole-editor save ran, so the detached list, left with no tab, stays in memory (T382).  
 spec: (S2 Tab sessions; the author's 2026-10-23 answers, "Carry a copy" twice) A tab saved under a session it wasn't in carries the closed files its slots hold onto that session's list, and the list it leaves keeps its copy while a tab is still in it. Case A, a tab in no session saved …  
@@ -4316,8 +4316,8 @@ spec: (S2 Closed-stack picker; the author's "Glyphs, with an ASCII set") With `g
 `tests/test_s2.lua:3638`
 
 **T504 [char]** (S2) two lists of one name and one last part get headers of their own  
-`:e a`, `:tcd w/app`, `:edit ../../b.txt`, `:edit ../../c.txt` → `eq(child.lua('return { pcall(require("cavediver").save_session, nil, { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
-`:bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/b.txt")`, `:tabnew`, `:tcd ' .. child.lua('return _G.CDV_TEST.root`, `:edit ../../d.txt`, `:edit ../../e.txt` → `eq(child.lua('return { pcall(require("cavediver").save_session, nil, { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
+`:e a`, `:tcd w/app`, `:edit ../../b.txt`, `:edit ../../c.txt` → `eq(child.lua('return { pcall(require("frogman").save_session, nil, { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
+`:bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/b.txt")`, `:tabnew`, `:tcd ' .. child.lua('return _G.CDV_TEST.root`, `:edit ../../d.txt`, `:edit ../../e.txt` → `eq(child.lua('return { pcall(require("frogman").save_session, nil, { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
 `:bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/d.txt")`, `:write` → `eq({ distinct = #headers == 2 and headers[1] ~= headers[2], lists = lists_by_dir() }, { distinct = true, lists = before })`  
 note: Two nameless tab sessions, in w/app and p/app: one name, one last part.  
 spec: (S2 Closed-stack picker) Two lists of one name and one last part get headers of their own: two nameless tab sessions, in `w/app` and `p/app`, b closed in one and d in the other; the picker's two `≡app` headers differ, and `:w` with no edits leaves each list as it was.  
@@ -4465,7 +4465,7 @@ spec: Q6's ten keys, as the author ran them: `:e a`, `:e b`, `:e c`, `:e b`, `<M
 **T571 [char]** (A25, M11) a key follows its export as reassigned  
 `:e a`, `:e b`, `<M-f>` → `eq(child.lua('return _G.CDV_RAN or vim.NIL'), '<M-f>')`  
 note: The user's function notes it ran, and inside what step.  
-spec: (A25, M11) A key follows its export as reassigned: with `require('cavediver').toggle_secondary` replaced after `setup()` by a function of the user's, `<M-f>` runs that function, inside the key's step.  
+spec: (A25, M11) A key follows its export as reassigned: with `require('frogman').toggle_secondary` replaced after `setup()` by a function of the user's, `<M-f>` runs that function, inside the key's step.  
 `tests/test_secondary_key.lua:161`
 
 **T621 [char]** (A6, M5) a current slot that can't be reopened stops the key  
@@ -4518,14 +4518,14 @@ spec: `primary_enabled = false` survives a round trip.
 **T137 [char]** load_session after save_session in the same process goes through and ends idle  
 `:e a` → `eq(Misc.save(child), { true })`  
 → `eq(Misc.load(child), { true })`  
-→ `eq(child.lua('return require("cavediver.domains.storage").sm:state()'), 'idle')`  
+→ `eq(child.lua('return require("frogman.domains.storage").sm:state()'), 'idle')`  
 spec: `load_session` after a `save_session` in the same process goes through and ends `idle`.  
 `tests/test_sessions.lua:104`
 
 **T138 [char]** load_session from idle tears down and loads ⚑ state set by hand  
 `:e a`, `:e b`, `:e c` → `slots = '⦉b⦊ [c] ⟦-⟧'`  
 → `eq(Misc.save(child), { true })`  
-`:e d`, `:noautocmd edit c.txt` → `eq({ got[1], child.lua('return require("cavediver").get_storage_state()'), child.slots() },`  
+`:e d`, `:noautocmd edit c.txt` → `eq({ got[1], child.lua('return require("frogman").get_storage_state()'), child.slots() },`  
 note: After the save the window moves on to d; the manager's restore puts it back on c (noautocmd edit) before the load.  
 spec: `load_session` from `idle` tears down and loads.  
 `tests/test_sessions.lua:114`
@@ -4591,7 +4591,7 @@ spec: A save never wipes a buffer or changes what a window shows, an oil window 
 `tests/test_sessions.lua:276`
 
 **T146 [char]** a save leaves an oil window on its oil buffer ⚑ state set by hand; the split visits a file first, so the save reaches the oil case  
-`:e a`, `:e b`, `:vsplit`, `:e c` → `eq(child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()] ~= nil'), true)`  
+`:e a`, `:e b`, `:vsplit`, `:e c` → `eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()] ~= nil'), true)`  
 → `eq(Misc.save(child), { true })`  
 → `eq(snapshot(), before)`  
 note: The split visits c, then shows an oil-like buffer (acwrite, oil://) and keeps its triquetra.  
@@ -4635,9 +4635,9 @@ note: A ColorScheme autocmd made before setup() styles one of cavediver's groups
 spec: (A25) A group a colorscheme autocmd defines stays its own: a `ColorScheme` autocmd setting `CavediverTrailList` made before `setup()`, then `:colorscheme default`: `CavediverTrailList` keeps the autocmd's colour, and `WinbarBase` has the config's.  
 `tests/test_setup.lua:73`
 
-**T126 [char]** require("cavediver") without setup() creates no autocmds  
+**T126 [char]** require("frogman") without setup() creates no autocmds  
 → `eq(got, 0)`  
-spec: `require('cavediver')` without `setup()` creates no autocmds.  
+spec: `require('frogman')` without `setup()` creates no autocmds.  
 `tests/test_setup.lua:87`
 
 **T127 [char]** calling setup() twice leaves one set of autocmds and timers  
@@ -4658,7 +4658,7 @@ spec: (M13) A bracket pair named at the top of `glyphs`, outside the sets, is ta
 **T593 [char]** (S2) a Neovim without LuaJIT's FFI loads cavediver  
 → `eq(got, { setup = true, err = vim.NIL, saved = false, luajit = true })`  
 note: ffi made unavailable before cavediver is required, as a Neovim built without LuaJIT has it.  
-spec: (S2 The file, A25) A Neovim without LuaJIT's FFI loads cavediver: with `ffi` made unavailable before `require('cavediver')`, `setup()` and `:e a` raise nothing, and a save fails with an error naming LuaJIT.  
+spec: (S2 The file, A25) A Neovim without LuaJIT's FFI loads cavediver: with `ffi` made unavailable before `require('frogman')`, `setup()` and `:e a` raise nothing, and a save fails with an error naming LuaJIT.  
 `tests/test_setup.lua:135`
 
 **T596 [char]** (S2) another plugin's different declaration of a libcrypto function doesn't stand in for cavediver's  
@@ -4939,8 +4939,8 @@ spec: `get_buffer_relationships` doesn't throw when current = primary, or it's g
 `tests/test_ui.lua:79`
 
 **T120 [char]** get_smart_basename is a function  
-→ `eq(child.lua('return type(require("cavediver").get_smart_basename)'), 'function')`  
-spec: `require('cavediver').get_smart_basename` is a function.  
+→ `eq(child.lua('return type(require("frogman").get_smart_basename)'), 'function')`  
+spec: `require('frogman').get_smart_basename` is a function.  
 `tests/test_ui.lua:91`
 
 **T121 [char]** compare_buffers ranks by recency; bufnr_is_displayed is true for tracked, false for help  
@@ -4966,7 +4966,7 @@ spec: While cycling, `get_theme_bg_color(true)` returns `colors.cokeline.bg.deta
 
 **T170 [char]** the engine has no machine named window (D25)  
 → `eq(got, { 'history', 'navigation', 'storage', 'ui_bufferline', 'ui_indicators', 'ui_loop', 'ui_winbar' })`  
-spec: (D25) The engine has no machine named `window`; `require('cavediver.engine'):list()` gives `history`, `navigation`, `storage`, `ui_bufferline`, `ui_indicators`, `ui_loop` and `ui_winbar`, the winbar's own, which the toggles build (M12).  
+spec: (D25) The engine has no machine named `window`; `require('frogman.engine'):list()` gives `history`, `navigation`, `storage`, `ui_bufferline`, `ui_indicators`, `ui_loop` and `ui_winbar`, the winbar's own, which the toggles build (M12).  
 `tests/test_ui.lua:158`
 
 **T169 [char]** the mapped keys have their own descriptions (D3)  
@@ -4975,7 +4975,7 @@ spec: (D3) The `desc` of the mapped keys: `toggle_primary` "Switch the primary o
 `tests/test_ui.lua:163`
 
 **T168 [char]** the pick letter takes its colour from the config (D2)  
-`:e a`, `:e b` → `eq(child.lua('return require("cavediver.configs").colors.cokeline.is_picking_focus'), '#4385BE')`  
+`:e a`, `:e b` → `eq(child.lua('return require("frogman.configs").colors.cokeline.is_picking_focus'), '#4385BE')`  
 → `eq(pick_colours('#111111', '#222222'), { close = '#111111', focus = '#222222' })`  
 → `eq(pick_colours('#333333', '#444444'), { close = '#333333', focus = '#444444' })`  
 note: cokeline is stubbed: the picking state comes from _G.CDV_PICK, and the pick letter's component is the one whose text is the letter while picking.  
@@ -4991,7 +4991,7 @@ spec: (M12) The toggles' commands: `:CavediverWinbar off` empties the winbar and
 `:e a`, `:e b` → `eq(S2.save(child, cwd), { true })`  
 → `eq(S2.load(child, cwd), { true })`  
 → `eq({ refreshed = refreshed, loaded = loaded, current = segment:find('[' .. b .. ']', 1, true) ~= nil,`  
-spec: (M12) With `winbar = { own = false }`, cavediver writes no winbar: a winbar set by hand on a tracked window at `⦉a⦊ [b] ⟦-⟧` stays through the refresh, a save, and a load from idle, whose teardown clears winbars otherwise; and `require('cavediver').winbar_segment()` gives the win…  
+spec: (M12) With `winbar = { own = false }`, cavediver writes no winbar: a winbar set by hand on a tracked window at `⦉a⦊ [b] ⟦-⟧` stays through the refresh, a save, and a load from idle, whose teardown clears winbars otherwise; and `require('frogman').winbar_segment()` gives the windo…  
 `tests/test_ui.lua:286`
 
 **T448 [char]** (M12) the winbar's skip list is configurable, and replaces the default one  
@@ -5070,7 +5070,7 @@ spec: (M12, T242) A dead ternary is repaired on the spot, whatever the secondary
 `tests/test_ui.lua:568`
 
 **T500 [char]** (A25) a window closed while cavediver was off doesn't break the refresh once it's back on ⚑ state set by hand  
-`:e a`, `:vsplit`, `:e b`, `:close`, `:e c` → `eq({ errors = errors(), kept = child.lua('return require("cavediver.domains.window").data.crux[...] ~= nil', { split }) },`  
+`:e a`, `:vsplit`, `:e b`, `:close`, `:e c` → `eq({ errors = errors(), kept = child.lua('return require("frogman.domains.window").data.crux[...] ~= nil', { split }) },`  
 note: The split closes while cavediver is off, so its WinClosed never runs.  
 spec: (A25) A window closed while cavediver was off doesn't break the refresh once it's back on: `:e a`, a split on b, `disable()`, the split closed, `setup()` again, and no hook failure over the next refreshes.  
 `tests/test_ui.lua:579`
@@ -5083,8 +5083,8 @@ spec: (M12, M3) A `nowrite` buffer on a real file gets its winbar like any file:
 `tests/test_ui.lua:596`
 
 **T502 [char]** (M12) after a load with an untracked window focused, the bufferline draws nothing it can't colour  
-`:e a`, `:e c`, `:e b` → `eq(child.lua('return { pcall(require("cavediver").save_session, "s1") }'), { true })`  
-`:help` → `eq(child.lua('return { pcall(require("cavediver").load_session, "s1") }'), { true })`  
+`:e a`, `:e c`, `:e b` → `eq(child.lua('return { pcall(require("frogman").save_session, "s1") }'), { true })`  
+`:help` → `eq(child.lua('return { pcall(require("frogman").load_session, "s1") }'), { true })`  
 `:bdelete ' .. bufnr('a.txt` → `eq({ errors = errors(), dump = child.dumped_since(dumps) }, { errors = {}, dump = nil })`  
 note: A whole-editor load from idle, with a help window focused: the teardown leaves the bufferline with no window's slots to read. what cokeline does for the README's setup: the colour callback for each buffer its filter keeps  
 spec: (M12) After a load with an untracked window focused, the bufferline draws nothing it can't colour: a session saved, `:help` focused, the session loaded from idle, then `:bdelete a.txt` there; the colour callback, called for each buffer the README's filter keeps as cokeline calls …  

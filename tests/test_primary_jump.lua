@@ -119,7 +119,7 @@ end
 T['T57 [char] with the primary file deleted on disk, a cleanup pass keeps it in the queue, and the jump says so'] = function()
 	closed_primary()
 	child.lua(K.rm_code('a'))
-	child.lua('require("cavediver.domains.history").cleanup_system()')
+	child.lua('require("frogman.domains.history").cleanup_system()')
 	child.settle()
 	eq(child.primary(), '[a]on')
 	local ok, err = child.step('<M-;><M-f>')

@@ -10,9 +10,9 @@
 local Extra = {}
 
 local CHILD_EXTRA = [==[
-local H = require('cavediver.domains.history')
-local W = require('cavediver.domains.window')
-local N = require('cavediver.domains.navigation')
+local H = require('frogman.domains.history')
+local W = require('frogman.domains.window')
+local N = require('frogman.domains.navigation')
 
 local function name(hash)
 	if hash == nil then return '-' end

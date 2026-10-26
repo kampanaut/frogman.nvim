@@ -32,7 +32,7 @@ if not opts.no_cokeline then
 	package.preload['cokeline.mappings'] = function()
 		return {
 			by_step = function(_, step)
-				local ord = require('cavediver.domains.history').get_ordered_buffers()
+				local ord = require('frogman.domains.history').get_ordered_buffers()
 				local cur = vim.api.nvim_get_current_buf()
 				local idx = 1
 				for i, e in ipairs(ord) do if e.buf == cur then idx = i end end
@@ -53,10 +53,10 @@ _G.CDV_BASE = {
 	session_dir = root .. '/state/sessions/',
 	bufferline = { history_view = opts.history_view or 'global' },
 }
-require('cavediver').setup(_G.CDV_BASE)
+require('frogman').setup(_G.CDV_BASE)
 
-local H = require('cavediver.domains.history')
-local W = require('cavediver.domains.window')
+local H = require('frogman.domains.history')
+local W = require('frogman.domains.window')
 
 local function name(hash)
 	if hash == nil then return '-' end
@@ -78,7 +78,7 @@ _G.CDV_TEST = {
 	root = root,
 	-- set up again with the options given, layered over this child's own (_G.CDV_BASE)
 	setup = function(options)
-		require('cavediver').setup(vim.tbl_deep_extend('force', vim.deepcopy(_G.CDV_BASE), options or {}))
+		require('frogman').setup(vim.tbl_deep_extend('force', vim.deepcopy(_G.CDV_BASE), options or {}))
 	end,
 	slots = function(winid)
 		local t = W.data.crux[winid or vim.api.nvim_get_current_win()]
@@ -149,7 +149,7 @@ Helpers.new_child = function()
 			for _, f in ipairs(...) do seen[f] = true end
 			for _, f in ipairs(vim.fn.globpath(vim.fn.stdpath('state') .. '/cavediver', 'dump-*.txt', true, true)) do
 				if not seen[f] then
-					local text = require('cavediver.domains.ledger.dump').read(f)
+					local text = require('frogman.domains.ledger.dump').read(f)
 					return text and text:match('\n([^\n]*)') or ('a dump that does not open: ' .. vim.fn.fnamemodify(f, ':t'))
 				end
 			end

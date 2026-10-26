@@ -1,7 +1,7 @@
 -- The ledger (what-is-cavediver.md, A27 and A26, and section 7, "The ledger").
 -- IDs are the spec's.
 --
--- The records are read through require('cavediver').ledger: steps(), the ring,
+-- The records are read through require('frogman').ledger: steps(), the ring,
 -- oldest first, and trail(), today's steps that made moves. Each step comes
 -- back as plain fields, its rows written ⦉t⦊ [c] ⟦s⟧ with the names the step
 -- captured.
@@ -21,7 +21,7 @@ local T = MiniTest.new_set({
 
 local READ = [==[
 local which = ...
-local ledger = require('cavediver').ledger
+local ledger = require('frogman').ledger
 local function row(r, names)
 	if r == nil then return nil end
 	local function n(h) return h and (names[h] or '?') or '-' end
@@ -65,7 +65,7 @@ end
 -- A note map as `x>y` lines, sorted, with the step's names.
 local NOTES = [==[
 local field, which = ...
-local all = require('cavediver').ledger.steps()
+local all = require('frogman').ledger.steps()
 local step = all[#all]
 local map = step[field][which] or {}
 local out = {}
@@ -107,7 +107,7 @@ T['T565 [char] (A27) a step the ring drops drops its rows'] = function()
 		child.steps({ '<M-f>' })
 	end
 	eq(child.lua([[
-		local ledger = require('cavediver.domains.ledger')
+		local ledger = require('frogman.domains.ledger')
 		local close, ringed = nil, true
 		for _, step in ipairs(ledger.trail(os.date('%Y-%m-%d'))) do
 			for _, move in ipairs(step.moves) do
@@ -123,7 +123,7 @@ end
 
 T['T392 [char] (A27, A26) the ring keeps the last N steps, N from ledger.ring, 1,000 by default'] = function()
 	child.setup()
-	eq(child.lua('return require("cavediver.configs").ledger.ring'), 1000)
+	eq(child.lua('return require("frogman.configs").ledger.ring'), 1000)
 	child.lua('_G.CDV_TEST.setup({ ledger = { ring = 5 } })')
 	child.steps({ ':e a', ':e b' })
 	for _ = 1, 8 do
@@ -146,7 +146,7 @@ T['T393 [char] (A27) a keymap step holds its cause, trigger, window, and rows be
 	local all = steps()
 	local last = all[#all]
 	local queue = child.lua([[
-		local all = require('cavediver').ledger.steps()
+		local all = require('frogman').ledger.steps()
 		local step = all[#all]
 		return { before = step.row_before.p, after = step.row_after.p, on = step.row_after.on }
 	]])
@@ -218,7 +218,7 @@ T['T590 [char] (A27) a command line keeps its command, range and pattern, and a 
 	child.setup()
 	child.steps({ ':e a' })
 	local got = child.lua([[
-		local L = require('cavediver.domains.ledger')
+		local L = require('frogman.domains.ledger')
 		local out = {}
 		for _, keys in ipairs({ ':.,$s/zzz/b/e\r', ':" ./sub/\r' }) do
 			pcall(vim.api.nvim_feedkeys, keys, 'xt', false)
@@ -353,7 +353,7 @@ T['T402 [char] (A27) a whole-editor load drops what its batch did'] = function()
 	child.messages()
 	local got = child.lua([[
 		vim.cmd('bdelete a.txt')
-		return { pcall(require('cavediver').load_session) }
+		return { pcall(require('frogman').load_session) }
 	]])
 	child.settle(300)
 	local told = {}
@@ -378,9 +378,9 @@ T['T402 [char] (A27) the outgoing save before a switch keeps the teardown out of
 	child.messages()
 	local n = #steps()
 	local got = child.lua([[
-		require('cavediver').save_session()
+		require('frogman').save_session()
 		vim.cmd('bdelete a.txt')
-		return { pcall(require('cavediver').load_session) }
+		return { pcall(require('frogman').load_session) }
 	]])
 	child.settle(300)
 	local saves, teardown = {}, {}
@@ -391,7 +391,7 @@ T['T402 [char] (A27) the outgoing save before a switch keeps the teardown out of
 		end
 	end
 	local torn = child.lua([[
-		for _, st in ipairs(require('cavediver').ledger.steps()) do
+		for _, st in ipairs(require('frogman').ledger.steps()) do
 			if st.trigger == 'BufDelete a.txt' then return st.torn == true end
 		end
 		return false
@@ -477,7 +477,7 @@ T['T406 [char] (A27, A21) a triquetra dropped is a move'] = function()
 	child.cmd('bwipeout ' .. n)
 	child.settle(100)
 	local m = found('dropped')
-	eq({ dropped = m ~= nil, triquetra = child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()] ~= nil') },
+	eq({ dropped = m ~= nil, triquetra = child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()] ~= nil') },
 		{ dropped = true, triquetra = false })
 end
 
@@ -570,7 +570,7 @@ end
 T['T413 [char] (A27, S1) a load with no file is a fresh start'] = function()
 	child.setup()
 	child.steps({ ':e a' })
-	child.lua('require("cavediver").load_session("nothing")')
+	child.lua('require("frogman").load_session("nothing")')
 	child.settle(100)
 	local m = found('fresh')
 	eq({ cause = m and m.cause, trigger = m and m.trigger }, { cause = 'load', trigger = 'nothing' })
@@ -588,7 +588,7 @@ T['T414 [char] (A27, S1) a tab-session save\'s moves: saved, and the whole edito
 	child.steps({ ':e e' })
 	child.cmd('tabnext')
 	child.settle()
-	child.lua('require("cavediver").save_session("t", { tab = vim.api.nvim_get_current_tabpage() })')
+	child.lua('require("frogman").save_session("t", { tab = vim.api.nvim_get_current_tabpage() })')
 	child.settle(100)
 	-- the save's own move on its step; the whole editor's records refreshed on a step of their own
 	local kinds = {}
@@ -614,7 +614,7 @@ T['T415 [char] (A27, S1) :restart\'s reload is a step of its own'] = function()
 	S2.start_restarted(child, s)
 	Misc.restore(child, { 'a', 'b' }, 'b')
 	child.lua([[
-		pcall(require('cavediver').load_session, vim.fn.getcwd())
+		pcall(require('frogman').load_session, vim.fn.getcwd())
 		vim.cmd('source ' .. vim.fn.fnameescape(...))
 	]], { session })
 	child.settle(300)
@@ -624,7 +624,7 @@ T['T415 [char] (A27, S1) :restart\'s reload is a step of its own'] = function()
 	end
 	-- the restart session's own events, sourced with events on, are a step the rerun's load tears down
 	local before = child.lua([[
-		local all = require('cavediver').ledger.steps()
+		local all = require('frogman').ledger.steps()
 		for i, st in ipairs(all) do
 			if st.cause == 'restart' then
 				local prev = all[i - 1]
@@ -640,7 +640,7 @@ end
 T['T559 [char] (A27) an event while :restart\'s reload is held open begins a step of its own'] = function()
 	child.setup()
 	local got = child.lua([[
-		local L = require('cavediver.domains.ledger')
+		local L = require('frogman.domains.ledger')
 		local reload = L.begin('restart', 'session')
 		local event = L.begin('event', 'BufEnter c.txt')
 		return { own = event ~= reload, under_reload = #reload.events, under_event = #event.events }
@@ -716,7 +716,7 @@ T['T418 [char] (A27, M14) a change of label is a step, and tags are moves'] = fu
 	child.settle(300)
 	local gone = found('gone', 'b.txt')
 	child.lua('vim.fn.writefile({ "b" }, _G.CDV_TEST.root .. "/b.txt")')
-	child.lua('require("cavediver.domains.history").cleanup_system()')
+	child.lua('require("frogman.domains.history").cleanup_system()')
 	child.settle(100)
 	local back = found('back', 'b.txt')
 	eq({ cause = gone and gone.cause, trigger = gone and gone.trigger, tag = gone and gone.words, back = back ~= nil },
@@ -748,7 +748,7 @@ local PAGE = [==[
 local name, day = ...
 if name == vim.NIL then name = nil end
 if day == vim.NIL then day = nil end
-local steps = require('cavediver.domains.storage').routines.read_trail(vim.fn.getcwd(-1, -1), name, day or os.date('%Y-%m-%d'))
+local steps = require('frogman.domains.storage').routines.read_trail(vim.fn.getcwd(-1, -1), name, day or os.date('%Y-%m-%d'))
 if steps == nil then return vim.NIL end
 local out = {}
 for _, step in ipairs(steps) do
@@ -775,13 +775,13 @@ end
 
 -- Today's page file of the nameless session, by its path.
 local PAGE_FILE = [==[
-local st = require('cavediver.domains.storage').routines
+local st = require('frogman.domains.storage').routines
 local dir = vim.fn.getcwd(-1, -1)
 local saved = st.read_session(dir, nil)
 local name = saved and saved.trail and saved.trail[os.date('%Y-%m-%d')]
 if not name then return vim.NIL end
-for _, entry in ipairs(vim.fn.readdir(require('cavediver.configs').session_dir)) do
-	local path = require('cavediver.configs').session_dir .. entry .. '/' .. name
+for _, entry in ipairs(vim.fn.readdir(require('frogman.configs').session_dir)) do
+	local path = require('frogman.configs').session_dir .. entry .. '/' .. name
 	if entry:match('%.d$') and vim.uv.fs_stat(path) then return path end
 end
 return vim.NIL
@@ -847,7 +847,7 @@ T['T423 [char] (A27) pages outlive the editor that wrote them'] = function()
 	child.settle(100)
 	-- a step the first editor kept on an earlier day
 	child.lua([[
-		require('cavediver').ledger.data.days['2026-10-20'] = { {
+		require('frogman').ledger.data.days['2026-10-20'] = { {
 			seq = 0, time = os.time({ year = 2026, month = 10, day = 20, hour = 9 }), cause = 'keymap',
 			trigger = '<M-.>', names = {}, events = {}, moves = { { kind = 'closed', name = 'old.txt' } },
 		} }
@@ -860,14 +860,14 @@ T['T423 [char] (A27) pages outlive the editor that wrote them'] = function()
 	child.steps({ ':e a', ':e b', '<M-.>' })
 	child.settle(100)
 	eq(S2.save(child), { true })
-	local days = child.lua('return require("cavediver.domains.storage").routines.trail_days(vim.fn.getcwd(-1, -1), nil)')
+	local days = child.lua('return require("frogman.domains.storage").routines.trail_days(vim.fn.getcwd(-1, -1), nil)')
 	eq({ closes = closes(page()), earlier = vim.tbl_contains(days, '2026-10-20') },
 		{ closes = { 'closed c.txt', 'closed b.txt' }, earlier = true })
 end
 
 -- A step planted n days back, marked with this editor's epoch, so it's this editor's.
 local PLANT = [==[
-local L, n, trigger, ringed = require('cavediver').ledger, ...
+local L, n, trigger, ringed = require('frogman').ledger, ...
 local d = os.date('*t', os.time() - n * 86400)
 d.hour, d.min, d.sec = 12, 0, 0 -- noon that day, whatever the time of the run
 local t = os.time(d)
@@ -883,7 +883,7 @@ return day
 T['T567 [char] (A27) a past day leaves memory once its pages have it, and the trail reads it from them'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
-	child.lua('require("cavediver").ledger.data.started = os.time() - 3 * 86400')
+	child.lua('require("frogman").ledger.data.started = os.time() - 3 * 86400')
 	child.steps({ ':e a', ':e b', ':e c' })
 	eq(S2.save(child), { true })
 	local yesterday = child.lua(PLANT, { 1, 'yesterday', false })
@@ -892,7 +892,7 @@ T['T567 [char] (A27) a past day leaves memory once its pages have it, and the tr
 	child.settle(1500)
 	local held = child.lua([[
 		local yesterday, before = ...
-		local L, st = require('cavediver').ledger, require('cavediver.domains.storage').routines
+		local L, st = require('frogman').ledger, require('frogman.domains.storage').routines
 		local read = {}
 		for _, step in ipairs(st.trail_reader().steps(yesterday)) do table.insert(read, step.trigger) end
 		return { yesterday = #L.trail(yesterday), before = #L.trail(before), read = read }
@@ -911,7 +911,7 @@ end
 T['T570 [char] (A27) another editor\'s step on a shared page isn\'t read as this editor\'s'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
-	child.lua('require("cavediver").ledger.data.started = os.time() - 3 * 86400')
+	child.lua('require("frogman").ledger.data.started = os.time() - 3 * 86400')
 	child.steps({ ':e a', ':e b', ':e c' })
 	eq(S2.save(child), { true })
 	local yesterday = child.lua(PLANT, { 1, 'yesterday', false })
@@ -919,10 +919,10 @@ T['T570 [char] (A27) another editor\'s step on a shared page isn\'t read as this
 	child.settle(1500)
 	local read = child.lua([[
 		local day = ...
-		local L, st = require('cavediver').ledger, require('cavediver.domains.storage').routines
-		local crypto = require('cavediver.domains.storage.crypto')
+		local L, st = require('frogman').ledger, require('frogman.domains.storage').routines
+		local crypto = require('frogman.domains.storage.crypto')
 		local dir = vim.fn.getcwd(-1, -1)
-		local main = require('cavediver.configs').session_dir .. vim.fn.sha256(dir)
+		local main = require('frogman.configs').session_dir .. vim.fn.sha256(dir)
 		local f = io.open(main, 'rb'); local bytes = f:read('*a'); f:close()
 		local key = st.key_for(dir, bytes:sub(5, 4 + crypto.salt_length))
 		local page = main .. '.d/' .. st.read_session(dir, nil).trail[day]
@@ -943,14 +943,14 @@ end
 T['T603 [char] (A27) a clock set back leaves this editor\'s steps its own'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
-	child.lua('local L = require("cavediver").ledger; L.data.started = L.now() + 60')
+	child.lua('local L = require("frogman").ledger; L.data.started = L.now() + 60')
 	child.steps({ ':e a', ':e b' })
 	eq(S2.save(child), { true })
 	child.cmd('bdelete b.txt')
 	child.settle(300)
 	eq(S2.save(child), { true })
 	local got = child.lua([[
-		local L, st = require('cavediver').ledger, require('cavediver.domains.storage').routines
+		local L, st = require('frogman').ledger, require('frogman.domains.storage').routines
 		local n, mine = 0, true
 		for _, step in ipairs(st.trail_reader().steps(os.date('%Y-%m-%d'))) do
 			for _, m in ipairs(step.moves or {}) do
@@ -970,15 +970,15 @@ end
 T['T604 [char] (A27) a day let go while the view is open is still shown'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
-	child.lua('require("cavediver").ledger.data.started = os.time() - 3 * 86400')
+	child.lua('require("frogman").ledger.data.started = os.time() - 3 * 86400')
 	child.steps({ ':e a', ':e b', ':e c' })
 	eq(S2.save(child), { true })
 	local yesterday = child.lua(PLANT, { 1, 'yesterday', true })
 	eq(S2.save(child), { true })
 	local shown = child.lua([[
 		local day = ...
-		local L = require('cavediver').ledger
-		_G.CDV_READER = require('cavediver.domains.storage').routines.trail_reader()
+		local L = require('frogman').ledger
+		_G.CDV_READER = require('frogman.domains.storage').routines.trail_reader()
 		local n = #_G.CDV_READER.steps(day)
 		for i, step in ipairs(L.data.ring) do
 			if step.trigger == 'yesterday' then table.remove(L.data.ring, i) break end
@@ -991,7 +991,7 @@ T['T604 [char] (A27) a day let go while the view is open is still shown'] = func
 		local day = ...
 		local triggers = {}
 		for _, step in ipairs(_G.CDV_READER.steps(day)) do table.insert(triggers, step.trigger) end
-		return { forgotten = #require('cavediver').ledger.trail(day) == 0, triggers = triggers }
+		return { forgotten = #require('frogman').ledger.trail(day) == 0, triggers = triggers }
 	]], { yesterday })
 	eq({ shown = shown, got = got }, { shown = { held = 1, n = 1 }, got = { forgotten = true, triggers = { 'yesterday' } } })
 end
@@ -1002,11 +1002,11 @@ T['T605 [char] (A27) a step still open isn\'t noted as on a page'] = function()
 	child.steps({ ':e a', ':e b' })
 	eq(S2.save(child), { true })
 	local got = child.lua([[
-		local L = require('cavediver.domains.ledger')
+		local L = require('frogman.domains.ledger')
 		L.begin('keymap', 'hold', vim.api.nvim_get_current_win())
 		local step = L.data.open
 		L.move('repair', { subject = 'x', name = 'x' })
-		require('cavediver.domains.storage').routines.write_records(true)
+		require('frogman.domains.storage').routines.write_records(true)
 		return { open = L.data.open == step, noted = step.written_to ~= nil }
 	]])
 	eq(got, { open = true, noted = false })
@@ -1018,7 +1018,7 @@ T['T606 [char] (A27) a day\'s steps made before any whole-editor session stay un
 	local s = S2.shared()
 	tab_session(s)
 	local unclaimed = child.lua([[
-		local L, H = require('cavediver').ledger, require('cavediver.domains.history').routines
+		local L, H = require('frogman').ledger, require('frogman.domains.history').routines
 		local d = os.date('*t', os.time() - 86400)
 		d.hour, d.min, d.sec = 12, 0, 0 -- yesterday's noon, whatever the time of the run
 		local t = os.time(d)
@@ -1027,13 +1027,13 @@ T['T606 [char] (A27) a day\'s steps made before any whole-editor session stay un
 			moves = { { kind = 'closed', name = 'early.txt', lists = { 't' } } },
 			pool = H.pool_of_tab(vim.api.nvim_get_current_tabpage()).id, epoch = L.data.epoch }
 		L.data.days[_G.CDV_DAY] = { _G.CDV_STEP }
-		local data = require('cavediver.domains.storage').data
+		local data = require('frogman.domains.storage').data
 		return data.unnamed == nil and data.editor_session == nil
 	]])
 	child.cmd('bdelete c.txt')
 	child.settle(1500)
 	local got = child.lua([[
-		return { noted = _G.CDV_STEP.written_to ~= nil, held = #require('cavediver').ledger.trail(_G.CDV_DAY) }
+		return { noted = _G.CDV_STEP.written_to ~= nil, held = #require('frogman').ledger.trail(_G.CDV_DAY) }
 	]])
 	eq({ unclaimed = unclaimed, got = got }, { unclaimed = true, got = { noted = true, held = 1 } })
 end
@@ -1070,7 +1070,7 @@ end
 -- its moves, `kind name`.
 local READER = [==[
 local out = {}
-for _, step in ipairs(require('cavediver.domains.storage').routines.trail_reader().steps(os.date('%Y-%m-%d'))) do
+for _, step in ipairs(require('frogman.domains.storage').routines.trail_reader().steps(os.date('%Y-%m-%d'))) do
 	local moves = {}
 	for _, m in ipairs(step.moves or {}) do table.insert(moves, m.kind .. ' ' .. (m.name or '?')) end
 	table.insert(out, { trigger = step.trigger, moves = moves })

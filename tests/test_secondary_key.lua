@@ -117,7 +117,7 @@ T['T44 [char] with the secondary closed and its file deleted, a cleanup pass kee
 	child.cmd('bdelete b.txt')
 	child.settle()
 	child.lua(K.rm_code('b'))
-	child.lua('require("cavediver.domains.history").cleanup_system()')
+	child.lua('require("frogman.domains.history").cleanup_system()')
 	child.settle()
 	eq({ slots = child.slots(), closed = child.closed() }, { slots = '⦉c⦊ [d] ⟦b⟧', closed = 'c,b' })
 	child.messages()
@@ -161,8 +161,8 @@ end
 T['T571 [char] (A25, M11) a key follows its export as reassigned'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.lua([[
-		require('cavediver').toggle_secondary = function()
-			local step = require('cavediver').ledger.data.open
+		require('frogman').toggle_secondary = function()
+			local step = require('frogman').ledger.data.open
 			_G.CDV_RAN = step and step.trigger or 'no step'
 		end
 	]])
@@ -175,15 +175,15 @@ local function noname(lines)
 	child.cmd('enew')
 	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, ...)', { lines })
 	child.settle()
-	return child.lua('return require("cavediver.domains.history").get_hash_from_buffer(vim.api.nvim_get_current_buf())')
+	return child.lua('return require("frogman.domains.history").get_hash_from_buffer(vim.api.nvim_get_current_buf())')
 end
 
 -- N closed, then its text held as a text a load left unread whose read gives nothing, as one whose
 -- file failed its check does.
 local function lose(hash)
-	child.cmd('bwipeout! ' .. child.lua('return require("cavediver.domains.history").get_buffer_from_hash(...)', { hash }))
+	child.cmd('bwipeout! ' .. child.lua('return require("frogman.domains.history").get_buffer_from_hash(...)', { hash }))
 	child.settle()
-	child.lua([[require('cavediver.domains.history').data.noname_content[...] = { scratch = 'gone', read = function() return nil end }]], { hash })
+	child.lua([[require('frogman.domains.history').data.noname_content[...] = { scratch = 'gone', read = function() return nil end }]], { hash })
 end
 
 -- ⦉a⦊ [N] ⟦-⟧, the window visiting a scratch buffer while N is closed and its text lost.
@@ -204,7 +204,7 @@ end
 -- A history entry whose buffer isn't registered, ahead of the current one, as an undone arrival leaves it.
 T['T622 [char] (A6, D11) a fill that finds nothing but the current buffer says the history is short'] = function()
 	child.steps({ ':e a' })
-	child.lua([[table.insert(require('cavediver.domains.history').data.ordered.crux, 1, { buf = vim.api.nvim_create_buf(true, true) })]])
+	child.lua([[table.insert(require('frogman.domains.history').data.ordered.crux, 1, { buf = vim.api.nvim_create_buf(true, true) })]])
 	child.messages()
 	child.steps({ '<M-f>' })
 	local msgs = K.messages(child)

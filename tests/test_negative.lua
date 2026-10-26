@@ -27,7 +27,7 @@ end
 -- Is buffer `buf` (default: the current one) registered?
 local function registered(buf)
 	return child.lua([[
-		return require('cavediver.domains.history').get_hash_from_buffer(... or vim.api.nvim_get_current_buf()) ~= nil
+		return require('frogman.domains.history').get_hash_from_buffer(... or vim.api.nvim_get_current_buf()) ~= nil
 	]], { buf })
 end
 
@@ -99,7 +99,7 @@ end
 T['T208 [char] (P10, I17) the notes about an empty No Name buffer go once it is wiped'] = function()
 	child.steps({ ':e a', ':e b', ':e c', ':enew' })
 	local n = child.lua('return vim.api.nvim_get_current_buf()')
-	local h = child.lua('return require("cavediver.domains.history").get_hash_from_buffer(...)', { n })
+	local h = child.lua('return require("frogman.domains.history").get_hash_from_buffer(...)', { n })
 	eq(type(h), 'string')
 	child.steps({ ':e b', ':e d' })
 	eq(child.slots(), '⦉b⦊ [d] ⟦-⟧')
@@ -176,7 +176,7 @@ T['T212 [char] (P22, S2) the session file is written with mode 0600'] = function
 		ffi.C.umask(18)
 	]])
 	eq(Misc.save(child), { true })
-	local dir = child.lua('return require("cavediver.configs").session_dir')
+	local dir = child.lua('return require("frogman.configs").session_dir')
 	local files = Misc.files_in(dir)
 	eq(#files, 1)
 	eq(child.lua('return vim.fn.getfperm(...)', { dir .. files[1] }), 'rw-------')
@@ -207,7 +207,7 @@ T['T214 [char] (P24) a save leaves the closed stack as it was, a closed file gon
 		local function snap() return { slots = T.slots(), notes = T.notes(), closed = T.closed(), ordered = T.ordered() } end
 		local before = snap()
 		os.remove(T.root .. '/b.txt')
-		local ok = pcall(require('cavediver').save_session, vim.fn.getcwd())
+		local ok = pcall(require('frogman').save_session, vim.fn.getcwd())
 		return { ok = ok, before = before, after = snap() }
 	]])
 	eq(got.ok, true)
@@ -240,7 +240,7 @@ T['T216 [char] (I16) a No Name id is not reused across sessions'] = function()
 		child.steps({ ':e a', ':enew' })
 		return child.lua([[
 			local b = vim.api.nvim_get_current_buf()
-			return { buf = b, hash = require('cavediver.domains.history').get_hash_from_buffer(b) }
+			return { buf = b, hash = require('frogman.domains.history').get_hash_from_buffer(b) }
 		]])
 	end
 	local one, two = noname(), noname()
@@ -255,7 +255,7 @@ end
 T['T217 [char] (I10, A1) a buffer whose buftype turns nofile after it is entered is not left registered or in a slot'] = function()
 	child.steps({ ':e a', ':enew' })
 	local n = child.lua('return vim.api.nvim_get_current_buf()')
-	local h = child.lua('return require("cavediver.domains.history").get_hash_from_buffer(...)', { n })
+	local h = child.lua('return require("frogman.domains.history").get_hash_from_buffer(...)', { n })
 	eq(type(h), 'string')
 	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "plugin text" })')
 	child.cmd('setlocal buftype=nofile')
@@ -296,7 +296,7 @@ end
 T['T219 [char] (I19, Q14) an empty queue that is switched on stays on: navigation, slot keys and UI ticks leave it'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.lua([[
-		local t = require('cavediver.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
 		t.primary_buffer = {}
 		t.primary_enabled = true
 	]])
@@ -317,7 +317,7 @@ T['T220 [char] (M11, D23) the winbar and indicator toggles work at runtime'] = f
 	child.settle(300)
 	eq(child.lua('return vim.wo.winbar ~= ""'), true)
 	local got = child.lua([[
-		local ui = require('cavediver').ui
+		local ui = require('frogman').ui
 		local out = {}
 		for _, f in ipairs({ 'hide_winbar', 'show_winbar', 'hide_indicators', 'show_indicators' }) do
 			out[f] = pcall(ui[f])
@@ -326,21 +326,21 @@ T['T220 [char] (M11, D23) the winbar and indicator toggles work at runtime'] = f
 	]])
 	eq(got, { hide_winbar = true, show_winbar = true, hide_indicators = true, show_indicators = true })
 	-- Hidden stays hidden through the refresh, and shown comes back.
-	child.lua('require("cavediver").ui.hide_winbar()')
+	child.lua('require("frogman").ui.hide_winbar()')
 	child.settle(300)
 	eq(child.lua('return vim.wo.winbar'), '')
-	child.lua('require("cavediver").ui.show_winbar()')
+	child.lua('require("frogman").ui.show_winbar()')
 	child.settle(300)
 	eq(child.lua('return vim.wo.winbar ~= ""'), true)
-	child.lua('require("cavediver").ui.hide_indicators()')
-	eq(child.lua('return require("cavediver").ui.is_hidden("indicators")'), true)
-	child.lua('require("cavediver").ui.show_indicators()')
-	eq(child.lua('return require("cavediver").ui.is_hidden("indicators")'), false)
+	child.lua('require("frogman").ui.hide_indicators()')
+	eq(child.lua('return require("frogman").ui.is_hidden("indicators")'), true)
+	child.lua('require("frogman").ui.show_indicators()')
+	eq(child.lua('return require("frogman").ui.is_hidden("indicators")'), false)
 end
 
 T['T221 [char] (M11) unregister_hook(name) removes that hook from its machine, and nothing else, without throwing'] = function()
 	local got = child.lua([[
-		local E = require('cavediver.engine')
+		local E = require('frogman.engine')
 		local one = E:create('t221_one')
 		local two = E:create('t221_two')
 		local ran = {}
@@ -713,7 +713,7 @@ T['T239 [char] (A21) a secondary and a ternary whose files are deleted while the
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 	child.lua(K.rm_code('b') .. '; ' .. K.rm_code('c'))
 	child.settle(300)
-	child.lua('require("cavediver.domains.history").cleanup_system()')
+	child.lua('require("frogman.domains.history").cleanup_system()')
 	child.settle(300)
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 	eq({ registered(bufnr('b')), registered(bufnr('c')) }, { true, true })
@@ -723,7 +723,7 @@ T['T240 [char] (A25) disable() clears the cavediver augroup and stops the timers
 	child.steps({ ':e a', ':e b' })
 	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
 	local got = child.lua([[
-		local cd = require('cavediver')
+		local cd = require('frogman')
 		if type(cd.disable) ~= 'function' then return { disable = type(cd.disable) } end
 		local ok = pcall(cd.disable)
 		local okg, aus = pcall(vim.api.nvim_get_autocmds, { group = 'cavediver' })
@@ -746,7 +746,7 @@ T['T241 [char] (A26) the flight recorder records keymap actions and events, neve
 	child.lua([[vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('iQZQZQZ<Esc>', true, false, true), 'xt', false)]])
 	child.settle()
 	child.lua([[
-		local t = require('cavediver.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
 		t.displacement_secondary_map[t.current_slot .. '-swap'] = nil
 		t.displacement_secondary_map[t.current_slot] = t.secondary_slot
 	]])
@@ -757,7 +757,7 @@ T['T241 [char] (A26) the flight recorder records keymap actions and events, neve
 	child.settle(200)
 	local texts = {}
 	for _, f in ipairs(Extra.new_files(files_before, child.dumps())) do
-		table.insert(texts, child.lua('return require("cavediver.domains.ledger.dump").read(...) or ""', { f }))
+		table.insert(texts, child.lua('return require("frogman.domains.ledger.dump").read(...) or ""', { f }))
 	end
 	local seen = {}
 	for _, b in ipairs(bufs_before) do seen[b] = true end
@@ -887,14 +887,14 @@ T['T246 [char] (S2) a No Name buffer closed with <M-.> stays on the closed stack
 	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "kept text" })')
 	child.steps({ '<M-.>' })
 	eq(child.shown(), 'a')
-	eq(#child.lua('return require("cavediver.domains.history").data.closed_buffers'), 1)
+	eq(#child.lua('return require("frogman.domains.history").data.closed_buffers'), 1)
 	eq(Misc.save(child), { true })
 
 	start(s)
 	Misc.restore(child, { 'a' }, 'a')
 	eq(Misc.load(child), { true })
 	child.settle(300)
-	eq(#child.lua('return require("cavediver.domains.history").data.closed_buffers'), 1)
+	eq(#child.lua('return require("frogman.domains.history").data.closed_buffers'), 1)
 	child.steps({ '<M-S-w>' })
 	eq(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), { 'kept text' })
 end
@@ -958,7 +958,7 @@ T['T558 [char] (A21) a cleanup heal records no visit'] = function()
 	child.cmd('bwipeout ' .. noname)
 	child.settle(300)
 	local w1_has_x = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local x = H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/x.txt'))
 		return (H.data.crux_internals.window[...] or {})[x] ~= nil
 	]], { w1 })

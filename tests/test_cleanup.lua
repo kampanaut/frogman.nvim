@@ -17,7 +17,7 @@ local function current() return child.slots():match('%[(.-)%]') end
 -- A buffer of the temporary project, by file name: { valid, lines, registered, in history }.
 local function buffer_state(file)
 	return child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local b = vim.fn.bufnr(_G.CDV_TEST.root .. '/' .. ...)
 		if b == -1 or not vim.api.nvim_buf_is_valid(b) then return { valid = false } end
 		local h = H.get_hash_from_buffer(b)
@@ -150,7 +150,7 @@ T['T482 [char] (A20, M3) a write of buffers never entered moves no window\'s slo
 	child.cmd('wall')
 	child.settle(300)
 	local registered = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local out = {}
 		for _, f in ipairs({ 'c.txt', 'd.txt' }) do
 			table.insert(out, H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/' .. f)) ~= nil)
@@ -182,7 +182,7 @@ end
 T['T554 [char] (A20, I18) a move onto a file the primary queue holds keeps it there once'] = function()
 	child.steps({ ':e a', '<M-;><M-c>' })
 	child.lua([[
-		require('cavediver').open_primary_buffer_history()
+		require('frogman').open_primary_buffer_history()
 		vim.api.nvim_buf_set_lines(0, 1, 1, false, { 'b.txt' })
 		vim.cmd('write')
 		vim.cmd('close')
@@ -190,15 +190,15 @@ T['T554 [char] (A20, I18) a move onto a file the primary queue holds keeps it th
 	child.settle(300)
 	eq(child.primary(), '[a,b]on')
 	child.lua([[
-		local H = require('cavediver.domains.history')
-		local t = require('cavediver.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local H = require('frogman.domains.history')
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
 		t.displacement_ternary_map[t.current_slot] = H.get_hash_from_filepath(_G.CDV_TEST.root .. '/b.txt')
 		os.rename(_G.CDV_TEST.root .. '/a.txt', _G.CDV_TEST.root .. '/b.txt')
 		vim.cmd('file ' .. vim.fn.fnameescape(_G.CDV_TEST.root .. '/b.txt'))
 	]])
 	child.settle(300)
 	local self_notes = child.lua([[
-		local t = require('cavediver.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
 		local n = 0
 		for _, map in ipairs({ t.displacement_ternary_map, t.displacement_secondary_map }) do
 			for key, value in pairs(map) do
@@ -219,7 +219,7 @@ T['T484 [char] (A20, I2) a rename to the same name renames nothing'] = function(
 	child.lua('local b = vim.fn.bufnr(_G.CDV_TEST.root .. "/new.txt"); vim.api.nvim_buf_set_name(b, vim.api.nvim_buf_get_name(b))')
 	child.settle(300)
 	local kept = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local h = H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/new.txt'))
 		return { history = h ~= nil and H.data.crux_internals.global[h] ~= nil, path = h ~= nil and H.get_filepath_from_hash(h) ~= nil }
 	]])
@@ -244,9 +244,9 @@ T['T485 [char] (A20, I2) :0file on a file never written moves it to a No Name bu
 	child.settle(300)
 	local healed = vim.tbl_filter(function(m) return m.msg:find('Healed', 1, true) ~= nil end, child.messages())
 	local pathless = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local out = {}
-		for _, t in pairs(require('cavediver.domains.window').data.crux) do
+		for _, t in pairs(require('frogman.domains.window').data.crux) do
 			for _, h in ipairs({ t.current_slot, t.secondary_slot, t.ternary_slot }) do
 				if h and not H.get_filepath_from_hash(h) then table.insert(out, h) end
 			end
@@ -316,7 +316,7 @@ end
 T['T113 [char] a stale registration re-points to a copy reloaded under noautocmd and wipes nothing'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	local got = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local path = _G.CDV_TEST.root .. '/b.txt'
 		local old = vim.fn.bufnr(path)
 		local hash = H.get_hash_from_buffer(old)
@@ -339,7 +339,7 @@ T['T114 [char] a closed entry whose file is gone from disk stays on the stack'] 
 	child.settle()
 	eq(child.closed(), 'b')
 	remove_on_disk('b.txt')
-	child.lua('require("cavediver.domains.history").cleanup_system()')
+	child.lua('require("frogman.domains.history").cleanup_system()')
 	child.settle()
 	eq(child.closed(), 'b')
 end
@@ -359,7 +359,7 @@ T['T523 [char] (A21, M5) the first :e after the start buffer was taken in leaves
 	-- as a config that calls setup() at startup has it: the start buffer entered once cavediver is set up
 	child.cmd('doautocmd BufEnter')
 	child.settle(200)
-	local taken = child.lua('return require("cavediver.domains.history").data.hash_buffer_registry.hashes[vim.api.nvim_get_current_buf()] ~= nil')
+	local taken = child.lua('return require("frogman.domains.history").data.hash_buffer_registry.hashes[vim.api.nvim_get_current_buf()] ~= nil')
 	child.messages()
 	child.steps({ ':e a' })
 	child.settle(300)
@@ -462,7 +462,7 @@ T['T635 [char] (A20) a rename to a name cavediver doesn\'t track closes the old 
 	child.settle(300)
 	local kinds = child.lua([[
 		local out = {}
-		for _, step in ipairs(require('cavediver').ledger.trail()) do
+		for _, step in ipairs(require('frogman').ledger.trail()) do
 			for _, m in ipairs(step.moves) do
 				if m.name == 'b.txt' then out[m.kind] = true end
 			end
@@ -483,7 +483,7 @@ T['T636 [char] (A20) a copy\'s arrival lands in the window that shows it, in ano
 	child.settle(300)
 	-- an arrival records the visit in the window's own history, as a heal doesn't (T558)
 	local visited = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local g = H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/g.txt'))
 		return H.data.crux_internals.window[...][g] ~= nil
 	]], { w1 })
@@ -498,7 +498,7 @@ T['T637 [char] (A20) a move onto a closed name takes it off the lists and keeps 
 	child.steps({ ':e d' })
 	eq(vim.tbl_contains(vim.split(child.closed(), ','), 'b'), true)
 	local c_visits = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local c = H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/c.txt'))
 		return { global = H.data.crux_internals.global[c], window = H.data.crux_internals.window[vim.api.nvim_get_current_win()][c] }
 	]])
@@ -509,7 +509,7 @@ T['T637 [char] (A20) a move onto a closed name takes it off the lists and keeps 
 	]])
 	child.settle(300)
 	local b_visits = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local b = H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/b.txt'))
 		return { global = H.data.crux_internals.global[b], window = H.data.crux_internals.window[vim.api.nvim_get_current_win()][b] }
 	]])
@@ -525,7 +525,7 @@ T['T647 [char] (A21, M12) a refresh before a window\'s arrival settles finds not
 	local dumps = child.dump_files()
 	child.lua([[
 		vim.cmd('edit ' .. _G.CDV_TEST.root .. '/c.txt')
-		local ui = require('cavediver.domains.ui')
+		local ui = require('frogman.domains.ui')
 		ui.sm.loop:to(ui.states.LOOP.SELF)
 	]])
 	child.settle(300)

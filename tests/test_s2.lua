@@ -25,7 +25,7 @@ local T = MiniTest.new_set({
 })
 
 local function session_dir()
-	return child.lua('return require("cavediver.configs").session_dir')
+	return child.lua('return require("frogman.configs").session_dir')
 end
 
 -- Contract and API ----------------------------------------------------------------
@@ -70,7 +70,7 @@ T['T294 [char] (S2) a tab session is keyed by its tab\'s directory'] = function(
 	child.cmd('edit ../b.txt')
 	child.settle()
 	local tab = child.lua('return vim.fn.getcwd(-1, 0)')
-	eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),
 		{ true })
 	eq(S2.main_file(session_dir(), tab, 't') ~= nil, true)
 end
@@ -81,9 +81,9 @@ T['T295 [char] (S2) a load from idle goes idle -> bare -> loading'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b' })
 	eq(Misc.save(child), { true })
-	local n = #child.lua('return require("cavediver.domains.storage").sm.history')
+	local n = #child.lua('return require("frogman.domains.storage").sm.history')
 	Misc.load(child)
-	local after = child.lua('return { unpack(require("cavediver.domains.storage").sm.history, ...) }', { n + 1 })
+	local after = child.lua('return { unpack(require("frogman.domains.storage").sm.history, ...) }', { n + 1 })
 	local bare, loading
 	for i, t in ipairs(after) do
 		if t == 'idle->bare' and not bare then bare = i end
@@ -127,7 +127,7 @@ T['T572 [char] (S2) a second session loaded in the same batch loads'] = function
 	S2.start(child, s)
 	Misc.restore(child, { 'c', 'd' }, 'd')
 	child.lua([[
-		local cd = require('cavediver')
+		local cd = require('frogman')
 		cd.load_session('A')
 		cd.load_session('B')
 		cd.load_session('B')
@@ -147,7 +147,7 @@ T['T613 [char] (S2) a call naming a session a load in the same batch was for is 
 	S2.start(child, s)
 	Misc.restore(child, { 'c', 'd' }, 'd')
 	child.lua([[
-		local cd = require('cavediver')
+		local cd = require('frogman')
 		cd.load_session('A')
 		cd.load_session('B')
 		cd.load_session('A')
@@ -165,7 +165,7 @@ T['T297 [char] (S2) the repeat flag is re-armed by vim.schedule: a call after th
 	S2.start(child, s)
 	Misc.restore(child, { 'a', 'b' }, 'b')
 	local oks = child.lua([[
-		local cwd, load = vim.fn.getcwd(), require('cavediver').load_session
+		local cwd, load = vim.fn.getcwd(), require('frogman').load_session
 		local oks = {}
 		for i = 1, 3 do oks[i] = pcall(load, cwd) end
 		return oks
@@ -200,7 +200,7 @@ T['T298 [char] (S2) after Neovim\'s :restart session, cavediver loads again by i
 	child.cmd('noautocmd vsplit')
 	child.cmd('noautocmd edit d.txt')
 	child.lua([[
-		pcall(require('cavediver').load_session, vim.fn.getcwd())
+		pcall(require('frogman').load_session, vim.fn.getcwd())
 		vim.cmd('source ' .. vim.fn.fnameescape(...))
 	]], { session })
 	child.settle(300)
@@ -234,12 +234,12 @@ T['T299 [char] (S2) one post-restore callback replaces the load\'s 210 ms delay'
 			return n
 		end
 		local before = timers()
-		pcall(require('cavediver').load_session, vim.fn.getcwd())
+		pcall(require('frogman').load_session, vim.fn.getcwd())
 		return timers() - before
 	]])
 	child.settle(30)
 	local current = child.lua(
-		'return require("cavediver.domains.window").data.last_valid_window == vim.api.nvim_get_current_win()')
+		'return require("frogman.domains.window").data.last_valid_window == vim.api.nvim_get_current_win()')
 	local order = child.ordered()
 	child.settle(300)
 	eq({ new_timers = made, last_valid_window = current, order = order },
@@ -602,11 +602,11 @@ T['T563 [char] (S2) a save reads its main file once'] = function()
 	child.cmd('tcd sub')
 	child.cmd('edit ../b.txt')
 	child.settle()
-	local tab_save = 'require("cavediver").save_session("t", { tab = vim.api.nvim_get_current_tabpage() })'
+	local tab_save = 'require("frogman").save_session("t", { tab = vim.api.nvim_get_current_tabpage() })'
 	eq(child.lua('return { pcall(loadstring(...)) }', { tab_save }), { true })
 	local tab = dir .. S2.main_file(dir, child.lua('return vim.fn.getcwd(-1, 0)'), 't')
 	child.cmd('tabprevious')
-	eq(reads_during(whole, 'require("cavediver").save_session(vim.fn.getcwd())'), { true, 1 })
+	eq(reads_during(whole, 'require("frogman").save_session(vim.fn.getcwd())'), { true, 1 })
 	child.cmd('tabnext')
 	eq(reads_during(tab, tab_save), { true, 1 })
 end
@@ -809,7 +809,7 @@ end
 
 -- Is a No Name text on any list in memory?
 local NONAME_LISTED = [[
-	local H = require('cavediver.domains.history')
+	local H = require('frogman.domains.history')
 	for _, pool in pairs(H.routines.pools()) do
 		for _, h in ipairs(pool.closed) do
 			if (H.get_filepath_from_hash(h) or ''):match('^NONAME_') then return true end
@@ -940,7 +940,7 @@ T['T625 [char] (S1 Load) a load with a quickfix window focused leaves a window w
 	eq(S2.load(child), { true })
 	child.settle(300)
 	eq(child.lua([[
-		local W = require('cavediver.domains.window').data
+		local W = require('frogman.domains.window').data
 		local w = W.last_valid_window
 		return { valid = w ~= nil and vim.api.nvim_win_is_valid(w), tracked = w ~= nil and W.crux[w] ~= nil,
 			focused = vim.bo.buftype }
@@ -963,7 +963,7 @@ T['T638 [char] (M14, S1) a whole-editor load starts the tick\'s round over on th
 	eq(S2.load(child, 'B'), { true })
 	child.settle(300)
 	child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		for n = 1, 2000 do
 			H.data.hash_filepath_registry.filepaths[('%016x'):format(n)] = '/nowhere/' .. n
 		end
@@ -972,7 +972,7 @@ T['T638 [char] (M14, S1) a whole-editor load starts the tick\'s round over on th
 	eq(S2.load(child, 'B'), { true })
 	child.settle(300)
 	local got = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local path = _G.CDV_TEST.root .. '/c.txt'
 		local c = H.routines.get_filehash(path)
 		local closed = H.routines.is_filehash_closed(c)
@@ -990,7 +990,7 @@ T['T650 [char] (M14) a settle point checks the known files as a tick does'] = fu
 	child.steps({ ':e a', ':e b' })
 	child.settle(300)
 	local tagged = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local pool = H.routines.pools()['']
 		for n = 1, 1000 do
 			local h = ('%016x'):format(n)
@@ -1017,7 +1017,7 @@ T['T651 [char] (M14) the label looks for .git once when there\'s none'] = functi
 			if names == '.git' then n = n + 1 end
 			return find(names, opts)
 		end
-		require('cavediver.domains.history').routines.refresh_label()
+		require('frogman.domains.history').routines.refresh_label()
 		vim.fs.find = find
 		return n
 	]]), 1)
@@ -1029,7 +1029,7 @@ T['T611 [char] (S2 The file) session_dir is read as a path: its variables expand
 	child.lua('vim.env.CDV_T611 = ...; _G.CDV_TEST.setup({ session_dir = "$CDV_T611" })', { (s.session_dir:gsub('/$', '')) })
 	child.steps({ ':e a', ':e b' })
 	eq(S2.save(child), { true })
-	eq({ inside = S2.main_file(s.session_dir, S2.cwd(child), nil) ~= nil, dir = child.lua('return require("cavediver.configs").session_dir') },
+	eq({ inside = S2.main_file(s.session_dir, S2.cwd(child), nil) ~= nil, dir = child.lua('return require("frogman.configs").session_dir') },
 		{ inside = true, dir = s.session_dir })
 end
 
@@ -1038,7 +1038,7 @@ T['T612 [char] (S2 The file) a look for a session\'s file makes no folder, and t
 	S2.start(child, s)
 	local later = s.session_dir .. 'later/'
 	child.lua('_G.CDV_TEST.setup({ session_dir = ... })', { later })
-	local looked = child.lua('return require("cavediver.domains.storage").routines.session_exists(vim.fn.getcwd(-1, -1), "work")')
+	local looked = child.lua('return require("frogman.domains.storage").routines.session_exists(vim.fn.getcwd(-1, -1), "work")')
 	eq(S2.load(child, 'work'), { true })
 	local made = vim.fn.isdirectory(later) == 1
 	child.steps({ ':e a' })
@@ -1057,7 +1057,7 @@ T['T614 [char] (S2 Save) a commit finds its leftovers without listing the sessio
 	vim.uv.fs_utime(main .. '.tmp1', os.time() - 120, os.time() - 120)
 	child.lua([[
 		_G.CDV_LISTED = 0
-		local readdir, dir = vim.fn.readdir, require('cavediver.configs').session_dir
+		local readdir, dir = vim.fn.readdir, require('frogman.configs').session_dir
 		vim.fn.readdir = function(path, ...)
 			if path == dir then _G.CDV_LISTED = _G.CDV_LISTED + 1 end
 			return readdir(path, ...)
@@ -1133,7 +1133,7 @@ T['T537 [char] (A16, M5) a closed No Name text that can\'t be read is lost, not 
 	child.settle(1500) -- the records are written on the next tick, and again a second later
 	local lost = vim.tbl_filter(function(m) return m.msg:find('so that text is lost', 1, true) ~= nil end, child.messages())
 	local reopened = child.lua([[
-		for _, st in ipairs(require('cavediver').ledger.steps()) do
+		for _, st in ipairs(require('frogman').ledger.steps()) do
 			for _, m in ipairs(st.moves or {}) do
 				if m.kind == 'reopened' then return true end
 			end
@@ -1141,7 +1141,7 @@ T['T537 [char] (A16, M5) a closed No Name text that can\'t be read is lost, not 
 		return false
 	]])
 	eq({ lost = #lost, reopened = reopened, closed = child.closed():match('NONAME_') ~= nil,
-		cached = child.lua('return vim.tbl_count(require("cavediver.domains.history").data.noname_content)') },
+		cached = child.lua('return vim.tbl_count(require("frogman.domains.history").data.noname_content)') },
 		{ lost = 1, reopened = false, closed = false, cached = 0 })
 
 	S2.start(child, s)
@@ -1188,12 +1188,12 @@ T['T541 [char] (S1 Load, S2) a load fixes a session file that broke its own rule
 	-- planted in the fresh editor: the first one's quit writes its records over the file
 	S2.start(child, s)
 	child.lua([[
-		local crypto = require('cavediver.domains.storage.crypto')
+		local crypto = require('frogman.domains.storage.crypto')
 		local dir, name = vim.fn.getcwd(-1, -1), vim.fn.getcwd()
-		local path = require('cavediver.configs').session_dir .. vim.fn.sha256(dir .. "\n" .. name)
+		local path = require('frogman.configs').session_dir .. vim.fn.sha256(dir .. "\n" .. name)
 		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
 		local salt = bytes:sub(5, 4 + crypto.salt_length)
-		local data = require('cavediver.domains.storage.routines').read_session(dir, name)
+		local data = require('frogman.domains.storage.routines').read_session(dir, name)
 		local x = _G.CDV_TEST.root .. '/x.txt'
 		local h = vim.fn.sha256(x .. "\n"):sub(1, 16)
 		data.paths[h] = x
@@ -1214,7 +1214,7 @@ T['T541 [char] (S1 Load, S2) a load fixes a session file that broke its own rule
 	local warns = vim.tbl_filter(function(m) return m.msg:find("broke its own rules", 1, true) ~= nil end, notes)
 	local errors = vim.tbl_map(function(m) return m.msg end, vim.tbl_filter(function(m) return m.level == Misc.ERROR end, notes))
 	local trail = child.lua([[
-		for _, st in ipairs(require('cavediver').ledger.steps()) do
+		for _, st in ipairs(require('frogman').ledger.steps()) do
 			for _, m in ipairs(st.moves or {}) do
 				if m.kind == 'loaded' and (m.words or ''):find('broke its own rules', 1, true) then return true end
 			end
@@ -1222,7 +1222,7 @@ T['T541 [char] (S1 Load, S2) a load fixes a session file that broke its own rule
 		return false
 	]])
 	eq({ errors = errors, dump = child.dumped_since(dumps), warns = #warns, trail = trail, x = child.closed():find('x') ~= nil,
-		nopath = child.lua('for _, h in ipairs(require("cavediver.domains.history").data.closed_buffers) do if h == "deadbeefdeadbeef" then return true end end return false') },
+		nopath = child.lua('for _, h in ipairs(require("frogman.domains.history").data.closed_buffers) do if h == "deadbeefdeadbeef" then return true end end return false') },
 		{ errors = {}, dump = nil, warns = 1, trail = true, x = true, nopath = false })
 	child.step('<M-S-w>')
 	eq(child.shown(), 'x')
@@ -1268,7 +1268,7 @@ T['T477 [char] (S1) a load whose file can\'t be read for an environment reason f
 	eq(Misc.load(child), { true })
 	child.settle(300)
 	local msgs = child.messages()
-	eq({ failed = S2.has(msgs, 'failed during transition'), state = child.lua('return require("cavediver.domains.storage").sm:state()') },
+	eq({ failed = S2.has(msgs, 'failed during transition'), state = child.lua('return require("frogman.domains.storage").sm:state()') },
 		{ failed = true, state = 'idle' })
 end
 
@@ -1302,7 +1302,7 @@ T['T509 [char] (A19, S1) a landing queued before a whole-editor load doesn\'t mo
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
 	eq(Misc.save(child), { true })
 	child.steps({ ':e x' })
-	child.lua([[vim.cmd('bwipeout ' .. vim.fn.bufnr(_G.CDV_TEST.root .. '/x.txt')); require('cavediver').load_session(vim.fn.getcwd())]])
+	child.lua([[vim.cmd('bwipeout ' .. vim.fn.bufnr(_G.CDV_TEST.root .. '/x.txt')); require('frogman').load_session(vim.fn.getcwd())]])
 	child.settle(300)
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
 end
@@ -1312,7 +1312,7 @@ end
 T['T309 [char] (S2) no count limit: 150 closed files all come back'] = function()
 	local s = S2.shared()
 	for i = 1, 150 do vim.fn.writefile({ 'n' }, s.root .. '/n' .. i .. '.txt') end
-	local function closed() return child.lua('return #require("cavediver.domains.history").data.closed_buffers') end
+	local function closed() return child.lua('return #require("frogman.domains.history").data.closed_buffers') end
 	S2.start(child, s)
 	child.steps({ ':e a' })
 	child.lua([[
@@ -1455,7 +1455,7 @@ T['T337 [char] (S2) a reference whose buffer the manager doesn\'t restore is kep
 	Misc.restore(child, { 'a', 'c', 'd' }, 'd')
 	eq(Misc.load(child), { true })
 	child.settle(300)
-	child.lua('require("cavediver.domains.history").cleanup_system()')
+	child.lua('require("frogman.domains.history").cleanup_system()')
 	eq({ slots = child.slots(), b = S2.registered(child, 'b') }, { slots = '⦉c⦊ [d] ⟦b⟧', b = false })
 	child.steps({ '<M-f>' })
 	eq({ slots = child.slots(), shown = child.shown() }, { slots = '⦉c⦊ [b] ⟦d⟧', shown = 'b' })
@@ -1493,9 +1493,9 @@ T['T316 [char] (S2) a No Name buffer reopened at load gets a fresh id, and every
 	child.steps({ ':e a' })
 	local n = S2.noname(child, { 'ternary text' })
 	child.steps({ ':e b' })
-	local old = child.lua('return require("cavediver.domains.history").get_hash_from_buffer(...)', { n })
+	local old = child.lua('return require("frogman.domains.history").get_hash_from_buffer(...)', { n })
 	eq(type(old), 'string')
-	eq(child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()].ternary_slot == ...',
+	eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()].ternary_slot == ...',
 		{ old }), true)
 	eq(Misc.save(child), { true })
 
@@ -1507,8 +1507,8 @@ T['T316 [char] (S2) a No Name buffer reopened at load gets a fresh id, and every
 	eq(back ~= nil, true)
 	local got = child.lua([[
 		local old, buf = ...
-		local H = require('cavediver.domains.history')
-		local W = require('cavediver.domains.window')
+		local H = require('frogman.domains.history')
+		local W = require('frogman.domains.window')
 		local new = H.get_hash_from_buffer(buf)
 		local stale = {}
 		local function look(where, h)
@@ -1663,7 +1663,7 @@ T['T478 [char] (S2) the migration script finds a tab session\'s old file under i
 	eq({ left = vim.fn.filereadable(project_old), marked = vim.fn.filereadable(project_old .. '.migrated') }, { left = 1, marked = 0 })
 	local got = child.lua([[
 		local tab, e, b = ...
-		local data = require('cavediver.domains.storage.routines').read_session(tab, tab)
+		local data = require('frogman.domains.storage.routines').read_session(tab, tab)
 		return { scope = data and data.scope, e = data ~= nil and vim.tbl_contains(data.closed, e), b = data ~= nil and vim.tbl_contains(data.closed, b) }
 	]], { tab, hash(root .. '/e.txt'), hash(root .. '/b.txt') })
 	eq(got, { scope = 'tab', e = true, b = false })
@@ -1744,7 +1744,7 @@ T['T646 [char] (S2) the migration script converts both sessions whose old file i
 	local real = migrate()
 	local both = child.lua([[
 		local root, elsewhere = ...
-		local st = require('cavediver.domains.storage.routines')
+		local st = require('frogman.domains.storage.routines')
 		return st.session_exists(root, root) and st.session_exists(root, elsewhere)
 	]], { root, elsewhere })
 	eq({ dry = dry.stdout:find('would convert 2 session', 1, true) ~= nil, real = real.stdout:find('converted 2 session', 1, true) ~= nil, both = both },
@@ -1892,7 +1892,7 @@ T['T321 [char] (S2) saves are snapshots: a whole-editor save merges the pools by
 	eq(S2.save(child), { true })
 	local function in_file()
 		return child.lua([[
-			local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+			local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
 			local out = {}
 			for _, h in ipairs(saved.closed or {}) do
 				table.insert(out, vim.fn.fnamemodify(saved.paths[h] or h, ':t:r'))
@@ -1936,7 +1936,7 @@ T['T322 [char] (S2) a tab session\'s tab closed with nothing wired writes its re
 	local got = child.lua([[
 		vim.cmd('noautocmd tabnew')
 		vim.cmd('noautocmd edit d.txt')
-		return { pcall(require('cavediver').load_session, 't') }
+		return { pcall(require('frogman').load_session, 't') }
 	]])
 	child.settle(300)
 	child.steps({ '<M-S-w>' })
@@ -1958,12 +1958,12 @@ T['T323 [char] (S2) a tab-session save refreshes the unnamed session\'s records 
 	child.steps({ ':e e' })
 	child.cmd('tabnext')
 	child.settle()
-	eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),
 		{ true })
 	-- the whole editor's file, as the load reads it
 	eq(child.lua([[
-		local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
-		local x = require('cavediver.domains.history').get_hash_from_filepath(vim.fn.getcwd(-1, -1) .. '/x.txt')
+		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+		local x = require('frogman.domains.history').get_hash_from_filepath(vim.fn.getcwd(-1, -1) .. '/x.txt')
 		return vim.tbl_contains(saved.closed or {}, x)
 	]]), true)
 
@@ -1988,7 +1988,7 @@ T['T332 [char] (S2) a tab session\'s file holds the No Name texts its own tab ow
 	child.steps({ ':e t' })
 	child.cmd('tabnext')
 	child.settle()
-	eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),
 		{ true })
 
 	S2.start(child, s)
@@ -2045,7 +2045,7 @@ T['T351 [char] (S2) a tab session\'s tab closed with its save wired gives no not
 	tab_session(s)
 	child.lua([[
 		vim.api.nvim_create_autocmd('TabClosedPre', { callback = function()
-			require('cavediver').save_session('t', { tab = vim.api.nvim_get_current_tabpage() })
+			require('frogman').save_session('t', { tab = vim.api.nvim_get_current_tabpage() })
 		end })
 	]])
 	child.cmd('bdelete c.txt')
@@ -2057,7 +2057,7 @@ T['T351 [char] (S2) a tab session\'s tab closed with its save wired gives no not
 	local got = child.lua([[
 		vim.cmd('noautocmd tabnew')
 		vim.cmd('noautocmd edit d.txt')
-		return { pcall(require('cavediver').load_session, 't') }
+		return { pcall(require('frogman').load_session, 't') }
 	]])
 	child.settle(300)
 	child.steps({ '<M-S-w>' })
@@ -2074,7 +2074,7 @@ T['T352 [char] (S2) a tab session saved from a tab with a :tcd of its own is fou
 	child.cmd('tcd sub')
 	child.steps({ ':e ../c.txt', ':e ../d.txt' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦-⟧')
-	eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),
 		{ true })
 
 	S2.start(child, s)
@@ -2085,7 +2085,7 @@ T['T352 [char] (S2) a tab session saved from a tab with a :tcd of its own is fou
 		vim.fn.bufload(b)
 		vim.bo[b].buflisted = true
 		vim.cmd('noautocmd edit ../d.txt')
-		return { pcall(require('cavediver').load_session, 't') }
+		return { pcall(require('frogman').load_session, 't') }
 	]])
 	child.settle(300)
 	eq({ got = got, slots = child.slots() }, { got = { true }, slots = '⦉c⦊ [d] ⟦-⟧' })
@@ -2117,15 +2117,15 @@ T['T582 [char] (S2) a tab session loaded into the window that built the last vie
 	local tab1 = child.lua('return vim.api.nvim_get_current_tabpage()')
 	child.cmd('tabnew')
 	child.steps({ ':e d', ':e e' })
-	eq(child.lua('return { pcall(require("cavediver").save_session, "t1", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t1", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
 	child.cmd('tabclose')
 	child.settle(300)
 	child.steps({ ':e a' })
-	eq(child.lua('return { pcall(require("cavediver").load_session, "t1", { tab = ... }) }', { tab1 }), { true })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t1", { tab = ... }) }', { tab1 }), { true })
 	child.settle(300)
 	local got = child.ordered()
 	child.lua([[
-		local routines = require('cavediver.domains.history').routines
+		local routines = require('frogman.domains.history').routines
 		routines.construct_crux(nil)
 		routines.construct_crux(vim.api.nvim_get_current_win())
 		routines.update_buffer_history_ordered()
@@ -2159,13 +2159,13 @@ T['T354 [char] (S2) a tab session with no file, loaded with the hint, starts onl
 	local got = child.lua([[
 		vim.cmd('noautocmd tabnew')
 		vim.cmd('noautocmd edit d.txt')
-		return { pcall(require('cavediver').load_session, 'u', { tab = vim.api.nvim_get_current_tabpage() }) }
+		return { pcall(require('frogman').load_session, 'u', { tab = vim.api.nvim_get_current_tabpage() }) }
 	]])
 	child.settle(300)
 	local w2 = child.lua('return vim.api.nvim_get_current_win()')
 	local state = { got = got, session_tab = child.slots(w2), first_tab = child.slots(w1), closed = child.closed() }
 	child.messages()
-	eq(child.lua('return { pcall(require("cavediver").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	eq(child.lua('return { pcall(require("frogman").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
 	state.notices = S2.notices(child.messages())
 	eq(state, { got = { true }, session_tab = '⦉-⦊ [d] ⟦-⟧', first_tab = '⦉x⦊ [t] ⟦-⟧', closed = 'a', notices = {} })
 end
@@ -2178,10 +2178,10 @@ T['T355 [char] (S2) a file\'s scope wins over the hint'] = function()
 	eq(Misc.save(child), { true })
 	S2.start(child, s)
 	Misc.restore(child, { 'c', 'd' }, 'd')
-	local got = child.lua('return { pcall(require("cavediver").load_session, vim.fn.getcwd(), { tab = vim.api.nvim_get_current_tabpage() }) }')
+	local got = child.lua('return { pcall(require("frogman").load_session, vim.fn.getcwd(), { tab = vim.api.nvim_get_current_tabpage() }) }')
 	child.settle(300)
 	eq({ got = got, slots = child.slots(),
-		editor = child.lua('return require("cavediver.domains.history").routines.current_pool().id') },
+		editor = child.lua('return require("frogman.domains.history").routines.current_pool().id') },
 		{ got = { true }, slots = '⦉c⦊ [d] ⟦-⟧', editor = '' })
 end
 
@@ -2203,7 +2203,7 @@ T['T356 [char] (S2) a tab session\'s records that can\'t be written as its tab c
 	child.settle(300)
 	local warned = S2.has(child.messages(), "'s tab closed, and its closed files couldn't be written")
 	local kept = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		for id, pool in pairs(H.routines.pools()) do
 			if id ~= '' and next(pool.tabs) == nil then
 				return #pool.closed
@@ -2226,7 +2226,7 @@ T['T357 [char] (S2) a session loaded into another tab while open takes its list 
 	local got = child.lua([[
 		vim.cmd('noautocmd tabnew')
 		vim.cmd('noautocmd edit d.txt')
-		return { pcall(require('cavediver').load_session, 't') }
+		return { pcall(require('frogman').load_session, 't') }
 	]])
 	child.settle(300)
 	child.steps({ '<M-S-w>' })
@@ -2276,7 +2276,7 @@ T['T358 [char] (S2) a quit in the same batch as a tab close writes that tab sess
 	local got = child.lua([[
 		vim.cmd('noautocmd tabnew')
 		vim.cmd('noautocmd edit d.txt')
-		return { pcall(require('cavediver').load_session, 't') }
+		return { pcall(require('frogman').load_session, 't') }
 	]])
 	child.settle(300)
 	child.steps({ '<M-S-w>' })
@@ -2313,11 +2313,11 @@ T['T360 [char] (S2) a load cancels a write still pending, so the teardown\'s clo
 		vim.cmd('enew')
 		vim.cmd('bdelete b.txt')
 		vim.cmd('bdelete c.txt')
-		require('cavediver').load_session('two')
+		require('frogman').load_session('two')
 	]])
 	child.settle(1500)
 	local closed = child.lua([[
-		local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 'one')
+		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 'one')
 		local out = {}
 		for _, h in ipairs(saved.closed or {}) do
 			table.insert(out, vim.fn.fnamemodify(saved.paths[h] or h, ':t:r'))
@@ -2368,9 +2368,9 @@ T['T599 [char] (S2) a tab session keeps owning a No Name text its tab visited af
 	S2.noname(child, { 'draft' })
 	child.steps({ ':e x' })
 	local function texts()
-		eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+		eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
 		return child.lua([[
-			local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 't')
+			local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 't')
 			local n = 0
 			for _ in pairs(saved.noname_content or {}) do n = n + 1 end
 			return n
@@ -2401,7 +2401,7 @@ T['T600 [char] (S2) a session whose last write held a No Name text no longer its
 	child.settle(1500)
 	local function editor_texts()
 		return child.lua([[
-			local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+			local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
 			local n = 0
 			for _ in pairs(saved.noname_content or {}) do n = n + 1 end
 			return n
@@ -2423,7 +2423,7 @@ T['T601 [char] (S2) an edited text\'s sessions are worked out once in a second o
 	S2.noname(child, { 'draft' })
 	child.settle(1500)
 	local asked = child.lua([[
-		local H = require('cavediver.domains.history').routines
+		local H = require('frogman.domains.history').routines
 		local real = H.tabs_that_visited
 		local n = 0
 		H.tabs_that_visited = function(...) n = n + 1 return real(...) end
@@ -2445,7 +2445,7 @@ T['T602 [char] (S2) steady typing writes the records once a second'] = function(
 	S2.noname(child, { 'draft' })
 	child.settle(1500)
 	child.lua([[
-		local R = require('cavediver.domains.storage').routines
+		local R = require('frogman.domains.storage').routines
 		local real = R.write_records
 		_G.CDV_WRITES = 0
 		_G.CDV_AT = {}
@@ -2517,7 +2517,7 @@ T['T364 [char] (S2) disable() stops the writes'] = function()
 	local before = S2.read(file)
 	child.lua([[
 		vim.cmd('bdelete a.txt')
-		require('cavediver').disable()
+		require('frogman').disable()
 	]])
 	child.settle(1200)
 	eq(S2.read(file) == before, true)
@@ -2536,7 +2536,7 @@ T['T365 [char] (S2) a whole-editor switch keeps the manager\'s teardown out of a
 	eq(S2.save(child, 'main'), { true })
 	child.cmd('tabnew')
 	child.steps({ ':e c', ':e d' })
-	eq(child.lua('return { pcall(require("cavediver").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),
 		{ true })
 	child.cmd('tabprevious')
 	child.settle()
@@ -2549,11 +2549,11 @@ T['T365 [char] (S2) a whole-editor switch keeps the manager\'s teardown out of a
 			end
 		end
 		vim.cmd('silent! tabonly')
-		require('cavediver').load_session('two')
+		require('frogman').load_session('two')
 	]])
 	child.settle(1500)
 	local closed = child.lua([[
-		local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 't')
+		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 't')
 		local out = {}
 		for _, h in ipairs(saved.closed or {}) do
 			table.insert(out, vim.fn.fnamemodify(saved.paths[h] or h, ':t:r'))
@@ -2572,13 +2572,13 @@ T['T366 [char] (S2) a tab saved as another session writes the one it leaves, and
 	child.cmd('bdelete c.txt')
 	child.settle()
 	eq(child.slots(w2), '⦉c⦊ [d] ⟦-⟧')
-	eq(child.lua('return { pcall(require("cavediver").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'),
+	eq(child.lua('return { pcall(require("frogman").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'),
 		{ true })
 	child.settle(300)
-	child.lua('require("cavediver.domains.history").cleanup_system()')
+	child.lua('require("frogman.domains.history").cleanup_system()')
 	child.settle(300)
 	local state = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local tabless = 0
 		for id, pool in pairs(H.routines.pools()) do
 			if id ~= '' and next(pool.tabs) == nil then
@@ -2595,7 +2595,7 @@ T['T366 [char] (S2) a tab saved as another session writes the one it leaves, and
 	local got = child.lua([[
 		vim.cmd('noautocmd tabnew')
 		vim.cmd('noautocmd edit d.txt')
-		return { pcall(require('cavediver').load_session, 't') }
+		return { pcall(require('frogman').load_session, 't') }
 	]])
 	child.settle(300)
 	child.steps({ '<M-S-w>' })
@@ -2606,7 +2606,7 @@ end
 -- The lists a closed file is on, by pool: the editor's as "", a tab session's
 -- by its name, and whether each pool has a tab.
 local LISTS = [[
-	local H = require('cavediver.domains.history')
+	local H = require('frogman.domains.history')
 	local h = H.get_hash_from_filepath(vim.fn.getcwd(-1, -1) .. '/' .. ... .. '.txt')
 	local out = {}
 	for id, pool in pairs(H.routines.pools()) do
@@ -2627,7 +2627,7 @@ T['T368 [char] (S2) a tab saved as a session for the first time carries the clos
 	child.cmd('bdelete b.txt')
 	child.settle()
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
-	eq(child.lua('return { pcall(require("cavediver").save_session, "notes", { tab = vim.api.nvim_get_current_tabpage() }) }'),
+	eq(child.lua('return { pcall(require("frogman").save_session, "notes", { tab = vim.api.nvim_get_current_tabpage() }) }'),
 		{ true })
 	child.settle(300)
 	local lists = child.lua(LISTS, { 'b' })
@@ -2646,7 +2646,7 @@ T['T368 [char] (S2) a tab whose session another tab took, saved as a new session
 	child.cmd('tabprevious')
 	child.cmd('bdelete c.txt')
 	child.settle()
-	eq(child.lua('return { pcall(require("cavediver").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'),
+	eq(child.lua('return { pcall(require("frogman").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'),
 		{ true })
 	child.settle(300)
 	local lists = child.lua(LISTS, { 'c' })
@@ -2667,11 +2667,11 @@ T['T369 [char] (S2) a tab session is in one tab at a time, and the tab it leaves
 	local got = child.lua([[
 		vim.cmd('noautocmd tabnew')
 		vim.cmd('noautocmd edit d.txt')
-		return { pcall(require('cavediver').load_session, 't') }
+		return { pcall(require('frogman').load_session, 't') }
 	]])
 	child.settle(300)
 	local lists = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local function list(tabpage)
 			local pool = H.routines.pool_of_tab(tabpage)
 			local out = {}
@@ -2697,7 +2697,7 @@ local function detached_state(s)
 	child.lua([[
 		vim.cmd('noautocmd tabnew')
 		vim.cmd('noautocmd edit d.txt')
-		require('cavediver').load_session('t')
+		require('frogman').load_session('t')
 	]])
 	child.settle(300)
 	return w2, child.lua('return vim.api.nvim_get_current_win()')
@@ -2705,7 +2705,7 @@ end
 
 -- A tab's list, as its name and its entries.
 local LIST_OF = [[
-	local H = require('cavediver.domains.history')
+	local H = require('frogman.domains.history')
 	local pool = H.routines.pool_of_tab(vim.api.nvim_win_get_tabpage(...))
 	local out = {}
 	for _, h in ipairs(pool.closed) do
@@ -2716,7 +2716,7 @@ local LIST_OF = [[
 
 -- The whole editor's file, as names: its closed list, and each detached list.
 local EDITOR_FILE = [[
-	local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+	local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
 	local function names(hashes)
 		local out = {}
 		for _, h in ipairs(hashes or {}) do
@@ -2742,7 +2742,7 @@ T['T378 [char] (S2) a save of a tab as a session open in another tab takes it fr
 	local got = child.lua([[
 		vim.cmd('tabnew')
 		vim.cmd('edit d.txt')
-		return { pcall(require('cavediver').save_session, 't', { tab = vim.api.nvim_get_current_tabpage() }) }
+		return { pcall(require('frogman').save_session, 't', { tab = vim.api.nvim_get_current_tabpage() }) }
 	]])
 	child.settle(300)
 	local w3 = child.lua('return vim.api.nvim_get_current_win()')
@@ -2801,14 +2801,14 @@ T['T381 [char] (S2) a detached list left with no tab goes into the whole editor\
 	child.cmd('tabclose')
 	child.settle(300)
 	local in_memory = child.lua([[
-		for _, pool in pairs(require('cavediver.domains.history').routines.pools()) do
+		for _, pool in pairs(require('frogman.domains.history').routines.pools()) do
 			if pool.name == 't_DETACHED' then return true end
 		end
 		return false
 	]])
 	local file = child.lua(EDITOR_FILE)
 	local path = child.lua([[
-		local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
 		for _, list in ipairs(saved.detached or {}) do
 			for _, h in ipairs(list.closed) do
 				if (saved.paths[h] or ''):match('e%.txt$') then return true end
@@ -2830,7 +2830,7 @@ T['T382 [char] (S2) with no whole-editor file, a detached list left with no tab 
 	child.cmd('tabclose')
 	child.settle(300)
 	local kept = child.lua([[
-		for _, pool in pairs(require('cavediver.domains.history').routines.pools()) do
+		for _, pool in pairs(require('frogman.domains.history').routines.pools()) do
 			if pool.name == 't_DETACHED' then return next(pool.tabs) == nil end
 		end
 		return false
@@ -2845,7 +2845,7 @@ T['T383 [char] (S2) a second detach of a session is numbered'] = function()
 	child.lua([[
 		vim.cmd('noautocmd tabnew')
 		vim.cmd('noautocmd edit d.txt')
-		require('cavediver').load_session('t')
+		require('frogman').load_session('t')
 	]])
 	child.settle(300)
 	eq({ second = child.lua(LIST_OF, { w2 }):match('^[^:]*'), third = child.lua(LIST_OF, { w3 }):match('^[^:]*') },
@@ -2877,14 +2877,14 @@ local function case8(s, saved)
 	child.lua([[
 		vim.cmd('noautocmd tabnew')
 		vim.cmd('noautocmd edit d.txt')
-		require('cavediver').load_session('t')
+		require('frogman').load_session('t')
 	]])
 	child.settle(300)
 	local w3 = child.lua('return vim.api.nvim_get_current_win()')
 	child.lua([[
 		vim.api.nvim_set_current_win(...)
 		vim.cmd('noautocmd edit d.txt')
-		require('cavediver').load_session('t')
+		require('frogman').load_session('t')
 	]], { w2 })
 	child.settle(300)
 	return w2, w3
@@ -2904,7 +2904,7 @@ local OPEN_LISTS = [==[
 
 -- Whether a list of that name is in memory.
 local IN_MEMORY = [[
-	for _, pool in pairs(require('cavediver.domains.history').routines.pools()) do
+	for _, pool in pairs(require('frogman.domains.history').routines.pools()) do
 		if pool.name == ... then return true end
 	end
 	return false
@@ -2966,7 +2966,7 @@ T['T387 [char] (S2) t loaded into a tab other than its detached one opens no clo
 	child.lua([[
 		vim.cmd('noautocmd tabnew')
 		vim.cmd('noautocmd edit d.txt')
-		require('cavediver').load_session('t')
+		require('frogman').load_session('t')
 	]])
 	child.settle(300)
 	eq(child.lua(OPEN_LISTS), vim.NIL)
@@ -3104,7 +3104,7 @@ T['T574 [char] (S2) a No Name text moved from a list in the file alone onto a ta
 	child.settle(600)
 	local lost = S2.has(child.messages(), "so that text is lost")
 	local in_file = child.lua([[
-		local saved = require('cavediver.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 't')
+		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 't')
 		for _, h in ipairs(saved and saved.closed or {}) do
 			if (saved.noname_content or {})[h] then return true end
 		end
@@ -3320,7 +3320,7 @@ T['T367 [char] (S2) the hint\'s tab is the tab the load works on, wherever the f
 			vim.cmd('noautocmd edit d.txt')
 			local tab, win = vim.api.nvim_get_current_tabpage(), vim.api.nvim_get_current_win()
 			vim.cmd('noautocmd tabnext ' .. vim.api.nvim_tabpage_get_number(first))
-			local ok = pcall(require('cavediver').load_session, ..., { tab = tab })
+			local ok = pcall(require('frogman').load_session, ..., { tab = tab })
 			return { ok = ok, win = win }
 		]], { name })
 	end
@@ -3368,7 +3368,7 @@ T['T324 [char] (S2) an oil window comes back as oil, with oil_original_buffer se
 		return {
 			shows_oil = vim.api.nvim_get_current_buf() == oil,
 			original = vim.w.oil_original_buffer == vim.fn.bufnr(_G.CDV_TEST.root .. '/b.txt'),
-			oil_registered = require('cavediver.domains.history').get_hash_from_buffer(oil) ~= nil,
+			oil_registered = require('frogman.domains.history').get_hash_from_buffer(oil) ~= nil,
 		}
 	]], { oil })
 	eq({ got = got, slots = child.slots() },
@@ -3518,7 +3518,7 @@ end
 -- Each list's entries and close times, by the list's name ("" for the editor's),
 -- as file names and times.
 local LISTS_STATE = [[
-	local H = require('cavediver.domains.history')
+	local H = require('frogman.domains.history')
 	local out = {}
 	for id, pool in pairs(H.routines.pools()) do
 		local entries = {}
@@ -3535,7 +3535,7 @@ local LISTS_STATE = [[
 local function x_on_both(s)
 	local w1, w2 = two_pools(s)
 	child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local w2 = ...
 		local x = H.get_hash_from_filepath(vim.fn.getcwd(-1, -1) .. '/x.txt')
 		local editor = H.routines.pools()['']
@@ -3626,7 +3626,7 @@ T['T373 [char] (S2) the picker shows a missing file\'s tag'] = function()
 	child.cmd('bdelete b.txt')
 	child.lua([[
 		os.remove(_G.CDV_TEST.root .. '/b.txt')
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		H.data.missing[H.get_hash_from_filepath(_G.CDV_TEST.root .. '/b.txt')] = 'feature'
 	]])
 	child.settle()
@@ -3638,7 +3638,7 @@ end
 T['T374 [char] (S2) with the ASCII glyph set the picker draws nothing outside ASCII'] = function()
 	local s = S2.shared()
 	two_pools(s)
-	child.lua([[_G.CDV_TEST.setup({ session_dir = require('cavediver.configs').session_dir, glyphs = { set = 'ascii' } })]])
+	child.lua([[_G.CDV_TEST.setup({ session_dir = require('frogman.configs').session_dir, glyphs = { set = 'ascii' } })]])
 	local p = S2.picker(child)
 	local ascii = true
 	for i = 1, #p.lines do
@@ -3650,7 +3650,7 @@ end
 -- Each list's closed files, by basename, keyed by its directory's last two parts.
 local function lists_by_dir()
 	return child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local out = {}
 		for _, pool in pairs(H.routines.pools()) do
 			if pool.directory then
@@ -3672,14 +3672,14 @@ T['T504 [char] (S2) two lists of one name and one last part get headers of their
 	child.cmd('edit ../../b.txt')
 	child.cmd('edit ../../c.txt')
 	child.settle()
-	eq(child.lua('return { pcall(require("cavediver").save_session, nil, { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	eq(child.lua('return { pcall(require("frogman").save_session, nil, { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
 	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/b.txt")'))
 	child.cmd('tabnew')
 	child.cmd('tcd ' .. child.lua('return _G.CDV_TEST.root') .. '/p/app')
 	child.cmd('edit ../../d.txt')
 	child.cmd('edit ../../e.txt')
 	child.settle()
-	eq(child.lua('return { pcall(require("cavediver").save_session, nil, { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	eq(child.lua('return { pcall(require("frogman").save_session, nil, { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
 	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/d.txt")'))
 	child.settle()
 	local before = lists_by_dir()
@@ -3717,7 +3717,7 @@ T['T506 [char] (S2, A27) a closed lists key\'s step is about the window it acts 
 	child.type_keys('<CR>')
 	child.settle(300)
 	local step = child.lua([[
-		local steps = require('cavediver').ledger.steps()
+		local steps = require('frogman').ledger.steps()
 		for i = #steps, 1, -1 do
 			if steps[i].trigger == '<CR>' then return { win = steps[i].win, after = steps[i].row_after ~= nil } end
 		end
@@ -3729,7 +3729,7 @@ end
 T['T503 [char] (S2) a closed_entry formatter that gives nothing leaves cavediver\'s own text'] = function()
 	local s = S2.shared()
 	two_pools(s)
-	child.lua([[_G.CDV_TEST.setup({ session_dir = require('cavediver.configs').session_dir,
+	child.lua([[_G.CDV_TEST.setup({ session_dir = require('frogman.configs').session_dir,
 		formatters = { closed_entry = function() return nil end } })]])
 	local p = S2.picker(child)
 	local timed = false
@@ -3750,7 +3750,7 @@ T['T375 [char] (S2) <M-;>W opens the picker, named keymaps.open_closed_lists'] =
 			moved = vim.api.nvim_get_current_win() ~= ...,
 			modifiable = vim.bo[buf].modifiable,
 			lines = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n'),
-			named = require('cavediver.configs').keymaps.open_closed_lists,
+			named = require('frogman.configs').keymaps.open_closed_lists,
 		}
 	]], { came_from })
 	eq({ moved = got.moved, modifiable = got.modifiable, c = got.lines:find('c.txt', 1, true) ~= nil, named = got.named },
@@ -3778,7 +3778,7 @@ T['T376 [char] (S2) discarding a No Name entry in the picker asks first'] = func
 	end
 	local function noname_listed()
 		return child.lua([[
-			local H = require('cavediver.domains.history')
+			local H = require('frogman.domains.history')
 			for _, h in ipairs(H.data.closed_buffers) do
 				if (H.get_filepath_from_hash(h) or ''):match('^NONAME_') then return H.data.noname_content[h] ~= nil end
 			end
@@ -3819,7 +3819,7 @@ T['T525 [char] (S1 Load) a window entry whose maps are saved as null loads with 
 	eq(S2.save(child), { true })
 	-- the saved maps set to null by hand, as a file written elsewhere may hold them
 	child.lua([[
-		local st = require('cavediver.domains.storage').routines
+		local st = require('frogman.domains.storage').routines
 		local dir = vim.fn.getcwd(-1, -1)
 		local saved = st.read_session(dir, nil)
 		for _, w in ipairs(saved.windows) do
@@ -3837,7 +3837,7 @@ T['T525 [char] (S1 Load) a window entry whose maps are saved as null loads with 
 		if m.msg:find('failed', 1, true) then failed = true end
 	end
 	local maps = child.lua([[
-		local t = require('cavediver.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
 		return { t = t and type(t.displacement_ternary_map), s = t and type(t.displacement_secondary_map) }
 	]])
 	eq({ failed = failed, maps = maps, slots = child.slots() },

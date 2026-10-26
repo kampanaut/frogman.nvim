@@ -8,8 +8,8 @@ local X = {}
 -- Code run in the child: name <-> hash for the temp project's files.
 local CHILD_LIB = [==[
 _G.CDV_X = _G.CDV_X or {}
-local H = require('cavediver.domains.history')
-local W = require('cavediver.domains.window')
+local H = require('frogman.domains.history')
+local W = require('frogman.domains.window')
 
 local function name(hash)
 	if hash == nil then return nil end
@@ -69,7 +69,7 @@ end
 -- compare_buffers, so a tie counts as not leftmost. Returns nil when it is,
 -- or a short reason.
 _G.CDV_X.leftmost = function()
-	local bl = require('cavediver.domains.ui').bufferline
+	local bl = require('frogman.domains.ui').bufferline
 	local cur = vim.api.nvim_get_current_buf()
 	if not H.get_hash_from_buffer(cur) then return 'current buffer not tracked' end
 	for _, e in ipairs(H.get_ordered_buffers()) do

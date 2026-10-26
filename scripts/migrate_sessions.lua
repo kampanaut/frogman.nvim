@@ -66,10 +66,10 @@ if options.session_dir:sub(-1) ~= "/" then
 	options.session_dir = options.session_dir .. "/"
 end
 
-require("cavediver.configs").session_dir = options.session_dir
-require("cavediver.configs").libcrypto_path = options.libcrypto_path
-local storage = require("cavediver.domains.storage.routines")
-local filehash = require("cavediver.domains.history").routines.get_filehash -- as the editor hashes a name
+require("frogman.configs").session_dir = options.session_dir
+require("frogman.configs").libcrypto_path = options.libcrypto_path
+local storage = require("frogman.domains.storage.routines")
+local filehash = require("frogman.domains.history").routines.get_filehash -- as the editor hashes a name
 
 ---The XOR the format before encryption used: the cwd repeated as the key, then base64.
 ---@param encoded string

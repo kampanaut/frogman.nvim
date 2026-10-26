@@ -1,0 +1,670 @@
+---UI domain initialization, extension hooks, and API layer.
+---
+---The UI domain manages visual interface components like bufferlines, winbars,
+---and status indicators. This module provides the API layer and loads extension
+---hooks that integrate with other domains' state machines.
+
+local states = require('frogman.domains.ui.states')
+local data = require('frogman.domains.ui.data')
+local routines = require('frogman.domains.ui.routines')
+local history = require('frogman.domains.history')
+
+local bufferline_state = data.bufferline_state
+
+local configs = require("frogman.configs")
+
+-- Load hooks to extend other domains' state machines
+local hooks = require('frogman.domains.ui.hooks')
+
+-- Get UI state machines for domain coordination
+local ui_machines = require('frogman.domains.ui.sm')
+
+-- The UI domain provides multiple independent state machines for different components
+
+local M = {
+	sm = ui_machines, -- Multiple UI state machines
+	states = states,  -- State constants
+	data = data,      -- Domain data structures
+	routines = routines, -- Domain business logic
+}
+
+---Initiate the winbar highlight groups.
+---@return nil
+function M.init_winbar_highlights()
+	-- This is where we completely define the winbar highlight groups.
+	vim.api.nvim_set_hl(0, "WinbarBase", { fg = configs.colors.base.focused.fg, bg = configs.colors.base.focused.bg, bold = true })
+	vim.api.nvim_set_hl(0, "WinbarBaseNC", { fg = configs.colors.base.unfocused.fg, bg = configs.colors.base.unfocused.bg })
+	vim.api.nvim_set_hl(0, "WinbarVisit", { fg = configs.colors.visit_bar.focused, bg = configs.colors.base.focused.bg, bold = true })
+	vim.api.nvim_set_hl(0, "WinbarVisitNC", { fg = configs.colors.visit_bar.unfocused, bg = configs.colors.base.unfocused.bg })
+	vim.api.nvim_set_hl(0, "WinbarFilenameCurrent", { fg = configs.colors.current.focused.filename, bg = configs.colors.base.focused.bg, bold = true, underline = true })      -- Green filename
+	vim.api.nvim_set_hl(0, "WinbarFilenameSecondary", { fg = configs.colors.secondary.focused.filename, bg = configs.colors.base.focused.bg, bold = true })      -- Green filename
+	vim.api.nvim_set_hl(0, "WinbarFilenameTernary", { fg = configs.colors.ternary.focused.filename, bg = configs.colors.base.focused.bg, bold = true })      -- Green filename
+	vim.api.nvim_set_hl(0, "WinbarFilenameCurrentNC", { fg = configs.colors.current.unfocused.filename, bg = configs.colors.base.unfocused.bg, bold = true })    -- Gray filename (inactive)
+	vim.api.nvim_set_hl(0, "WinbarFilenameSecondaryNC", { fg = configs.colors.secondary.unfocused.filename, bg = configs.colors.base.unfocused.bg, bold = true })    -- Gray filename (inactive)
+	vim.api.nvim_set_hl(0, "WinbarFilenameTernaryNC", { fg = configs.colors.ternary.unfocused.filename, bg = configs.colors.base.unfocused.bg, bold = true })    -- Gray filename (inactive)
+	vim.api.nvim_set_hl(0, "WinbarBufnrCurrent", { fg = configs.colors.current.focused.bufnr, bg = configs.colors.base.focused.bg, bold = true })                      -- Amber buffer ID
+	vim.api.nvim_set_hl(0, "WinbarBufnrSecondary", { fg = configs.colors.secondary.focused.bufnr, bg = configs.colors.base.focused.bg })                      -- Amber buffer ID
+	vim.api.nvim_set_hl(0, "WinbarBufnrTernary", { fg = configs.colors.ternary.focused.bufnr, bg = configs.colors.base.focused.bg, bold = true })      -- Green filename
+	vim.api.nvim_set_hl(0, "WinbarBufnrPrimary", { fg = configs.colors.primary.active, bg =  configs.colors.base.focused.bg })                      -- Amber buffer ID
+	vim.api.nvim_set_hl(0, "WinbarBufnrPrimaryDisabled", { fg = configs.colors.primary.inactive, bg = configs.colors.base.focused.bg })                      -- Amber buffer ID
+	vim.api.nvim_set_hl(0, "WinbarBufnrPrimaryNC", { fg = configs.colors.primary.unfocused, bg = configs.colors.base.unfocused.bg})                      -- Amber buffer ID
+	vim.api.nvim_set_hl(0, "WinbarBufnrCurrentNC", { fg = configs.colors.current.unfocused.bufnr, bg = configs.colors.base.unfocused.bg, bold = true })    -- Gray filename (inactive)
+	vim.api.nvim_set_hl(0, "WinbarBufnrSecondaryNC", { fg = configs.colors.secondary.unfocused.bufnr, bg = configs.colors.base.unfocused.bg, bold = true })    -- Gray filename (inactive)
+	vim.api.nvim_set_hl(0, "WinbarBufnrTernaryNC", { fg = configs.colors.ternary.unfocused.bufnr, bg = configs.colors.base.unfocused.bg, bold = true })    -- Gray filename (inactive)
+	vim.api.nvim_set_hl(0, "BothWayNerdArrow", { fg = configs.colors.both_way_arrow.focused, bg = configs.colors.base.focused.bg})                      -- Amber buffer ID
+	vim.api.nvim_set_hl(0, "BothWayNerdArrowNC", { fg = configs.colors.both_way_arrow.unfocused, bg = configs.colors.base.unfocused.bg})                      -- Amber buffer ID
+end
+
+---Initiate the highlight groups cavediver's own views draw with.
+---
+---Their colours come from the config's `colors.trail`.
+---
+---@return nil
+function M.init_trail_highlights()
+	local trail = configs.colors.trail
+	vim.api.nvim_set_hl(0, "CavediverTrailList", { fg = trail.list, bold = true })
+	vim.api.nvim_set_hl(0, "CavediverTrailClosed", { fg = trail.closed, bold = true })
+	vim.api.nvim_set_hl(0, "CavediverTrailTime", { fg = trail.time })
+	vim.api.nvim_set_hl(0, "CavediverTrailTag", { fg = trail.tag })
+	vim.api.nvim_set_hl(0, "CavediverTrailDim", { fg = trail.dim })
+	-- the trail's view
+	for i, colour in ipairs(trail.wave or {}) do
+		vim.api.nvim_set_hl(0, "CavediverTrailWave" .. (i - 1), { fg = colour })
+	end
+	local plain = { Title = { trail.title, true }, Date = { trail.date }, Depth = { trail.depth }, Count = { trail.count },
+		Gauge = { trail.gauge }, GaugeNow = { trail.gauge_now, true }, KeyOn = { trail.key_on, true }, KeyOff = { trail.key_off },
+		Gutter = { trail.gutter }, Cause = { trail.time }, Trigger = { trail.trigger }, Name = { trail.name, true },
+		Words = { trail.words }, Ring = { trail.ring }, Fold = { trail.fold }, Reopened = { trail.reopened, true },
+		Forgot = { trail.forgot, true }, Gone = { trail.gone, true }, Back = { trail.back, true }, Repair = { trail.repair, true },
+		Slot = { trail.slot, true }, Note = { trail.note, true }, Cycle = { trail.cycle, true }, Session = { trail.session, true },
+		Rename = { trail.rename, true }, RowT = { trail.row_t }, RowC = { trail.row_c }, RowS = { trail.row_s },
+		LifeOpen = { trail.life_open, true }, LifeClosed = { trail.life_closed, true }, LifeGone = { trail.life_gone, true } }
+	for name, spec in pairs(plain) do
+		vim.api.nvim_set_hl(0, "CavediverTrail" .. name, { fg = spec[1], bold = spec[2] })
+	end
+	vim.api.nvim_set_hl(0, "CavediverTrailTrigger", { fg = trail.trigger, italic = true })
+end
+
+local periodic_timer = nil
+
+---Stop the UI refresh timer, if it's running.
+---@return nil
+function M.stop_refresh_timer()
+	if periodic_timer then
+		periodic_timer:stop()
+		periodic_timer:close()
+		periodic_timer = nil
+	end
+end
+
+---Initiate UI Timers (cleanup and winbar refresh)
+---
+---Calling it again stops the running timer and starts a new one.
+---
+---@return nil
+function M.init_refresh_timer()
+	M.stop_refresh_timer()
+	periodic_timer = vim.loop:new_timer()
+
+	if not periodic_timer then
+		error("Timer creation failed")
+	end
+
+	periodic_timer:start(
+		0,
+		configs.winbar_refresh_interval,
+		vim.schedule_wrap(function()
+			routines.debounced_update()
+		end)
+	)
+end
+
+---Get current bufferline cache state.
+---
+---@return BufferlineCache cache The current bufferline performance cache
+function M.get_bufferline_cache()
+	return data.bufferline_state
+end
+
+---Hide bufferline component.
+---
+---@return nil
+function M.hide_bufferline()
+	ui_machines.bufferline:to(states.BUFFERLINE.HIDDEN)
+end
+
+---Show bufferline component.
+---
+---@return nil
+function M.show_bufferline()
+	ui_machines.bufferline:to(states.BUFFERLINE.VISIBLE)
+end
+
+---Hide winbar component.
+---
+---@return nil
+function M.hide_winbar()
+	ui_machines.winbar:to(states.WINBAR.MINIMAL)
+end
+
+---Show winbar component.
+---
+---@return nil
+function M.show_winbar()
+	ui_machines.winbar:to(states.WINBAR.ACTIVE)
+end
+
+-- the indicators, by kind: the role marks, and a marked buffer's mark and label
+local hidden_indicators = { roles = false, harpoon = false }
+
+---Hide or show the indicators of one kind, or of every kind.
+---
+---The indicators machine goes off once every kind is hidden, and on while any kind shows.
+---
+---@return nil
+local function set_indicators(kind, hidden)
+	for name, _ in pairs(hidden_indicators) do
+		if kind == nil or kind == name then
+			hidden_indicators[name] = hidden
+		end
+	end
+	local all = hidden_indicators.roles and hidden_indicators.harpoon
+	ui_machines.indicators:to(all and states.INDICATORS.OFF or states.INDICATORS.ON)
+end
+
+---Turn off indicators.
+---
+---@param kind "roles"|"harpoon"|nil Indicator kind to turn off, or every kind when nil
+---@return nil
+function M.hide_indicators(kind)
+	set_indicators(kind, true)
+end
+
+---Turn on indicators.
+---
+---@param kind "roles"|"harpoon"|nil Indicator kind to turn on, or every kind when nil
+---@return nil
+function M.show_indicators(kind)
+	set_indicators(kind, false)
+end
+
+---Trigger UI update loop.
+---
+---@return nil
+function M.update_ui()
+	ui_machines.loop:to(states.LOOP.SELF)
+end
+
+---Check if a UI component is currently hidden.
+---
+---@param component string Component name ("bufferline", "winbar", "indicators")
+---@param kind "roles"|"harpoon"|nil Indicator kind to check, or every kind when nil
+---@return boolean hidden True if component is hidden
+function M.is_hidden(component, kind)
+	if component == "bufferline" then
+		return ui_machines.bufferline:state() == states.BUFFERLINE.HIDDEN
+	elseif component == "winbar" then
+		return ui_machines.winbar:state() == states.WINBAR.MINIMAL
+	elseif component == "indicators" then
+		local off = ui_machines.indicators:state() == states.INDICATORS.OFF
+		if kind then
+			-- the machine speaks for every kind when it's off, and when it was turned on with every kind off
+			local all = hidden_indicators.roles and hidden_indicators.harpoon
+			return off or (not all and hidden_indicators[kind] == true)
+		end
+		return off
+	end
+	return false
+end
+
+---Clean up UI data when needed.
+---
+---@return nil
+function M.cleanup()
+	data.clear_bufferline_cache()
+end
+
+M.bufferline = {}
+
+---Check if bufferline should be visible.
+---@return boolean visible
+function M.bufferline.is_bufferline_visible()
+	return ui_machines.bufferline:state() == states.BUFFERLINE.VISIBLE
+end
+
+---@param bufnr Bufnr Buffer number to check
+---@return boolean is_registered True if buffer should be displayed in bufferline
+function M.bufferline.bufnr_is_displayed(bufnr)
+	return M.bufferline.is_bufferline_visible() and bufferline_state.recent_buffers[bufnr]
+end
+
+---Determine if buffer a ranks higher than. Otherwise b ranks higher.
+---@param buffer_a Bufnr
+---@param buffer_b Bufnr
+function M.bufferline.compare_buffers(buffer_a, buffer_b)
+	return (bufferline_state.buffer_ranking[buffer_a] or 0) >
+		(bufferline_state.buffer_ranking[buffer_b] or 0)
+end
+
+---Get buffer's triquetra role for current window
+---@param bufnr Bufnr Buffer to check relationships for
+---@return table relationships Buffer relationship info
+function M.bufferline.get_buffer_relationships(bufnr)
+	local triquetra = bufferline_state.current_window_triquetra
+
+	if not triquetra then return {} end
+
+	local is_current, is_primary, is_secondary, is_ternary
+
+	is_current = bufnr == triquetra.current_bufnr
+	is_primary = bufnr == triquetra.primary_bufnr
+	is_secondary = bufnr == triquetra.secondary_bufnr
+	is_ternary = bufnr == triquetra.ternary_bufnr
+
+	local has_true = false
+	if is_current then
+		has_true = true
+	end
+
+	-- the primary is mobile: it may be the buffer of any of the three slots
+
+	if is_secondary then
+		if has_true then
+			require('frogman.domains.ledger').never("A buffer cannot have more than one role")
+		end
+		has_true = true
+	end
+
+	if is_ternary then
+		if has_true then
+			require('frogman.domains.ledger').never("A buffer cannot have more than one role")
+		end
+		has_true = true
+	end
+
+	return {
+		is_current = is_current,
+		is_primary = is_primary,
+		is_secondary = is_secondary,
+		is_ternary = is_ternary
+	}
+end
+
+---Check if buffer is harpooned
+---@param bufnr Bufnr
+---@return boolean is_harpooned
+function M.bufferline.is_harpooned(bufnr)
+	return bufferline_state.harpooned_buffers[bufnr] or false
+end
+
+---Get harpoon index for buffer
+---@param bufnr Bufnr
+---@return number|nil index Harpoon index if harpooned
+function M.bufferline.get_harpoon_index(bufnr)
+	return bufferline_state.harpooned_lookup[bufnr]
+end
+
+---Get buffer foreground theme color.
+---@param bufnr Bufnr
+---@param is_focused boolean
+---@return HexColor color Hex color code for buffer
+function M.bufferline.get_theme_fg_color(bufnr, is_focused)
+	local ctriquetra = bufferline_state.current_window_triquetra
+	if not ctriquetra then
+		require('frogman.domains.ledger').never("This should not happen: No current triquetra found.")
+	end
+	if bufnr == ctriquetra.primary_bufnr then
+		return configs.colors.primary.active
+	elseif bufnr == ctriquetra.secondary_bufnr then
+		return configs.colors.secondary.focused.bufnr
+	elseif bufnr == ctriquetra.current_bufnr then
+		return configs.colors.current.focused.bufnr
+	elseif bufnr == ctriquetra.ternary_bufnr then
+		return configs.colors.ternary.focused.bufnr
+	elseif is_focused then
+		return configs.colors.cokeline.fg.focused
+	elseif bufferline_state.harpooned_buffers[bufnr] then
+		return configs.colors.harpooned.unfocused.fg
+	else
+		return configs.colors.cokeline.fg.unfocused
+	end
+end
+
+---Get buffer background theme color.
+---@param is_focused boolean
+---@return HexColor
+function M.bufferline.get_theme_bg_color(is_focused)
+	local ctriquetra = bufferline_state.current_window_triquetra
+	if not ctriquetra then
+		require('frogman.domains.ledger').never("This should not happen: No current triquetra found.")
+	end
+	if history.is_detached() then
+		if is_focused then
+			return configs.colors.cokeline.bg.detached.focused
+		else
+			return configs.colors.cokeline.bg.detached.unfocused
+		end
+	else
+		return configs.colors.cokeline.bg.attached
+	end
+end
+
+---Get buffer foreground theme color by buffer slot.
+---@param bufnr Bufnr
+---@return HexColor
+local function get_theme_fg_by_slot(bufnr)
+	local ctriquetra = bufferline_state.current_window_triquetra
+	if not ctriquetra then
+		require('frogman.domains.ledger').never("This should not happen: No current triquetra found.")
+	end
+	if bufnr == ctriquetra.secondary_bufnr then
+		return configs.colors.secondary.focused.bufnr
+	elseif bufnr == ctriquetra.primary_bufnr and bufnr == ctriquetra.current_bufnr then
+		return configs.colors.primary.active
+	elseif bufnr == ctriquetra.current_bufnr then
+		return configs.colors.current.focused.bufnr
+	elseif bufnr == ctriquetra.ternary_bufnr then
+		return configs.colors.ternary.focused.bufnr
+	elseif bufferline_state.harpooned_buffers[bufnr] then
+		return configs.colors.harpooned.unfocused.fg
+	else
+		return configs.colors.cokeline.fg.unfocused
+	end
+end
+
+---Get buffer bold state
+---@param bufnr Bufnr Buffer number
+---@return boolean bold Whether text should be bold
+function M.bufferline.get_buffer_bold(bufnr)
+	local ctriquetra = bufferline_state.current_window_triquetra
+	if not ctriquetra then
+		require('frogman.domains.ledger').never("This should not happen: No current triquetra found.")
+	end
+	return bufnr == ctriquetra.current_bufnr
+end
+
+M.set_cache_from_window_triquetra = routines.set_cache_from_window_triquetra
+
+M.bufferline.cokeline = {}
+
+---Return a constructed cokeline buffer components.
+---@return table components
+function M.bufferline.cokeline.create_buffer_components()
+	local colors = require('frogman.configs').colors
+	local ok, mappings = pcall(require, 'cokeline.mappings')
+	if not ok then
+		error("cokeline is not installed. Please install 'willothy/nvim-cokeline' to use this function.")
+	end
+	local get_hex = require('cokeline.hlgroups').get_hl_attr
+	-- read at each draw, so a colorscheme loaded after the components were made gives its own
+	local function comment()
+		return get_hex('Comment', 'fg')
+	end
+	local diagnostic_errors = configs.colors.cokeline.diagnostics.error
+	local diagnostic_warnings = configs.colors.cokeline.diagnostics.warning
+	local diagnostic_infos = configs.colors.cokeline.diagnostics.info
+	local diagnostic_hints = configs.colors.cokeline.diagnostics.hint
+	local components = {
+		space = {
+			text = ' ',
+			truncation = { priority = 1 }
+		},
+		two_spaces = {
+			text = '  ',
+			truncation = { priority = 1 },
+		},
+		separator = {
+			text = function(buffer)
+				return buffer.index ~= 1 and '│' or ''
+			end,
+			fg = colors.base.focused.fg,
+			truncation = { priority = 1 }
+		},
+		-- a file gone from disk shows, dimmed, where it went missing
+		missing = {
+			text = function(buffer)
+				local filehash = history.get_hash_from_buffer(buffer.number)
+				local tag = filehash and history.data.missing[filehash]
+				-- a % drawn full-width: cokeline measures and cuts the text before the tabline reads it
+				return tag and ('⎇' .. tostring(tag):gsub("%%", "％") .. ' ') or ''
+			end,
+			fg = comment,
+			truncation = { priority = 1 }
+		},
+		separator_for_last = {
+			text = function(buffer)
+				return buffer.is_last and '│' or ''
+			end,
+			fg = colors.base.focused.fg,
+			truncation = { priority = 1 }
+		},
+		devicon = {
+			text = function(buffer)
+				return
+					(mappings.is_picking_focus() or mappings.is_picking_close())
+					and buffer.pick_letter .. " "
+					or buffer.devicon.icon
+			end,
+			fg = function(buffer)
+				if mappings.is_picking_close() then
+					return colors.cokeline.is_picking_close
+				elseif mappings.is_picking_focus() then
+					return colors.cokeline.is_picking_focus
+				else
+					return get_theme_fg_by_slot(buffer.number)
+				end
+			end,
+			truncation = { priority = 1 }
+		},
+		index = {
+			text = function(buffer)
+				local ctriquetra = bufferline_state.current_window_triquetra
+				if not ctriquetra then return ' ' end -- Graceful fallback
+				local string
+				local harpooned = bufferline_state.harpooned_buffers[buffer.number] and not M.is_hidden("indicators", "harpoon")
+				if M.is_hidden("indicators", "roles") then -- the role marks, switched off: a marked buffer keeps its mark
+					return harpooned and "󰛢  " or ' '
+				end
+				local bufnr = buffer.number
+				if bufnr == ctriquetra.primary_bufnr or bufnr == ctriquetra.ternary_bufnr then
+					string = "⦉" .. bufnr .. "⦊"
+				elseif bufnr == ctriquetra.secondary_bufnr then
+					string = "⟦" .. bufnr .. "⟧"
+				elseif bufnr == ctriquetra.current_bufnr then
+					string = "[" .. bufnr .. "]"
+				else
+					if harpooned then
+						return "󰛢  "
+
+					else
+						return ' '
+					end
+				end
+
+				if harpooned then
+					string = string .. " 󰛢"
+				end
+
+				return string .. "  "
+			end,
+			bold = function(buffer)
+				if buffer.is_focused then
+					return true
+				else
+					return false
+				end
+			end,
+			fg = function(buffer)
+				local ctriquetra = bufferline_state.current_window_triquetra
+				if not ctriquetra then return ' ' end -- Graceful fallback
+				if
+					buffer.number == ctriquetra.primary_bufnr and
+					ctriquetra.has_primary == false
+				then
+					return comment()
+				else
+					return nil
+				end
+			end,
+			truncation = { priority = 1 }
+		},
+		unique_prefix = {
+			text = function(buffer)
+				return (buffer.unique_prefix:gsub("%%", "％")) -- a % drawn full-width, as the file name's
+			end,
+			fg = comment,
+			style = 'italic',
+			truncation = {
+				priority = 1,
+				direction = 'left',
+			},
+		},
+		filename = {
+			fg = function(buffer)
+				return get_theme_fg_by_slot(buffer.number)
+			end,
+			text = function(buffer)
+				-- a % drawn full-width: cokeline measures and cuts the text before the tabline reads it, so a
+				-- doubled one would count two columns and could be cut apart
+				local filename = buffer.filename:gsub("%%", "％")
+				if bufferline_state.harpooned_buffers[buffer.number] and not M.is_hidden("indicators", "harpoon") then
+					return filename .. " ⥤ {" .. bufferline_state.harpooned_lookup[buffer.number] .. "}"
+				else
+					return filename
+				end
+			end,
+			bold = function(buffer)
+				if buffer.is_focused then
+					return true
+				else
+					return false
+				end
+			end,
+			underline = function(buffer)
+				if buffer.is_focused then
+					return true
+				else
+					return false
+				end
+			end,
+			truncation = {
+				priority = 1,
+				direction = 'left',
+			},
+		},
+		diagnostics = {
+			text = function(buffer)
+				local number
+				if buffer.diagnostics.errors ~= 0 then
+					number = buffer.diagnostics.errors
+				elseif buffer.diagnostics.warnings ~= 0 then
+					number = buffer.diagnostics.warnings
+				elseif buffer.diagnostics.infos ~= 0 then
+					number = buffer.diagnostics.infos
+				elseif buffer.diagnostics.hints ~= 0 then
+					number = buffer.diagnostics.hints
+				else
+					return ''
+				end
+				return " ❬" .. number .. "❭"
+			end,
+			fg = function(buffer)
+				if buffer.diagnostics.errors ~= 0 then
+					return diagnostic_errors
+				elseif buffer.diagnostics.warnings ~= 0 then
+					local ctriquetra = bufferline_state.current_window_triquetra
+					if not ctriquetra then return ' ' end -- Graceful fallback
+					local bufnr = buffer.number
+					if bufnr == ctriquetra.secondary_bufnr then
+						return colors.primary.active
+					else
+						return diagnostic_warnings
+					end
+				elseif buffer.diagnostics.infos ~= 0 then
+					return diagnostic_infos
+				elseif buffer.diagnostics.hints ~= 0 then
+					return diagnostic_hints
+				else
+					return nil
+				end
+			end,
+			truncation = { priority = 1 },
+		},
+		close_or_unsaved = {
+			text = function(buffer)
+				return buffer.is_modified and '●' or '󰅖'
+			end,
+			fg = function (buffer)
+				return get_theme_fg_by_slot(buffer.number)
+			end,
+			delete_buffer_on_left_click = true,
+			truncation = { priority = 1 },
+		},
+	}
+	return {
+		components.separator,
+		components.two_spaces,
+		components.space,
+		components.index,
+		components.devicon,
+		components.unique_prefix,
+		components.filename,
+		components.missing,
+		components.diagnostics,
+		components.space,
+		components.two_spaces,
+		components.close_or_unsaved,
+		components.two_spaces,
+		components.separator_for_last,
+	}
+end
+
+---Return a constructed cokeline tab components.
+function M.bufferline.cokeline.create_tab_components()
+	local components = {
+		separator = {
+			text = '│',
+			fg = "#d5c4a1",
+			truncation = { priority = 1 }
+		},
+		separator_for_last = {
+			text = function(buffer)
+				return buffer.is_last and '│ ' or ''
+			end,
+			fg = configs.colors.base.focused.fg,
+			truncation = { priority = 1 }
+		},
+		tabnr = {
+			text = function(tab)
+				return "⟨" .. tab.number .. "⟩"
+			end,
+			fg = function(tab)
+				if tab.is_active then
+					return configs.colors.current.focused.bufnr
+				else
+					return configs.colors.current.unfocused.bufnr
+				end
+			end,
+		},
+		space = {
+			text = ' ',
+			truncation = { priority = 1 }
+		},
+		two_spaces = {
+			text = '  ',
+			truncation = { priority = 1 },
+		},
+	}
+	return {
+		components.separator,
+		components.space,
+		components.tabnr,
+		components.space,
+		components.separator_for_last
+	}
+end
+
+
+M.init_autocmds = hooks.init_autocmds
+
+return M

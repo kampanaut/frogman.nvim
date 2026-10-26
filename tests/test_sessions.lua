@@ -38,8 +38,8 @@ T['T134 [char] save_session writes paths, outsiders, buffers, windows, closed, c
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 	eq(Misc.save(child), { true })
 	local got = child.lua([[
-		local H = require('cavediver.domains.history')
-		local data = require('cavediver.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), vim.fn.getcwd())
+		local H = require('frogman.domains.history')
+		local data = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), vim.fn.getcwd())
 		local keys = vim.tbl_keys(data)
 		table.sort(keys)
 		local w = data.windows[1]
@@ -106,7 +106,7 @@ T['T137 [char] load_session after save_session in the same process goes through 
 	child.steps({ ':e a' })
 	eq(Misc.save(child), { true })
 	eq(Misc.load(child), { true })
-	eq(child.lua('return require("cavediver.domains.storage").sm:state()'), 'idle')
+	eq(child.lua('return require("frogman.domains.storage").sm:state()'), 'idle')
 end
 
 -- After the save the window moves on to d; the manager's restore puts it back
@@ -120,7 +120,7 @@ T['T138 [char] load_session from idle tears down and loads'] = function()
 	child.cmd('noautocmd edit c.txt')
 	local got = Misc.load(child)
 	child.settle(300)
-	eq({ got[1], child.lua('return require("cavediver").get_storage_state()'), child.slots() },
+	eq({ got[1], child.lua('return require("frogman").get_storage_state()'), child.slots() },
 		{ true, 'idle', '⦉b⦊ [c] ⟦-⟧' })
 end
 
@@ -246,11 +246,11 @@ T['T145 [char] three load_session calls in one batch load once'] = function()
 	Misc.restore(child, { 'a', 'b' }, 'b')
 	local got = child.lua([[
 		local cwd = vim.fn.getcwd()
-		local load = require('cavediver').load_session
+		local load = require('frogman').load_session
 		local oks = {}
 		for i = 1, 3 do oks[i] = pcall(load, cwd) end
 		local loads = 0
-		for _, t in ipairs(require('cavediver.domains.storage').sm.history) do
+		for _, t in ipairs(require('frogman.domains.storage').sm.history) do
 			if t:match('%->loading$') then loads = loads + 1 end
 		end
 		return { oks = oks, loads = loads }
@@ -279,7 +279,7 @@ T['T146 [char] a save never wipes a buffer or changes what a window shows'] = fu
 	local before = snapshot()
 	local got = child.lua([[
 		os.remove(_G.CDV_TEST.root .. '/b.txt')
-		return { pcall(require('cavediver').save_session, vim.fn.getcwd()) }
+		return { pcall(require('frogman').save_session, vim.fn.getcwd()) }
 	]])
 	eq(got, { true })
 	child.settle(300)
@@ -299,7 +299,7 @@ T['T146 [char] a save leaves an oil window on its oil buffer'] = function()
 		vim.api.nvim_win_set_buf(0, b)
 	]])
 	child.settle()
-	eq(child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()] ~= nil'), true)
+	eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()] ~= nil'), true)
 	local before = snapshot()
 	eq(Misc.save(child), { true })
 	child.settle(300)
@@ -348,7 +348,7 @@ T['T148 [char] after switching sessions, the outgoing No Name text is not in the
 	child.settle(300)
 	local found = child.lua([[
 		local function has(lines) return vim.tbl_contains(lines, 'outgoing text') end
-		for _, c in pairs(require('cavediver.domains.history').data.noname_content) do
+		for _, c in pairs(require('frogman.domains.history').data.noname_content) do
 			if has(c.lines) then return true end
 		end
 		for _, b in ipairs(vim.api.nvim_list_bufs()) do

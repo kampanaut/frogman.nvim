@@ -14,14 +14,14 @@ local T = MiniTest.new_set({
 -- Is the current buffer registered?
 local function registered()
 	return child.lua([[
-		return require('cavediver.domains.history').get_hash_from_buffer(vim.api.nvim_get_current_buf()) ~= nil
+		return require('frogman.domains.history').get_hash_from_buffer(vim.api.nvim_get_current_buf()) ~= nil
 	]])
 end
 
 T['T8 [char] the hash of a plain path is the first 16 hex characters of sha256(path .. "\\n")'] = function()
 	child.steps({ ':e a' })
 	local got = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local path = vim.api.nvim_buf_get_name(0)
 		return { H.get_hash_from_buffer(vim.api.nvim_get_current_buf()), vim.fn.sha256(path .. '\n'):sub(1, 16) }
 	]])
@@ -33,7 +33,7 @@ T['T9 [char] a path with ", $HOME or a backslash hashes to sha256(path .. "\\n")
 	-- Only hashes come back, keyed by a label, never the paths. The backslash
 	-- name has two in a row, which the shell's double quotes fold into one.
 	local got = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local names = { quote = 'q"uote.txt', dollar_home = '$HOME.txt', backslash = 'back\\\\slash.txt' }
 		local got, want = {}, {}
 		for label, n in pairs(names) do
@@ -84,7 +84,7 @@ end
 T['T11 [char] an entered No Name buffer is registered as NONAME_<id>, its id kept on the buffer (I16)'] = function()
 	child.steps({ ':e a', ':enew' })
 	local got = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local buf = vim.api.nvim_get_current_buf()
 		local hash = H.get_hash_from_buffer(buf)
 		return { path = hash and H.get_filepath_from_hash(hash), want = 'NONAME_' .. tostring(vim.b[buf].cavediver_noname) }
@@ -97,7 +97,7 @@ T['T12 [char] registering a second buffer under the same hash binds it to the ne
 	child.steps({ ':e a' })
 	-- Names change with autocmds off, so only register_buffer touches the registry.
 	local got = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local reg = H.data.hash_buffer_registry
 		local path = _G.CDV_TEST.root .. '/same.txt'
 		vim.o.eventignore = 'all'
@@ -135,13 +135,13 @@ end
 T['T14 [char] a buffer whose file is not written yet stays registered after it is left and re-entered'] = function()
 	child.steps({ ':e a', ':e brandnew.txt' })
 	local first = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local buf = vim.api.nvim_get_current_buf()
 		return { buf = buf, hash = H.get_hash_from_buffer(buf) }
 	]])
 	Helpers.expect.no_equality(first.hash, nil)
 	local bound = function()
-		return child.lua('return require("cavediver.domains.history").data.hash_buffer_registry.buffers[...]', { first.hash })
+		return child.lua('return require("frogman.domains.history").data.hash_buffer_registry.buffers[...]', { first.hash })
 	end
 
 	child.steps({ ':e a' })

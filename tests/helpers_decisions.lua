@@ -120,7 +120,7 @@ end
 -- Is buffer `buf` (default: the current one) registered?
 Dec.registered = function(child, buf)
 	return child.lua([[
-		return require('cavediver.domains.history').get_hash_from_buffer(... or vim.api.nvim_get_current_buf()) ~= nil
+		return require('frogman.domains.history').get_hash_from_buffer(... or vim.api.nvim_get_current_buf()) ~= nil
 	]], { buf })
 end
 
@@ -146,8 +146,8 @@ end
 -- every other tracked buffer (a tie isn't)? Returns nil, or a short reason.
 Dec.leftmost = function(child)
 	local v = child.lua([[
-		local H = require('cavediver.domains.history')
-		local bl = require('cavediver.domains.ui').bufferline
+		local H = require('frogman.domains.history')
+		local bl = require('frogman.domains.ui').bufferline
 		local cur = vim.api.nvim_get_current_buf()
 		local stem = function(b) return vim.fn.fnamemodify(vim.api.nvim_buf_get_name(b), ':t:r') end
 		if not H.get_hash_from_buffer(cur) then return 'current buffer not tracked' end
@@ -169,7 +169,7 @@ end
 -- for the flight recorder).
 Dec.stale_secondary_note = function(child)
 	child.lua([[
-		local t = require('cavediver.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
 		t.displacement_secondary_map[t.current_slot .. '-swap'] = nil
 		t.displacement_secondary_map[t.current_slot] = t.secondary_slot
 	]])
