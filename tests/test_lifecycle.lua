@@ -1,4 +1,4 @@
--- Triquetra lifecycle (M6, A2-A5). IDs are the spec's (what-is-cavediver.md,
+-- Triquetra lifecycle (M6, A2-A5). IDs are the spec's (what-is-frogman.md,
 -- section 7).
 local Helpers = dofile('tests/helpers.lua')
 local X = dofile('tests/helpers_engine_nav.lua')

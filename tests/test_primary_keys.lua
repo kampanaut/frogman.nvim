@@ -1,5 +1,5 @@
 -- The primary keys: <M-;><M-x> toggle_primary (A9) and <M-;><M-c> set_primary (A10).
--- IDs are the spec's (what-is-cavediver.md, section 7).
+-- IDs are the spec's (what-is-frogman.md, section 7).
 local Helpers = dofile('tests/helpers.lua')
 local eq, no_eq = Helpers.eq, Helpers.expect.no_equality
 local child = Helpers.new_child()

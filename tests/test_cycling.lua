@@ -1,6 +1,6 @@
 -- Cycling: <M-n>, <M-m>, <M-v> and cancelling (A12-A14), with the flight
 -- recorder tests the spec files here (A26). IDs are the spec's
--- (what-is-cavediver.md, section 7).
+-- (what-is-frogman.md, section 7).
 --
 -- The cokeline stub steps through frogman's ordered history, index 1 the
 -- newest: <M-n> is by_step(-1), toward newer (wrapping from the newest to the

@@ -3,7 +3,7 @@
 # Run from anywhere: python3 scripts/make_review.py
 import re, glob, os
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-spec = open('what-is-cavediver.md').read().split('\n')
+spec = open('what-is-frogman.md').read().split('\n')
 specT = {}
 for l in spec:
     m = re.match(r'^- (T\d+) \[([a-z]+)\]\s*(.*)', l)
@@ -123,7 +123,7 @@ out = []
 w = out.append
 w('# Test review sheet')
 w('')
-w(f'{total} cases in {len(order)} files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you\'d really use frogman, is the expected result what you want, is the tag right?')
+w(f'{total} cases in {len(order)} files, generated from `tests/` and `what-is-frogman.md`. For each case: is the route how you\'d really use frogman, is the expected result what you want, is the tag right?')
 w('')
 w('- **[char]**: intended, and true today. **[today]**: today\'s behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.')
 w('- Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b\'s note, `b-swap>a` its swap note.')

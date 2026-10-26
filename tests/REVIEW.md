@@ -1,6 +1,6 @@
 # Test review sheet
 
-722 cases in 27 files, generated from `tests/` and `what-is-cavediver.md`. For each case: is the route how you'd really use frogman, is the expected result what you want, is the tag right?
+722 cases in 27 files, generated from `tests/` and `what-is-frogman.md`. For each case: is the route how you'd really use frogman, is the expected result what you want, is the tag right?
 
 - **[char]**: intended, and true today. **[today]**: today's behaviour, expected to flip when its fix lands. **[target]**: decided, not built; fails until its fix lands.
 - Slots read `⦉ternary⦊ [current] ⟦secondary⟧`. Notes read `dtm{…}` (what `<M-;><M-r>` restores) and `dsm{…}` (what `<M-;><M-t>` restores); `b>a` is b's note, `b-swap>a` its swap note.
@@ -356,7 +356,7 @@ spec: When cleanup re-points a window's current slot to the registered buffer X 
 **T523 [char]** (A21, M5) the first :e after the start buffer was taken in leaves that buffer in no slot  
 `:doautocmd BufEnter`, `:e a`, `<M-S-f>` → `eq({ taken = taken, slots = slots, healed = healed, said = said },`  
 note: as a config that calls setup() at startup has it: the start buffer entered once frogman is set up  
-spec: (A21, M5) The first `:e` after the start buffer was taken in leaves that buffer in no slot: in a fresh editor, the empty buffer it starts on entered once cavediver is set up, as a config that calls `setup()` at startup has it, then `:e a`, give `⦉-⦊ [a] ⟦-⟧` with no "Healed the t…  
+spec: (A21, M5) The first `:e` after the start buffer was taken in leaves that buffer in no slot: in a fresh editor, the empty buffer it starts on entered once frogman is set up, as a config that calls `setup()` at startup has it, then `:e a`, give `⦉-⦊ [a] ⟦-⟧` with no "Healed the tri…  
 `tests/test_cleanup.lua:358`
 
 **T575 [char]** (A19, A21) an :edit that reuses the empty buffer for a listing that unlists itself isn't a delete  
@@ -383,7 +383,7 @@ spec: (A21) A delete helper that switches the window first doesn't lose the slot
 **T635 [char]** (A20) a rename to a name frogman doesn't track closes the old name, and claims no copy ⚑ state set by hand  
 `:e a`, `:e b` → `eq({ copied = kinds.copied == true, closed = kinds.closed == true, list = vim.tbl_contains(vim.split(child.closed(), ','), 'b') },`  
 note: b.txt deleted from disk, then its buffer given a name frogman doesn't track, as a plugin's scratch takes one.  
-spec: (A20) A rename to a name cavediver doesn't track closes the old name, and claims no copy: `:e a`, `:e b`, b.txt removed from disk and its buffer named `scratch://b`: the trail has b.txt's close and no "copied" move for it, and b is on the closed list.  
+spec: (A20) A rename to a name frogman doesn't track closes the old name, and claims no copy: `:e a`, `:e b`, b.txt removed from disk and its buffer named `scratch://b`: the trail has b.txt's close and no "copied" move for it, and b is on the closed list.  
 `tests/test_cleanup.lua:455`
 
 **T636 [char]** (A20) a copy's arrival lands in the window that shows it, in another tab too ⚑ state set by hand  
@@ -782,7 +782,7 @@ spec: (I23) `:e a`, `:e e`, `:e d`, `<M-S-f>`, `:e b`, `:e d`, `<M-n> <M-v>`, `<
 → `eq(child.lua('return (pcall(require, "cokeline.mappings"))'), false)`  
 → `eq(cycle_walk(), with_cokeline)`  
 note: d,c,b,a: <M-m> twice to b, <M-n> back to c, then <M-v> picks c, the ternary.  
-spec: (A12) With no cokeline installed, `<M-n>` and `<M-m>` step through cavediver's ordered history in the same directions as with cokeline, and `<M-v>` picks as usual.  
+spec: (A12) With no cokeline installed, `<M-n>` and `<M-m>` step through frogman's ordered history in the same directions as with cokeline, and `<M-v>` picks as usual.  
 `tests/test_cycling.lua:342`
 
 **T79 [char]** <M-n> steps left, toward newer buffers, and <M-m> right, toward older  
@@ -916,7 +916,7 @@ spec: (A26, S1 File) A dump's key outlives the forget pass: a planted failure's 
 → `eq(vim.tbl_contains(lines, 'replay:'), true)`  
 → `eq(new_items(bufs_before, bufs()), {})`  
 → `eq(Extra.has(child.messages(), "doesn't open here"), true)`  
-spec: (A26) A dump is sealed: on T200's route the file starts with `CDV1` and holds none of its text in clear (no `c.txt`, no `<M-;><M-t>`, no `cavediver:`); `:FrogmanDump <file>` opens it in a buffer holding the failing row and the `replay:` part; after `:cd sub`, the same command say…  
+spec: (A26) A dump is sealed: on T200's route the file starts with `CDV1` and holds none of its text in clear (no `c.txt`, no `<M-;><M-t>`, no `frogman:`); `:FrogmanDump <file>` opens it in a buffer holding the failing row and the `replay:` part; after `:cd sub`, the same command says …  
 `tests/test_cycling.lua:786`
 
 **T528 [char]** (A26) :FrogmanDump on a directory says it isn't a dump  
@@ -1047,7 +1047,7 @@ spec: (A26) A replay's editor isn't saved: after T201's replay, `save_session()`
 `:e a`, `:doautocmd BufEnter` → `eq({ registered = child.lua('return require("frogman.domains.history").data.hash_buffer_registry.hashes[...] ~= nil', { start }),`  
 → `eq({`  
 note: as a config that calls setup() at startup has it: the start buffer entered once frogman is set up  
-spec: (A26) A replay goes into an editor that has taken in the empty buffer it started on, as one whose config calls `setup()` at startup has: T468's dump, a fresh editor in its project whose empty start buffer is entered once cavediver is set up, so it's registered and its window has …  
+spec: (A26) A replay goes into an editor that has taken in the empty buffer it started on, as one whose config calls `setup()` at startup has: T468's dump, a fresh editor in its project whose empty start buffer is entered once frogman is set up, so it's registered and its window has `⦉…  
 `tests/test_cycling.lua:1225`
 
 **T641 [char]** (A26) a mismatch whose rows draw alike shows the rows themselves  
@@ -1181,7 +1181,7 @@ spec: (P3) The load matches windows by what they show, not by position: two wind
 `:bdelete b.txt` → `closed = 'b'`  
 → `eq(child.lua('return require("frogman.domains.history").data.crux_internals.global[...] ~= nil', { h }), true)`  
 note: b is closed and stays known through the closed stack.  
-spec: (P10, I17) History follows along and doesn't let go early: `:e a`, `:e b`, `:e c`, `:bdelete b.txt` leave b on the closed stack, still known, and its global history entry stays. "Known" means cavediver still remembers the file (registered, e.g. on the closed stack), not that it's…  
+spec: (P10, I17) History follows along and doesn't let go early: `:e a`, `:e b`, `:e c`, `:bdelete b.txt` leave b on the closed stack, still known, and its global history entry stays. "Known" means frogman still remembers the file (registered, e.g. on the closed stack), not that it's o…  
 `tests/test_decisions.lua:108`
 
 **T253 [char]** (P11) a failing hook is reported with a stack trace  
@@ -1192,12 +1192,12 @@ spec: (P11) A bug inside a hook is caught with a stack trace: a hook that throws
 
 **T254 [char]** (P12, A25) require creates no user commands and starts no timers  
 → `eq(got, { commands = {}, timers = 0 })`  
-spec: (P12, A25) Nothing runs at `require`, and `setup()` makes everything inside the `cavediver` augroup: `require('frogman')` alone creates no `Cavediver*` user command and starts no timer, and every autocmd `setup()` creates is in the `cavediver` augroup, with the commands made.  
+spec: (P12, A25) Nothing runs at `require`, and `setup()` makes everything inside the `frogman` augroup: `require('frogman')` alone creates no `Frogman*` user command and starts no timer, and every autocmd `setup()` creates is in the `frogman` augroup, with the commands made.  
 `tests/test_decisions.lua:137`
 
 **T254 [char]** (P12, A25) setup() puts every autocmd it makes in the frogman augroup, and makes the commands  
 → `eq(got, { made = true, outside = 0, command = true })`  
-spec: (P12, A25) Nothing runs at `require`, and `setup()` makes everything inside the `cavediver` augroup: `require('frogman')` alone creates no `Cavediver*` user command and starts no timer, and every autocmd `setup()` creates is in the `cavediver` augroup, with the commands made.  
+spec: (P12, A25) Nothing runs at `require`, and `setup()` makes everything inside the `frogman` augroup: `require('frogman')` alone creates no `Frogman*` user command and starts no timer, and every autocmd `setup()` creates is in the `frogman` augroup, with the commands made.  
 `tests/test_decisions.lua:151`
 
 **T255 [char]** (M1) the session file is named sha256(directory .. "\\n" .. name)  
@@ -1518,7 +1518,7 @@ spec: (D18, D22, D24) STATUS and the old project `CLAUDE.md` live in `archive/`,
 
 **T291 [char]** (D8, D13) README:15 and README:355 stay as written  
 → `eq({`  
-spec: (D8, D13) README:15 ("Closed buffers reopen when accessed through relationships") and README:557 ("Every time you jump to secondary…") stay as written. A doc check, matched by text.  
+spec: (D8, D13) README:15 ("Closed buffers reopen when accessed through relationships") and README:565 ("Every time you jump to secondary…") stay as written. A doc check, matched by text.  
 `tests/test_decisions.lua:873`
 
 ## tests/test_docs.lua (26 cases: 26 char)
@@ -1802,7 +1802,7 @@ spec: I3: every triquetra has a history entry.
 
 **T131 [char]** I12: no buffer with unsaved changes is wiped by frogman ⚑ random walk  
 note: I12. Route: a new file, not on disk yet, with a typed line. Frogman's vim.cmd and nvim_buf_delete calls are checked.  
-spec: I12: no buffer with unsaved changes is ever wiped by cavediver. Wrap `vim.cmd` and `nvim_buf_delete`.  
+spec: I12: no buffer with unsaved changes is ever wiped by frogman. Wrap `vim.cmd` and `nvim_buf_delete`.  
 `tests/test_invariants.lua:67`
 
 **T132 [char]** I13: a slot action switches only the target window's buffer ⚑ random walk  
@@ -1817,7 +1817,7 @@ spec: I11: `ordered.crux` is sorted, newest first, and holds only registered ope
 
 **T334 [char]** I14: a save never throws on frogman's own data, over random walks ⚑ random walk  
 note: I14. A save after every action, over the one-window, several-window and closing mixes: the save hook is critical, so any throw on frogman's own data would reach the session manager's save.  
-spec: (I14) A save never throws on cavediver's own data: random walks over the one-window, several-window and closing mixes (`:enew`, `<M-.>`, `<M-S-w>`, a new file with text) call `save_session(cwd)` after every action, and no call throws. The save hook is critical (I21), so a throw w…  
+spec: (I14) A save never throws on frogman's own data: random walks over the one-window, several-window and closing mixes (`:enew`, `<M-.>`, `<M-S-w>`, a new file with text) call `save_session(cwd)` after every action, and no call throws. The save hook is critical (I21), so a throw wou…  
 `tests/test_invariants.lua:86`
 
 **T154 [char]** no restore throws "Remembered … is the same as current …" (Q13) ⚑ random walk  
@@ -1885,7 +1885,7 @@ spec: (A27) A step that changes no row and makes no move isn't kept: with the cl
 **T398 [char]** (A27, A22) the cleanup says nothing, and its repair is a move ⚑ state set by hand  
 `:e a`, `:e b`, `:e c` → `eq({ report = report, found = found },`  
 note: b is in the ternary, so wiping it without events raises nothing (T242); the timer's tick or the UI's refresh repairs it, whichever comes first.  
-spec: (A27, A22) The cleanup says nothing, and its repair is a move: `:e a`, `:e b`, `:e c`, then b's buffer wiped with `noautocmd`, and the next tick or refresh: no "CAVEDIVER CLEANUP REPORT" notification, and a step with cause `timer`, trigger `cleanup`, holds a "repair" move on b.tx…  
+spec: (A27, A22) The cleanup says nothing, and its repair is a move: `:e a`, `:e b`, `:e c`, then b's buffer wiped with `noautocmd`, and the next tick or refresh: no "CLEANUP REPORT" notification, and a step with cause `timer`, trigger `cleanup`, holds a "repair" move on b.txt naming `…  
 `tests/test_ledger.lua:247`
 
 **T399 [char]** (A27, A16) <M-S-w> on an empty list while other lists hold closed files says so  
@@ -2232,7 +2232,7 @@ spec: (M6) A fresh start gives a float no triquetra: at `:e a`, `:e b`, a float 
 **T626 [char]** (M6, S1) a load lets go what the UI kept of a window closed while frogman was off  
 `:vsplit`, `:e b`, `:close`, `:e a` → `eq({ closed_while_off('fresh-1'), closed_while_off('fresh-2') }, {`  
 note: A split's winbar drawn, then frogman off, the split closed, frogman set up again and a load: the first from bare, a fresh start, and the second from idle, which tears down first.  
-spec: (M6, S1) A load lets go what the UI kept of a window closed while cavediver was off: a split's winbar drawn, `disable()`, the split closed, `setup()` again and a load of a session with no file, once from `bare` and once from `idle`: the split's winbar segment is gone both times.  
+spec: (M6, S1) A load lets go what the UI kept of a window closed while frogman was off: a split's winbar drawn, `disable()`, the split closed, `setup()` again and a load of a session with no file, once from `bare` and once from `idle`: the split's winbar segment is gone both times.  
 `tests/test_lifecycle.lua:219`
 
 ## tests/test_missing.lua (9 cases: 9 char)
@@ -2656,7 +2656,7 @@ spec: (A18) With no triquetra (a `:help` window, while the other window's queue 
 → `eq(errors[1]:find(help, 1, true) ~= nil, true)`  
 → `eq(errors[1]:find('NONAME_999', 1, true) ~= nil, true)`  
 note: The help file is loaded, readable and untracked; NONAME_999 was never a No Name buffer frogman knew.  
-spec: (A18, Q11) The pop-up refuses what cavediver doesn't track and keeps the good lines: from `[b,a]on`, the lines `a`, a blank line, the path of a loaded help file, `NONAME_999` and `b` save `[a,b]on`, with one error naming the help file and `NONAME_999`; the blank line is dropped w…  
+spec: (A18, Q11) The pop-up refuses what frogman doesn't track and keeps the good lines: from `[b,a]on`, the lines `a`, a blank line, the path of a loaded help file, `NONAME_999` and `b` save `[a,b]on`, with one error naming the help file and `NONAME_999`; the blank line is dropped wit…  
 `tests/test_negative.lua:586`
 
 **T235 [char]** (A18) a relative path in the primary queue window is resolved: ./b.txt becomes b, shown as b.txt ⚑ the save runs in pcall, since the hole makes the pop-up's redraw throw  
@@ -2715,7 +2715,7 @@ spec: (A21) A slot pointing at an open buffer is kept whatever the disk says: at
 → `eq(got, { disable = 'function', ok = true, autocmds = 0, timers = 0 })`  
 `:e c` → `slots = '⦉a⦊ [b] ⟦-⟧'`  
 → `ordered = 'b,a'`  
-spec: (A25) `disable()` clears the `cavediver` augroup and stops the timers, and afterwards `:e c` changes no slot and records nothing.  
+spec: (A25) `disable()` clears the `frogman` augroup and stops the timers, and afterwards `:e c` changes no slot and records nothing.  
 `tests/test_negative.lua:722`
 
 **T241 [char]** (A26) the flight recorder records keymap actions and events, never raw keystrokes ⚑ state set by hand  
@@ -2779,7 +2779,7 @@ spec: (S2) A load into fewer windows than were saved matches by what they show a
 → `eq(#saved, 1)`  
 → `eq(Extra.has(child.messages(), 'newer frogman'), true)`  
 → `eq(bytes, 'CDV9\nfrom a later version\n')`  
-spec: (S2) A session file with a newer header gives "made by a newer cavediver" and is left alone: a file starting `CDV9` is unchanged after the load.  
+spec: (S2) A session file with a newer header gives "made by a newer frogman" and is left alone: a file starting `CDV9` is unchanged after the load.  
 `tests/test_negative.lua:858`
 
 **T246 [char]** (S2) a No Name buffer closed with <M-.> stays on the closed stack across a save and a load  
@@ -2822,7 +2822,7 @@ spec: (A21) A cleanup heal records no visit: window 2 at `⦉x⦊ [N] ⟦-⟧`, 
 → `eq(child.state(), NORMAL)`  
 → `slots = '⦉b⦊ [a] ⟦-⟧'`  
 note: the step goes through frogman's own order, onto a (T171)  
-spec: (A12) With no cokeline, a cycle step raises nothing, steps through cavediver's own order (T171), and `<M-v>` still ends the cycle: navigation `normal`, history attached, and the pick lands where the step went (from `⦉a⦊ [b] ⟦-⟧`, `<M-n>` and `<M-v>` give `⦉b⦊ [a] ⟦-⟧`).  
+spec: (A12) With no cokeline, a cycle step raises nothing, steps through frogman's own order (T171), and `<M-v>` still ends the cycle: navigation `normal`, history attached, and the pick lands where the step went (from `⦉a⦊ [b] ⟦-⟧`, `<M-n>` and `<M-v>` give `⦉b⦊ [a] ⟦-⟧`).  
 `tests/test_negative.lua:969`
 
 **T249 [char]** (A1, A11) no note names its own buffer, over random walks: one window ⚑ random walk  
@@ -3274,7 +3274,7 @@ spec: (S2 Loading; DESK:1286, DESK:1288) The repeat flag is re-armed by `vim.sch
 → `eq(child.lua('return vim.v.startreason'), 'restart')`  
 `:noautocmd vsplit`, `:noautocmd edit d.txt` → `eq({ loads = S2.loads(child), slots = slots },`  
 note: :restart can't run inside a child. The second child is started the way :restart starts its new server (v:startreason "restart", S2.start_restarted), and Neovim's restart session is a real :mksession! file, named the way :restart names it. It's sourced in the same batch as the startup load, as in the  
-spec: (S2 Loading; DESK:794) Cavediver loads again by itself after Neovim's `:restart` session, ignoring the flag: two windows saved at `⦉c⦊ [d] ⟦-⟧` and `⦉a⦊ [b] ⟦-⟧`, a startup load, and then the restart session sourced in the same batch give two loads and the saved slots. `:restart`…  
+spec: (S2 Loading; DESK:794) Frogman loads again by itself after Neovim's `:restart` session, ignoring the flag: two windows saved at `⦉c⦊ [d] ⟦-⟧` and `⦉a⦊ [b] ⟦-⟧`, a startup load, and then the restart session sourced in the same batch give two loads and the saved slots. `:restart` c…  
 `tests/test_s2.lua:184`
 
 **T299 [char]** (S2) one post-restore callback replaces the load's 210 ms delay ⚑ state set by hand; random walk  
@@ -3790,7 +3790,7 @@ spec: (S2 The file) The migration script counts an old file whose session name c
 **T645 [char]** (S2) the migration script names a session whose directory the old shell hashed another way  
 → `eq({ named = run.stdout:find('a$b', 1, true) ~= nil and run.stdout:find('shell', 1, true) ~= nil,`  
 note: A project whose path holds a `$`, which the old editor's shell expanded before hashing it.  
-spec: (S2 The file) The migration script names a session whose directory the old shell hashed another way: a resession session for a directory `a$b` in the project, under `--dry-run`: the script names it and the shell, and counts no session with no cavediver file.  
+spec: (S2 The file) The migration script names a session whose directory the old shell hashed another way: a resession session for a directory `a$b` in the project, under `--dry-run`: the script names it and the shell, and counts no session with no frogman file.  
 `tests/test_s2.lua:1718`
 
 **T646 [char]** (S2) the migration script converts both sessions whose old file is one, a dry run counting alike  
@@ -3975,7 +3975,7 @@ spec: (S1, I22) After a load from idle, closes and `<M-S-w>` use one closed stac
 → `eq(child.lua('return { pcall(require("frogman").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })`  
 → `eq(state, { got = { true }, session_tab = '⦉-⦊ [d] ⟦-⟧', first_tab = '⦉x⦊ [t] ⟦-⟧', closed = 'a', notices = {} })`  
 note: The session u has no frogman file; the hint says it's a tab session.  
-spec: (S2 Contract and API; the author's 2026-10-23 answer, "A hint in the call") A tab session with no cavediver file, loaded with the hint, starts only its tab fresh: in T318's first tab at `⦉x⦊ [t] ⟦-⟧`, after a whole-editor save in that process, a session `u` that has no file, load…  
+spec: (S2 Contract and API; the author's 2026-10-23 answer, "A hint in the call") A tab session with no frogman file, loaded with the hint, starts only its tab fresh: in T318's first tab at `⦉x⦊ [t] ⟦-⟧`, after a whole-editor save in that process, a session `u` that has no file, loaded…  
 `tests/test_s2.lua:2300`
 
 **T355 [char]** (S2) a file's scope wins over the hint  
@@ -4377,7 +4377,7 @@ spec: (S2 Closed-stack picker, A27) A closed lists key's step is about the windo
 
 **T503 [char]** (S2) a closed_entry formatter that gives nothing leaves frogman's own text  
 → `eq(timed, true)`  
-spec: (S2 Closed-stack picker) A `closed_entry` formatter that gives nothing leaves cavediver's own text: with one that returns nil, an entry's line still shows its close time.  
+spec: (S2 Closed-stack picker) A `closed_entry` formatter that gives nothing leaves frogman's own text: with one that returns nil, an entry's line still shows its close time.  
 `tests/test_s2.lua:3878`
 
 **T375 [char]** (S2) <M-;>W opens the picker, named keymaps.open_closed_lists  
@@ -4699,13 +4699,13 @@ spec: (M13) A bracket pair named at the top of `glyphs`, outside the sets, is ta
 **T593 [char]** (S2) a Neovim without LuaJIT's FFI loads frogman  
 → `eq(got, { setup = true, err = vim.NIL, saved = false, luajit = true })`  
 note: ffi made unavailable before frogman is required, as a Neovim built without LuaJIT has it.  
-spec: (S2 The file, A25) A Neovim without LuaJIT's FFI loads cavediver: with `ffi` made unavailable before `require('frogman')`, `setup()` and `:e a` raise nothing, and a save fails with an error naming LuaJIT.  
+spec: (S2 The file, A25) A Neovim without LuaJIT's FFI loads frogman: with `ffi` made unavailable before `require('frogman')`, `setup()` and `:e a` raise nothing, and a save fails with an error naming LuaJIT.  
 `tests/test_setup.lua:135`
 
 **T596 [char]** (S2) another plugin's different declaration of a libcrypto function doesn't stand in for frogman's  
 → `eq(got, { ok = true, err = vim.NIL })`  
 note: Another plugin's declaration of RAND_bytes, with a parameter fewer, made first.  
-spec: (S2 The file) Another plugin's different declaration of a libcrypto function doesn't stand in for cavediver's: `int RAND_bytes(unsigned char *buf);` declared through the FFI before cavediver is required, then `setup()`, `:e a` and a save, which goes through.  
+spec: (S2 The file) Another plugin's different declaration of a libcrypto function doesn't stand in for frogman's: `int RAND_bytes(unsigned char *buf);` declared through the FFI before frogman is required, then `setup()`, `:e a` and a save, which goes through.  
 `tests/test_setup.lua:150`
 
 **T591 [char]** the test init refuses a run outside its sandbox  
@@ -4893,7 +4893,7 @@ spec: (A27) `<CR>` on a day's line does what `gf` does: T441's route, `<CR>` on 
 
 **T442 [char]** (A27) the formatters replace a line's look  
 `:e a`, `:e b`, `:e c`, `:e d`, `:e c`, `<M-;><M-r>`, `:bdelete c.txt` → `eq({ header = lines()[1], step = line_with('STEP BufDelete c.txt') ~= nil, move = line_with('MOVE closed') ~= nil,`  
-spec: (A27) The formatters replace a line's look: `formatters.trail_move`, given the move, the glyphs and the step, gives a move's line; `formatters.trail_step` a step's; `formatters.trail_header` the header's; a formatter that gives nothing leaves cavediver's own.  
+spec: (A27) The formatters replace a line's look: `formatters.trail_move`, given the move, the glyphs and the step, gives a move's line; `formatters.trail_step` a step's; `formatters.trail_header` the header's; a formatter that gives nothing leaves frogman's own.  
 `tests/test_trail.lua:666`
 
 **T443 [char]** (A27) za opens a step in a search too  
@@ -5032,7 +5032,7 @@ spec: (M12) The toggles' commands: `:FrogmanWinbar off` empties the winbar and i
 `:e a`, `:e b` → `eq(S2.save(child, cwd), { true })`  
 → `eq(S2.load(child, cwd), { true })`  
 → `eq({ refreshed = refreshed, loaded = loaded, current = segment:find('[' .. b .. ']', 1, true) ~= nil,`  
-spec: (M12) With `winbar = { own = false }`, cavediver writes no winbar: a winbar set by hand on a tracked window at `⦉a⦊ [b] ⟦-⟧` stays through the refresh, a save, and a load from idle, whose teardown clears winbars otherwise; and `require('frogman').winbar_segment()` gives the windo…  
+spec: (M12) With `winbar = { own = false }`, frogman writes no winbar: a winbar set by hand on a tracked window at `⦉a⦊ [b] ⟦-⟧` stays through the refresh, a save, and a load from idle, whose teardown clears winbars otherwise; and `require('frogman').winbar_segment()` gives the window'…  
 `tests/test_ui.lua:286`
 
 **T448 [char]** (M12) the winbar's skip list is configurable, and replaces the default one  
@@ -5065,7 +5065,7 @@ spec: (M12) A refresh writes no winbar that hasn't changed: with a tracked windo
 **T629 [char]** (M12) a hidden winbar is written once while a global winbar is set  
 `:e a`, `:e b`, `:vsplit` → `eq(child.lua('return _G.FRG_WINBAR_SETS'), 0)`  
 note: frogman's winbar hidden while a global 'winbar' is set, as a user's statusline plugin sets one.  
-spec: (M12) A hidden winbar is written once while a global winbar is set: two tracked windows, a global `'winbar'` of `%f` and cavediver's winbar hidden: half a second of refreshes sets no `winbar` (`OptionSet`).  
+spec: (M12) A hidden winbar is written once while a global winbar is set: two tracked windows, a global `'winbar'` of `%f` and frogman's winbar hidden: half a second of refreshes sets no `winbar` (`OptionSet`).  
 `tests/test_ui.lua:407`
 
 **T649 [char]** (M12) the indicators machine and the kinds agree  
@@ -5113,7 +5113,7 @@ spec: (M12, T242) A dead ternary is repaired on the spot, whatever the secondary
 **T500 [char]** (A25) a window closed while frogman was off doesn't break the refresh once it's back on ⚑ state set by hand  
 `:e a`, `:vsplit`, `:e b`, `:close`, `:e c` → `eq({ errors = errors(), kept = child.lua('return require("frogman.domains.window").data.crux[...] ~= nil', { split }) },`  
 note: The split closes while frogman is off, so its WinClosed never runs.  
-spec: (A25) A window closed while cavediver was off doesn't break the refresh once it's back on: `:e a`, a split on b, `disable()`, the split closed, `setup()` again, and no hook failure over the next refreshes.  
+spec: (A25) A window closed while frogman was off doesn't break the refresh once it's back on: `:e a`, a split on b, `disable()`, the split closed, `setup()` again, and no hook failure over the next refreshes.  
 `tests/test_ui.lua:579`
 
 **T501 [char]** (M12) a nowrite buffer on a real file gets its winbar like any file  
@@ -5161,7 +5161,7 @@ spec: (A17) `<M-,>`'s skip list is configurable: with `toggle_window = { skip_fi
 
 **T459 [char]** (A3, M12) the command-line window is neither a visit nor a jump to record  
 `:e a`, `:e b`, `<C-c> (via child.type_keys)` → `eq({ open = open, failures = Extra.at_least(child.messages()) }, { open = { ':', '' }, failures = {} })`  
-spec: (A3, M12) The command-line window is neither a visit nor a jump to record: `:e a`, `:e b`, `q:` and `<C-c>` give no hook failure, and the command-line window, while open, has no winbar of cavediver's.  
+spec: (A3, M12) The command-line window is neither a visit nor a jump to record: `:e a`, `:e b`, `q:` and `<C-c>` give no hook failure, and the command-line window, while open, has no winbar of frogman's.  
 `tests/test_windows.lua:71`
 
 **T194 [char]** one jump table serves every tab  

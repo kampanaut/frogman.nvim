@@ -1,6 +1,6 @@
 -- Negative cases: things that must not happen, and bad or impossible actions
 -- that are refused or handled without harm. IDs are the spec's
--- (what-is-cavediver.md, section 7, "Negative cases").
+-- (what-is-frogman.md, section 7, "Negative cases").
 local Helpers = dofile('tests/helpers.lua')
 local K = dofile('tests/helpers_keys.lua')
 local Extra = dofile('tests/helpers_cycling.lua')

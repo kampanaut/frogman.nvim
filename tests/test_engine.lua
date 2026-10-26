@@ -1,4 +1,4 @@
--- Engine (M11). IDs are the spec's (what-is-cavediver.md, section 7).
+-- Engine (M11). IDs are the spec's (what-is-frogman.md, section 7).
 -- Each case builds its own machines in the child through the factory.
 local Helpers = dofile('tests/helpers.lua')
 local eq = Helpers.eq

@@ -1,4 +1,4 @@
--- The ledger (what-is-cavediver.md, A27 and A26, and section 7, "The ledger").
+-- The ledger (what-is-frogman.md, A27 and A26, and section 7, "The ledger").
 -- IDs are the spec's.
 --
 -- The records are read through require('frogman').ledger: steps(), the ring,
@@ -253,7 +253,7 @@ T['T398 [char] (A27, A22) the cleanup says nothing, and its repair is a move'] =
 	child.settle(500)
 	local report = false
 	for _, m in ipairs(child.messages()) do
-		if m.msg:find('FROGMAN CLEANUP REPORT', 1, true) then report = true end
+		if m.msg:find('CLEANUP REPORT', 1, true) then report = true end
 	end
 	local found
 	for _, s in ipairs(steps('trail')) do

@@ -1,5 +1,5 @@
 -- Invariants (section 4) as property tests over random walks. IDs are the
--- spec's (what-is-cavediver.md, section 7).
+-- spec's (what-is-frogman.md, section 7).
 --
 -- Each walk starts a fresh child, opens a.txt and takes `steps` actions picked
 -- by a fixed seed, checking the invariant after every action (Misc.walks).

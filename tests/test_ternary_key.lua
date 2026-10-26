@@ -1,4 +1,4 @@
--- <M-S-f>, toggle_ternary (A7). IDs are the spec's (what-is-cavediver.md, section 7).
+-- <M-S-f>, toggle_ternary (A7). IDs are the spec's (what-is-frogman.md, section 7).
 local Helpers = dofile('tests/helpers.lua')
 local K = dofile('tests/helpers_keys.lua')
 local eq = Helpers.eq

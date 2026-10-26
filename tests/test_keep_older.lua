@@ -1,5 +1,5 @@
 -- "Keep the older one": the restore errors (M7, A1, A6-A8, A11, A13, I23).
--- IDs are the spec's (what-is-cavediver.md, section 7). Every case here is
+-- IDs are the spec's (what-is-frogman.md, section 7). Every case here is
 -- decided behaviour, built in step 3.
 local Helpers = dofile('tests/helpers.lua')
 local K = dofile('tests/helpers_keys.lua')

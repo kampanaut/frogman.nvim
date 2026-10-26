@@ -1,4 +1,4 @@
--- The session file, S2 (what-is-cavediver.md, section 5, S2, and section 7,
+-- The session file, S2 (what-is-frogman.md, section 5, S2, and section 7,
 -- "The session file, S2"). IDs are the spec's.
 --
 -- Most cases save in one child and load in a fresh one, both in a project and

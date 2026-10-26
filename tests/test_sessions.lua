@@ -1,4 +1,4 @@
--- Sessions (S1, S2). IDs are the spec's (what-is-cavediver.md, section 7).
+-- Sessions (S1, S2). IDs are the spec's (what-is-frogman.md, section 7).
 --
 -- A load can follow nothing else in one process, so a round trip saves in one
 -- child and loads in a fresh one. Both start in a project the test runner

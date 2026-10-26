@@ -1,5 +1,5 @@
 -- Deletes, renames and cleanup (A19-A22). IDs are the spec's
--- (what-is-cavediver.md, section 7).
+-- (what-is-frogman.md, section 7).
 local Helpers = dofile('tests/helpers.lua')
 local eq = Helpers.eq
 local child = Helpers.new_child()

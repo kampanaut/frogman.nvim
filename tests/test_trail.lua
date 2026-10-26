@@ -1,4 +1,4 @@
--- The trail's view, :FrogmanTrail (what-is-cavediver.md, A27, and section 7,
+-- The trail's view, :FrogmanTrail (what-is-frogman.md, A27, and section 7,
 -- "The ledger"). IDs are the spec's.
 --
 -- The view is a float on a buffer of its own; its keys are buffer-local, so

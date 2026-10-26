@@ -1,4 +1,4 @@
--- Doc checks: the settled doc and comment changes (what-is-cavediver.md,
+-- Doc checks: the settled doc and comment changes (what-is-frogman.md,
 -- section 7, "Doc checks"). Each reads the file and is named by the entry that
 -- settled it (D, Q or A). Text is matched, never line numbers. Where the spec
 -- gives the new wording, the new text must be there and the old text gone.
@@ -103,7 +103,7 @@ T['D27 [char] README\'s requirements (D4, D27)'] = function()
 	local items = {
 		'- neovim 0.12+',
 		'- nvim-cokeline',
-		"- openssl 3 or 4 (system installed, its libcrypto is used for encrypting the session files. Hashing is done with neovim's built-in `vim.fn.sha256`. When cavediver can't find it, set `libcrypto_path` to its file. Windows is untested: there, set `libcrypto_path` to the DLL, such as `libcrypto-3-x64.dll`)",
+		"- openssl 3 or 4 (system installed, its libcrypto is used for encrypting the session files. Hashing is done with neovim's built-in `vim.fn.sha256`. When frogman can't find it, set `libcrypto_path` to its file. Windows is untested: there, set `libcrypto_path` to the DLL, such as `libcrypto-3-x64.dll`)",
 		'- harpoon (optional, harpooned buffers are marked in the bufferline)',
 		'- telescope.nvim (optional, used for adding files in the primary buffer pop-up)',
 		'- a session manager (optional, resession.nvim is used in the examples below)',
@@ -126,7 +126,7 @@ end
 
 T['D27 [char] README\'s cokeline paragraph'] = function()
 	local r = flat(read(README))
-	local new = 'The cavediver plugin can work without the bufferline, but it reduces the experience a lot. '
+	local new = 'The frogman plugin can work without the bufferline, but it reduces the experience a lot. '
 		.. 'Cokeline is what lets you visualise the visit history of all your buffers, so that you can know how '
 		.. 'you can end up to your current buffer.'
 	eq({ has(r, new), has(r, 'visit history of all your browsers') }, { true, false })

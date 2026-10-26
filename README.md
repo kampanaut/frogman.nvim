@@ -1,4 +1,4 @@
-# Cavediver
+# Frogman
 
 ## Introduction
 
@@ -43,7 +43,7 @@ You can also see that the two windows have their own history. You can turn this 
 
 - neovim 0.12+
 - nvim-cokeline
-- openssl 3 or 4 (system installed, its libcrypto is used for encrypting the session files. Hashing is done with neovim's built-in `vim.fn.sha256`. When cavediver can't find it, set `libcrypto_path` to its file. Windows is untested: there, set `libcrypto_path` to the DLL, such as `libcrypto-3-x64.dll`)
+- openssl 3 or 4 (system installed, its libcrypto is used for encrypting the session files. Hashing is done with neovim's built-in `vim.fn.sha256`. When frogman can't find it, set `libcrypto_path` to its file. Windows is untested: there, set `libcrypto_path` to the DLL, such as `libcrypto-3-x64.dll`)
 - harpoon (optional, harpooned buffers are marked in the bufferline)
 - telescope.nvim (optional, used for adding files in the primary buffer pop-up)
 - a session manager (optional, resession.nvim is used in the examples below)
@@ -68,7 +68,7 @@ This works for all plugin managers.
 ### Session manager setup
 
 You have to add hooks for the session manager, to allow this plugin to have persistence.
-This cavediver plugin saves the session state in your neovim's `data` directory by default.
+This frogman plugin saves the session state in your neovim's `data` directory by default.
 It doesn't care which session manager you use, it just needs these to happen:
 - `save_session(name)` is called before the editor is torn down
 - `load_session(name)` is called after the session manager restored your buffers and windows
@@ -140,7 +140,7 @@ Call `save_session()` yourself, like on `VimLeavePre`, and `load_session()` when
 Convert them once, with none of your config loaded:
 
 ```sh
-nvim --clean -l <cavediver's directory>/scripts/migrate_sessions.lua
+nvim --clean -l <frogman's directory>/scripts/migrate_sessions.lua
 ```
 
 A load that finds an old file tells you the command with the path for your install. `--dry-run` shows what would
@@ -156,7 +156,7 @@ its session's file still in cavediver's folder tells you to run the script.
 
 ### nvim-cokeline setup
 
-The cavediver plugin can work without the bufferline, but it reduces the experience a lot. 
+The frogman plugin can work without the bufferline, but it reduces the experience a lot. 
 Cokeline is what lets you visualise the visit history of all your buffers, so that you can know how you can end up 
 to your current buffer.
 
@@ -273,7 +273,7 @@ You can start by just modifying the base colors
 local defaults = {
     session_dir = vim.fn.stdpath("data") .. "/frogman/sessions/",
     -- libcrypto_path: OpenSSL's libcrypto, a full path or a name the system finds, tried before
-    -- cavediver's own list (nil tries the list alone); ~ and $HOME in it are expanded. It's read
+    -- frogman's own list (nil tries the list alone); ~ and $HOME in it are expanded. It's read
     -- the first time it's needed, and again only when no libcrypto loaded and it has changed since
     bufferline = {
         history_view = "global" -- "global" | "window"
@@ -325,7 +325,7 @@ local defaults = {
             detached_left = "#",
         },
     },
-    formatters = {}, -- closed_entry, trail_step, trail_move, trail_header: each gives {text, highlight} chunks, or nil for cavediver's own
+    formatters = {}, -- closed_entry, trail_step, trail_move, trail_header: each gives {text, highlight} chunks, or nil for frogman's own
     colors = {
         base = {
             focused = {
@@ -476,7 +476,7 @@ local defaults = {
         open_primary_buffer_history = "<M-;>F", -- Open primary buffer history
         open_closed_lists = "<M-;>W", -- Open the closed lists
 
-        -- Inside cavediver's own views
+        -- Inside frogman's own views
         views = {
             leave = "q",
             leave_too = "<C-c>",
@@ -503,7 +503,7 @@ local defaults = {
     -- picked files' paths: nil uses telescope's find_files when telescope is installed.
     -- marks_provider: the marked files, for the bufferline's marks: nil reads harpoon's list when it's
     -- installed, a function returning their paths in order gives them, false marks nothing.
-    -- the winbar: `own`, whether cavediver writes it (otherwise `require('frogman').winbar_segment()`
+    -- the winbar: `own`, whether frogman writes it (otherwise `require('frogman').winbar_segment()`
     -- gives its segment to place yourself); `skip_filetypes`, windows of these filetypes get none
     winbar = {
         own = true,
@@ -539,7 +539,7 @@ local defaults = {
 
 ### Window Triquetras
 
-The cavediver plugin tracks windows showing regular file buffers. When a window switches to a non-regular buffer then it will keep the triquetra associated to that window, and the current slot stays on the file you were on, so `<m-f>` brings you back to it. The winbar shows it like `main.lua ← [15 help]`, the visited buffer's number first. Each window has their own triquetra. 
+The frogman plugin tracks windows showing regular file buffers. When a window switches to a non-regular buffer then it will keep the triquetra associated to that window, and the current slot stays on the file you were on, so `<m-f>` brings you back to it. The winbar shows it like `main.lua ← [15 help]`, the visited buffer's number first. Each window has their own triquetra. 
 
 A window triquetra is a data structure that stores the window's triquetra slots: current buffer, ternary buffer, secondary buffer, and primary buffer. Each type of slot has their own means of updating themselves.
 
@@ -573,7 +573,7 @@ Also take a look at the **New feature** section above as I had extended this fea
 
 **Notes**
 
-These only works for regular file buffers. The cavediver plugin, only tracks regular file buffers. Makes it easy to deal with cross-session persistence. 
+These only works for regular file buffers. The frogman plugin, only tracks regular file buffers. Makes it easy to deal with cross-session persistence. 
 
 A buffer cannot occur more than once in a window triquetra.
 
@@ -589,12 +589,12 @@ Window-specific history is a recent addition and is really nice on seeing the bu
 
 ### Cycling
 
-`<m-n>` and `<m-m>` calls cokeline's cycle function and this makes the whole cavediver plugin be put into "cycling" mode. You will see the change of mode with the colors of the triquetra winbar and cokeline bufferline. 
+`<m-n>` and `<m-m>` calls cokeline's cycle function and this makes the whole frogman plugin be put into "cycling" mode. You will see the change of mode with the colors of the triquetra winbar and cokeline bufferline. 
 
-You will notice that no matter how you cycle, the current slot buffer doesn't change. It is because during cycling mode, the cavediver plugin has stopped tracking visits. You need to do `<m-v>` to select the buffer you are currently and quit cycling mode. 
+You will notice that no matter how you cycle, the current slot buffer doesn't change. It is because during cycling mode, the frogman plugin has stopped tracking visits. You need to do `<m-v>` to select the buffer you are currently and quit cycling mode. 
 
 ## When something shouldn't happen
 
-Cavediver keeps its last steps in memory. When something that shouldn't happen fires (an assertion, a hook failing, a broken rule), it writes them to a file under `stdpath("state")/frogman/` and shows them in a window, and a warning says where the file is. The file is encrypted like the session files, so it only opens from the directory it was written in: `:FrogmanDump <file>`.
+Frogman keeps its last steps in memory. When something that shouldn't happen fires (an assertion, a hook failing, a broken rule), it writes them to a file under `stdpath("state")/frogman/` and shows them in a window, and a warning says where the file is. The file is encrypted like the session files, so it only opens from the directory it was written in: `:FrogmanDump <file>`.
 
-To replay one, start Neovim in that directory with cavediver set up, open no file and load no session, then run `:lua require('frogman').replay_dump('<file>')`. If your config loads a session when Neovim starts, start it with a minimal init that only sets cavediver up instead (`nvim -u minimal.lua`). An editor that replayed a dump doesn't save its session. When it's done, it says what it did in one line, such as `frogman: replayed 12 steps, 5 driven, 5 matching, 0 resynced`: driven steps are your keys and window commands, run again and checked against the dump; matching ones came out the same; a resync is a step the replay first put back where the dump says it began. If it stopped, the line says where and why, and "what fired" is what the dump fired at, reproduced.
+To replay one, start Neovim in that directory with frogman set up, open no file and load no session, then run `:lua require('frogman').replay_dump('<file>')`. If your config loads a session when Neovim starts, start it with a minimal init that only sets frogman up instead (`nvim -u minimal.lua`). An editor that replayed a dump doesn't save its session. When it's done, it says what it did in one line, such as `frogman: replayed 12 steps, 5 driven, 5 matching, 0 resynced`: driven steps are your keys and window commands, run again and checked against the dump; matching ones came out the same; a resync is a step the replay first put back where the dump says it began. If it stopped, the line says where and why, and "what fired" is what the dump fired at, reproduced.
