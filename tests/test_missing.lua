@@ -1,4 +1,4 @@
--- Missing files tagged (what-is-cavediver.md, M14, and section 7, "Missing
+-- Missing files tagged (what-is-frogman.md, M14, and section 7, "Missing
 -- files tagged"). IDs are the spec's.
 local Helpers = dofile('tests/helpers.lua')
 local Misc = dofile('tests/helpers_misc.lua')

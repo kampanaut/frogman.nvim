@@ -1,5 +1,5 @@
 -- Restores and their notes: <M-;><M-r> restore_ternary, <M-;><M-t> restore_secondary (A11).
--- IDs are the spec's (what-is-cavediver.md, section 7).
+-- IDs are the spec's (what-is-frogman.md, section 7).
 local Helpers = dofile('tests/helpers.lua')
 local K = dofile('tests/helpers_keys.lua')
 local eq, no_eq = Helpers.eq, Helpers.expect.no_equality

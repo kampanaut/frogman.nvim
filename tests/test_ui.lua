@@ -1,5 +1,5 @@
 -- UI (M12): the winbar, the bufferline callbacks and the keymap descriptions.
--- IDs are the spec's (what-is-cavediver.md, section 7).
+-- IDs are the spec's (what-is-frogman.md, section 7).
 local Helpers = dofile('tests/helpers.lua')
 local S2 = dofile('tests/helpers_s2.lua')
 local eq = Helpers.eq

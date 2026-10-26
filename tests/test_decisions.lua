@@ -1,4 +1,4 @@
--- Decided and intended rules that no other case checks (what-is-cavediver.md,
+-- Decided and intended rules that no other case checks (what-is-frogman.md,
 -- section 7, "Decided rules not covered elsewhere"). Each case cites the rule
 -- it comes from (P, M, A, I, D or Q, and the final section).
 local Helpers = dofile('tests/helpers.lua')

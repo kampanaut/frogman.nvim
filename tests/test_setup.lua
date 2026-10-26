@@ -1,5 +1,5 @@
 -- Setup (A25): setup() and what runs at require. IDs are the spec's
--- (what-is-cavediver.md, section 7). These start a child with frogman on the
+-- (what-is-frogman.md, section 7). These start a child with frogman on the
 -- runtimepath but not required, in an empty temporary directory.
 local Helpers = dofile('tests/helpers.lua')
 local eq = Helpers.eq

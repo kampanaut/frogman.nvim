@@ -1,5 +1,5 @@
 -- Closing and reopening: <M-.> and <M-S-w> (A15, A16). IDs are the spec's
--- (what-is-cavediver.md, section 7).
+-- (what-is-frogman.md, section 7).
 local Helpers = dofile('tests/helpers.lua')
 local Extra = dofile('tests/helpers_cycling.lua')
 local eq = Helpers.eq

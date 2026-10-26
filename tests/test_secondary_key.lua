@@ -1,4 +1,4 @@
--- <M-f>, toggle_secondary (A6). IDs are the spec's (what-is-cavediver.md, section 7).
+-- <M-f>, toggle_secondary (A6). IDs are the spec's (what-is-frogman.md, section 7).
 local Helpers = dofile('tests/helpers.lua')
 local K = dofile('tests/helpers_keys.lua')
 local eq, no_eq = Helpers.eq, Helpers.expect.no_equality
