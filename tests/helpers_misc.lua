@@ -86,15 +86,15 @@ end
 -- save_session / load_session with the cwd, as the README wires them.
 -- Returns { ok, err }.
 Misc.save = function(child)
-	return child.lua('return { pcall(require("cavediver").save_session, vim.fn.getcwd()) }')
+	return child.lua('return { pcall(require("frogman").save_session, vim.fn.getcwd()) }')
 end
 Misc.load = function(child)
-	return child.lua('return { pcall(require("cavediver").load_session, vim.fn.getcwd()) }')
+	return child.lua('return { pcall(require("frogman").load_session, vim.fn.getcwd()) }')
 end
 
 -- The regular files in the child's session directory.
 Misc.session_files = function(child)
-	return Misc.files_in(child.lua([[return require('cavediver.configs').session_dir]]))
+	return Misc.files_in(child.lua([[return require('frogman.configs').session_dir]]))
 end
 
 -- Random walks ----------------------------------------------------------------
@@ -102,9 +102,9 @@ end
 -- Code that runs inside the child: the walk's actions, the invariant checks,
 -- and the walk itself. A walk is deterministic for its seed.
 local WALKER = [==[
-local H = require('cavediver.domains.history')
-local W = require('cavediver.domains.window')
-local N = require('cavediver.domains.navigation')
+local H = require('frogman.domains.history')
+local W = require('frogman.domains.window')
+local N = require('frogman.domains.navigation')
 local raw_cmd = vim.cmd
 local root = _G.CDV_TEST.root
 local newfile = 0
@@ -338,10 +338,10 @@ checks.I13 = {
 -- (the save hook is critical, so a throw would reach the session manager).
 checks.save = {
 	install = function()
-		vim.fn.mkdir(require('cavediver.configs').session_dir, 'p')
+		vim.fn.mkdir(require('frogman.configs').session_dir, 'p')
 	end,
 	post = function()
-		local ok, err = pcall(require('cavediver').save_session, vim.fn.getcwd())
+		local ok, err = pcall(require('frogman').save_session, vim.fn.getcwd())
 		if not ok then
 			return 'save threw: ' .. tostring(err):gsub('\n.*', '')
 		end
@@ -362,7 +362,7 @@ local function run_step(c, a)
 	local ok, err = pcall(actions[a])
 	vim.wait(10)
 	-- once the editor has settled, nothing is left on the settle queue
-	local queued = require('cavediver.settle').pending()
+	local queued = require('frogman.settle').pending()
 	if #queued > 0 then
 		return 'the settle queue is not empty once settled: ' .. table.concat(queued, ', ')
 	end

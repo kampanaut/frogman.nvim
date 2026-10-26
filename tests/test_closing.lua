@@ -28,11 +28,11 @@ local function noname(lines, filetype, cursor)
 end
 
 local function hash_of_buf(buf)
-	return child.lua('return require("cavediver.domains.history").get_hash_from_buffer(...)', { buf })
+	return child.lua('return require("frogman.domains.history").get_hash_from_buffer(...)', { buf })
 end
 
 local function buf_open(hash)
-	return child.lua('return require("cavediver.domains.history").get_buffer_from_hash(...) ~= nil', { hash })
+	return child.lua('return require("frogman.domains.history").get_buffer_from_hash(...) ~= nil', { hash })
 end
 
 -- Everything <M-.> must leave alone when it refuses.
@@ -157,9 +157,9 @@ T['T83 [char] <M-.> on a modified No Name buffer closes it and caches its lines,
 
 	child.steps({ '<M-.>' })
 	eq(child.lua('return vim.api.nvim_buf_is_valid(...)', { buf }), false)
-	eq(child.lua('return require("cavediver.domains.history").data.closed_buffers'), { h })
+	eq(child.lua('return require("frogman.domains.history").data.closed_buffers'), { h })
 	eq(
-		child.lua('return require("cavediver.domains.history").data.noname_content[...]', { h }),
+		child.lua('return require("frogman.domains.history").data.noname_content[...]', { h }),
 		{ lines = { 'one', 'two', 'three' }, filetype = 'lua', cursor = { 2, 1 } }
 	)
 end
@@ -242,7 +242,7 @@ T['T532 [char] (A7, M5, M14) a slot key opens a never-written closed file as the
 		if m.msg:find('on disk', 1, true) then disk = true end
 	end
 	local words = child.lua([[
-		for _, step in ipairs(require('cavediver').ledger.trail()) do
+		for _, step in ipairs(require('frogman').ledger.trail()) do
 			for _, m in ipairs(step.moves) do
 				if m.kind == 'reopened' and m.name == 'notes.txt' then return m.new == true end
 			end
@@ -304,21 +304,21 @@ T['T91 [char] after a No Name buffer is reopened, its old hash is renamed everyw
 	local old = hash_of_buf(buf)
 	child.steps({ '<M-.>' })
 	eq(child.shown(), 'c')
-	eq(child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()].ternary_slot'), old)
-	eq(child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()].displacement_ternary_map[...]', { child.hash_of('b') }), old)
+	eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()].ternary_slot'), old)
+	eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()].displacement_ternary_map[...]', { child.hash_of('b') }), old)
 
 	child.steps({ '<M-S-w>' })
 	eq(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), { 'scratch text' })
 	local new = hash_of_buf(child.lua('return vim.api.nvim_get_current_buf()'))
 	eq(new ~= old, true)
 	eq(child.refs(old), {})
-	eq(child.lua('return require("cavediver.domains.window").data.crux[vim.api.nvim_get_current_win()].displacement_ternary_map[...]', { child.hash_of('b') }), new)
+	eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()].displacement_ternary_map[...]', { child.hash_of('b') }), new)
 end
 
 T['T162 [char] pushing a hash already on the closed stack keeps one copy, as the newest'] = function()
 	child.steps({ ':e a' })
 	local got = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local root = _G.CDV_TEST.root
 		H.register_filepath(root .. '/x.txt')
 		H.register_filepath(root .. '/t.txt')

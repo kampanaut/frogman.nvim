@@ -9,8 +9,8 @@ local K = {}
 
 -- Code shared by the child-side helpers: name(hash) and the window's triquetra.
 local PRELUDE = [==[
-local H = require('cavediver.domains.history')
-local W = require('cavediver.domains.window')
+local H = require('frogman.domains.history')
+local W = require('frogman.domains.window')
 local function name(hash)
 	if hash == nil then return nil end
 	local base = hash:gsub('%-swap$', '')
@@ -92,7 +92,7 @@ end
 -- Whether current and secondary (or ternary) hold the same buffer.
 K.duplicate = function(child)
 	return child.lua([[
-		local t = require('cavediver.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
 		if not t then return false end
 		local c, s, r = t.current_slot, t.secondary_slot, t.ternary_slot
 		return (s ~= nil and s == c) or (r ~= nil and r == c) or (s ~= nil and s == r)
@@ -100,7 +100,7 @@ K.duplicate = function(child)
 end
 
 K.nav = function(child)
-	return child.lua('return require("cavediver").get_navigation_state()')
+	return child.lua('return require("frogman").get_navigation_state()')
 end
 
 -- Run some Lua in the child and press a key in the same call, so no timer
@@ -189,8 +189,8 @@ end
 -- Returns { steps, errors, hook_failures, actions, brk = nil | {...} }.
 local WALK = [==[
 local seed, nkeys, multi = ...
-local H = require('cavediver.domains.history')
-local W = require('cavediver.domains.window')
+local H = require('frogman.domains.history')
+local W = require('frogman.domains.window')
 local state = seed % 2147483647
 if state <= 0 then state = state + 2147483646 end
 local function rnd(n)
@@ -280,7 +280,7 @@ for _ = 1, nkeys do
 	table.insert(res.actions, label)
 	res.steps = res.steps + 1
 	-- once the editor has settled, nothing is left on the settle queue
-	local queued = require('cavediver.settle').pending()
+	local queued = require('frogman.settle').pending()
 	if #queued > 0 then
 		res.queued = table.concat(queued, ', ')
 		return res

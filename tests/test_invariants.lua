@@ -100,7 +100,7 @@ T['T157 [char] I19: <M-;><M-x> on an empty queue that is switched on gives p=[A]
 	child.setup()
 	child.steps({ ':e a' })
 	child.lua([[
-		local t = require('cavediver.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
 		t.primary_buffer = {}
 		t.primary_enabled = true
 	]])

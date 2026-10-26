@@ -99,12 +99,12 @@ It doesn't care which session manager you use, it just needs these to happen:
             -- your configurations....
         })
         resession.add_hook("pre_save", function(name, opts, target_tabpage)
-            require('cavediver').save_session(name, { tab = target_tabpage })
+            require('frogman').save_session(name, { tab = target_tabpage })
         end)
 
         resession.add_hook("post_load", function(name, opts)
             -- a tab session (a load that kept the other tabs) fills only its tab
-            require('cavediver').load_session(name, { tab = not opts.reset and vim.api.nvim_get_current_tabpage() or nil })
+            require('frogman').load_session(name, { tab = not opts.reset and vim.api.nvim_get_current_tabpage() or nil })
         end)
 
         resession.add_hook("pre_load", function()
@@ -168,7 +168,7 @@ to your current buffer.
                 -- default: `false`.
                 ---@type false | fun(buf: Buffer):boolean
                 filter_valid = function(buffer)
-                    return require('cavediver').bufferline.bufnr_is_displayed(buffer.number)
+                    return require('frogman').bufferline.bufnr_is_displayed(buffer.number)
                 end,
 
                 -- A looser version of `filter_valid`, use this function if you still
@@ -191,7 +191,7 @@ to your current buffer.
                 -- default: 'last'.
                 ---@type 'last' | 'next' | 'directory' | 'number' | fun(a: Buffer, b: Buffer):boolean
                 new_buffers_position = function(buffer_a, buffer_b)
-                    local compare = require('cavediver').bufferline.compare_buffers(buffer_a.number, buffer_b.number)
+                    local compare = require('frogman').bufferline.compare_buffers(buffer_a.number, buffer_b.number)
                     return compare
                 end,
 
@@ -211,13 +211,13 @@ to your current buffer.
             },
             default_hl = {
                 bg = function(buffer)
-                    return require('cavediver').bufferline.get_theme_bg_color(buffer.is_focused)
+                    return require('frogman').bufferline.get_theme_bg_color(buffer.is_focused)
                 end,
                 fg = function(buffer)
-                    return require('cavediver').bufferline.get_theme_fg_color(buffer.number, buffer.is_focused)
+                    return require('frogman').bufferline.get_theme_fg_color(buffer.number, buffer.is_focused)
                 end,
                 bold = function(buffer)
-                    return require('cavediver').bufferline.get_buffer_bold(buffer.number)
+                    return require('frogman').bufferline.get_buffer_bold(buffer.number)
                 end,
             },
             history = {
@@ -225,10 +225,10 @@ to your current buffer.
             },
             tabs = {
                 placement = "right",
-                components = require('cavediver').bufferline.cokeline.create_tab_components()
+                components = require('frogman').bufferline.cokeline.create_tab_components()
                 
             },
-            components = require('cavediver').bufferline.cokeline.create_buffer_components()
+            components = require('frogman').bufferline.cokeline.create_buffer_components()
         })
 
         -- :tabmove fires no autocmd and cokeline only refetches tabs when the count
@@ -495,7 +495,7 @@ local defaults = {
     -- picked files' paths: nil uses telescope's find_files when telescope is installed.
     -- marks_provider: the marked files, for the bufferline's marks: nil reads harpoon's list when it's
     -- installed, a function returning their paths in order gives them, false marks nothing.
-    -- the winbar: `own`, whether cavediver writes it (otherwise `require('cavediver').winbar_segment()`
+    -- the winbar: `own`, whether cavediver writes it (otherwise `require('frogman').winbar_segment()`
     -- gives its segment to place yourself); `skip_filetypes`, windows of these filetypes get none
     winbar = {
         own = true,
@@ -589,4 +589,4 @@ You will notice that no matter how you cycle, the current slot buffer doesn't ch
 
 Cavediver keeps its last steps in memory. When something that shouldn't happen fires (an assertion, a hook failing, a broken rule), it writes them to a file under `stdpath("state")/cavediver/` and shows them in a window, and a warning says where the file is. The file is encrypted like the session files, so it only opens from the directory it was written in: `:CavediverDump <file>`.
 
-To replay one, start Neovim in that directory with cavediver set up, open no file and load no session, then run `:lua require('cavediver').replay_dump('<file>')`. If your config loads a session when Neovim starts, start it with a minimal init that only sets cavediver up instead (`nvim -u minimal.lua`). An editor that replayed a dump doesn't save its session. When it's done, it says what it did in one line, such as `cavediver: replayed 12 steps, 5 driven, 5 matching, 0 resynced`: driven steps are your keys and window commands, run again and checked against the dump; matching ones came out the same; a resync is a step the replay first put back where the dump says it began. If it stopped, the line says where and why, and "what fired" is what the dump fired at, reproduced.
+To replay one, start Neovim in that directory with cavediver set up, open no file and load no session, then run `:lua require('frogman').replay_dump('<file>')`. If your config loads a session when Neovim starts, start it with a minimal init that only sets cavediver up instead (`nvim -u minimal.lua`). An editor that replayed a dump doesn't save its session. When it's done, it says what it did in one line, such as `cavediver: replayed 12 steps, 5 driven, 5 matching, 0 resynced`: driven steps are your keys and window commands, run again and checked against the dump; matching ones came out the same; a resync is a step the replay first put back where the dump says it began. If it stopped, the line says where and why, and "what fired" is what the dump fired at, reproduced.

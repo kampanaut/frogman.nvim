@@ -57,7 +57,7 @@ T['D2 [char] README\'s defaults block copies configs.lua, missing keys included'
 	end
 	local missing = {}
 	local inside = false
-	for _, line in ipairs(vim.fn.readfile('lua/cavediver/configs.lua')) do
+	for _, line in ipairs(vim.fn.readfile('lua/frogman/configs.lua')) do
 		if line:find('^local defaults = {') then inside = true
 		elseif line:find('^}') then inside = false
 		elseif inside then
@@ -149,21 +149,21 @@ end
 -- Keymap and annotation text ------------------------------------------------
 
 T['D3 [char] cycle_select\'s annotation copies "Select cycling buffer and attach history"'] = function()
-	local c = read('lua/cavediver/configs.lua')
+	local c = read('lua/frogman/configs.lua')
 	eq(has(c, '---@field cycle_select string Select cycling buffer and attach history'), true)
 end
 
 -- Comments and docstrings ---------------------------------------------------
 
 T['D15 [char] the checkpoint docstring says it is the live triquetra, not a copy'] = function()
-	local c = comments(read('lua/cavediver/domains/history/routines.lua'))
+	local c = comments(read('lua/frogman/domains/history/routines.lua'))
 	local new = "Mark the window's triquetra as the cycle's checkpoint. The checkpoint is the window's own triquetra, "
 		.. "not a copy, so it always names the window's current slot."
 	eq({ has(c, new), has(c, 'Stores a deep copy') }, { true, false })
 end
 
 T['D16 [char] the <M-.> branch comment says most recent relative to the one deleted'] = function()
-	local c = read('lua/cavediver/domains/history/routines.lua')
+	local c = read('lua/frogman/domains/history/routines.lua')
 	eq({
 		has(c, '-- Otherwise go to most recent relative to the one deleted (next in list, wraps around)'),
 		has(c, '-- Otherwise go to most recent (first in list)'),
@@ -171,7 +171,7 @@ T['D16 [char] the <M-.> branch comment says most recent relative to the one dele
 end
 
 T['D17 [char] navigation/data.lua says one jump table across all tabs'] = function()
-	local c = read('lua/cavediver/domains/navigation/data.lua')
+	local c = read('lua/frogman/domains/navigation/data.lua')
 	eq({
 		has(c, 'Current window -> previous window mapping, one table across all tabs'),
 		has(c, 'Per-tab, current window'),
@@ -179,7 +179,7 @@ T['D17 [char] navigation/data.lua says one jump table across all tabs'] = functi
 end
 
 T['D18 [char] the saved window entry annotation has the six fields'] = function()
-	local c = read('lua/cavediver/domains/storage/routines.lua')
+	local c = read('lua/frogman/domains/storage/routines.lua')
 	local class = section(c, '---@class WindowTriquetraSerialised', '---\n')
 	eq({
 		class:find('@field %[5%]') ~= nil,
@@ -190,7 +190,7 @@ end
 
 T['D21 [char] navigation/states.lua says nothing enters file_picker yet'] = function()
 	local line = ''
-	for _, l in ipairs(vim.fn.readfile('lua/cavediver/domains/navigation/states.lua')) do
+	for _, l in ipairs(vim.fn.readfile('lua/frogman/domains/navigation/states.lua')) do
 		if l:find('@field FILE_PICKER', 1, true) then line = l:lower() end
 	end
 	local says = has(line, 'nothing enters') or has(line, 'not entered') or has(line, 'never entered')
@@ -203,8 +203,8 @@ T['D21 [char] the old spec marks file-picker mode as not built'] = function()
 end
 
 T['D25 [char] the closed-stack comments say filehashes'] = function()
-	local data = read('lua/cavediver/domains/history/data.lua')
-	local init = read('lua/cavediver/domains/history/init.lua')
+	local data = read('lua/frogman/domains/history/data.lua')
+	local init = read('lua/frogman/domains/history/init.lua')
 	eq({
 		has(data, 'closed buffer filenames'),
 		has(init, 'closed buffer filenames'),
@@ -213,7 +213,7 @@ T['D25 [char] the closed-stack comments say filehashes'] = function()
 end
 
 T['D25 [char] the loop state annotation is SELF "self"'] = function()
-	local c = read('lua/cavediver/domains/ui/states.lua')
+	local c = read('lua/frogman/domains/ui/states.lua')
 	eq({
 		has(c, '---@field SELF "self" Continuous update loop state for UI refresh'),
 		has(c, 'UPDATING "updating"'),
@@ -221,8 +221,8 @@ T['D25 [char] the loop state annotation is SELF "self"'] = function()
 end
 
 T['D29 [char] init.lua\'s header says encrypted session persistence, and the XOR docstrings are gone'] = function()
-	local init = read('lua/cavediver/init.lua')
-	local storage = read('lua/cavediver/domains/storage/routines.lua')
+	local init = read('lua/frogman/init.lua')
+	local storage = read('lua/frogman/domains/storage/routines.lua')
 	eq({
 		has(init, '---hash-based buffer tracking, and encrypted session persistence.'),
 		has(init, 'XOR-obfuscated'),
@@ -255,9 +255,9 @@ end
 -- The engine (Q20) ----------------------------------------------------------
 
 T['Q20 [char] the engine says modes are shared by every machine'] = function()
-	local factory = read('lua/cavediver/engine/init.lua')
-	local helpers = read('lua/cavediver/engine/helpers.lua')
-	local lines = vim.fn.readfile('lua/cavediver/engine/state-machine.lua')
+	local factory = read('lua/frogman/engine/init.lua')
+	local helpers = read('lua/frogman/engine/helpers.lua')
+	local lines = vim.fn.readfile('lua/frogman/engine/state-machine.lua')
 	local declared = false
 	for i, l in ipairs(lines) do
 		if l:find('^%s*transition_modes%s*=') then
@@ -274,7 +274,7 @@ T['Q20 [char] the engine says modes are shared by every machine'] = function()
 end
 
 T['Q5 [char] the meaningless 30 in math.max(#ordered, 30) is gone'] = function()
-	local c = read('lua/cavediver/domains/ui/routines.lua')
+	local c = read('lua/frogman/domains/ui/routines.lua')
 	eq(c:find('math%.max%(%s*#history%.data%.ordered%.crux%s*,%s*30%s*%)') ~= nil, false)
 end
 

@@ -106,8 +106,8 @@ T['T425 [char] (A27) :CavediverTrail opens the trail, untracked, on today\'s pag
 		return {
 			buftype = vim.bo[b].buftype, listed = vim.bo[b].buflisted, hidden = vim.bo[b].bufhidden,
 			float = vim.api.nvim_win_get_config(w).relative ~= '',
-			hash = require('cavediver.domains.history').get_hash_from_buffer(b) ~= nil,
-			triquetra = require('cavediver.domains.window').data.crux[w] ~= nil,
+			hash = require('frogman.domains.history').get_hash_from_buffer(b) ~= nil,
+			triquetra = require('frogman.domains.window').data.crux[w] ~= nil,
 		}
 	]], { v.buf, v.win })
 	local L = lines()
@@ -129,7 +129,7 @@ T['T426 [char] (A27) H and L go to the older and the newer page'] = function()
 	child.settle(100)
 	child.lua([[
 		local t = os.time() - 3 * 86400
-		require('cavediver').ledger.data.days[os.date('%Y-%m-%d', t)] = { {
+		require('frogman').ledger.data.days[os.date('%Y-%m-%d', t)] = { {
 			seq = 0, time = t, cause = 'keymap', trigger = '<M-.>', names = {}, events = {},
 			moves = { { kind = 'closed', name = 'old.txt', lists = { 'editor' } } },
 		} }
@@ -342,12 +342,12 @@ T['T547 [char] (A27, S2) under the ascii set, a loaded move\'s file name keeps i
 	S2.start(child, s)
 	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" } })')
 	child.lua([[
-		local crypto = require('cavediver.domains.storage.crypto')
+		local crypto = require('frogman.domains.storage.crypto')
 		local dir, name = vim.fn.getcwd(-1, -1), vim.fn.getcwd()
-		local path = require('cavediver.configs').session_dir .. vim.fn.sha256(dir .. "\n" .. name)
+		local path = require('frogman.configs').session_dir .. vim.fn.sha256(dir .. "\n" .. name)
 		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
 		local salt = bytes:sub(5, 4 + crypto.salt_length)
-		local data = require('cavediver.domains.storage.routines').read_session(dir, name)
+		local data = require('frogman.domains.storage.routines').read_session(dir, name)
 		local x = _G.CDV_TEST.root .. '/notes · v2.md'
 		local h = vim.fn.sha256(x .. "\n"):sub(1, 16)
 		data.paths[h] = x
@@ -383,7 +383,7 @@ T['T526 [char] (A27) under the ascii set, what a move or a trigger was recorded 
 	child.lua('vim.fn.writefile({ "ref: refs/heads/main" }, _G.CDV_TEST.root .. "/.git/HEAD")')
 	child.settle(300)
 	-- a move with no step open begins one with no trigger
-	child.lua('require("cavediver").ledger.move("closed", { name = "x.txt", lists = { "editor" } })')
+	child.lua('require("frogman").ledger.move("closed", { name = "x.txt", lists = { "editor" } })')
 	child.settle(300)
 	open_trail()
 	local wide = {}
@@ -418,7 +418,7 @@ end
 local function plant_days(days, count)
 	child.lua([[
 		local days, count = ...
-		local L = require('cavediver').ledger
+		local L = require('frogman').ledger
 		for _, n in ipairs(days) do
 			local t = os.time() - n * 86400
 			local moves = {}
@@ -445,10 +445,10 @@ T['T433 [char] (A27) opening the trail reads only what it shows'] = function()
 	Misc.restore(child, { 'a', 'b' }, 'b')
 	eq(S2.load(child), { true })
 	child.settle(300)
-	local listed = #child.lua('return require("cavediver.domains.storage").routines.trail_days(vim.fn.getcwd(-1, -1), nil)')
-	child.lua('require("cavediver.domains.storage").routines.page_reads = 0')
+	local listed = #child.lua('return require("frogman.domains.storage").routines.trail_days(vim.fn.getcwd(-1, -1), nil)')
+	child.lua('require("frogman.domains.storage").routines.page_reads = 0')
 	open_trail()
-	local reads = child.lua('return require("cavediver.domains.storage").routines.page_reads')
+	local reads = child.lua('return require("frogman.domains.storage").routines.page_reads')
 	eq({ listed = listed >= 21, opened = view() ~= vim.NIL, few = reads <= 15 }, { listed = true, opened = true, few = true })
 end
 
@@ -542,7 +542,7 @@ local function closed_twice()
 	child.setup()
 	child.lua([[
 		local t = os.time() - 3 * 86400
-		require('cavediver').ledger.data.days[os.date('%Y-%m-%d', t)] = { {
+		require('frogman').ledger.data.days[os.date('%Y-%m-%d', t)] = { {
 			seq = 0, time = t, cause = 'keymap', trigger = '<M-.>', names = {}, events = {},
 			moves = { { kind = 'closed', name = 'c.txt', lists = { 'editor' } } },
 		} }
@@ -684,7 +684,7 @@ T['T443 [char] (A27) za opens a step in a search too'] = function()
 	child.setup()
 	child.lua([[
 		local t = os.time() - 3 * 86400
-		require('cavediver').ledger.data.days[os.date('%Y-%m-%d', t)] = { {
+		require('frogman').ledger.data.days[os.date('%Y-%m-%d', t)] = { {
 			seq = 0, time = t, cause = 'keymap', trigger = '<M-.>', names = {}, events = {},
 			moves = { { kind = 'closed', name = 'c.txt', lists = { 'editor' } } },
 		} }
@@ -805,7 +805,7 @@ T['T517 [char] (A27) a day\'s first step opens from the trail\'s line before it 
 	child.settle(100)
 	-- the first close and every step before it moved to yesterday, as in an editor open past midnight
 	local moved = child.lua([[
-		local L = require('cavediver').ledger
+		local L = require('frogman').ledger
 		local today = os.date('%Y-%m-%d')
 		local first = L.data.days[today] and L.data.days[today][1]
 		if not first then return vim.NIL end
@@ -844,20 +844,20 @@ T['T518 [char] (A27) a day that gets its first move while the trail is open is r
 	child.settle(100)
 	local from = child.lua('return vim.api.nvim_get_current_win()')
 	open_trail()
-	local opened = { older = lines()[1]:find('3 days down', 1, true) ~= nil, today = #child.lua('return require("cavediver").ledger.trail()') }
+	local opened = { older = lines()[1]:find('3 days down', 1, true) ~= nil, today = #child.lua('return require("frogman").ledger.trail()') }
 	-- b closed in the window the trail came from, the trail staying open
 	child.lua('vim.api.nvim_win_call(..., function() vim.cmd("bdelete b.txt") end)', { from })
 	child.settle(300)
-	local meanwhile = { open = view() ~= vim.NIL, today = #child.lua('return require("cavediver").ledger.trail()') > 0 }
+	local meanwhile = { open = view() ~= vim.NIL, today = #child.lua('return require("frogman").ledger.trail()') > 0 }
 	type_in('L')
 	local l = lines()[1]:find('today', 1, true) ~= nil
 	type_in('q')
 	-- again for a search's <CR>: today's steps set aside by hand while the trail opens, then put back
-	child.lua('local d = require("cavediver").ledger.data.days; _G.CDV_TODAY = d[os.date("%Y-%m-%d")]; d[os.date("%Y-%m-%d")] = nil')
+	child.lua('local d = require("frogman").ledger.data.days; _G.CDV_TODAY = d[os.date("%Y-%m-%d")]; d[os.date("%Y-%m-%d")] = nil')
 	open_trail()
 	local reopened = lines()[1]:find('3 days down', 1, true) ~= nil
-	child.lua('require("cavediver").ledger.data.days[os.date("%Y-%m-%d")] = _G.CDV_TODAY')
-	child.lua('require("cavediver.domains.ui.trail").search("b.txt")')
+	child.lua('require("frogman").ledger.data.days[os.date("%Y-%m-%d")] = _G.CDV_TODAY')
+	child.lua('require("frogman.domains.ui.trail").search("b.txt")')
 	child.settle(100)
 	cursor_to(results()[1] or 1)
 	type_in('<CR>')
@@ -920,13 +920,13 @@ end
 
 T['T458 [char] (M13) the glyph sets are in the config, and a pair is changed there'] = function()
 	child.setup()
-	local defaults = child.lua('local g = require("cavediver.configs").glyphs; return { g.unicode and g.unicode.row_t, g.ascii and g.ascii.row_t }')
+	local defaults = child.lua('local g = require("frogman.configs").glyphs; return { g.unicode and g.unicode.row_t, g.ascii and g.ascii.row_t }')
 	child.lua('_G.CDV_TEST.setup({ glyphs = { unicode = { row_t = { "<", ">" } }, closed = "v" } })')
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.cmd('bdelete c.txt')
 	child.settle(300)
 	open_trail()
-	local closed = child.lua('return require("cavediver.domains.ui.routines").glyphs().closed')
+	local closed = child.lua('return require("frogman.domains.ui.routines").glyphs().closed')
 	eq({ defaults = defaults, row = line_with('<b> [c]') ~= nil, closed = closed },
 		{ defaults = { { '⦉', '⦊' }, { '<', '>' } }, row = true, closed = 'v' })
 end

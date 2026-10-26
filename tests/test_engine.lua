@@ -14,7 +14,7 @@ local T = MiniTest.new_set({
 T['T1 [char] to() on a transition with no bound hook throws from to() itself'] = function()
 	child.messages()
 	local got = child.lua([[
-		local sm = require('cavediver.engine'):create('t1')
+		local sm = require('frogman.engine'):create('t1')
 		sm:register_state('a')
 		sm:register_state('b')
 		sm.current_state = 'a'
@@ -33,7 +33,7 @@ end
 T['T2 [char] a failing hook is reported, later hooks still run, and the state still changes'] = function()
 	child.messages()
 	local got = child.lua([[
-		local sm = require('cavediver.engine'):create('t2')
+		local sm = require('frogman.engine'):create('t2')
 		sm:register_state('a')
 		sm:register_state('b')
 		sm.current_state = 'a'
@@ -56,7 +56,7 @@ end
 
 T['T3 [char] sm:state() inside a hook returns the state being left'] = function()
 	local got = child.lua([[
-		local sm = require('cavediver.engine'):create('t3')
+		local sm = require('frogman.engine'):create('t3')
 		sm:register_state('a')
 		sm:register_state('b')
 		sm.current_state = 'a'
@@ -70,7 +70,7 @@ end
 
 T['T4 [char] hooks run in class order; no mode runs only "*" hooks, a mode adds its own'] = function()
 	local got = child.lua([[
-		local sm = require('cavediver.engine'):create('t4')
+		local sm = require('frogman.engine'):create('t4')
 		sm:register_state('a')
 		sm.current_state = 'a'
 		sm:register_mode('t4_m1')
@@ -100,7 +100,7 @@ end
 
 T['T5 [char] off(from, to, name) removes that hook from that transition and nothing else'] = function()
 	local got = child.lua([[
-		local sm = require('cavediver.engine'):create('t5')
+		local sm = require('frogman.engine'):create('t5')
 		sm:register_state('a')
 		sm:register_state('b')
 		sm.current_state = 'a'
@@ -119,7 +119,7 @@ end
 
 T['T6 [char] transition modes are shared: a mode registered on one machine works on another (Q20)'] = function()
 	local got = child.lua([[
-		local E = require('cavediver.engine')
+		local E = require('frogman.engine')
 		local one = E:create('t6_one')
 		local two = E:create('t6_two')
 		one:register_state('x')
@@ -141,7 +141,7 @@ end
 
 T['T7 [char] sm.history keeps every transition: 1,000 transitions, 1,000 entries (Q21)'] = function()
 	local got = child.lua([[
-		local sm = require('cavediver.engine'):create('t7')
+		local sm = require('frogman.engine'):create('t7')
 		sm:register_state('a')
 		sm.current_state = 'a'
 		sm:on('a', 'a', 'noop', function() end, 1, true)

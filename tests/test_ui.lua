@@ -80,7 +80,7 @@ T['T119 [char] get_buffer_relationships does not throw when current = primary, o
 	child.steps({ ':e a', '<M-;><M-c>' })
 	child.settle(300)
 	local got = child.lua([[
-		local f = require('cavediver').bufferline.get_buffer_relationships
+		local f = require('frogman').bufferline.get_buffer_relationships
 		if f == nil then return { true } end
 		local ok, err = pcall(f, vim.api.nvim_get_current_buf())
 		return { ok, (not ok) and tostring(err) or nil } -- on success, err is what it returns
@@ -89,7 +89,7 @@ T['T119 [char] get_buffer_relationships does not throw when current = primary, o
 end
 
 T['T120 [char] get_smart_basename is a function'] = function()
-	eq(child.lua('return type(require("cavediver").get_smart_basename)'), 'function')
+	eq(child.lua('return type(require("frogman").get_smart_basename)'), 'function')
 end
 
 T['T121 [char] compare_buffers ranks by recency; bufnr_is_displayed is true for tracked, false for help'] = function()
@@ -98,7 +98,7 @@ T['T121 [char] compare_buffers ranks by recency; bufnr_is_displayed is true for 
 	local a, b = bufnr('a.txt'), bufnr('b.txt')
 	local got = child.lua([[
 		local a, b = ...
-		local bl = require('cavediver').bufferline
+		local bl = require('frogman').bufferline
 		return { bl.compare_buffers(b, a), bl.compare_buffers(a, b) }
 	]], { a, b })
 	eq(got, { true, false })
@@ -106,7 +106,7 @@ T['T121 [char] compare_buffers ranks by recency; bufnr_is_displayed is true for 
 	child.settle(300)
 	got = child.lua([[
 		local a = ...
-		local bl = require('cavediver').bufferline
+		local bl = require('frogman').bufferline
 		return { not not bl.bufnr_is_displayed(a), not not bl.bufnr_is_displayed(vim.api.nvim_get_current_buf()) }
 	]], { a })
 	eq(got, { true, false })
@@ -122,19 +122,19 @@ T['T122 [char] with 40 tracked buffers, bufnr_is_displayed is true for all 40 (Q
 			vim.wait(10) -- each visit settles, as when they're opened one by one
 		end
 		vim.wait(300)
-		local bl = require('cavediver').bufferline
+		local bl = require('frogman').bufferline
 		local shown = 0
 		for i = 1, 40 do
 			if bl.bufnr_is_displayed(vim.fn.bufnr(string.format('%s/n%02d.txt', root, i))) then shown = shown + 1 end
 		end
-		return { #require('cavediver.domains.history').data.ordered.crux, shown }
+		return { #require('frogman.domains.history').data.ordered.crux, shown }
 	]])
 	eq(got, { 40, 40 })
 end
 
 T['T123 [char] hide_bufferline() and show_bufferline() do not throw'] = function()
 	local got = child.lua([[
-		local ui = require('cavediver').ui
+		local ui = require('frogman').ui
 		local ok1, err1 = pcall(ui.hide_bufferline)
 		local ok2, err2 = pcall(ui.show_bufferline)
 		return { ok1, ok2, err1 and tostring(err1) or nil, err2 and tostring(err2) or nil }
@@ -146,23 +146,23 @@ T['T124 [char] while cycling, get_theme_bg_color(true) is the detached focused c
 	child.steps({ ':e a', ':e b', '<M-m>' })
 	child.settle(300)
 	local got = child.lua([[
-		local cfg = require('cavediver.configs')
+		local cfg = require('frogman.configs')
 		return {
-			require('cavediver').get_navigation_state(),
-			require('cavediver').bufferline.get_theme_bg_color(true) == cfg.colors.cokeline.bg.detached.focused,
+			require('frogman').get_navigation_state(),
+			require('frogman').bufferline.get_theme_bg_color(true) == cfg.colors.cokeline.bg.detached.focused,
 		}
 	]])
 	eq(got, { 'cycling', true })
 end
 
 T['T170 [char] the engine has no machine named window (D25)'] = function()
-	local got = child.lua('local l = require("cavediver.engine"):list(); table.sort(l); return l')
+	local got = child.lua('local l = require("frogman.engine"):list(); table.sort(l); return l')
 	eq(got, { 'history', 'navigation', 'storage', 'ui_bufferline', 'ui_indicators', 'ui_loop', 'ui_winbar' })
 end
 
 T['T169 [char] the mapped keys have their own descriptions (D3)'] = function()
 	local got = child.lua([[
-		local keymaps = require('cavediver.configs').keymaps
+		local keymaps = require('frogman.configs').keymaps
 		local desc = {}
 		for action, lhs in pairs(keymaps) do
 			if type(lhs) == 'string' then -- keymaps.views holds the keys inside cavediver's views, mapped per buffer
@@ -194,7 +194,7 @@ end
 T['T168 [char] the pick letter takes its colour from the config (D2)'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.settle(300)
-	eq(child.lua('return require("cavediver.configs").colors.cokeline.is_picking_focus'), '#4385BE')
+	eq(child.lua('return require("frogman.configs").colors.cokeline.is_picking_focus'), '#4385BE')
 	child.lua([[
 		local real = require('cokeline.mappings')
 		_G.CDV_PICK = { close = false, focus = false }
@@ -207,10 +207,10 @@ T['T168 [char] the pick letter takes its colour from the config (D2)'] = functio
 	local function pick_colours(close_col, focus_col)
 		return child.lua([[
 			local close_col, focus_col = ...
-			local colors = require('cavediver.configs').colors
+			local colors = require('frogman.configs').colors
 			colors.cokeline.is_picking_close = close_col
 			colors.cokeline.is_picking_focus = focus_col
-			local comps = require('cavediver').bufferline.cokeline.create_buffer_components()
+			local comps = require('frogman').bufferline.cokeline.create_buffer_components()
 			local buffer = {
 				number = vim.api.nvim_get_current_buf(), pick_letter = 'q', devicon = { icon = 'i' },
 				index = 1, is_focused = true,
@@ -239,7 +239,7 @@ end
 -- The index the bufferline draws for a buffer, through cavediver's own components.
 local INDEX = [==[
 package.loaded['cokeline.hlgroups'] = package.loaded['cokeline.hlgroups'] or { get_hl_attr = function() return '#000000' end }
-local comps = require('cavediver').bufferline.cokeline.create_buffer_components()
+local comps = require('frogman').bufferline.cokeline.create_buffer_components()
 return comps[4].text({ number = ..., index = 1, is_focused = true }) -- the index, fourth in the order they're drawn
 ]==]
 
@@ -265,12 +265,12 @@ T['T446 [char] (M12) the toggles\' commands, with no keymap'] = function()
 	marks.again = child.lua(INDEX, { b })
 	local shown = {}
 	child.cmd('CavediverBufferline off')
-	shown.off = not not child.lua('return require("cavediver").bufferline.bufnr_is_displayed(...)', { b })
+	shown.off = not not child.lua('return require("frogman").bufferline.bufnr_is_displayed(...)', { b })
 	child.cmd('CavediverBufferline on')
-	shown.on = not not child.lua('return require("cavediver").bufferline.bufnr_is_displayed(...)', { b })
+	shown.on = not not child.lua('return require("frogman").bufferline.bufnr_is_displayed(...)', { b })
 	local keyed = child.lua([[
 		local out = {}
-		for name, _ in pairs(require('cavediver.configs').keymaps) do
+		for name, _ in pairs(require('frogman.configs').keymaps) do
 			if name:find('winbar') or name:find('indicator') or name:find('bufferline') then table.insert(out, name) end
 		end
 		return out
@@ -294,7 +294,7 @@ T['T447 [char] (M12) with winbar.own off, cavediver writes no winbar, and offers
 	eq(S2.load(child, cwd), { true })
 	child.settle(300)
 	local loaded = child.lua('return vim.wo.winbar')
-	local segment = child.lua('return require("cavediver").winbar_segment()')
+	local segment = child.lua('return require("frogman").winbar_segment()')
 	local b = bufnr('b.txt')
 	eq({ refreshed = refreshed, loaded = loaded, current = segment:find('[' .. b .. ']', 1, true) ~= nil,
 		name = segment:find('b.txt', 1, true) ~= nil, rule = segment:find('──────', 1, true) ~= nil },
@@ -323,9 +323,9 @@ T['T527 [char] (M4, P26) the unmarked list\'s rebuild reads the marks once'] = f
 			if name == 'harpoon' then n = n + 1 end
 			return real(name, ...)
 		end
-		require('cavediver.domains.history').routines.update_buffer_history_ordered_nonharpooned()
+		require('frogman.domains.history').routines.update_buffer_history_ordered_nonharpooned()
 		_G.require = real
-		return { n = n, ordered = #require('cavediver.domains.history').data.ordered.crux }
+		return { n = n, ordered = #require('frogman.domains.history').data.ordered.crux }
 	]])
 	eq(tries, { n = 1, ordered = 5 })
 end
@@ -337,7 +337,7 @@ T['T450 [char] (M12, P26) marked buffers come from the provider'] = function()
 	]])
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.settle(300)
-	local bl = 'local bl = require("cavediver").bufferline; local b = ...; return { bl.is_harpooned(b), bl.get_harpoon_index(b) }'
+	local bl = 'local bl = require("frogman").bufferline; local b = ...; return { bl.is_harpooned(b), bl.get_harpoon_index(b) }'
 	local marked = { a = child.lua(bl, { bufnr('a.txt') })[1], b = child.lua(bl, { bufnr('b.txt') }), c = child.lua(bl, { bufnr('c.txt') })[1] }
 	child.lua([[
 		package.loaded['harpoon'] = { list = function() return { display = function() return { 'b.txt' } end } end }
@@ -353,7 +353,7 @@ end
 -- The filename the bufferline draws for a buffer, seventh in the components' order.
 local FILENAME = [==[
 package.loaded['cokeline.hlgroups'] = package.loaded['cokeline.hlgroups'] or { get_hl_attr = function() return '#000000' end }
-local comps = require('cavediver').bufferline.cokeline.create_buffer_components()
+local comps = require('frogman').bufferline.cokeline.create_buffer_components()
 return comps[7].text({ number = ..., filename = 'b.txt', index = 1, is_focused = true })
 ]==]
 
@@ -408,7 +408,7 @@ T['T629 [char] (M12) a hidden winbar is written once while a global winbar is se
 	child.steps({ ':e a', ':e b' })
 	child.cmd('vsplit')
 	child.settle()
-	child.lua('vim.o.winbar = "%f"; require("cavediver.domains.ui").hide_winbar()')
+	child.lua('vim.o.winbar = "%f"; require("frogman.domains.ui").hide_winbar()')
 	child.settle(300)
 	child.lua([[
 		_G.CDV_WINBAR_SETS = 0
@@ -422,7 +422,7 @@ end
 
 T['T649 [char] (M12) the indicators machine and the kinds agree'] = function()
 	eq(child.lua([[
-		local ui = require('cavediver.domains.ui')
+		local ui = require('frogman.domains.ui')
 		ui.sm.indicators:to(ui.states.INDICATORS.OFF)
 		local off = ui.is_hidden('indicators', 'roles')
 		ui.show_indicators()
@@ -440,7 +440,7 @@ T['T628 [char] (M12) the bufferline reads the Comment colour at each draw'] = fu
 			return hl.fg and string.format('#%06x', hl.fg) or nil
 		end }
 		vim.api.nvim_set_hl(0, 'Comment', { fg = '#111111' })
-		local components = require('cavediver').bufferline.cokeline.create_buffer_components()
+		local components = require('frogman').bufferline.cokeline.create_buffer_components()
 		vim.api.nvim_set_hl(0, 'Comment', { fg = '#222222' })
 		local fg = components[6].fg -- the unique prefix, sixth in the list
 		return type(fg) == 'function' and fg({}) or fg
@@ -517,7 +517,7 @@ T['T535 [char] (M12) a % in a file name doesn\'t break the bufferline'] = functi
 		package.preload['cokeline.hlgroups'] = function() -- the components read Comment's colour from it
 			return { get_hl_attr = function() return '#808080' end }
 		end
-		local components = require('cavediver').bufferline.cokeline.create_buffer_components()
+		local components = require('frogman').bufferline.cokeline.create_buffer_components()
 		local line, texts = "", {}
 		for _, b in ipairs(vim.api.nvim_list_bufs()) do
 			local name = vim.api.nvim_buf_get_name(b)
@@ -580,15 +580,15 @@ T['T500 [char] (A25) a window closed while cavediver was off doesn\'t break the 
 	child.steps({ ':e a' })
 	child.cmd('vsplit')
 	child.steps({ ':e b' })
-	child.lua('require("cavediver").disable()')
+	child.lua('require("frogman").disable()')
 	local split = child.lua('return vim.api.nvim_get_current_win()')
 	child.cmd('close')
-	child.lua('_G.CDV_TEST.setup({ session_dir = require("cavediver.configs").session_dir })')
+	child.lua('_G.CDV_TEST.setup({ session_dir = require("frogman.configs").session_dir })')
 	child.messages()
 	child.settle(500)
 	child.steps({ ':e c' }) -- a history transition, which runs the cleanup pass
 	child.settle(300)
-	eq({ errors = errors(), kept = child.lua('return require("cavediver.domains.window").data.crux[...] ~= nil', { split }) },
+	eq({ errors = errors(), kept = child.lua('return require("frogman.domains.window").data.crux[...] ~= nil', { split }) },
 		{ errors = {}, kept = false })
 end
 
@@ -609,10 +609,10 @@ end
 -- with no window's slots to read.
 T['T502 [char] (M12) after a load with an untracked window focused, the bufferline draws nothing it can\'t colour'] = function()
 	child.steps({ ':e a', ':e c', ':e b' })
-	eq(child.lua('return { pcall(require("cavediver").save_session, "s1") }'), { true })
+	eq(child.lua('return { pcall(require("frogman").save_session, "s1") }'), { true })
 	child.cmd('help')
 	child.settle()
-	eq(child.lua('return { pcall(require("cavediver").load_session, "s1") }'), { true })
+	eq(child.lua('return { pcall(require("frogman").load_session, "s1") }'), { true })
 	child.settle(200)
 	local dumps = child.dump_files()
 	child.messages()
@@ -620,7 +620,7 @@ T['T502 [char] (M12) after a load with an untracked window focused, the bufferli
 	child.settle(400)
 	-- what cokeline does for the README's setup: the colour callback for each buffer its filter keeps
 	child.lua([[
-		local bl = require('cavediver').bufferline
+		local bl = require('frogman').bufferline
 		for _, b in ipairs(vim.api.nvim_list_bufs()) do
 			if bl.bufnr_is_displayed(b) then pcall(bl.get_theme_fg_color, b, false) end
 		end

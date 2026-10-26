@@ -36,10 +36,10 @@ end
 
 -- save_session / load_session with exactly these arguments; { ok, err }.
 S2.save = function(child, ...)
-	return child.lua('return { pcall(require("cavediver").save_session, ...) }', { ... })
+	return child.lua('return { pcall(require("frogman").save_session, ...) }', { ... })
 end
 S2.load = function(child, ...)
-	return child.lua('return { pcall(require("cavediver").load_session, ...) }', { ... })
+	return child.lua('return { pcall(require("frogman").load_session, ...) }', { ... })
 end
 
 -- The whole editor's directory, as the child sees it.
@@ -51,7 +51,7 @@ end
 S2.loads = function(child)
 	return child.lua([[
 		local n = 0
-		for _, t in ipairs(require('cavediver.domains.storage').sm.history) do
+		for _, t in ipairs(require('frogman.domains.storage').sm.history) do
 			if tostring(t):match('%->loading$') then n = n + 1 end
 		end
 		return n
@@ -61,8 +61,8 @@ end
 -- { nav = navigation state, hist = history state }.
 S2.states = function(child)
 	return child.lua([[return {
-		nav = require('cavediver.domains.navigation').sm:state(),
-		hist = require('cavediver.domains.history').sm:state(),
+		nav = require('frogman.domains.navigation').sm:state(),
+		hist = require('frogman.domains.history').sm:state(),
 	}]])
 end
 
@@ -70,7 +70,7 @@ end
 S2.registered = function(child, stem)
 	return child.lua([[
 		local b = vim.fn.bufnr(_G.CDV_TEST.root .. '/' .. ... .. '.txt')
-		return b ~= -1 and require('cavediver.domains.history').get_hash_from_buffer(b) ~= nil
+		return b ~= -1 and require('frogman.domains.history').get_hash_from_buffer(b) ~= nil
 	]], { stem })
 end
 
@@ -227,7 +227,7 @@ S2.save_tab_session = function(child, s, name)
 	child.cmd('tabnew')
 	child.steps({ ':e c', ':e d' })
 	return child.lua([[
-		return { pcall(require('cavediver').save_session, ..., { tab = vim.api.nvim_get_current_tabpage() }) }
+		return { pcall(require('frogman').save_session, ..., { tab = vim.api.nvim_get_current_tabpage() }) }
 	]], { name })
 end
 
@@ -241,7 +241,7 @@ S2.load_tab_session = function(child, name)
 		vim.fn.bufload(b)
 		vim.bo[b].buflisted = true
 		vim.cmd('noautocmd edit d.txt')
-		return { pcall(require('cavediver').load_session, ...) }
+		return { pcall(require('frogman').load_session, ...) }
 	]], { name })
 	child.settle(300)
 	return got

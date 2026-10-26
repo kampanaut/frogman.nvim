@@ -265,7 +265,7 @@ T["T192 [char] rename_hash_in_triquetras(old, new) moves dsm[old-swap] to dsm[ne
 	-- Set up directly: a is renamed to x.
 	child.steps({ ':e x', ':e b', ':e c', ':e d', ':e a' })
 	child.lua([[
-		local t = require('cavediver.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
 		t.displacement_ternary_map = {}
 		t.displacement_secondary_map = {}
 	]])
@@ -275,7 +275,7 @@ T["T192 [char] rename_hash_in_triquetras(old, new) moves dsm[old-swap] to dsm[ne
 	K.set_note(child, 'dsm', 'a', 'c')
 	K.set_note(child, 'dsm', 'd', 'a')
 	eq(child.notes(), 'dtm{a-swap>b c>a} dsm{a-swap>b a>c d>a}')
-	child.lua('require("cavediver.domains.window.data").rename_hash_in_triquetras(...)',
+	child.lua('require("frogman.domains.window.data").rename_hash_in_triquetras(...)',
 		{ K.hash(child, 'a'), K.hash(child, 'x') })
 	eq(child.notes(), 'dtm{c>x x-swap>b} dsm{d>x x-swap>b x>c}')
 end

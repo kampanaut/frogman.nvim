@@ -70,14 +70,14 @@ T['T250 [char] (P2, A1) a buffer that turns into a terminal or help after its Bu
 	eq(term.bt, 'terminal')
 	-- The terminal isn't registered and sits in no slot (whether the window keeps its slots
 	-- while visiting is the visiting rule's test, T27).
-	eq(child.lua('return require("cavediver.domains.history").get_hash_from_buffer(...) == nil', { term.buf }), true)
+	eq(child.lua('return require("frogman.domains.history").get_hash_from_buffer(...) == nil', { term.buf }), true)
 	eq(child.slots():find('NONAME', 1, true), nil)
 	child.cmd('buffer b.txt')
 	child.cmd('help')
 	child.settle(200)
 	local help = child.lua('return { buf = vim.api.nvim_get_current_buf(), bt = vim.bo.buftype, win = vim.api.nvim_get_current_win() }')
 	eq(help.bt, 'help')
-	eq(child.lua('return require("cavediver.domains.history").get_hash_from_buffer(...) == nil', { help.buf }), true)
+	eq(child.lua('return require("frogman.domains.history").get_hash_from_buffer(...) == nil', { help.buf }), true)
 	eq(child.slots(help.win), 'no triquetra')
 end
 
@@ -108,17 +108,17 @@ end
 T['T252 [char] (P10, I17) a closed file still on the closed stack keeps its history entry'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	local h = child.hash_of('b')
-	eq(child.lua('return require("cavediver.domains.history").data.crux_internals.global[...] ~= nil', { h }), true)
+	eq(child.lua('return require("frogman.domains.history").data.crux_internals.global[...] ~= nil', { h }), true)
 	child.cmd('bdelete b.txt')
 	child.settle()
 	eq(child.closed(), 'b')
-	eq(child.lua('return require("cavediver.domains.history").data.crux_internals.global[...] ~= nil', { h }), true)
+	eq(child.lua('return require("frogman.domains.history").data.crux_internals.global[...] ~= nil', { h }), true)
 end
 
 T['T253 [char] (P11) a failing hook is reported with a stack trace'] = function()
 	child.messages()
 	child.lua([[
-		local sm = require('cavediver.engine'):create('t253')
+		local sm = require('frogman.engine'):create('t253')
 		sm:register_state('a')
 		sm:register_state('b')
 		sm.current_state = 'a'
@@ -138,7 +138,7 @@ T['T254 [char] (P12, A25) require creates no user commands and starts no timers'
 	Dec.bare(bare)
 	local got = bare.lua(Dec.TIMERS .. [[
 		local before = timers()
-		require('cavediver')
+		require('frogman')
 		local cmds = {}
 		for name in pairs(vim.api.nvim_get_commands({})) do
 			if name:find('^Cavediver') then table.insert(cmds, name) end
@@ -154,7 +154,7 @@ T['T254 [char] (P12, A25) setup() puts every autocmd it makes in the cavediver a
 		local function key(a) return table.concat({ tostring(a.id), a.event, tostring(a.group), tostring(a.pattern), tostring(a.buffer) }, '|') end
 		local before = {}
 		for _, a in ipairs(vim.api.nvim_get_autocmds({})) do before[key(a)] = true end
-		require('cavediver').setup({ session_dir = _G.CDV_ROOT .. '/sessions/' })
+		require('frogman').setup({ session_dir = _G.CDV_ROOT .. '/sessions/' })
 		local made, outside = 0, 0
 		for _, a in ipairs(vim.api.nvim_get_autocmds({})) do
 			if not before[key(a)] then
@@ -174,8 +174,8 @@ end
 T['T255 [char] (M1) the session file is named sha256(directory .. "\\n" .. name)'] = function()
 	child.steps({ ':e a', ':e b' })
 	local got = child.lua([[
-		local dir = require('cavediver.configs').session_dir
-		pcall(require('cavediver').save_session, 'work')
+		local dir = require('frogman.configs').session_dir
+		pcall(require('frogman').save_session, 'work')
 		local want = vim.fn.sha256(vim.fn.getcwd(-1, -1) .. '\n' .. 'work')
 		local names = vim.fn.isdirectory(dir) == 1 and vim.fn.readdir(dir) or {}
 		for _, f in ipairs(names) do
@@ -190,7 +190,7 @@ T['T255 [char] (M1) a session "a" in /proj and a nameless save in /proja are two
 	child.steps({ ':e a' })
 	local got = child.lua([[
 		local root = _G.CDV_TEST.root
-		local dir = require('cavediver.configs').session_dir
+		local dir = require('frogman.configs').session_dir
 		vim.fn.mkdir(root .. '/proj', 'p'); vim.fn.mkdir(root .. '/proja', 'p')
 		-- the files: a session's .d directory, which the trail's pages make too, isn't one
 		local function files()
@@ -199,9 +199,9 @@ T['T255 [char] (M1) a session "a" in /proj and a nameless save in /proja are two
 		end
 		local before = files()
 		vim.cmd('cd ' .. vim.fn.fnameescape(root .. '/proj'))
-		pcall(require('cavediver').save_session, 'a')
+		pcall(require('frogman').save_session, 'a')
 		vim.cmd('cd ' .. vim.fn.fnameescape(root .. '/proja'))
-		pcall(require('cavediver').save_session)
+		pcall(require('frogman').save_session)
 		local after = files()
 		return after - before
 	]])
@@ -404,7 +404,7 @@ T['T267 [char] (A11, D9) a note at a hash with no path is cleared when it\'s use
 	local ok, err = child.step('<M-;><M-r>')
 	eq({ ok, err }, { true, nil })
 	eq(child.lua([[
-		local t = require('cavediver.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
 		for _, v in pairs(t.displacement_ternary_map) do
 			if v == '0123456789abcdef' then return true end
 		end
@@ -508,8 +508,8 @@ T['T271 [char] (A19) with no ternary or secondary, it lands on the primary'] = f
 	local w2 = lone_split()
 	-- The queue set by hand: [a], switched on.
 	child.lua([[
-		local t = require('cavediver.domains.window').data.crux[...]
-		t.primary_buffer = { require('cavediver.domains.history').get_hash_from_filepath(_G.CDV_TEST.root .. '/a.txt') }
+		local t = require('frogman.domains.window').data.crux[...]
+		t.primary_buffer = { require('frogman.domains.history').get_hash_from_filepath(_G.CDV_TEST.root .. '/a.txt') }
 		t.primary_enabled = true
 	]], { w2 })
 	eq(child.primary(), '[a]on')
@@ -547,7 +547,7 @@ T['T271 [char] (A19) under the window view, "most recent" is the window\'s own h
 	child.cmd('only')
 	child.settle()
 	-- Empty the window's slots by hand, so only "most recent" can decide the landing.
-	child.lua('local t = require("cavediver.domains.window").data.crux[...]; t.ternary_slot = nil; t.secondary_slot = nil', { w2 })
+	child.lua('local t = require("frogman.domains.window").data.crux[...]; t.ternary_slot = nil; t.secondary_slot = nil', { w2 })
 	eq({ child.shown(), child.slots(w2) }, { 'c', '⦉-⦊ [c] ⟦-⟧' })
 	child.cmd('bdelete c.txt')
 	child.settle()
@@ -584,7 +584,7 @@ end
 T['T273 [char] (A22) the stale pass keeps the history of the file it re-points'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	local got = child.lua([[
-		local H = require('cavediver.domains.history')
+		local H = require('frogman.domains.history')
 		local path = _G.CDV_TEST.root .. '/b.txt'
 		local old = vim.fn.bufnr(path)
 		local hash = H.get_hash_from_buffer(old)
@@ -623,8 +623,8 @@ T['T275 [char] (A26) "Duplicates detected" dumps'] = function()
 	child.steps({ ':e a', ':e b', ':e c', ':e d' })
 	-- s = t, set directly (T34).
 	child.lua([[
-		local H = require('cavediver.domains.history')
-		local t = require('cavediver.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local H = require('frogman.domains.history')
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
 		local c = H.get_hash_from_filepath(_G.CDV_TEST.root .. '/c.txt')
 		t.secondary_slot, t.ternary_slot = c, c
 	]])
@@ -639,7 +639,7 @@ end
 T['T275 [char] (A26) a hook failure dumps'] = function()
 	child.steps({ ':e a' })
 	child.lua([[
-		require('cavediver.domains.history').sm:on('attached', 'attached', 't275_breaks', function() error('planted') end, 5, true)
+		require('frogman.domains.history').sm:on('attached', 'attached', 't275_breaks', function() error('planted') end, 5, true)
 	]])
 	child.messages()
 	local files = dumps_after(function() child.steps({ ':e b' }) end)
@@ -655,7 +655,7 @@ T['T276 [char] (A26) a planted I1 break dumps at the next step'] = function()
 	eq(child.slots(win1), '⦉b⦊ [c] ⟦-⟧')
 	child.cmd('vsplit')
 	child.steps({ ':e d', ':e e' })
-	child.lua('require("cavediver.domains.window").data.crux[...].secondary_slot = select(2, ...)', { win1, child.hash_of('b') })
+	child.lua('require("frogman.domains.window").data.crux[...].secondary_slot = select(2, ...)', { win1, child.hash_of('b') })
 	eq(child.slots(win1), '⦉b⦊ [c] ⟦b⟧')
 	local files = dumps_after(function() child.steps({ ':e x' }) end)
 	eq(#files, 1)
@@ -693,7 +693,7 @@ T['T278 [char] (A26) steps from keymaps and from events are tagged keymap and ev
 	eq(#files > 0, true)
 	local tagged = false
 	for _, f in ipairs(files) do
-		local text = child.lua('return require("cavediver.domains.ledger.dump").read(...) or ""', { f })
+		local text = child.lua('return require("frogman.domains.ledger.dump").read(...) or ""', { f })
 		if text:find('%f[%w]keymap%f[%W]') and text:find('%f[%w]event%f[%W]') then tagged = true end
 	end
 	eq(tagged, true)
@@ -737,7 +737,7 @@ T['T280 [char] (I6) a buffer wiped without events leaves no stale registration a
 	child.lua('vim.cmd("noautocmd bwipeout " .. vim.fn.bufnr(_G.CDV_TEST.root .. "/b.txt"))')
 	child.settle(4600)
 	eq(child.lua([[
-		local r = require('cavediver.domains.history').data.hash_buffer_registry
+		local r = require('frogman.domains.history').data.hash_buffer_registry
 		local bad = 0
 		for _, b in pairs(r.buffers) do if not vim.api.nvim_buf_is_valid(b) then bad = bad + 1 end end
 		for b in pairs(r.hashes) do if not vim.api.nvim_buf_is_valid(b) then bad = bad + 1 end end
@@ -768,7 +768,7 @@ T['T284 [char] (I9) :file onto a name not on disk in a split leaves no triquetra
 	child.settle(200)
 	eq(child.lua([[
 		local dead = 0
-		for w in pairs(require('cavediver.domains.window').data.crux) do
+		for w in pairs(require('frogman.domains.window').data.crux) do
 			if not vim.api.nvim_win_is_valid(w) then dead = dead + 1 end
 		end
 		return dead
@@ -782,9 +782,9 @@ T['T285 [char] (I14) a save with a slot holding a hash with no path succeeds'] =
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 	child.messages()
 	local got = child.lua([[
-		local t = require('cavediver.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
 		t.secondary_slot = '0123456789abcdef'
-		return { pcall(require('cavediver').save_session, vim.fn.getcwd()) }
+		return { pcall(require('frogman').save_session, vim.fn.getcwd()) }
 	]])
 	eq(got, { true })
 	eq(errors(), {})
@@ -803,10 +803,10 @@ T['T286 [char] (I21) the critical save hook throws to the caller and leaves stor
 	end
 	start(s)
 	child.steps({ ':e a' })
-	local before = child.lua('return require("cavediver").get_storage_state()')
+	local before = child.lua('return require("frogman").get_storage_state()')
 	eq(before, 'bare')
 	local got = Misc.save(child)
-	local state = child.lua('return require("cavediver").get_storage_state()')
+	local state = child.lua('return require("frogman").get_storage_state()')
 	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
 	eq({ got[1], state }, { false, before })
 end
@@ -849,14 +849,14 @@ end
 
 T['T289 [char] (D25) the window machine is gone: its file, its SHOWING_ constants and its require'] = function()
 	local requires = false
-	for _, f in ipairs(vim.fn.globpath('lua/cavediver', '**/*.lua', true, true)) do
-		if Misc.has(read(f), "require('cavediver.domains.window.sm')") or Misc.has(read(f), 'require("cavediver.domains.window.sm")') then
+	for _, f in ipairs(vim.fn.globpath('lua/frogman', '**/*.lua', true, true)) do
+		if Misc.has(read(f), "require('frogman.domains.window.sm')") or Misc.has(read(f), 'require("frogman.domains.window.sm")') then
 			requires = true
 		end
 	end
 	eq({
-		sm = vim.fn.filereadable('lua/cavediver/domains/window/sm.lua'),
-		showing = Misc.has(read('lua/cavediver/domains/window/states.lua'), 'SHOWING_'),
+		sm = vim.fn.filereadable('lua/frogman/domains/window/sm.lua'),
+		showing = Misc.has(read('lua/frogman/domains/window/states.lua'), 'SHOWING_'),
 		requires = requires,
 	}, { sm = 0, showing = false, requires = false })
 end
