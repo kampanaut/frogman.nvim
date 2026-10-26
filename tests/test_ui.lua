@@ -12,7 +12,7 @@ local T = MiniTest.new_set({
 	},
 })
 
-local function bufnr(file) return child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/" .. ...)', { file }) end
+local function bufnr(file) return child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/" .. ...)', { file }) end
 
 -- The current window's winbar, after the UI has caught up.
 local function winbar()
@@ -114,7 +114,7 @@ end
 
 T['T122 [char] with 40 tracked buffers, bufnr_is_displayed is true for all 40 (Q5)'] = function()
 	local got = child.lua([[
-		local root = _G.CDV_TEST.root
+		local root = _G.FRG_TEST.root
 		for i = 1, 40 do
 			local p = string.format('%s/n%02d.txt', root, i)
 			vim.fn.writefile({ 'x' }, p)
@@ -165,7 +165,7 @@ T['T169 [char] the mapped keys have their own descriptions (D3)'] = function()
 		local keymaps = require('frogman.configs').keymaps
 		local desc = {}
 		for action, lhs in pairs(keymaps) do
-			if type(lhs) == 'string' then -- keymaps.views holds the keys inside cavediver's views, mapped per buffer
+			if type(lhs) == 'string' then -- keymaps.views holds the keys inside frogman's views, mapped per buffer
 				desc[action] = vim.fn.maparg(lhs, 'n', false, true).desc
 			end
 		end
@@ -189,7 +189,7 @@ T['T169 [char] the mapped keys have their own descriptions (D3)'] = function()
 	})
 end
 
--- cokeline is stubbed: the picking state comes from _G.CDV_PICK, and the pick
+-- cokeline is stubbed: the picking state comes from _G.FRG_PICK, and the pick
 -- letter's component is the one whose text is the letter while picking.
 T['T168 [char] the pick letter takes its colour from the config (D2)'] = function()
 	child.steps({ ':e a', ':e b' })
@@ -197,10 +197,10 @@ T['T168 [char] the pick letter takes its colour from the config (D2)'] = functio
 	eq(child.lua('return require("frogman.configs").colors.cokeline.is_picking_focus'), '#4385BE')
 	child.lua([[
 		local real = require('cokeline.mappings')
-		_G.CDV_PICK = { close = false, focus = false }
+		_G.FRG_PICK = { close = false, focus = false }
 		package.loaded['cokeline.mappings'] = setmetatable({
-			is_picking_close = function() return _G.CDV_PICK.close end,
-			is_picking_focus = function() return _G.CDV_PICK.focus end,
+			is_picking_close = function() return _G.FRG_PICK.close end,
+			is_picking_focus = function() return _G.FRG_PICK.focus end,
 		}, { __index = real })
 		package.loaded['cokeline.hlgroups'] = { get_hl_attr = function() return '#000000' end }
 	]])
@@ -216,7 +216,7 @@ T['T168 [char] the pick letter takes its colour from the config (D2)'] = functio
 				index = 1, is_focused = true,
 			}
 			local pick
-			_G.CDV_PICK.close = true
+			_G.FRG_PICK.close = true
 			for _, c in ipairs(comps) do
 				if type(c.text) == 'function' then
 					local ok, t = pcall(c.text, buffer)
@@ -225,9 +225,9 @@ T['T168 [char] the pick letter takes its colour from the config (D2)'] = functio
 			end
 			local out = {}
 			out.close = pick.fg(buffer)
-			_G.CDV_PICK.close, _G.CDV_PICK.focus = false, true
+			_G.FRG_PICK.close, _G.FRG_PICK.focus = false, true
 			out.focus = pick.fg(buffer)
-			_G.CDV_PICK.focus = false
+			_G.FRG_PICK.focus = false
 			return out
 		]], { close_col, focus_col })
 	end
@@ -236,7 +236,7 @@ T['T168 [char] the pick letter takes its colour from the config (D2)'] = functio
 end
 
 
--- The index the bufferline draws for a buffer, through cavediver's own components.
+-- The index the bufferline draws for a buffer, through frogman's own components.
 local INDEX = [==[
 package.loaded['cokeline.hlgroups'] = package.loaded['cokeline.hlgroups'] or { get_hl_attr = function() return '#000000' end }
 local comps = require('frogman').bufferline.cokeline.create_buffer_components()
@@ -248,25 +248,25 @@ T['T446 [char] (M12) the toggles\' commands, with no keymap'] = function()
 	child.settle(300)
 	local b = bufnr('b.txt')
 	local wb = {}
-	child.cmd('CavediverWinbar off')
+	child.cmd('FrogmanWinbar off')
 	wb.off = winbar()
-	child.cmd('CavediverWinbar on')
+	child.cmd('FrogmanWinbar on')
 	wb.on = winbar() ~= ''
-	child.cmd('CavediverWinbar')
+	child.cmd('FrogmanWinbar')
 	wb.toggled = winbar()
-	child.cmd('CavediverWinbar toggle')
+	child.cmd('FrogmanWinbar toggle')
 	wb.back = winbar() ~= ''
 	local marks = { on = child.lua(INDEX, { b }) }
-	child.cmd('CavediverIndicators off')
+	child.cmd('FrogmanIndicators off')
 	child.settle(300)
 	marks.off = child.lua(INDEX, { b })
-	child.cmd('CavediverIndicators on')
+	child.cmd('FrogmanIndicators on')
 	child.settle(300)
 	marks.again = child.lua(INDEX, { b })
 	local shown = {}
-	child.cmd('CavediverBufferline off')
+	child.cmd('FrogmanBufferline off')
 	shown.off = not not child.lua('return require("frogman").bufferline.bufnr_is_displayed(...)', { b })
-	child.cmd('CavediverBufferline on')
+	child.cmd('FrogmanBufferline on')
 	shown.on = not not child.lua('return require("frogman").bufferline.bufnr_is_displayed(...)', { b })
 	local keyed = child.lua([[
 		local out = {}
@@ -283,8 +283,8 @@ T['T446 [char] (M12) the toggles\' commands, with no keymap'] = function()
 	})
 end
 
-T['T447 [char] (M12) with winbar.own off, cavediver writes no winbar, and offers its segment'] = function()
-	child.lua('_G.CDV_TEST.setup({ winbar = { own = false } })')
+T['T447 [char] (M12) with winbar.own off, frogman writes no winbar, and offers its segment'] = function()
+	child.lua('_G.FRG_TEST.setup({ winbar = { own = false } })')
 	child.steps({ ':e a', ':e b' })
 	child.lua('vim.wo.winbar = "MINE"')
 	child.settle(300)
@@ -305,7 +305,7 @@ T['T448 [char] (M12) the winbar\'s skip list is configurable, and replaces the d
 	child.steps({ ':e a', ':e b' })
 	child.lua('vim.bo.filetype = "skipme"')
 	local default = winbar() ~= ''
-	child.lua('_G.CDV_TEST.setup({ winbar = { skip_filetypes = { "skipme" } } })')
+	child.lua('_G.FRG_TEST.setup({ winbar = { skip_filetypes = { "skipme" } } })')
 	child.lua('vim.wo.winbar = ""')
 	local skipped = winbar()
 	child.lua('vim.bo.filetype = "neo-tree"')
@@ -332,8 +332,8 @@ end
 
 T['T450 [char] (M12, P26) marked buffers come from the provider'] = function()
 	child.lua([[
-		local root = _G.CDV_TEST.root
-		_G.CDV_TEST.setup({ marks_provider = function() return { root .. '/b.txt' } end })
+		local root = _G.FRG_TEST.root
+		_G.FRG_TEST.setup({ marks_provider = function() return { root .. '/b.txt' } end })
 	]])
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.settle(300)
@@ -341,7 +341,7 @@ T['T450 [char] (M12, P26) marked buffers come from the provider'] = function()
 	local marked = { a = child.lua(bl, { bufnr('a.txt') })[1], b = child.lua(bl, { bufnr('b.txt') }), c = child.lua(bl, { bufnr('c.txt') })[1] }
 	child.lua([[
 		package.loaded['harpoon'] = { list = function() return { display = function() return { 'b.txt' } end } end }
-		_G.CDV_TEST.setup({ marks_provider = false })
+		_G.FRG_TEST.setup({ marks_provider = false })
 	]])
 	child.steps({ ':e a' })
 	child.settle(300)
@@ -359,8 +359,8 @@ return comps[7].text({ number = ..., filename = 'b.txt', index = 1, is_focused =
 
 T['T456 [char] (M12) the indicators by kind'] = function()
 	child.lua([[
-		local root = _G.CDV_TEST.root
-		_G.CDV_TEST.setup({ marks_provider = function() return { root .. '/b.txt' } end })
+		local root = _G.FRG_TEST.root
+		_G.FRG_TEST.setup({ marks_provider = function() return { root .. '/b.txt' } end })
 	]])
 	child.steps({ ':e a', ':e b' })
 	child.settle(300)
@@ -370,14 +370,14 @@ T['T456 [char] (M12) the indicators by kind'] = function()
 		return { child.lua(INDEX, { b }), child.lua(FILENAME, { b }) }
 	end
 	local got = { on = drawn() }
-	child.cmd('CavediverIndicators roles off')
+	child.cmd('FrogmanIndicators roles off')
 	got.roles_off = drawn()
-	child.cmd('CavediverIndicators roles on')
-	child.cmd('CavediverIndicators harpoon off')
+	child.cmd('FrogmanIndicators roles on')
+	child.cmd('FrogmanIndicators harpoon off')
 	got.harpoon_off = drawn()
-	child.cmd('CavediverIndicators off')
+	child.cmd('FrogmanIndicators off')
 	got.off = drawn()
-	child.cmd('CavediverIndicators on')
+	child.cmd('FrogmanIndicators on')
 	got.again = drawn()
 	eq(got, {
 		on = { '[' .. b .. '] 󰛢  ', 'b.txt ⥤ {1}' },
@@ -394,16 +394,16 @@ T['T560 [char] (M12) a refresh writes no winbar that hasn\'t changed'] = functio
 	child.cmd('help')
 	child.settle(300)
 	child.lua([[
-		_G.CDV_WINBAR_SETS = 0
+		_G.FRG_WINBAR_SETS = 0
 		vim.api.nvim_create_autocmd('OptionSet', { pattern = 'winbar', callback = function()
-			_G.CDV_WINBAR_SETS = _G.CDV_WINBAR_SETS + 1
+			_G.FRG_WINBAR_SETS = _G.FRG_WINBAR_SETS + 1
 		end })
 	]])
 	child.settle(600)
-	eq(child.lua('return _G.CDV_WINBAR_SETS'), 0)
+	eq(child.lua('return _G.FRG_WINBAR_SETS'), 0)
 end
 
--- cavediver's winbar hidden while a global 'winbar' is set, as a user's statusline plugin sets one.
+-- frogman's winbar hidden while a global 'winbar' is set, as a user's statusline plugin sets one.
 T['T629 [char] (M12) a hidden winbar is written once while a global winbar is set'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.cmd('vsplit')
@@ -411,13 +411,13 @@ T['T629 [char] (M12) a hidden winbar is written once while a global winbar is se
 	child.lua('vim.o.winbar = "%f"; require("frogman.domains.ui").hide_winbar()')
 	child.settle(300)
 	child.lua([[
-		_G.CDV_WINBAR_SETS = 0
+		_G.FRG_WINBAR_SETS = 0
 		vim.api.nvim_create_autocmd('OptionSet', { pattern = 'winbar', callback = function()
-			_G.CDV_WINBAR_SETS = _G.CDV_WINBAR_SETS + 1
+			_G.FRG_WINBAR_SETS = _G.FRG_WINBAR_SETS + 1
 		end })
 	]])
 	child.settle(600)
-	eq(child.lua('return _G.CDV_WINBAR_SETS'), 0)
+	eq(child.lua('return _G.FRG_WINBAR_SETS'), 0)
 end
 
 T['T649 [char] (M12) the indicators machine and the kinds agree'] = function()
@@ -478,7 +478,7 @@ T['T457 [char] (M12) a window with no current slot shows its visit alone'] = fun
 		{ piece = true, group = true, centred = true, nc = true, mine = 'MINE', gone = '' })
 	-- not owned: none drawn
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ winbar = { own = false } })')
+	child.lua('_G.FRG_TEST.setup({ winbar = { own = false } })')
 	child.steps({ ':e a' })
 	child.cmd('help')
 	child.settle(300)
@@ -492,9 +492,9 @@ local function errors()
 end
 
 T['T498 [char] (M12) a % in a file name doesn\'t break the winbar'] = function()
-	child.lua('vim.fn.writefile({ "x" }, _G.CDV_TEST.root .. "/50% off.txt")')
+	child.lua('vim.fn.writefile({ "x" }, _G.FRG_TEST.root .. "/50% off.txt")')
 	child.steps({ ':e a' })
-	child.lua('vim.cmd.edit(vim.fn.fnameescape(_G.CDV_TEST.root .. "/50% off.txt"))')
+	child.lua('vim.cmd.edit(vim.fn.fnameescape(_G.FRG_TEST.root .. "/50% off.txt"))')
 	child.messages()
 	local bar = winbar()
 	eq({ errors = errors(), named = bar:find('50%% off.txt', 1, true) ~= nil }, { errors = {}, named = true })
@@ -504,14 +504,14 @@ end
 -- the tabline as they are, so the tabline they make has to evaluate cleanly.
 T['T535 [char] (M12) a % in a file name doesn\'t break the bufferline'] = function()
 	child.lua([[
-		local root = _G.CDV_TEST.root
+		local root = _G.FRG_TEST.root
 		vim.fn.writefile({ "x" }, root .. "/100%done.txt")
 		vim.fn.mkdir(root .. "/sub/50%", "p")
 		vim.fn.writefile({ "x" }, root .. "/sub/50%/c.txt")
 	]])
 	child.steps({ ':e a', ':e c' })
-	child.lua('vim.cmd.edit(vim.fn.fnameescape(_G.CDV_TEST.root .. "/100%done.txt"))')
-	child.lua('vim.cmd.edit(vim.fn.fnameescape(_G.CDV_TEST.root .. "/sub/50%/c.txt"))')
+	child.lua('vim.cmd.edit(vim.fn.fnameescape(_G.FRG_TEST.root .. "/100%done.txt"))')
+	child.lua('vim.cmd.edit(vim.fn.fnameescape(_G.FRG_TEST.root .. "/sub/50%/c.txt"))')
 	child.settle(300)
 	local out = child.lua([[
 		package.preload['cokeline.hlgroups'] = function() -- the components read Comment's colour from it
@@ -548,15 +548,15 @@ end
 -- of its own, a window born untracked. Neovim takes no % in a filetype, so a command is the way in.
 T['T536 [char] (M12) a % in a visited buffer\'s label is doubled once'] = function()
 	child.lua([[
-		local script = _G.CDV_TEST.root .. "/50%x"
+		local script = _G.FRG_TEST.root .. "/50%x"
 		vim.fn.writefile({ "#!/bin/sh", "sleep 30" }, script)
 		vim.fn.setfperm(script, "rwx------")
 	]])
 	child.steps({ ':e a' })
-	child.lua('vim.cmd.terminal(vim.fn.fnameescape(_G.CDV_TEST.root .. "/50%x"))')
+	child.lua('vim.cmd.terminal(vim.fn.fnameescape(_G.FRG_TEST.root .. "/50%x"))')
 	child.settle(300)
 	local slot = child.lua('return vim.wo.winbar')
-	child.lua('vim.cmd("split"); vim.cmd.terminal(vim.fn.fnameescape(_G.CDV_TEST.root .. "/50%x"))')
+	child.lua('vim.cmd("split"); vim.cmd.terminal(vim.fn.fnameescape(_G.FRG_TEST.root .. "/50%x"))')
 	child.settle(300)
 	local alone = child.lua('return vim.wo.winbar')
 	local function once(bar) return bar:find("50%%x", 1, true) ~= nil and bar:find("50%%%%x", 1, true) == nil end
@@ -575,15 +575,15 @@ T['T499 [char] (M12) a dead ternary is repaired on the spot, whatever the second
 	eq(errors(), {})
 end
 
--- The split closes while cavediver is off, so its WinClosed never runs.
-T['T500 [char] (A25) a window closed while cavediver was off doesn\'t break the refresh once it\'s back on'] = function()
+-- The split closes while frogman is off, so its WinClosed never runs.
+T['T500 [char] (A25) a window closed while frogman was off doesn\'t break the refresh once it\'s back on'] = function()
 	child.steps({ ':e a' })
 	child.cmd('vsplit')
 	child.steps({ ':e b' })
 	child.lua('require("frogman").disable()')
 	local split = child.lua('return vim.api.nvim_get_current_win()')
 	child.cmd('close')
-	child.lua('_G.CDV_TEST.setup({ session_dir = require("frogman.configs").session_dir })')
+	child.lua('_G.FRG_TEST.setup({ session_dir = require("frogman.configs").session_dir })')
 	child.messages()
 	child.settle(500)
 	child.steps({ ':e c' }) -- a history transition, which runs the cleanup pass

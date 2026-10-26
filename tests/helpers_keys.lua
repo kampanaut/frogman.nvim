@@ -84,7 +84,7 @@ K.set_note = function(child, which, key, value, raw)
 	]], { which, key, value, raw or false })
 end
 
--- The hash cavediver holds for a stem.
+-- The hash frogman holds for a stem.
 K.hash = function(child, stem)
 	return child.lua(PRELUDE .. 'return hash(...)', { stem })
 end
@@ -106,14 +106,14 @@ end
 -- Run some Lua in the child and press a key in the same call, so no timer
 -- tick (the UI's cleanup) can run in between. Returns ok, err.
 K.press_after = function(child, code, lhs)
-	local res = child.lua('(function() ' .. code .. ' end)(); return { _G.CDV_TEST.press(...) }', { lhs })
+	local res = child.lua('(function() ' .. code .. ' end)(); return { _G.FRG_TEST.press(...) }', { lhs })
 	child.settle()
 	return res[1], res[2]
 end
 
 -- Delete a project file on disk (it stays open if its buffer is).
 K.rm_code = function(stem)
-	return string.format("os.remove(_G.CDV_TEST.root .. '/%s.txt')", stem)
+	return string.format("os.remove(_G.FRG_TEST.root .. '/%s.txt')", stem)
 end
 
 -- Press a cycle key until the window shows the stem, then stop (no pick).
@@ -215,7 +215,7 @@ end
 local res = { steps = 0, errors = 0, hook_failures = 0, actions = {} }
 
 local function press(lhs)
-	local ok, err = _G.CDV_TEST.press(lhs)
+	local ok, err = _G.FRG_TEST.press(lhs)
 	if not ok then res.errors = res.errors + 1 end
 	return ok, err
 end
@@ -264,8 +264,8 @@ local function check()
 						map = which,
 						current = name(x),
 						occupant = name(occupant),
-						slots = _G.CDV_TEST.slots(win),
-						notes = _G.CDV_TEST.notes(win),
+						slots = _G.FRG_TEST.slots(win),
+						notes = _G.FRG_TEST.notes(win),
 					}
 				end
 			end
@@ -274,7 +274,7 @@ local function check()
 end
 
 for _ = 1, nkeys do
-	_G.CDV_NOTES = {}
+	_G.FRG_NOTES = {}
 	local label = run(actions[rnd(#actions)])
 	vim.wait(10) -- the editor settles between keys, as when they're typed
 	table.insert(res.actions, label)
@@ -285,7 +285,7 @@ for _ = 1, nkeys do
 		res.queued = table.concat(queued, ', ')
 		return res
 	end
-	for _, n in ipairs(_G.CDV_NOTES) do
+	for _, n in ipairs(_G.FRG_NOTES) do
 		if n.msg:match("^Hook '") then res.hook_failures = res.hook_failures + 1 end
 	end
 	local brk = check()
@@ -294,7 +294,7 @@ for _ = 1, nkeys do
 		return res
 	end
 end
-_G.CDV_NOTES = {}
+_G.FRG_NOTES = {}
 return res
 ]==]
 

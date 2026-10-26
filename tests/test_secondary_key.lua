@@ -163,11 +163,11 @@ T['T571 [char] (A25, M11) a key follows its export as reassigned'] = function()
 	child.lua([[
 		require('frogman').toggle_secondary = function()
 			local step = require('frogman').ledger.data.open
-			_G.CDV_RAN = step and step.trigger or 'no step'
+			_G.FRG_RAN = step and step.trigger or 'no step'
 		end
 	]])
 	child.steps({ '<M-f>' })
-	eq(child.lua('return _G.CDV_RAN or vim.NIL'), '<M-f>')
+	eq(child.lua('return _G.FRG_RAN or vim.NIL'), '<M-f>')
 end
 
 -- A No Name buffer N holding `lines`, made with :enew in the current window; returns its hash.

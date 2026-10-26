@@ -102,7 +102,7 @@ Dec.walks = function(child, opts)
 		child.lua(WALKER .. '\n' .. EXTRA_CHECKS)
 		local seed = opts.seed * 1000 + w
 		local dumps = child.dump_files()
-		local broke = child.lua('return _G.CDV_WALK(...)', { seed, opts.steps, opts.actions, opts.check })
+		local broke = child.lua('return _G.FRG_WALK(...)', { seed, opts.steps, opts.actions, opts.check })
 		if broke ~= vim.NIL and broke ~= nil then
 			return string.format('%s broke in walk %d (seed %d), step %d: %s\n  route: %s',
 				opts.check, w, seed, broke.step, broke.detail, broke.trail)
@@ -195,7 +195,7 @@ local function timers()
 end
 ]]
 
--- A child with cavediver on the runtimepath but not required, in an empty
+-- A child with frogman on the runtimepath but not required, in an empty
 -- temporary directory, notifications collected (as tests/test_setup.lua does).
 Dec.bare = function(child)
 	child.restart({ '-u', 'scripts/minimal_init.lua' })
@@ -206,9 +206,9 @@ Dec.bare = function(child)
 		local root = vim.fn.tempname()
 		vim.fn.mkdir(root, 'p')
 		vim.cmd('cd ' .. vim.fn.fnameescape(root))
-		_G.CDV_ROOT = root
-		_G.CDV_NOTES = {}
-		vim.notify = function(msg, level) table.insert(_G.CDV_NOTES, { msg = tostring(msg), level = level }) end
+		_G.FRG_ROOT = root
+		_G.FRG_NOTES = {}
+		vim.notify = function(msg, level) table.insert(_G.FRG_NOTES, { msg = tostring(msg), level = level }) end
 	]])
 end
 

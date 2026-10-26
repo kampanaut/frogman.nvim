@@ -118,7 +118,7 @@ local function settle_rename(bufnr, rename)
 		ledger.move("moved", { subject = rename.hash, name = old_name, words = moved_from:match("^NONAME_") and
 			"written as " .. new_label .. ": a move" or "renamed to " .. new_label .. ": a move" })
 	elseif routines.get_hash_from_buffer(bufnr) == rename.hash and routines.is_trackable(bufnr) then
-		-- a new name cavediver doesn't track is no copy: the old name is closed all the same, and its close says so
+		-- a new name frogman doesn't track is no copy: the old name is closed all the same, and its close says so
 		ledger.move("copied", { subject = rename.hash, name = old_name,
 			words = "renamed to " .. new_label .. ": a copy, " .. (old_name or "the old name") .. " is still on disk" })
 	end
@@ -144,15 +144,15 @@ end
 
 local M = {}
 
----Create the history domain's autocmds in cavediver's augroup.
+---Create the history domain's autocmds in frogman's augroup.
 ---
 ---Called by setup(), so nothing runs at require. Calling it again after the group is cleared
 ---replaces them cleanly.
 ---
----@param group integer The cavediver augroup
+---@param group integer The frogman augroup
 ---@return nil
 function M.init_autocmds(group)
-	-- where you are can change without cavediver seeing it: the label is read again at these
+	-- where you are can change without frogman seeing it: the label is read again at these
 	-- settle points, and the files gone from disk are marked with it, checked as a tick checks them.
 	vim.api.nvim_create_autocmd({ "FocusGained", "ShellCmdPost", "TermLeave", "DirChanged" }, {
 		group = group,

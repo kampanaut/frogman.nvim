@@ -1,4 +1,4 @@
----History state constants for the cavediver history domain state machine.
+---History state constants for the frogman history domain state machine.
 ---
 ---The history domain manages when buffer history tracking is active or suspended.
 ---History is typically detached during buffer cycling to prevent interference

@@ -101,7 +101,7 @@ end
 
 T['T565 [char] (A27) a step the ring drops drops its rows'] = function()
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ ledger = { ring = 5 } })')
+	child.lua('_G.FRG_TEST.setup({ ledger = { ring = 5 } })')
 	child.steps({ ':e a', ':e b', ':bdelete b.txt' })
 	for _ = 1, 6 do
 		child.steps({ '<M-f>' })
@@ -124,7 +124,7 @@ end
 T['T392 [char] (A27, A26) the ring keeps the last N steps, N from ledger.ring, 1,000 by default'] = function()
 	child.setup()
 	eq(child.lua('return require("frogman.configs").ledger.ring'), 1000)
-	child.lua('_G.CDV_TEST.setup({ ledger = { ring = 5 } })')
+	child.lua('_G.FRG_TEST.setup({ ledger = { ring = 5 } })')
 	child.steps({ ':e a', ':e b' })
 	for _ = 1, 8 do
 		child.steps({ '<M-f>' })
@@ -203,7 +203,7 @@ end
 T['T396 [char] (A27) a path typed on the command line is kept as its last part'] = function()
 	child.setup()
 	child.steps({ ':e a' })
-	local root = child.lua('return _G.CDV_TEST.root')
+	local root = child.lua('return _G.FRG_TEST.root')
 	child.type_keys(':e ' .. root .. '/b.txt<CR>')
 	child.settle(100)
 	local triggers = {}
@@ -231,7 +231,7 @@ end
 
 T['T397 [char] (A27) a step that changes no row and makes no move is not kept'] = function()
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ cleanup_interval = 100 })')
+	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 100 })')
 	child.steps({ ':e a', ':e b' })
 	local n = #steps()
 	child.settle(500)
@@ -246,14 +246,14 @@ end
 -- timer's tick or the UI's refresh repairs it, whichever comes first.
 T['T398 [char] (A27, A22) the cleanup says nothing, and its repair is a move'] = function()
 	child.setup()
-	child.lua('_G.CDV_TEST.setup({ cleanup_interval = 100 })')
+	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 100 })')
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.messages()
 	child.lua('vim.cmd("noautocmd bwipeout " .. vim.fn.bufnr("b.txt"))')
 	child.settle(500)
 	local report = false
 	for _, m in ipairs(child.messages()) do
-		if m.msg:find('CAVEDIVER CLEANUP REPORT', 1, true) then report = true end
+		if m.msg:find('FROGMAN CLEANUP REPORT', 1, true) then report = true end
 	end
 	local found
 	for _, s in ipairs(steps('trail')) do
@@ -289,8 +289,8 @@ T['T399 [char] (A27, A16) <M-S-w> on an empty list while other lists hold closed
 	child.steps({ '<M-S-w>' })
 	local three = said(vim.log.levels.WARN)
 	eq({ one = one, three = three }, {
-		one = { "No closed buffers to reopen in this tab.\n1 is on another tab's list: :CavediverClosed" },
-		three = { "No closed buffers to reopen in this tab.\n3 are on other tabs' lists: :CavediverClosed" },
+		one = { "No closed buffers to reopen in this tab.\n1 is on another tab's list: :FrogmanClosed" },
+		three = { "No closed buffers to reopen in this tab.\n3 are on other tabs' lists: :FrogmanClosed" },
 	})
 end
 
@@ -703,19 +703,19 @@ end
 T['T418 [char] (A27, M14) a change of label is a step, and tags are moves'] = function()
 	child.setup()
 	child.lua([[
-		vim.fn.mkdir(_G.CDV_TEST.root .. '/.git', 'p')
-		vim.fn.writefile({ 'ref: refs/heads/feature' }, _G.CDV_TEST.root .. '/.git/HEAD')
+		vim.fn.mkdir(_G.FRG_TEST.root .. '/.git', 'p')
+		vim.fn.writefile({ 'ref: refs/heads/feature' }, _G.FRG_TEST.root .. '/.git/HEAD')
 	]])
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	child.cmd('bdelete b.txt')
 	child.settle()
 	child.cmd('doautocmd FocusGained')
 	child.settle()
-	child.lua('os.remove(_G.CDV_TEST.root .. "/b.txt")')
-	child.lua('vim.fn.writefile({ "ref: refs/heads/main" }, _G.CDV_TEST.root .. "/.git/HEAD")')
+	child.lua('os.remove(_G.FRG_TEST.root .. "/b.txt")')
+	child.lua('vim.fn.writefile({ "ref: refs/heads/main" }, _G.FRG_TEST.root .. "/.git/HEAD")')
 	child.settle(300)
 	local gone = found('gone', 'b.txt')
-	child.lua('vim.fn.writefile({ "b" }, _G.CDV_TEST.root .. "/b.txt")')
+	child.lua('vim.fn.writefile({ "b" }, _G.FRG_TEST.root .. "/b.txt")')
 	child.lua('require("frogman.domains.history").cleanup_system()')
 	child.settle(100)
 	local back = found('back', 'b.txt')
@@ -978,8 +978,8 @@ T['T604 [char] (A27) a day let go while the view is open is still shown'] = func
 	local shown = child.lua([[
 		local day = ...
 		local L = require('frogman').ledger
-		_G.CDV_READER = require('frogman.domains.storage').routines.trail_reader()
-		local n = #_G.CDV_READER.steps(day)
+		_G.FRG_READER = require('frogman.domains.storage').routines.trail_reader()
+		local n = #_G.FRG_READER.steps(day)
 		for i, step in ipairs(L.data.ring) do
 			if step.trigger == 'yesterday' then table.remove(L.data.ring, i) break end
 		end
@@ -990,7 +990,7 @@ T['T604 [char] (A27) a day let go while the view is open is still shown'] = func
 	local got = child.lua([[
 		local day = ...
 		local triggers = {}
-		for _, step in ipairs(_G.CDV_READER.steps(day)) do table.insert(triggers, step.trigger) end
+		for _, step in ipairs(_G.FRG_READER.steps(day)) do table.insert(triggers, step.trigger) end
 		return { forgotten = #require('frogman').ledger.trail(day) == 0, triggers = triggers }
 	]], { yesterday })
 	eq({ shown = shown, got = got }, { shown = { held = 1, n = 1 }, got = { forgotten = true, triggers = { 'yesterday' } } })
@@ -1022,18 +1022,18 @@ T['T606 [char] (A27) a day\'s steps made before any whole-editor session stay un
 		local d = os.date('*t', os.time() - 86400)
 		d.hour, d.min, d.sec = 12, 0, 0 -- yesterday's noon, whatever the time of the run
 		local t = os.time(d)
-		_G.CDV_DAY = os.date('%Y-%m-%d', t)
-		_G.CDV_STEP = { seq = -500, time = t, cause = 'keymap', trigger = 'early', names = {}, events = {},
+		_G.FRG_DAY = os.date('%Y-%m-%d', t)
+		_G.FRG_STEP = { seq = -500, time = t, cause = 'keymap', trigger = 'early', names = {}, events = {},
 			moves = { { kind = 'closed', name = 'early.txt', lists = { 't' } } },
 			pool = H.pool_of_tab(vim.api.nvim_get_current_tabpage()).id, epoch = L.data.epoch }
-		L.data.days[_G.CDV_DAY] = { _G.CDV_STEP }
+		L.data.days[_G.FRG_DAY] = { _G.FRG_STEP }
 		local data = require('frogman.domains.storage').data
 		return data.unnamed == nil and data.editor_session == nil
 	]])
 	child.cmd('bdelete c.txt')
 	child.settle(1500)
 	local got = child.lua([[
-		return { noted = _G.CDV_STEP.written_to ~= nil, held = #require('frogman').ledger.trail(_G.CDV_DAY) }
+		return { noted = _G.FRG_STEP.written_to ~= nil, held = #require('frogman').ledger.trail(_G.FRG_DAY) }
 	]])
 	eq({ unclaimed = unclaimed, got = got }, { unclaimed = true, got = { noted = true, held = 1 } })
 end

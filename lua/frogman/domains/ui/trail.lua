@@ -1,13 +1,13 @@
 ---UI domain trail view for the ledger's steps and moves.
 ---
----This module draws :CavediverTrail, a day's page of the ledger's steps and moves in the
+---This module draws :FrogmanTrail, a day's page of the ledger's steps and moves in the
 ---trail's language, or a search's results across every page. Every line is drawn from the
 ---records, and every key reads what a line stands for from the map the drawing keeps, never
 ---from the text.
 
 local M = {}
 
-local ns = vim.api.nvim_create_namespace("cavediver_trail")
+local ns = vim.api.nvim_create_namespace("frogman_trail")
 
 -- The view open now: { buf, win, from, reader, days, day, open, more, mode, query, results, lines }
 local view = nil
@@ -62,9 +62,9 @@ local function row_segs(glyphs, names, row)
 	local slot_name = require('frogman.domains.ledger').slot_name
 	row = row or {}
 	return {
-		{ glyphs.row_t[1] .. slot_name(row.t, names) .. glyphs.row_t[2], "CavediverTrailRowT" }, { " ", nil },
-		{ glyphs.row_c[1] .. slot_name(row.c, names) .. glyphs.row_c[2], "CavediverTrailRowC" }, { " ", nil },
-		{ glyphs.row_s[1] .. slot_name(row.s, names) .. glyphs.row_s[2], "CavediverTrailRowS" },
+		{ glyphs.row_t[1] .. slot_name(row.t, names) .. glyphs.row_t[2], "FrogmanTrailRowT" }, { " ", nil },
+		{ glyphs.row_c[1] .. slot_name(row.c, names) .. glyphs.row_c[2], "FrogmanTrailRowC" }, { " ", nil },
+		{ glyphs.row_s[1] .. slot_name(row.s, names) .. glyphs.row_s[2], "FrogmanTrailRowS" },
 	}
 end
 
@@ -101,7 +101,7 @@ end
 ---labels is put in the set by its text.
 ---
 ---@param glyphs table The glyphs in use
----@param step CavediverLedgerStep The step
+---@param step FrogmanLedgerStep The step
 ---@return string|nil trigger Its trigger as drawn, nil if it has none
 local function trigger_of(glyphs, step)
 	local function glyph(name)
@@ -130,7 +130,7 @@ local function list_segs(glyphs, lists, group)
 		if i > 1 then
 			table.insert(segs, { ", ", group })
 		end
-		table.insert(segs, { glyphs.list .. list, "CavediverTrailList", target = { kind = "list", value = list } })
+		table.insert(segs, { glyphs.list .. list, "FrogmanTrailList", target = { kind = "list", value = list } })
 	end
 	return segs
 end
@@ -143,7 +143,7 @@ end
 ---
 ---@param glyphs table The glyphs in use
 ---@param names table<string, string> File hash → basename, as the step keeps them
----@param move CavediverLedgerMove The move
+---@param move FrogmanLedgerMove The move
 ---@param group string The highlight group of its words
 ---@return table[] segs The move's pieces, in the trail's language
 local function move_segs(glyphs, names, move, group)
@@ -178,7 +178,7 @@ local function move_segs(glyphs, names, move, group)
 	end
 	local segs = { { words, group } }
 	if tag then
-		table.insert(segs, { glyphs.tag .. tag, "CavediverTrailTag" })
+		table.insert(segs, { glyphs.tag .. tag, "FrogmanTrailTag" })
 	end
 	if move.lists and #move.lists > 0 then
 		table.insert(segs, { glyphs.dot, group })
@@ -212,15 +212,15 @@ end
 ---shading off it's the plain rule.
 local function fill_of(glyphs, depth, shade)
 	if not shade then
-		return glyphs.rule, "CavediverTrailGutter"
+		return glyphs.rule, "FrogmanTrailGutter"
 	elseif depth <= 0 then
-		return glyphs.shade0, "CavediverTrailWave0"
+		return glyphs.shade0, "FrogmanTrailWave0"
 	elseif depth <= 7 then
-		return glyphs.shade1, "CavediverTrailWave1"
+		return glyphs.shade1, "FrogmanTrailWave1"
 	elseif depth <= 30 then
-		return glyphs.shade2, "CavediverTrailWave2"
+		return glyphs.shade2, "FrogmanTrailWave2"
 	end
-	return glyphs.shade3, "CavediverTrailWave3"
+	return glyphs.shade3, "FrogmanTrailWave3"
 end
 
 ---Get the days the gauge draws, up to 15 around the one shown.
@@ -249,9 +249,9 @@ local function gauge_segs(glyphs, counts, shown, first, last)
 	for i = first, last do
 		local bar = bars[math.max(1, math.ceil(counts[i] / most * #bars))]
 		if i == shown then
-			table.insert(out, { glyphs.now_left .. bar .. glyphs.now_right, "CavediverTrailGaugeNow" })
+			table.insert(out, { glyphs.now_left .. bar .. glyphs.now_right, "FrogmanTrailGaugeNow" })
 		else
-			table.insert(out, { bar, "CavediverTrailGauge" })
+			table.insert(out, { bar, "FrogmanTrailGauge" })
 		end
 	end
 	return out
@@ -286,10 +286,10 @@ local function header(glyphs, keys, winwidth)
 	local ch, group = fill_of(glyphs, depth, configured.shade ~= false)
 	local date = day and os.date("%a %d %b %Y", noon_of(day)) or os.date("%a %d %b %Y")
 	local mid = {
-		{ glyphs.title, "CavediverTrailTitle" }, { " ", nil }, { date, "CavediverTrailDate" },
-		{ glyphs.dot, "CavediverTrailCount" },
-		{ depth == 0 and "today" or (depth .. (depth == 1 and " day down" or " days down")), "CavediverTrailDepth" },
-		{ glyphs.dot, "CavediverTrailCount" }, { total .. (total == 1 and " move" or " moves"), "CavediverTrailCount" },
+		{ glyphs.title, "FrogmanTrailTitle" }, { " ", nil }, { date, "FrogmanTrailDate" },
+		{ glyphs.dot, "FrogmanTrailCount" },
+		{ depth == 0 and "today" or (depth .. (depth == 1 and " day down" or " days down")), "FrogmanTrailDepth" },
+		{ glyphs.dot, "FrogmanTrailCount" }, { total .. (total == 1 and " move" or " moves"), "FrogmanTrailCount" },
 	}
 	local tally = {}
 	if configured.tally ~= false then
@@ -301,7 +301,7 @@ local function header(glyphs, keys, winwidth)
 		for _, entry in ipairs(TALLY) do
 			if families[entry[1]] then
 				table.insert(tally, { "  ", nil })
-				table.insert(tally, { (glyphs[entry[2]] or "?") .. families[entry[1]], "CavediverTrail" .. entry[1] })
+				table.insert(tally, { (glyphs[entry[2]] or "?") .. families[entry[1]], "FrogmanTrail" .. entry[1] })
 			end
 		end
 	end
@@ -322,8 +322,8 @@ local function header(glyphs, keys, winwidth)
 		return custom
 	end
 	-- a key is named as it's mapped, and one set to false, so left unmapped, isn't
-	local l = { { glyphs.older .. (keys.previous_section and (" " .. keys.previous_section) or ""), view.day > 1 and "CavediverTrailKeyOn" or "CavediverTrailKeyOff" }, { " ", nil } }
-	local r = { { " ", nil }, { (keys.next_section and (keys.next_section .. " ") or "") .. glyphs.newer, view.day < #view.days and "CavediverTrailKeyOn" or "CavediverTrailKeyOff" } }
+	local l = { { glyphs.older .. (keys.previous_section and (" " .. keys.previous_section) or ""), view.day > 1 and "FrogmanTrailKeyOn" or "FrogmanTrailKeyOff" }, { " ", nil } }
+	local r = { { " ", nil }, { (keys.next_section and (keys.next_section .. " ") or "") .. glyphs.newer, view.day < #view.days and "FrogmanTrailKeyOn" or "FrogmanTrailKeyOff" } }
 	local function fits(segs)
 		return width(l) + width(r) + width(segs) + 2 + 8 <= winwidth
 	end
@@ -362,8 +362,8 @@ local of_this_editor = require('frogman.domains.ledger').of_this_editor
 ---plain name. A window's id is only this editor's to follow: on a line an earlier editor wrote, the
 ---window is marked `earlier` and has no id, since ids start again in every editor.
 ---
----@param move CavediverLedgerMove The move
----@param step CavediverLedgerStep The step it's on
+---@param move FrogmanLedgerMove The move
+---@param step FrogmanLedgerStep The step it's on
 ---@return table target The target's `kind`, `value` and `name`
 target_of = function(move, step)
 	local subject = move.subject
@@ -385,7 +385,7 @@ end
 ---A step is found by its own table, so only this editor's steps that the ring still keeps are
 ---in it.
 ---
----@return table<CavediverLedgerStep, integer> in_ring Each step's index in the ring
+---@return table<FrogmanLedgerStep, integer> in_ring Each step's index in the ring
 local function ring_index()
 	local in_ring = {}
 	for i, step in ipairs(require('frogman.domains.ledger').data.ring) do
@@ -445,21 +445,21 @@ local function ring_lines(glyphs, own, before, key)
 	if hidden > 0 then
 		local fold = (require('frogman.configs').keymaps.views or {}).fold -- named only when it's mapped
 		table.insert(lines, { segs = { { "        " .. glyphs.ring .. " " .. glyphs.more .. " " .. hidden ..
-			(hidden == 1 and " earlier step" or " earlier steps"), "CavediverTrailRing" },
-			{ "   (" .. (fold and (fold .. " for ") or "") .. CHUNK .. " more)", "CavediverTrailDim" } },
+			(hidden == 1 and " earlier step" or " earlier steps"), "FrogmanTrailRing" },
+			{ "   (" .. (fold and (fold .. " for ") or "") .. CHUNK .. " more)", "FrogmanTrailDim" } },
 			more = key })
 	end
 	for i = hidden + 1, #earlier do
 		local ringed = earlier[i]
-		local r = { { "        " .. glyphs.ring .. " " .. os.date("%H:%M:%S", math.floor(ringed.time)) .. "  ", "CavediverTrailRing" },
-			{ string.format("%-15s", trigger_of(glyphs, ringed) or ""), "CavediverTrailTrigger" },
-			{ (ringed.win and ledger.window_name(ringed.win) or "") .. "   ", "CavediverTrailRing" } }
+		local r = { { "        " .. glyphs.ring .. " " .. os.date("%H:%M:%S", math.floor(ringed.time)) .. "  ", "FrogmanTrailRing" },
+			{ string.format("%-15s", trigger_of(glyphs, ringed) or ""), "FrogmanTrailTrigger" },
+			{ (ringed.win and ledger.window_name(ringed.win) or "") .. "   ", "FrogmanTrailRing" } }
 		if ringed.row_before and ringed.row_after and not require('frogman.domains.ledger.routines').same_row(ringed.row_before, ringed.row_after) then
 			vim.list_extend(r, row_segs(glyphs, ringed.names or {}, ringed.row_before))
-			table.insert(r, { glyphs.arrow, "CavediverTrailDim" })
+			table.insert(r, { glyphs.arrow, "FrogmanTrailDim" })
 			vim.list_extend(r, row_segs(glyphs, ringed.names or {}, ringed.row_after))
 		else
-			table.insert(r, { table.concat(ringed.events or {}, ", "), "CavediverTrailRing" })
+			table.insert(r, { table.concat(ringed.events or {}, ", "), "FrogmanTrailRing" })
 		end
 		table.insert(lines, { segs = r, ringed = ringed })
 	end
@@ -475,7 +475,7 @@ local function day_lines(glyphs, winwidth)
 	local keys = require('frogman.configs').keymaps.views or {}
 	local lines = { { segs = header(glyphs, keys, winwidth) }, { segs = { { "", nil } } } }
 	if #view.steps == 0 then
-		table.insert(lines, { segs = { { "no moves", "CavediverTrailDim" } } })
+		table.insert(lines, { segs = { { "no moves", "FrogmanTrailDim" } } })
 	end
 	local formatters = require('frogman.configs').formatters or {}
 	local in_ring = ring_index()
@@ -487,13 +487,13 @@ local function day_lines(glyphs, winwidth)
 		local segs = formatters.trail_step and formatters.trail_step(step, glyphs)
 		if not segs then
 			segs = {
-				{ time .. " ", "CavediverTrailTime" }, { (glyphs[step.cause] or "?") .. " ", "CavediverTrailCause" },
-				{ trigger_of(glyphs, step) or "", "CavediverTrailTrigger" },
+				{ time .. " ", "FrogmanTrailTime" }, { (glyphs[step.cause] or "?") .. " ", "FrogmanTrailCause" },
+				{ trigger_of(glyphs, step) or "", "FrogmanTrailTrigger" },
 			}
 			if own then
 				local pad = winwidth - width(segs) - 2
 				table.insert(segs, { string.rep(" ", math.max(1, pad)), nil })
-				table.insert(segs, { view.open[key] and glyphs.unfolded or glyphs.folded, "CavediverTrailFold" })
+				table.insert(segs, { view.open[key] and glyphs.unfolded or glyphs.folded, "FrogmanTrailFold" })
 			end
 		end
 		table.insert(lines, { segs = segs, step = step, ring = key })
@@ -537,37 +537,37 @@ local function day_lines(glyphs, winwidth)
 			if item.fold then
 				local key = view.days[view.day] .. ":" .. (step.seq or 0) .. ":" .. (step.time or 0) .. ":" .. item.kind
 				local open = view.open[key]
-				local segs = { indent, { branch, "CavediverTrailGutter" },
-					{ (glyphs[item.kind] or "?") .. " ", "CavediverTrail" .. (FAMILY[item.kind] or "Words") },
-					{ string.format("%-14s", #item.fold .. " " .. (PLURAL[item.kind] or item.kind)), "CavediverTrailName" } }
-				vim.list_extend(segs, list_segs(glyphs, item.lists, "CavediverTrailWords"))
+				local segs = { indent, { branch, "FrogmanTrailGutter" },
+					{ (glyphs[item.kind] or "?") .. " ", "FrogmanTrail" .. (FAMILY[item.kind] or "Words") },
+					{ string.format("%-14s", #item.fold .. " " .. (PLURAL[item.kind] or item.kind)), "FrogmanTrailName" } }
+				vim.list_extend(segs, list_segs(glyphs, item.lists, "FrogmanTrailWords"))
 				local pad = winwidth - width(segs) - 2
 				table.insert(segs, { string.rep(" ", math.max(1, pad)), nil })
-				table.insert(segs, { open and glyphs.unfolded or glyphs.folded, "CavediverTrailFold" })
+				table.insert(segs, { open and glyphs.unfolded or glyphs.folded, "FrogmanTrailFold" })
 				table.insert(lines, { segs = segs, fold = key, step = step })
 				if open then
 					for _, move in ipairs(item.fold) do
-						table.insert(lines, { segs = { indent, { stem_ .. "  ", "CavediverTrailGutter" },
-							{ (glyphs[move.kind] or "?") .. " ", "CavediverTrail" .. (move.dim and "Dim" or FAMILY[move.kind] or "Words") },
-							{ move.name or "?", move.dim and "CavediverTrailDim" or "CavediverTrailName", target = target_of(move, step) } },
+						table.insert(lines, { segs = { indent, { stem_ .. "  ", "FrogmanTrailGutter" },
+							{ (glyphs[move.kind] or "?") .. " ", "FrogmanTrail" .. (move.dim and "Dim" or FAMILY[move.kind] or "Words") },
+							{ move.name or "?", move.dim and "FrogmanTrailDim" or "FrogmanTrailName", target = target_of(move, step) } },
 							move = move, step = step })
 					end
 				end
 			else
 				local move = item.move
 				local dim = move.dim == true
-				local family = dim and "CavediverTrailDim" or ("CavediverTrail" .. (FAMILY[move.kind] or "Words"))
+				local family = dim and "FrogmanTrailDim" or ("FrogmanTrail" .. (FAMILY[move.kind] or "Words"))
 				local segs = formatters.trail_move and formatters.trail_move(move, glyphs, step)
 				if not segs then
-					segs = { indent, { branch, "CavediverTrailGutter" }, { (glyphs[move.kind] or "?") .. " ", family },
-						{ string.format("%-14s", move.name or ""), dim and "CavediverTrailDim" or "CavediverTrailName", target = target_of(move, step) } }
-					vim.list_extend(segs, move_segs(glyphs, names, move, dim and "CavediverTrailDim" or "CavediverTrailWords"))
+					segs = { indent, { branch, "FrogmanTrailGutter" }, { (glyphs[move.kind] or "?") .. " ", family },
+						{ string.format("%-14s", move.name or ""), dim and "FrogmanTrailDim" or "FrogmanTrailName", target = target_of(move, step) } }
+					vim.list_extend(segs, move_segs(glyphs, names, move, dim and "FrogmanTrailDim" or "FrogmanTrailWords"))
 				end
 				table.insert(lines, { segs = segs, move = move, step = step })
 				if move.row then
-					local r = { indent, { stem_ .. "  ", "CavediverTrailGutter" } }
+					local r = { indent, { stem_ .. "  ", "FrogmanTrailGutter" } }
 					vim.list_extend(r, row_segs(glyphs, names, move.row.before))
-					table.insert(r, { glyphs.arrow, "CavediverTrailDim" })
+					table.insert(r, { glyphs.arrow, "FrogmanTrailDim" })
 					vim.list_extend(r, row_segs(glyphs, names, move.row.after))
 					table.insert(lines, { segs = r, move = move, step = step })
 				end
@@ -623,14 +623,14 @@ local function search_lines(glyphs, winwidth)
 	end
 	local n_days = vim.tbl_count(days)
 	local mid = {
-		{ glyphs.title, "CavediverTrailTitle" }, { " " .. glyphs.search .. " ", "CavediverTrailCount" },
-		{ view.query, "CavediverTrailName" },
+		{ glyphs.title, "FrogmanTrailTitle" }, { " " .. glyphs.search .. " ", "FrogmanTrailCount" },
+		{ view.query, "FrogmanTrailName" },
 		{ glyphs.dot .. #view.results .. (#view.results == 1 and " move" or " moves") .. " over " .. n_days ..
-			(n_days == 1 and " day" or " days"), "CavediverTrailCount" },
+			(n_days == 1 and " day" or " days"), "FrogmanTrailCount" },
 	}
 	local ch, group = fill_of(glyphs, 0, ((require('frogman.configs').trail or {}).header or {}).shade ~= false)
-	local l = { { glyphs.older .. (keys.leave and (" " .. keys.leave) or ""), "CavediverTrailKeyOn" }, { " ", nil } }
-	local r = { { " ", nil }, { (keys.act and (keys.act .. " ") or "") .. glyphs.newer, "CavediverTrailKeyOn" } }
+	local l = { { glyphs.older .. (keys.leave and (" " .. keys.leave) or ""), "FrogmanTrailKeyOn" }, { " ", nil } }
+	local r = { { " ", nil }, { (keys.act and (keys.act .. " ") or "") .. glyphs.newer, "FrogmanTrailKeyOn" } }
 	local lines = { { segs = frame(l, r, mid, ch, group, winwidth) }, { segs = { { "", nil } } } }
 	local trigger_width = 0
 	for _, result in ipairs(view.results) do
@@ -647,20 +647,20 @@ local function search_lines(glyphs, winwidth)
 		last_day = result.day
 		local trigger = trigger_of(glyphs, step) or ""
 		local segs = {
-			{ label .. " " .. os.date("%H:%M", math.floor(step.time or 0)) .. "  ", "CavediverTrailTime" },
-			{ glyphs.life .. " ", "CavediverTrailLife" .. result.state },
-			{ (glyphs[step.cause] or "?") .. " ", "CavediverTrailCause" },
-			{ trigger .. string.rep(" ", trigger_width - vim.api.nvim_strwidth(trigger) + 2), "CavediverTrailTrigger" },
-			{ (glyphs[move.kind] or "?") .. " ", "CavediverTrail" .. (FAMILY[move.kind] or "Words") },
+			{ label .. " " .. os.date("%H:%M", math.floor(step.time or 0)) .. "  ", "FrogmanTrailTime" },
+			{ glyphs.life .. " ", "FrogmanTrailLife" .. result.state },
+			{ (glyphs[step.cause] or "?") .. " ", "FrogmanTrailCause" },
+			{ trigger .. string.rep(" ", trigger_width - vim.api.nvim_strwidth(trigger) + 2), "FrogmanTrailTrigger" },
+			{ (glyphs[move.kind] or "?") .. " ", "FrogmanTrail" .. (FAMILY[move.kind] or "Words") },
 		}
-		vim.list_extend(segs, move_segs(glyphs, step.names or {}, move, "CavediverTrailWords"))
+		vim.list_extend(segs, move_segs(glyphs, step.names or {}, move, "FrogmanTrailWords"))
 		-- a step with two results opens under the first
 		local own = not expanded[step] and own_of(in_ring, step)
 		local key = own and ring_key(result.day, step)
 		if own then
 			expanded[step] = true
 			table.insert(segs, { string.rep(" ", math.max(1, winwidth - width(segs) - 2)), nil })
-			table.insert(segs, { view.open[key] and glyphs.unfolded or glyphs.folded, "CavediverTrailFold" })
+			table.insert(segs, { view.open[key] and glyphs.unfolded or glyphs.folded, "FrogmanTrailFold" })
 		end
 		table.insert(lines, { segs = segs, result = result, move = move, step = step, ring = key })
 		if own and view.open[key] then
@@ -668,7 +668,7 @@ local function search_lines(glyphs, winwidth)
 		end
 	end
 	if #view.results == 0 then
-		table.insert(lines, { segs = { { "no moves name it", "CavediverTrailDim" } } })
+		table.insert(lines, { segs = { { "no moves name it", "FrogmanTrailDim" } } })
 	end
 	return lines
 end
@@ -858,7 +858,7 @@ local function search_typed(query, from)
 	end
 	local winid = number == "" and from or vim.fn.win_getid(tonumber(number), vim.api.nvim_tabpage_get_number(vim.api.nvim_win_get_tabpage(from)))
 	if winid == 0 then
-		vim.notify("cavediver: there's no window " .. number .. " in this tab.", vim.log.levels.WARN)
+		vim.notify("frogman: there's no window " .. number .. " in this tab.", vim.log.levels.WARN)
 		return
 	end
 	M.search("win " .. vim.api.nvim_win_get_number(winid), tostring(winid), true)
@@ -882,7 +882,7 @@ end
 ---@param target table The window's target, marked `earlier`
 ---@return nil
 earlier_window = function(target)
-	vim.notify("cavediver: " .. (target.name or "that window") .. " was a window in an earlier editor, so the trail can't follow it.",
+	vim.notify("frogman: " .. (target.name or "that window") .. " was a window in an earlier editor, so the trail can't follow it.",
 		vim.log.levels.WARN)
 end
 
@@ -924,7 +924,7 @@ function M.act_and_stay()
 	if target.kind == "file" then
 		local path = require('frogman.domains.history').get_filepath_from_hash(target.value)
 		if not path or path:match("^NONAME_") or not (view.from and vim.api.nvim_win_is_valid(view.from)) then
-			vim.notify("cavediver: " .. (target.name or "that file") .. " can't be opened from the trail.", vim.log.levels.WARN)
+			vim.notify("frogman: " .. (target.name or "that file") .. " can't be opened from the trail.", vim.log.levels.WARN)
 			return
 		end
 		vim.api.nvim_win_call(view.from, function()
@@ -1008,7 +1008,7 @@ function M.open(query)
 	-- the session's main file read once; a page only when it's shown
 	local reader = require('frogman.domains.storage').routines.trail_reader()
 	local days = reader.days()
-	local buf = vim.api.nvim_create_buf(false, true) -- unlisted, a scratch: cavediver doesn't track it
+	local buf = vim.api.nvim_create_buf(false, true) -- unlisted, a scratch: frogman doesn't track it
 	vim.bo[buf].buftype = "nofile"
 	vim.bo[buf].bufhidden = "wipe"
 	vim.bo[buf].swapfile = false
@@ -1054,7 +1054,7 @@ function M.open(query)
 	end, "Act on the name under the cursor, and stay")
 	map(keys.search, M.ask, "Search the trail")
 	map(keys.search_word, M.search_word, "Search the trail for the name under the cursor")
-	vim.bo[buf].filetype = "cavediver-trail"
+	vim.bo[buf].filetype = "frogman-trail"
 	draw()
 	if query and query ~= "" then
 		search_typed(query, from)

@@ -86,12 +86,12 @@ local function map_view_key(buf, lhs, fn, desc, origin)
 	vim.keymap.set("n", lhs, act, { buffer = buf, desc = desc })
 end
 
----Create the ui domain's autocmds in cavediver's augroup.
+---Create the ui domain's autocmds in frogman's augroup.
 ---
 ---Called by setup(), so nothing runs at require. Calling it again after the group is cleared
 ---replaces them cleanly.
 ---
----@param group integer The cavediver augroup
+---@param group integer The frogman augroup
 ---@return nil
 function M.init_autocmds(group)
 	-- Clear display name cache on buffer changes for accurate basename display
@@ -135,7 +135,7 @@ function M.init_autocmds(group)
 
 	vim.api.nvim_create_autocmd("Filetype", {
 		group = group,
-		pattern = "cavediver-primary-buffer-history",
+		pattern = "frogman-primary-buffer-history",
 		callback = function(args)
 			local function close_window()
 				vim.cmd("write!")
@@ -194,7 +194,7 @@ function M.init_autocmds(group)
 	-- The closed lists' keys, the same as every view's (keymaps.views)
 	vim.api.nvim_create_autocmd("Filetype", {
 		group = group,
-		pattern = "cavediver-closed-lists",
+		pattern = "frogman-closed-lists",
 		callback = function(args)
 			local keys = require('frogman.configs').keymaps.views or {}
 			local buf = args.buf

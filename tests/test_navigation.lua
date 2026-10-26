@@ -88,7 +88,7 @@ T['T34 [char] navigation with secondary equal to ternary reports "Duplicates det
 	child.steps({ ':e a' })
 	-- the flight recorder's notice of its dump is a message of its own (A26)
 	local errs = vim.tbl_filter(function(m)
-		return not m.msg:find("cavediver: something that shouldn't happen did", 1, true)
+		return not m.msg:find("frogman: something that shouldn't happen did", 1, true)
 	end, X.messages_with(child, 'Duplicates detected in current triquetra'))
 	eq(#errs, 1)
 	eq(errs[1].level, vim.log.levels.ERROR)

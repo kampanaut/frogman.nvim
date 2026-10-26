@@ -32,7 +32,7 @@ local function registered(buf)
 end
 
 local function bufnr(stem)
-	return child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/" .. ... .. ".txt")', { stem })
+	return child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/" .. ... .. ".txt")', { stem })
 end
 
 -- {c=e s=c t=d}, with order e,d,c,b,a (as in test_cycling.lua).
@@ -80,7 +80,7 @@ T['T561 [char] (M1, A21) cleanup gives no id to an unnamed buffer it doesn\'t tr
 	child.settle()
 	child.cmd('bdelete b.txt')
 	child.settle(300)
-	eq({ id = child.lua('return vim.b[...].cavediver_noname', { scratch }), slots = child.slots() },
+	eq({ id = child.lua('return vim.b[...].frogman_noname', { scratch }), slots = child.slots() },
 		{ id = vim.NIL, slots = '⦉a⦊ [b] ⟦-⟧' })
 end
 
@@ -203,7 +203,7 @@ T['T214 [char] (P24) a save leaves the closed stack as it was, a closed file gon
 	child.settle()
 	eq(child.closed(), 'b')
 	local got = child.lua([[
-		local T = _G.CDV_TEST
+		local T = _G.FRG_TEST
 		local function snap() return { slots = T.slots(), notes = T.notes(), closed = T.closed(), ordered = T.ordered() } end
 		local before = snap()
 		os.remove(T.root .. '/b.txt')
@@ -485,7 +485,7 @@ T['T228 [char] (A11, D9) a restore switches no buffer and reopens nothing: a clo
 	child.steps({ '<M-;><M-r>' })
 	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
 	eq(child.shown(), 'b')
-	eq(child.lua('return vim.fn.bufloaded(_G.CDV_TEST.root .. "/a.txt")'), 0)
+	eq(child.lua('return vim.fn.bufloaded(_G.FRG_TEST.root .. "/a.txt")'), 0)
 	eq(child.closed(), 'a')
 	child.settle(300)
 	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
@@ -582,7 +582,7 @@ T['T233 [char] (A18) with no triquetra, <M-;>F says "No triquetra found for curr
 end
 
 -- The help file is loaded, readable and untracked; NONAME_999 was never a
--- No Name buffer cavediver knew.
+-- No Name buffer frogman knew.
 T['T234 [char] (A18, Q11) the pop-up rejects an untracked buffer and an unknown No Name, drops a blank line, and keeps the good lines'] = function()
 	local w = queue_ba()
 	child.cmd('help')
@@ -626,7 +626,7 @@ T['T236 [char] (A5) closing another window first does not stop the pop-up\'s buf
 	child.settle()
 	open_popup()
 	local buf = child.lua('return vim.api.nvim_get_current_buf()')
-	eq(child.lua('return vim.bo.filetype'), 'cavediver-primary-buffer-history')
+	eq(child.lua('return vim.bo.filetype'), 'frogman-primary-buffer-history')
 	child.cmd('close')
 	child.settle(300)
 	eq(child.popup(), nil)
@@ -634,14 +634,14 @@ T['T236 [char] (A5) closing another window first does not stop the pop-up\'s buf
 	-- And the pop-up opens again (today: E95, a buffer with this name already exists).
 	local ok, err = child.step('<M-;>F')
 	eq({ ok, err }, { true, nil })
-	eq(child.lua('return vim.bo.filetype'), 'cavediver-primary-buffer-history')
+	eq(child.lua('return vim.bo.filetype'), 'frogman-primary-buffer-history')
 end
 
 T['T522 [char] (A18) the pop-up\'s buffer goes when its window switches to another buffer'] = function()
 	child.steps({ ':e a', '<M-;><M-c>' })
 	open_popup()
 	local buf = child.lua('return vim.api.nvim_get_current_buf()')
-	local opened = child.lua('return vim.bo.filetype') == 'cavediver-primary-buffer-history'
+	local opened = child.lua('return vim.bo.filetype') == 'frogman-primary-buffer-history'
 	child.cmd('buffer a.txt')
 	child.settle(1000)
 	local gone = not child.lua('return vim.api.nvim_buf_is_valid(...)', { buf })
@@ -658,7 +658,7 @@ T['T522 [char] (A18) the pop-up\'s buffer goes when its window switches to anoth
 		return n
 	]])
 	local ok, err = child.step('<M-;>F')
-	local again = child.lua('return vim.bo.filetype') == 'cavediver-primary-buffer-history'
+	local again = child.lua('return vim.bo.filetype') == 'frogman-primary-buffer-history'
 	local nameless = child.lua([[
 		local n = 0
 		for _, b in ipairs(vim.api.nvim_list_bufs()) do
@@ -670,7 +670,7 @@ T['T522 [char] (A18) the pop-up\'s buffer goes when its window switches to anoth
 	local refused = child.lua([[
 		vim.api.nvim_buf_set_lines(0, -1, -1, false, { 'b.txt' })
 		local ok, err = pcall(vim.cmd, 'buffer a.txt')
-		return { ok = ok, e37 = err and err:find('E37', 1, true) ~= nil, stays = vim.bo.filetype == 'cavediver-primary-buffer-history' }
+		return { ok = ok, e37 = err and err:find('E37', 1, true) ~= nil, stays = vim.bo.filetype == 'frogman-primary-buffer-history' }
 	]])
 	eq({ opened = opened, gone = gone, floats = floats, ok = ok, err = err, again = again, nameless = nameless, refused = refused },
 		{ opened = true, gone = true, floats = 0, ok = true, again = true, nameless = 0, refused = { ok = false, e37 = true, stays = true } })
@@ -719,14 +719,14 @@ T['T239 [char] (A21) a secondary and a ternary whose files are deleted while the
 	eq({ registered(bufnr('b')), registered(bufnr('c')) }, { true, true })
 end
 
-T['T240 [char] (A25) disable() clears the cavediver augroup and stops the timers, and nothing is tracked after'] = function()
+T['T240 [char] (A25) disable() clears the frogman augroup and stops the timers, and nothing is tracked after'] = function()
 	child.steps({ ':e a', ':e b' })
 	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
 	local got = child.lua([[
 		local cd = require('frogman')
 		if type(cd.disable) ~= 'function' then return { disable = type(cd.disable) } end
 		local ok = pcall(cd.disable)
-		local okg, aus = pcall(vim.api.nvim_get_autocmds, { group = 'cavediver' })
+		local okg, aus = pcall(vim.api.nvim_get_autocmds, { group = 'frogman' })
 		return { disable = 'function', ok = ok, autocmds = okg and #aus or 0 }
 	]])
 	if got.disable == 'function' then got.timers = Neg.repeating_timers(child) end
@@ -778,7 +778,7 @@ T['T242 [char] a tracked buffer wiped with noautocmd is repaired within one refr
 	child.steps({ ':e a', ':e b', ':e c' })
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
 	child.messages()
-	child.lua('vim.cmd("noautocmd bwipeout " .. vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt"))')
+	child.lua('vim.cmd("noautocmd bwipeout " .. vim.fn.bufnr(_G.FRG_TEST.root .. "/c.txt"))')
 	-- Decided 2026-10-21: the UI repairs it on the spot, within one refresh, as cleanup's
 	-- re-point would (like navigation, Q18): the window shows b, so b is current and c the ternary.
 	child.settle(300)
@@ -855,7 +855,7 @@ T['T244 [char] (S2) a load into fewer windows matches by what they show and drop
 	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
 end
 
-T['T245 [char] (S2) a session file with a newer header says it was made by a newer cavediver and is left alone'] = function()
+T['T245 [char] (S2) a session file with a newer header says it was made by a newer frogman and is left alone'] = function()
 	local s = shared()
 	start(s)
 	child.steps({ ':e a', ':e b' })
@@ -872,7 +872,7 @@ T['T245 [char] (S2) a session file with a newer header says it was made by a new
 	child.messages()
 	Misc.load(child)
 	child.settle(300)
-	eq(Extra.has(child.messages(), 'newer cavediver'), true)
+	eq(Extra.has(child.messages(), 'newer frogman'), true)
 	fh = io.open(file, 'rb')
 	local bytes = fh:read('*a')
 	fh:close()
@@ -959,7 +959,7 @@ T['T558 [char] (A21) a cleanup heal records no visit'] = function()
 	child.settle(300)
 	local w1_has_x = child.lua([[
 		local H = require('frogman.domains.history')
-		local x = H.get_hash_from_buffer(vim.fn.bufnr(_G.CDV_TEST.root .. '/x.txt'))
+		local x = H.get_hash_from_buffer(vim.fn.bufnr(_G.FRG_TEST.root .. '/x.txt'))
 		return (H.data.crux_internals.window[...] or {})[x] ~= nil
 	]], { w1 })
 	eq({ slots = child.slots(w2), w1_has_x = w1_has_x, first = child.ordered():match('^[^,]*') },
@@ -974,7 +974,7 @@ T['T248 [char] (A12) with no cokeline, a cycle step raises nothing and <M-v> sti
 	local ok, err = child.step('<M-n>')
 	eq({ ok, err }, { true, nil })
 	eq(child.state(), CYCLING)
-	-- the step goes through cavediver's own order, onto a (T171)
+	-- the step goes through frogman's own order, onto a (T171)
 	eq(child.shown(), 'a')
 	ok, err = child.step('<M-v>')
 	eq({ ok, err }, { true, nil })

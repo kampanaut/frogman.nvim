@@ -47,7 +47,7 @@ T['T2 [char] a failing hook is reported, later hooks still run, and the state st
 	eq(got.state, 'b')
 	-- the flight recorder's notice of its dump is a message of its own (A26)
 	local msgs = vim.tbl_filter(function(m)
-		return not m.msg:find("cavediver: something that shouldn't happen did", 1, true)
+		return not m.msg:find("frogman: something that shouldn't happen did", 1, true)
 	end, child.messages())
 	eq(#msgs, 1)
 	eq(msgs[1].level, vim.log.levels.ERROR)

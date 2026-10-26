@@ -38,7 +38,7 @@ end
 ---End a cycle still running in another window that no window jump queued a cancel for.
 ---
 ---A window jump queues the cycle's cancel as settle work, which a key runs first. This is the
----fallback for a jump that queued nothing, one made without autocmds. Cavediver's exported key
+---fallback for a jump that queued nothing, one made without autocmds. Frogman's exported key
 ---functions call it once the settle queue has run, and so do the closed lists' keys and the
 ---trail's act_and_stay.
 ---

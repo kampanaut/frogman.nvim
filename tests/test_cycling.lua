@@ -2,7 +2,7 @@
 -- recorder tests the spec files here (A26). IDs are the spec's
 -- (what-is-cavediver.md, section 7).
 --
--- The cokeline stub steps through cavediver's ordered history, index 1 the
+-- The cokeline stub steps through frogman's ordered history, index 1 the
 -- newest: <M-n> is by_step(-1), toward newer (wrapping from the newest to the
 -- oldest), <M-m> is by_step(1), toward older.
 local Helpers = dofile('tests/helpers.lua')
@@ -226,7 +226,7 @@ T['T176 [char] <M-f> fills an empty secondary with the newest buffer that isn\'t
 	local res = child.lua([[
 		local ord = require('frogman.domains.history').data.ordered.crux
 		ord[1], ord[2] = ord[2], ord[1]
-		return { _G.CDV_TEST.press('<M-f>') }
+		return { _G.FRG_TEST.press('<M-f>') }
 	]])
 	eq({ ok = res[1], slots = child.slots() }, { ok = true, slots = '⦉-⦊ [b] ⟦a⟧' })
 end
@@ -353,13 +353,13 @@ end
 
 T['T79 [char] <M-n> steps left, toward newer buffers, and <M-m> right, toward older'] = function()
 	-- Runs against the stub, not the real cokeline: checks the step each key
-	-- asks cokeline for, and that cavediver's bufferline order puts the newer
+	-- asks cokeline for, and that frogman's bufferline order puts the newer
 	-- buffer on the left.
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.settle(300)
 	local bufs = child.lua([[
 		local out = {}
-		for _, s in ipairs({ 'a', 'b', 'c' }) do out[s] = vim.fn.bufnr(_G.CDV_TEST.root .. '/' .. s .. '.txt') end
+		for _, s in ipairs({ 'a', 'b', 'c' }) do out[s] = vim.fn.bufnr(_G.FRG_TEST.root .. '/' .. s .. '.txt') end
 		return out
 	]])
 	local cmp = child.lua([[
@@ -372,9 +372,9 @@ T['T79 [char] <M-n> steps left, toward newer buffers, and <M-m> right, toward ol
 	child.lua([[
 		local m = require('cokeline.mappings')
 		local orig = m.by_step
-		_G.CDV_STEPS = {}
+		_G.FRG_STEPS = {}
 		m.by_step = function(kind, step)
-			table.insert(_G.CDV_STEPS, step)
+			table.insert(_G.FRG_STEPS, step)
 			return orig(kind, step)
 		end
 	]])
@@ -384,7 +384,7 @@ T['T79 [char] <M-n> steps left, toward newer buffers, and <M-m> right, toward ol
 	eq(child.shown(), 'a')
 	child.steps({ '<M-n>' })
 	eq(child.shown(), 'b')
-	eq(child.lua('return _G.CDV_STEPS'), { 1, 1, -1 })
+	eq(child.lua('return _G.FRG_STEPS'), { 1, 1, -1 })
 end
 
 T['T152 [char] a cycling pick of the secondary rewrites the ternary\'s note to the start'] = function()
@@ -432,7 +432,7 @@ T['T155 [char] a pick of an outside buffer notes the start, and <M-;><M-r> bring
 	eq(child.note('dtm', 'b'), 'd')
 end
 
--- The flight recorder (A26). Its dumps go under stdpath('state')/cavediver/.
+-- The flight recorder (A26). Its dumps go under stdpath('state')/frogman/.
 
 -- Buffers open now.
 local function bufs()
@@ -446,7 +446,7 @@ local function new_items(before, after)
 	return out
 end
 
--- A dump's text, decrypted as :CavediverDump reads it: the file is sealed.
+-- A dump's text, decrypted as :FrogmanDump reads it: the file is sealed.
 local function read_file(path)
 	return child.lua('return vim.split(require("frogman.domains.ledger.dump").read(...) or "", "\\n", { plain = true })', { path })
 end
@@ -474,7 +474,7 @@ end
 
 -- N, the ring's length, is ledger.ring (A26, A27); set to 5 here, so ten actions overflow it.
 T['T199 [char] with no assertion, the recorder writes no file and opens no buffer, and the ring never holds more than N steps'] = function()
-	child.lua('_G.CDV_TEST.setup({ ledger = { ring = 5 } })')
+	child.lua('_G.FRG_TEST.setup({ ledger = { ring = 5 } })')
 	child.steps({ ':e a', ':e b', ':e c', ':e d' })
 	local files_before, bufs_before = child.dumps(), bufs()
 	child.steps({ '<M-f>', '<M-f>', '<M-S-f>', ':e a', '<M-;><M-r>', '<M-f>', ':e b', '<M-S-f>', '<M-f>', ':e c' })
@@ -549,7 +549,7 @@ T['T589 [char] (A26) a rule break found after another step was kept lists its st
 		local seen = {}
 		for _, f in ipairs(...) do seen[f] = true end
 		local files = {}
-		for _, f in ipairs(vim.fn.globpath(vim.fn.stdpath('state') .. '/cavediver', 'dump-*.txt', true, true)) do
+		for _, f in ipairs(vim.fn.globpath(vim.fn.stdpath('state') .. '/frogman', 'dump-*.txt', true, true)) do
 			if not seen[f] then table.insert(files, f) end
 		end
 		if #files == 0 then return { dumps = 0 } end
@@ -583,7 +583,7 @@ T['T204 [char] a session load and a cleanup re-point appear in the dump, tagged 
 	-- Save a session from this child...
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
 	eq(child.slots(), '⦉-⦊ [c] ⟦b⟧')
-	local root = child.lua('return _G.CDV_TEST.root')
+	local root = child.lua('return _G.FRG_TEST.root')
 	child.lua('require("frogman").save_session(...)', { root })
 
 	-- ...and load it in a second one, with the files open as a session
@@ -712,7 +712,7 @@ T['T333 [char] a dump opens after the editor settles, and names files by their p
 	stale_secondary_note(child)
 	local files_before, bufs_before = child.dumps(), bufs()
 	local during = child.lua([[
-		local ok = _G.CDV_TEST.press('<M-;><M-t>')
+		local ok = _G.FRG_TEST.press('<M-;><M-t>')
 		return { ok = ok, bufs = vim.api.nvim_list_bufs() }
 	]])
 	eq(during.ok, false)
@@ -721,7 +721,7 @@ T['T333 [char] a dump opens after the editor settles, and names files by their p
 	local scratch = new_items(bufs_before, bufs())
 	eq(#scratch > 0, true)
 
-	local root = child.lua('return _G.CDV_TEST.root')
+	local root = child.lua('return _G.FRG_TEST.root')
 	local files = Extra.new_files(files_before, child.dumps())
 	eq(#files > 0, true)
 	local texts = {}
@@ -738,7 +738,7 @@ end
 
 T['T333 [char] a hook failure\'s dump, with a list named by the cwd, holds the hook and the session'] = function()
 	child.steps({ ':e a', ':e b' })
-	local root = child.lua('return _G.CDV_TEST.root')
+	local root = child.lua('return _G.FRG_TEST.root')
 	child.lua('require("frogman").save_session(..., { tab = vim.api.nvim_get_current_tabpage() })', { root })
 	child.lua([[
 		require('frogman.domains.history').sm:on('attached', 'attached', 't333_breaks', function() error('planted') end, 5, true)
@@ -760,7 +760,7 @@ T['T333 [char] a hook failure\'s dump, with a list named by the cwd, holds the h
 	end
 end
 
--- T200's route. The file on disk is sealed, and :CavediverDump opens it from the
+-- T200's route. The file on disk is sealed, and :FrogmanDump opens it from the
 -- directory it was written in only.
 -- Every key stretched is counted, through the crypto module's derive_key; a save runs the forget pass.
 T['T569 [char] (A26, S1) a dump\'s key outlives the forget pass'] = function()
@@ -768,22 +768,22 @@ T['T569 [char] (A26, S1) a dump\'s key outlives the forget pass'] = function()
 	child.lua([[
 		local crypto = require('frogman.domains.storage.crypto')
 		local derive = crypto.derive_key
-		_G.CDV_STRETCHED = 0
+		_G.FRG_STRETCHED = 0
 		crypto.derive_key = function(...)
-			_G.CDV_STRETCHED = _G.CDV_STRETCHED + 1
+			_G.FRG_STRETCHED = _G.FRG_STRETCHED + 1
 			return derive(...)
 		end
 		pcall(require('frogman.domains.ledger').never, 'a first planted failure')
 	]])
 	child.settle(300)
 	eq(Misc.save(child), { true })
-	local before = child.lua('return _G.CDV_STRETCHED')
+	local before = child.lua('return _G.FRG_STRETCHED')
 	child.lua([[pcall(require('frogman.domains.ledger').never, 'a second planted failure')]])
 	child.settle(300)
-	eq({ first = before >= 2, after = child.lua('return _G.CDV_STRETCHED') - before }, { first = true, after = 0 })
+	eq({ first = before >= 2, after = child.lua('return _G.FRG_STRETCHED') - before }, { first = true, after = 0 })
 end
 
-T['T460 [char] a dump is sealed, and :CavediverDump opens it from the directory it was written in'] = function()
+T['T460 [char] a dump is sealed, and :FrogmanDump opens it from the directory it was written in'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
 	stale_secondary_note(child)
 	local files_before = child.dumps()
@@ -798,11 +798,11 @@ T['T460 [char] a dump is sealed, and :CavediverDump opens it from the directory 
 		return {
 			head = bytes:sub(1, 4),
 			clear = bytes:find("c.txt", 1, true) ~= nil or bytes:find("<M-;><M-t>", 1, true) ~= nil
-				or bytes:find("cavediver:", 1, true) ~= nil,
+				or bytes:find("frogman:", 1, true) ~= nil,
 		}
 	]], { files[1] }), { head = 'CDV1', clear = false })
 
-	child.cmd('CavediverDump ' .. vim.fn.fnameescape(files[1]))
+	child.cmd('FrogmanDump ' .. vim.fn.fnameescape(files[1]))
 	child.settle(200)
 	local lines = child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)')
 	eq(last_row(lines):find('<M-;><M-t>', 1, true) ~= nil, true)
@@ -810,19 +810,19 @@ T['T460 [char] a dump is sealed, and :CavediverDump opens it from the directory 
 	child.type_keys('q')
 	child.settle()
 
-	child.lua('vim.fn.mkdir(_G.CDV_TEST.root .. "/sub", "p"); vim.cmd.cd(_G.CDV_TEST.root .. "/sub")')
+	child.lua('vim.fn.mkdir(_G.FRG_TEST.root .. "/sub", "p"); vim.cmd.cd(_G.FRG_TEST.root .. "/sub")')
 	local bufs_before = bufs()
 	child.messages()
-	child.cmd('CavediverDump ' .. vim.fn.fnameescape(files[1]))
+	child.cmd('FrogmanDump ' .. vim.fn.fnameescape(files[1]))
 	child.settle(200)
 	eq(new_items(bufs_before, bufs()), {})
 	eq(Extra.has(child.messages(), "doesn't open here"), true)
 end
 
-T['T528 [char] (A26) :CavediverDump on a directory says it isn\'t a dump'] = function()
+T['T528 [char] (A26) :FrogmanDump on a directory says it isn\'t a dump'] = function()
 	child.steps({ ':e a' })
 	child.messages()
-	local ok, err = child.lua('return { pcall(vim.cmd, "CavediverDump " .. vim.fn.fnameescape(_G.CDV_TEST.root)) }')
+	local ok, err = child.lua('return { pcall(vim.cmd, "FrogmanDump " .. vim.fn.fnameescape(_G.FRG_TEST.root)) }')
 	local said = false
 	for _, m in ipairs(child.messages()) do
 		if m.msg:find("isn't a dump", 1, true) then said = true end
@@ -835,7 +835,7 @@ T['T529 [char] (A26) a failure inside a cleanup tick is dumped on the tick\'s st
 	local files_before = child.dumps()
 	-- <M-f>'s step still open, and a tick run as the cleanup timer runs it, a never planted in it
 	local open_dumped = child.lua([[
-		_G.CDV_TEST.press('<M-f>')
+		_G.FRG_TEST.press('<M-f>')
 		local ledger = require('frogman.domains.ledger')
 		local open = ledger.open_step()
 		ledger.within('timer', 'cleanup', function()
@@ -867,7 +867,7 @@ T['T531 [char] (A26, M11) a plain Lua error inside a key is dumped with its trac
 			local result = planted_for_t531() -- not a tail call, so its frame stays in the traceback
 			return result
 		end
-		local ok, err = _G.CDV_TEST.press('<M-S-f>')
+		local ok, err = _G.FRG_TEST.press('<M-S-f>')
 		return { ok = ok, err = err }
 	]])
 	child.settle(300)
@@ -973,38 +973,38 @@ end
 -- the item's own turn comes while the job is still running.
 T['T540 [char] (M11) an item\'s own turn waits while a key\'s job waits at a prompt'] = function()
 	child.lua_notify([[
-		_G.CDV_ORDER = {}
+		_G.FRG_ORDER = {}
 		local settle = require('frogman.settle')
 		settle.now(function()
-			settle.later("probe", function() table.insert(_G.CDV_ORDER, "item") end)
+			settle.later("probe", function() table.insert(_G.FRG_ORDER, "item") end)
 			local t = vim.uv.new_timer()
 			t:start(100, 0, function() vim.api.nvim_input("y") end)
 			vim.fn.getchar()
-			table.insert(_G.CDV_ORDER, "job done")
+			table.insert(_G.FRG_ORDER, "job done")
 		end)
 	]])
 	child.settle(500) -- this wait runs inside the waiting getchar(), so the job ends once it's over
 	child.settle(100)
-	eq(child.lua('return _G.CDV_ORDER'), { "job done", "item" })
+	eq(child.lua('return _G.FRG_ORDER'), { "job done", "item" })
 end
 
 -- T540's prompt, with a second item queued after it: the first item's own turn is put off while the
 -- job waits, and the second's own turn comes once the job is over.
 T['T639 [char] (M11) an item\'s own turn runs the items queued before it first'] = function()
 	child.lua_notify([[
-		_G.CDV_ORDER = {}
+		_G.FRG_ORDER = {}
 		local settle = require('frogman.settle')
 		settle.now(function()
-			settle.later("first", function() table.insert(_G.CDV_ORDER, "first") end)
+			settle.later("first", function() table.insert(_G.FRG_ORDER, "first") end)
 			local t = vim.uv.new_timer()
 			t:start(100, 0, function() vim.api.nvim_input("y") end)
 			vim.fn.getchar()
-			settle.later("second", function() table.insert(_G.CDV_ORDER, "second") end)
+			settle.later("second", function() table.insert(_G.FRG_ORDER, "second") end)
 		end)
 	]])
 	child.settle(500)
 	child.settle(100)
-	eq(child.lua('return _G.CDV_ORDER'), { "first", "second" })
+	eq(child.lua('return _G.FRG_ORDER'), { "first", "second" })
 end
 
 -- A close queued and a key pressed in the same call: the key's drain closes the window it was pressed in.
@@ -1015,7 +1015,7 @@ T['T640 [char] (M11, A27) a key\'s step is about the window current once the que
 	local got = child.lua([[
 		local split = vim.api.nvim_get_current_win()
 		require('frogman.settle').later('close', function() vim.api.nvim_win_close(split, true) end)
-		_G.CDV_TEST.press('<M-f>')
+		_G.FRG_TEST.press('<M-f>')
 		local step = require('frogman').ledger.data.open
 		return { valid = step ~= nil and step.win ~= nil and vim.api.nvim_win_is_valid(step.win),
 			tab = step ~= nil and step.tab ~= nil, current = step ~= nil and step.win == vim.api.nvim_get_current_win() }
@@ -1150,7 +1150,7 @@ end
 
 -- T200's route, the stale note planted by a typed :lua line and <M-;><M-t> in the same batch,
 -- so the :lua step closes at once and the restore's assertion is the one dump.
-local STALE = ":lua _G.CDV_PLANTED = true; local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()];"
+local STALE = ":lua _G.FRG_PLANTED = true; local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()];"
 	.. " t.displacement_secondary_map[t.current_slot .. '-swap'] = nil; t.displacement_secondary_map[t.current_slot] = t.secondary_slot<CR>"
 
 T['T201 [char] a dumped file replays to the same assertion'] = function()
@@ -1167,7 +1167,7 @@ T['T201 [char] a dumped file replays to the same assertion'] = function()
 		error = r.failure ~= nil and r.failure.error:find('Remembered secondary is the same as current secondary', 1, true) ~= nil,
 		mismatches = #r.mismatches,
 		resynced = r.resynced,
-		ran = child.lua('return _G.CDV_PLANTED == true'),
+		ran = child.lua('return _G.FRG_PLANTED == true'),
 	}, { error = true, mismatches = 0, resynced = 0, ran = false })
 end
 
@@ -1192,16 +1192,16 @@ T['T470 [char] a replay runs no code a command line chains or carries'] = functi
 	local root = Misc.make_project()
 	Misc.start(child, { root = root })
 	child.steps({ ':e a' })
-	typed(':e b.txt | lua _G.CDV_PLANTED = true<CR>')
-	typed(':e +lua\\ _G.CDV_PLANTED=true c.txt<CR>')
-	eq(child.lua('return _G.CDV_PLANTED'), true) -- they ran here, in the editor that made the dump
+	typed(':e b.txt | lua _G.FRG_PLANTED = true<CR>')
+	typed(':e +lua\\ _G.FRG_PLANTED=true c.txt<CR>')
+	eq(child.lua('return _G.FRG_PLANTED'), true) -- they ran here, in the editor that made the dump
 	local before = child.dumps()
 	child.lua([[pcall(require('frogman.domains.ledger').never, 'planted for T470')]])
 	child.settle(200)
 	local path = the_dump(before)
 	Misc.start(child, { root = root })
 	local r = replay(path)
-	eq({ ran = child.lua('return _G.CDV_PLANTED == true'), failure = r.failure == nil }, { ran = false, failure = true })
+	eq({ ran = child.lua('return _G.FRG_PLANTED == true'), failure = r.failure == nil }, { ran = false, failure = true })
 end
 
 T['T468 [char] a replay\'s editor isn\'t saved'] = function()
@@ -1231,7 +1231,7 @@ T['T471 [char] a replay goes into an editor that has taken in the empty buffer i
 	child.settle(200)
 	local path = the_dump(before)
 	Misc.start(child, { root = root })
-	-- as a config that calls setup() at startup has it: the start buffer entered once cavediver is set up
+	-- as a config that calls setup() at startup has it: the start buffer entered once frogman is set up
 	child.cmd('doautocmd BufEnter')
 	child.settle(200)
 	local start = child.lua('return vim.api.nvim_get_current_buf()')
@@ -1331,8 +1331,8 @@ T['T490 [char] a cleanup tick\'s repair doesn\'t throw a replay off'] = function
 		child.steps({ ':e a', ':e b', ':e c', '<M-f>' })
 		child.cmd('vsplit')
 		child.steps({ ':e x' })
-		child.cmd('noautocmd buffer ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")'))
-		child.cmd('noautocmd bwipeout ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/x.txt")'))
+		child.cmd('noautocmd buffer ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/c.txt")'))
+		child.cmd('noautocmd bwipeout ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/x.txt")'))
 		child.lua([[require('frogman.domains.ledger.routines').within('timer', 'cleanup', require('frogman.domains.history').routines.cleanup_system, true)]])
 		child.settle(200)
 		child.steps({ '<M-S-f>' })
@@ -1349,12 +1349,12 @@ T['T491 [char] a float in the replaying editor isn\'t one of its windows'] = fun
 		child.steps({ ':e d' })
 		child.steps(keys)
 	end, function()
-		child.lua([[_G.CDV_FLOAT = vim.api.nvim_open_win(vim.api.nvim_create_buf(false, true), false,
+		child.lua([[_G.FRG_FLOAT = vim.api.nvim_open_win(vim.api.nvim_create_buf(false, true), false,
 			{ relative = 'editor', row = 1, col = 1, width = 10, height = 2 })]])
 	end)
 	eq({
 		mismatches = #r.mismatches,
-		float = child.lua('return require("frogman.domains.window").data.crux[_G.CDV_FLOAT] ~= nil'),
+		float = child.lua('return require("frogman.domains.window").data.crux[_G.FRG_FLOAT] ~= nil'),
 		windows = child.lua([[return #vim.tbl_filter(function(w) return vim.api.nvim_win_get_config(w).relative == '' end, vim.api.nvim_tabpage_list_wins(0))]]),
 	}, { mismatches = 0, float = false, windows = 2 })
 end
@@ -1492,7 +1492,7 @@ end
 local function start_closed(split)
 	child.lua('vim.api.nvim_set_current_buf(vim.api.nvim_create_buf(true, true))')
 	child.settle()
-	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")'))
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/c.txt")'))
 	child.settle()
 	eq(child.state(), CYCLING)
 	child.messages()
@@ -1515,7 +1515,7 @@ end
 T['T617 [char] (A12) a start that can\'t come back leaves the window as it is, and the cancel says only that'] = function()
 	local _, split = cycling_in_split()
 	start_closed(split)
-	child.lua('vim.fn.delete(_G.CDV_TEST.root .. "/c.txt")')
+	child.lua('vim.fn.delete(_G.FRG_TEST.root .. "/c.txt")')
 	child.cmd('wincmd w')
 	child.settle(200)
 	eq({ visiting = child.lua('return vim.bo[vim.api.nvim_win_get_buf(...)].buftype', { split }), said = cancels_said() },

@@ -66,7 +66,7 @@ end
 T['T98 [char] a typed path to an unloaded readable file is registered, queued and pushed on the closed stack'] = function()
 	local w = queue_ba()
 	open()
-	local x_path = child.lua('return _G.CDV_TEST.root .. "/x.txt"')
+	local x_path = child.lua('return _G.FRG_TEST.root .. "/x.txt"')
 	eq(child.lua('return vim.fn.bufnr(...)', { x_path }), -1)
 	child.popup_set({ 'b.txt', 'a.txt', x_path })
 	child.cmd('write')
@@ -142,12 +142,12 @@ T['T158 [char] a save switches the primary on only when the first row changed'] 
 	eq(got, { reorder_off = '[a,b]on', drop_a_off = '[b]off', drop_a_on = '[b]on' })
 end
 
--- The picker stubbed: it picks what _G.CDV_PICKED names, full paths.
+-- The picker stubbed: it picks what _G.FRG_PICKED names, full paths.
 local function stub_picker()
-	child.lua([[_G.CDV_TEST.setup({ primary_picker = function(add) add(_G.CDV_PICKED) end })]])
+	child.lua([[_G.FRG_TEST.setup({ primary_picker = function(add) add(_G.FRG_PICKED) end })]])
 end
 local function pick(files, row)
-	child.lua('_G.CDV_PICKED = vim.tbl_map(function(f) return _G.CDV_TEST.root .. "/" .. f end, ...)', { files })
+	child.lua('_G.FRG_PICKED = vim.tbl_map(function(f) return _G.FRG_TEST.root .. "/" .. f end, ...)', { files })
 	child.lua('vim.api.nvim_win_set_cursor(0, { ..., 0 })', { row })
 	child.steps({ '<M-e>' })
 end
@@ -182,7 +182,7 @@ end
 T['T553 [char] a picked file whose path reads like another entry\'s short name goes in as its own'] = function()
 	stub_picker()
 	child.lua([[
-		local root = _G.CDV_TEST.root
+		local root = _G.FRG_TEST.root
 		vim.fn.mkdir(root .. '/sub', 'p')
 		vim.fn.writefile({ 'sub' }, root .. '/sub/init.lua')
 		vim.fn.writefile({ 'root' }, root .. '/init.lua')
@@ -208,7 +208,7 @@ end
 
 T['T583 [char] two queued files of one name keep their own lines'] = function()
 	child.lua([[
-		local root = _G.CDV_TEST.root
+		local root = _G.FRG_TEST.root
 		for _, d in ipairs({ 'a', 'b' }) do
 			vim.fn.mkdir(root .. '/' .. d, 'p')
 			vim.fn.writefile({ d }, root .. '/' .. d .. '/foo.lua')
@@ -238,7 +238,7 @@ end
 T['T584 [char] a picked file keeps its line through a second write'] = function()
 	stub_picker()
 	child.lua([[
-		local root = _G.CDV_TEST.root
+		local root = _G.FRG_TEST.root
 		vim.fn.mkdir(root .. '/sub', 'p')
 		vim.fn.writefile({ 'sub' }, root .. '/sub/init.lua')
 		vim.fn.writefile({ 'root' }, root .. '/init.lua')
@@ -273,7 +273,7 @@ T['T585 [char] the pop-up opened again while it\'s open opens once'] = function(
 	local count = child.lua([[
 		local n = 0
 		for _, b in ipairs(vim.api.nvim_list_bufs()) do
-			if vim.bo[b].filetype == 'cavediver-primary-buffer-history' then n = n + 1 end
+			if vim.bo[b].filetype == 'frogman-primary-buffer-history' then n = n + 1 end
 		end
 		return n
 	]])
@@ -322,7 +322,7 @@ end
 
 -- The virtual text drawn on each of the pop-up's lines, as one string per line.
 local DECORATION = [==[
-local ns = vim.api.nvim_create_namespace('cavediver_primary_popup')
+local ns = vim.api.nvim_create_namespace('frogman_primary_popup')
 local buf = vim.api.nvim_get_current_buf()
 local out = {}
 for i = 1, vim.api.nvim_buf_line_count(buf) do out[i] = '' end
@@ -338,8 +338,8 @@ T['T452 [char] (A18, A27) the pop-up in the trail\'s language'] = function()
 	child.settle(100)
 	child.lua([[
 		-- b.txt gone from disk after the start (each start writes the project's files again), tagged by hand
-		os.remove(_G.CDV_TEST.root .. '/b.txt')
-		local hash = require('frogman.domains.history').get_hash_from_filepath(_G.CDV_TEST.root .. '/b.txt')
+		os.remove(_G.FRG_TEST.root .. '/b.txt')
+		local hash = require('frogman.domains.history').get_hash_from_filepath(_G.FRG_TEST.root .. '/b.txt')
 		require('frogman.domains.history').data.missing[hash] = 'feature'
 	]])
 	open()
@@ -351,7 +351,7 @@ T['T452 [char] (A18, A27) the pop-up in the trail\'s language'] = function()
 	local off = child.lua(DECORATION)[1]
 	child.steps({ 'q' })
 	settle_close()
-	child.lua('_G.CDV_TEST.setup({ glyphs = { set = "ascii" } })')
+	child.lua('_G.FRG_TEST.setup({ glyphs = { set = "ascii" } })')
 	open()
 	local ascii = table.concat(child.lua(DECORATION), '') .. table.concat(child.popup_lines(), '')
 	eq({ lines = lines, on = on[1]:find('primary · on', 1, true) ~= nil, tag = on[1]:find('⎇feature', 1, true) ~= nil,
@@ -360,7 +360,7 @@ T['T452 [char] (A18, A27) the pop-up in the trail\'s language'] = function()
 end
 
 T['T453 [char] (A18) the pop-up\'s keys are keymaps.views\''] = function()
-	child.lua('_G.CDV_TEST.setup({ keymaps = { views = { leave = "Q" } } })')
+	child.lua('_G.FRG_TEST.setup({ keymaps = { views = { leave = "Q" } } })')
 	local w = queue_ba()
 	open()
 	child.popup_set({ 'b.txt', 'a.txt', 'c.txt' })
@@ -379,7 +379,7 @@ end
 
 -- A negative width, which the size reads as its size.
 T['T568 [char] (A18, M13) opening the primary pop-up leaves its size setting as it is'] = function()
-	child.lua('_G.CDV_TEST.setup({ primary_buffer_history_popup = { width = -0.5, height = 0.2 } })')
+	child.lua('_G.FRG_TEST.setup({ primary_buffer_history_popup = { width = -0.5, height = 0.2 } })')
 	queue_ba()
 	open()
 	local got = child.lua([[return { width = vim.api.nvim_win_get_width(0), columns = vim.o.columns,
@@ -389,7 +389,7 @@ end
 
 -- leave_too and pick set to false: the pop-up maps neither, as the closed lists and the trail don't.
 T['T539 [char] (A18) a view key set to false isn\'t mapped in the pop-up'] = function()
-	child.lua('_G.CDV_TEST.setup({ keymaps = { views = { leave_too = false, pick = false } } })')
+	child.lua('_G.FRG_TEST.setup({ keymaps = { views = { leave_too = false, pick = false } } })')
 	queue_ba()
 	open()
 	local mapped = child.lua([[
@@ -419,19 +419,19 @@ T['T631 [char] (A18, A27) the pop-up\'s keys begin steps of their own'] = functi
 end
 
 T['T632 [char] (A18, S2 Closed-stack picker) the views\' write key is keymaps.views.write, in both pop-ups'] = function()
-	child.lua('_G.CDV_TEST.setup({ keymaps = { views = { write = "<M-w>" } } })')
+	child.lua('_G.FRG_TEST.setup({ keymaps = { views = { write = "<M-w>" } } })')
 	queue_ba()
 	child.steps({ ':e c' })
-	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")'))
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/c.txt")'))
 	child.settle()
 	open()
 	local popup = child.lua([[return { mine = vim.fn.maparg('<M-w>', 'n', false, true).buffer == 1,
 		default = vim.fn.maparg('<C-s>', 'n', false, true).buffer == 1 }]])
 	child.steps({ 'q' })
 	settle_close()
-	child.cmd('CavediverClosed')
+	child.cmd('FrogmanClosed')
 	child.settle()
-	local lists = child.lua([[return vim.bo.filetype == 'cavediver-closed-lists' and vim.fn.maparg('<M-w>', 'n', false, true).buffer == 1]])
+	local lists = child.lua([[return vim.bo.filetype == 'frogman-closed-lists' and vim.fn.maparg('<M-w>', 'n', false, true).buffer == 1]])
 	eq({ popup = popup, lists = lists }, { popup = { mine = true, default = false }, lists = true })
 end
 
@@ -439,13 +439,13 @@ end
 T['T633 [char] (A18, S2 Closed-stack picker, A27) * in either pop-up searches the trail for the file on the line'] = function()
 	queue_ba()
 	child.steps({ ':e c' })
-	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.CDV_TEST.root .. "/c.txt")'))
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/c.txt")'))
 	child.settle()
 	local function searched(name)
 		local got = child.lua([[return { ft = vim.bo.filetype, head = vim.api.nvim_buf_get_lines(0, 0, 1, false)[1] or '' }]])
-		return got.ft == 'cavediver-trail' and got.head:find('⌕', 1, true) ~= nil and got.head:find(name, 1, true) ~= nil
+		return got.ft == 'frogman-trail' and got.head:find('⌕', 1, true) ~= nil and got.head:find(name, 1, true) ~= nil
 	end
-	child.cmd('CavediverClosed')
+	child.cmd('FrogmanClosed')
 	child.settle()
 	child.lua([[
 		for i, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
@@ -468,7 +468,7 @@ end
 
 T['T454 [char] (A18, P9) a save keeps a queue entry whose file is gone from disk'] = function()
 	local w = queue_ba()
-	child.lua('os.remove(_G.CDV_TEST.root .. "/b.txt")') -- after the start, which writes the project's files
+	child.lua('os.remove(_G.FRG_TEST.root .. "/b.txt")') -- after the start, which writes the project's files
 	open()
 	child.messages()
 	child.popup_set({ 'a.txt', 'b.txt' })
@@ -480,7 +480,7 @@ end
 -- idx.json is open and idx.js is only on disk: by pattern, idx.js names
 -- idx.json's buffer too.
 T['T495 [char] (A18) a path that a longer open buffer\'s name begins with is its own file in the pop-up'] = function()
-	child.lua('for _, f in ipairs({ "idx.json", "idx.js" }) do vim.fn.writefile({ f }, _G.CDV_TEST.root .. "/" .. f) end')
+	child.lua('for _, f in ipairs({ "idx.json", "idx.js" }) do vim.fn.writefile({ f }, _G.FRG_TEST.root .. "/" .. f) end')
 	child.cmd('edit idx.json')
 	child.settle()
 	local w = queue_ba()

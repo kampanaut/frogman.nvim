@@ -252,7 +252,7 @@ T['T532 [char] (A7, M5, M14) a slot key opens a never-written closed file as the
 	local after, shown = child.slots(), child.lua('return vim.fn.expand("%:t")')
 	local lines = child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)')
 	-- and the trail draws it so
-	child.cmd('CavediverTrail')
+	child.cmd('FrogmanTrail')
 	child.settle(100)
 	local drawn = child.lua([[
 		for _, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
@@ -267,7 +267,7 @@ end
 T['T89 [char] <M-S-w> on a missing file says so and leaves the entry on the stack'] = function()
 	child.steps({ ':e d', ':e e', ':e f', '<M-.>' })
 	eq(child.closed(), 'f')
-	child.lua('os.remove(_G.CDV_TEST.root .. "/f.txt")')
+	child.lua('os.remove(_G.FRG_TEST.root .. "/f.txt")')
 	child.messages()
 	local ok, err = child.step('<M-S-w>')
 	eq({ ok, err }, { true, nil })
@@ -319,7 +319,7 @@ T['T162 [char] pushing a hash already on the closed stack keeps one copy, as the
 	child.steps({ ':e a' })
 	local got = child.lua([[
 		local H = require('frogman.domains.history')
-		local root = _G.CDV_TEST.root
+		local root = _G.FRG_TEST.root
 		H.register_filepath(root .. '/x.txt')
 		H.register_filepath(root .. '/t.txt')
 		local x = H.get_hash_from_filepath(root .. '/x.txt')

@@ -1,9 +1,9 @@
----Cavediver - Sophisticated buffer and window management plugin
+---Frogman - Sophisticated buffer and window management plugin
 ---
 ---A state machine-driven buffer management system with triquetra window relationships,
 ---hash-based buffer tracking, and encrypted session persistence.
 ---
----@class Cavediver
+---@class Frogman
 local M = {}
 
 -- Import all domains
@@ -30,10 +30,10 @@ M.ledger = ledger
 M.engine = engine
 
 -- The keys the last setup mapped, each with its callback, so the next one takes off those that are
--- still cavediver's
+-- still frogman's
 local mapped = {}
 
--- Each key cavediver maps: its name in the config, the export it runs and its description. The
+-- Each key frogman maps: its name in the config, the export it runs and its description. The
 -- same table wraps the exports, so a key's export can't be left unwrapped.
 local keymap_actions = {
 	-- Buffer lifecycle
@@ -57,8 +57,8 @@ local keymap_actions = {
 	{ "open_closed_lists", "open_closed_lists", "Open the closed lists" },
 }
 
----Setup keymaps for cavediver operations
----@param keymaps CavediverKeymaps Keymap configuration
+---Setup keymaps for frogman operations
+---@param keymaps FrogmanKeymaps Keymap configuration
 local function setup_keymaps(keymaps)
 	-- the last setup's keys go first, those another mapping hasn't replaced since
 	for lhs, callback in pairs(mapped) do
@@ -89,14 +89,14 @@ end
 
 local setup_debug_commands
 
----Initialize cavediver plugin with configuration.
+---Initialize frogman plugin with configuration.
 ---
----Nothing runs at require, so this creates the autocmds (in the cavediver augroup), the commands
+---Nothing runs at require, so this creates the autocmds (in the frogman augroup), the commands
 ---and the timers, and calling it again replaces them, the last call's keys too. Each call starts
 ---from the defaults. A list replaces the default list whole, a key the defaults lack takes the
 ---user's value, and a table given where the default is something else (or the other way) throws.
 ---
----@param user_config? CavediverConfig User configuration (merged with defaults)
+---@param user_config? FrogmanConfig User configuration (merged with defaults)
 ---@return nil
 function M.setup(user_config)
 	-- Start from the defaults, put back in place, since the domains hold this table
@@ -145,7 +145,7 @@ function M.setup(user_config)
 	-- Store config for domain access
 	M.config = settings
 	
-	local group = vim.api.nvim_create_augroup("cavediver", { clear = true })
+	local group = vim.api.nvim_create_augroup("frogman", { clear = true })
 	ledger.init_autocmds(group) -- first, so a step has begun before the others act on its event
 	history.init_autocmds(group)
 	navigation.init_autocmds(group)
@@ -159,14 +159,14 @@ function M.setup(user_config)
 	history.init_cleanup_timer()
 	history.routines.enable_head_watch(true)
 	setup_debug_commands()
-	vim.api.nvim_create_user_command("CavediverClosed", function()
+	vim.api.nvim_create_user_command("FrogmanClosed", function()
 		M.open_closed_lists()
 	end, { desc = "Open the closed lists" })
-	vim.api.nvim_create_user_command("CavediverDump", function(opts)
+	vim.api.nvim_create_user_command("FrogmanDump", function(opts)
 		require('frogman.domains.ledger.dump').open(opts.args)
 	end, { nargs = 1, complete = "file", desc = "Open a flight recorder dump, decrypted, in a window (only from the directory it was written in)" })
 	-- the winbar, indicator and bufferline toggles: on, off, or toggle (no argument toggles)
-	for name, part in pairs({ CavediverWinbar = "winbar", CavediverIndicators = "indicators", CavediverBufferline = "bufferline" }) do
+	for name, part in pairs({ FrogmanWinbar = "winbar", FrogmanIndicators = "indicators", FrogmanBufferline = "bufferline" }) do
 		vim.api.nvim_create_user_command(name, function(opts)
 			local args = vim.deepcopy(opts.fargs)
 			local kind = part == "indicators" and (args[1] == "roles" or args[1] == "harpoon") and table.remove(args, 1) or nil
@@ -180,15 +180,15 @@ function M.setup(user_config)
 			elseif want == "off" or (want == "toggle" and not hidden) then
 				ui["hide_" .. part](kind)
 			else
-				vim.notify("cavediver: :" .. name .. " takes " .. (part == "indicators" and "roles or harpoon, then " or "")
+				vim.notify("frogman: :" .. name .. " takes " .. (part == "indicators" and "roles or harpoon, then " or "")
 					.. "on, off or toggle.", vim.log.levels.WARN)
 			end
 		end, { nargs = "*", complete = function()
 			return part == "indicators" and { "roles", "harpoon", "on", "off", "toggle" } or { "on", "off", "toggle" }
 		end,
-			desc = "Switch cavediver's " .. part .. " on or off, or toggle it" })
+			desc = "Switch frogman's " .. part .. " on or off, or toggle it" })
 	end
-	vim.api.nvim_create_user_command("CavediverTrail", function(opts)
+	vim.api.nvim_create_user_command("FrogmanTrail", function(opts)
 		M.open_trail(opts.args)
 	end, { nargs = "?", desc = "Open the trail, or with a name, that name's life line across every page" })
 
@@ -199,20 +199,20 @@ end
 ---Setup debug commands for inspecting internal state
 function setup_debug_commands()
 	-- Command 0: Print Current Window Triquetra
-	vim.api.nvim_create_user_command("CavediverHistoryData", function()
+	vim.api.nvim_create_user_command("FrogmanHistoryData", function()
 		print(vim.inspect(history.data))
 	end, { desc = "Print curernt history state" })
-	vim.api.nvim_create_user_command("CavediverNavigationData", function()
+	vim.api.nvim_create_user_command("FrogmanNavigationData", function()
 		print(vim.inspect(navigation.data))
 	end, { desc = "Print curernt navigation state" })
-	vim.api.nvim_create_user_command("CavediverWindowData", function()
+	vim.api.nvim_create_user_command("FrogmanWindowData", function()
 		print(vim.inspect(window.data))
 	end, { desc = "Print current window state" })
-	vim.api.nvim_create_user_command("CavediverUIData", function()
+	vim.api.nvim_create_user_command("FrogmanUIData", function()
 		print(vim.inspect(ui.data))
 	end, { desc = "Print current UI state" })
 	-- Command 1: Print Current Window Triquetra
-	vim.api.nvim_create_user_command("CavediverTriquetra", function()
+	vim.api.nvim_create_user_command("FrogmanTriquetra", function()
 		local winid = vim.api.nvim_get_current_win()
 		local triquetra = window.get_triquetra(winid)
 
@@ -241,7 +241,7 @@ function setup_debug_commands()
 	end, { desc = "Print current window triquetra relationships" })
 
 	-- Command 2: Print Registry Mappings
-	vim.api.nvim_create_user_command("CavediverRegistry", function()
+	vim.api.nvim_create_user_command("FrogmanRegistry", function()
 		print("=== Hash-Buffer Registry ===")
 		print("Hash -> Buffer mapping:")
 		for hash, bufnr in pairs(history.data.hash_buffer_registry.buffers) do
@@ -277,7 +277,7 @@ function setup_debug_commands()
 	end, { desc = "Print hash-buffer and hash-filepath registry mappings" })
 
 	-- Command 3: Enhanced Triquetra with Filenames
-	vim.api.nvim_create_user_command("CavediverTriquetraVerbose", function()
+	vim.api.nvim_create_user_command("FrogmanTriquetraVerbose", function()
 		local winid = vim.api.nvim_get_current_win()
 		local triquetra = window.get_triquetra(winid)
 
@@ -304,7 +304,7 @@ function setup_debug_commands()
 	end, { desc = "Print current window triquetra with filenames" })
 
 	-- Command 4: Print All Triquetra Objects
-	vim.api.nvim_create_user_command("CavediverAllTriquetras", function()
+	vim.api.nvim_create_user_command("FrogmanAllTriquetras", function()
 		local function hash_to_info(hash)
 			if not hash then return "nil" end
 			local filepath = history.get_filepath_from_hash(hash)
@@ -414,14 +414,14 @@ function setup_debug_commands()
 	end, { desc = "Print all window triquetra objects and UI caches" })
 end
 
----Turn cavediver off.
+---Turn frogman off.
 ---
 ---Clears its autocmds, stops its timers and the head watch, and stops writing records, so nothing
 ---is tracked until setup() runs again.
 ---
 ---@return nil
 function M.disable()
-	vim.api.nvim_create_augroup("cavediver", { clear = true })
+	vim.api.nvim_create_augroup("frogman", { clear = true })
 	ui.stop_refresh_timer()
 	history.stop_cleanup_timer()
 	history.routines.enable_head_watch(false)
@@ -496,8 +496,8 @@ M.set_primary = function()
 	window.set_primary_buffer(winid)
 end
 
--- Each key's export runs once cavediver has settled: keys in one batch (a macro, a mapping,
--- cavediver's own or a user's) can come before the settle work their events queued. A cycle still
+-- Each key's export runs once frogman has settled: keys in one batch (a macro, a mapping,
+-- frogman's own or a user's) can come before the settle work their events queued. A cycle still
 -- running in another window, which no window entry queued a cancel for, ends too.
 for _, action in ipairs(keymap_actions) do
 	local export = M[action[2]]

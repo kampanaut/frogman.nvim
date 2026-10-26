@@ -12,7 +12,7 @@ local function is_no_name_buffer(bufnr)
 		and vim.api.nvim_buf_is_loaded(bufnr) -- Buffer is loaded
 end
 
----Get the name cavediver gives a No Name buffer.
+---Get the name frogman gives a No Name buffer.
 ---
 ---The name is NONAME_ and an id kept on the buffer, made on the first call from the time and a
 ---high-resolution clock, so a later session's buffer with the same number can't take it over.
@@ -20,10 +20,10 @@ end
 ---@param bufnr Bufnr The No Name buffer
 ---@return string name NONAME_ and the buffer's id
 function M.noname_name(bufnr)
-	if vim.b[bufnr].cavediver_noname == nil then
-		vim.b[bufnr].cavediver_noname = tostring(os.time()) .. string.format("%.0f", vim.uv.hrtime()) -- digits, however large
+	if vim.b[bufnr].frogman_noname == nil then
+		vim.b[bufnr].frogman_noname = tostring(os.time()) .. string.format("%.0f", vim.uv.hrtime()) -- digits, however large
 	end
-	return "NONAME_" .. vim.b[bufnr].cavediver_noname
+	return "NONAME_" .. vim.b[bufnr].frogman_noname
 end
 
 ---Generate a file hash from filename for buffer tracking.
@@ -45,7 +45,7 @@ end
 
 ---Check if a buffer is `nowrite` on an existing regular file.
 ---
----This is how image.nvim leaves an image's buffer, and cavediver tracks those like files.
+---This is how image.nvim leaves an image's buffer, and frogman tracks those like files.
 ---
 ---@param bufnr Bufnr
 ---@return boolean nowrite_file True if it's `nowrite` on a readable file, not a directory
@@ -57,14 +57,14 @@ function M.is_nowrite_file(bufnr)
 		vim.fn.isdirectory(name) == 0
 end
 
----Check if cavediver tracks a buffer.
+---Check if frogman tracks a buffer.
 ---
 ---A tracked buffer is listed and has buftype "" (or is `nowrite` on an existing regular file).
 ---Its name is empty (a No Name buffer) or a plain path, with no `://` in it. A plugin's
 ---scratch and helper buffers are unlisted, so they're left alone.
 ---
 ---@param bufnr Bufnr
----@return boolean trackable True if cavediver tracks the buffer
+---@return boolean trackable True if frogman tracks the buffer
 function M.is_trackable(bufnr)
 	if not vim.bo[bufnr].buflisted or vim.api.nvim_buf_get_name(bufnr):match("://") then
 		return false
@@ -184,7 +184,7 @@ function M.is_filehash_referenced(filehash)
 	return false
 end
 
----Get every hash cavediver still knows, as a set.
+---Get every hash frogman still knows, as a set.
 ---
 ---A hash is known while an open buffer, a slot, a primary queue or a closed stack holds it.
 ---Notes and history never keep a hash known. They follow along instead. It's built once for a pass
@@ -594,11 +594,11 @@ local mark_queue, mark_next = {}, 1
 ---time when there's no label. A file never written isn't missing. With a limit, the open
 ---buffers and the slots are always checked, and the other files a slice at a time, carrying on
 ---from where the last such pass stopped. The trail records each file that goes and comes back,
----and the marks of files cavediver no longer knows are dropped.
+---and the marks of files frogman no longer knows are dropped.
 ---
 ---@param label string|nil The label the files went missing under
 ---@param limit integer|true|nil How many other files to check at most, true for a tick's slice (nil = every file)
----@param known table<Filehash, boolean>|nil The files cavediver knows, when the caller has them already
+---@param known table<Filehash, boolean>|nil The files frogman knows, when the caller has them already
 ---@return nil
 function M.mark_missing(label, limit, known)
 	limit = limit == true and mark_slice or limit
@@ -765,7 +765,7 @@ function M.refresh_label()
 	return checked
 end
 
----Drop the notes and history entries that point at hashes cavediver no longer knows.
+---Drop the notes and history entries that point at hashes frogman no longer knows.
 ---
 ---A note goes when either buffer it names is no longer known, and a history entry (overall,
 ---each window's, each pool's visits) when its hash isn't. Then the path of each unknown hash
@@ -1329,7 +1329,7 @@ end
 ---history entry that named the old hash then follows to the new name, the newer visit staying where
 ---the new name had one, and the old hash leaves every closed stack, and so does the new one, whose
 ---buffer holds it open now. The buffer is unregistered from the old hash, for the caller to register
----under the new one. A buffer cavediver doesn't track is left alone.
+---under the new one. A buffer frogman doesn't track is left alone.
 ---
 ---@param bufnr Bufnr The renamed buffer
 ---@param old_hash Filehash Its hash before the rename
@@ -1439,7 +1439,7 @@ function M.track_closing_filehash(filehash, quiet)
 			lines = lines,
 			filetype = vim.bo[bufnr].filetype,
 			-- the close key switches the window away first, so it keeps the cursor on the buffer.
-			cursor = winid ~= -1 and vim.api.nvim_win_get_cursor(winid) or vim.b[bufnr].cavediver_cursor or { 1, 0 }
+			cursor = winid ~= -1 and vim.api.nvim_win_get_cursor(winid) or vim.b[bufnr].frogman_cursor or { 1, 0 }
 		}
 	end
 
@@ -1495,7 +1495,7 @@ function M.reopen_last_closed()
 		local elsewhere = vim.tbl_count(files)
 		if elsewhere > 0 then
 			vim.notify("No closed buffers to reopen in this tab.\n" .. (elsewhere == 1 and "1 is on another tab's list"
-				or (elsewhere .. " are on other tabs' lists")) .. ": :CavediverClosed", vim.log.levels.WARN)
+				or (elsewhere .. " are on other tabs' lists")) .. ": :FrogmanClosed", vim.log.levels.WARN)
 		else
 			vim.notify("No closed buffers to reopen.", vim.log.levels.WARN)
 		end
@@ -1598,7 +1598,7 @@ function M.delete_buffer(winid)
 	end
 
 	-- Switch to next buffer before deletion
-	vim.b[bufnr].cavediver_cursor = vim.api.nvim_win_get_cursor(winid) -- for a No Name buffer's cache
+	vim.b[bufnr].frogman_cursor = vim.api.nvim_win_get_cursor(winid) -- for a No Name buffer's cache
 	local switched = next_bufnr and vim.api.nvim_buf_is_valid(next_bufnr)
 	if switched then
 		vim.api.nvim_set_current_buf(next_bufnr)
@@ -1801,7 +1801,7 @@ function M.cleanup_system(on_tick)
 				subject = filehash, name = require('frogman.domains.ledger').name_of(filehash) or filehash,
 				lists = { M.list_name(pool) },
 				state = filepath and "open" or nil,
-				words = filepath and "open again without a visit cavediver saw; taken off its list"
+				words = filepath and "open again without a visit frogman saw; taken off its list"
 					or "nothing names it; taken off its list",
 			})
 			table.remove(pool.closed, i)

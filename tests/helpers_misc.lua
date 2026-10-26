@@ -18,7 +18,7 @@ end
 -- Sessions ------------------------------------------------------------------
 
 -- The shared setup from tests/helpers.lua, with two more options: `root`, the
--- project to start in, and `session_dir`, cavediver's session directory. With
+-- project to start in, and `session_dir`, frogman's session directory. With
 -- neither it's child.setup(). A candidate option for the shared child.setup.
 local SETUP = table.concat(vim.fn.readfile('tests/helpers.lua'), '\n'):match('local CHILD_SETUP = %[==%[\n(.-)%]==%]')
 local n_root, n_dir
@@ -27,7 +27,7 @@ SETUP, n_dir = SETUP:gsub("session_dir = root %.%. '/state/sessions/',",
 	"session_dir = opts.session_dir or (root .. '/state/sessions/'),")
 assert(n_root == 1 and n_dir == 1, 'tests/helpers.lua changed: CHILD_SETUP no longer matches')
 
--- Restart the child with cavediver set up. opts: root, session_dir, plus
+-- Restart the child with frogman set up. opts: root, session_dir, plus
 -- child.setup's (history_view, no_cokeline).
 Misc.start = function(child, opts)
 	child.restart({ '-u', 'scripts/minimal_init.lua' })
@@ -106,7 +106,7 @@ local H = require('frogman.domains.history')
 local W = require('frogman.domains.window')
 local N = require('frogman.domains.navigation')
 local raw_cmd = vim.cmd
-local root = _G.CDV_TEST.root
+local root = _G.FRG_TEST.root
 local newfile = 0
 
 local function stem(buf)
@@ -116,7 +116,7 @@ local function stem(buf)
 	return vim.fn.fnamemodify(n, ':t:r')
 end
 
-local function press(lhs) return _G.CDV_TEST.press(lhs) end
+local function press(lhs) return _G.FRG_TEST.press(lhs) end
 
 local actions = {}
 for _, f in ipairs({ 'a', 'b', 'c', 'd', 'e' }) do
@@ -259,14 +259,14 @@ checks.I11 = { post = function(_, action)
 	end
 end }
 
--- I12: no buffer with unsaved changes is wiped by cavediver. The walk runs its
--- own commands through the original vim.cmd, so only cavediver's calls are
+-- I12: no buffer with unsaved changes is wiped by frogman. The walk runs its
+-- own commands through the original vim.cmd, so only frogman's calls are
 -- checked. No Name buffers are left out: closing one caches its text (T83).
-_G.CDV_WIPED = {}
+_G.FRG_WIPED = {}
 local function check_wipe(buf)
 	if buf and buf ~= 0 and vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].modified
 		and vim.api.nvim_buf_get_name(buf) ~= '' then
-		table.insert(_G.CDV_WIPED, stem(buf))
+		table.insert(_G.FRG_WIPED, stem(buf))
 	end
 end
 checks.I12 = {
@@ -302,8 +302,8 @@ checks.I12 = {
 		end
 	end,
 	post = function()
-		if #_G.CDV_WIPED > 0 then
-			return 'wiped with unsaved changes: ' .. table.concat(_G.CDV_WIPED, ',')
+		if #_G.FRG_WIPED > 0 then
+			return 'wiped with unsaved changes: ' .. table.concat(_G.FRG_WIPED, ',')
 		end
 	end,
 }
@@ -334,7 +334,7 @@ checks.I13 = {
 	end,
 }
 
--- I14: a save never throws on cavediver's own data, whatever state the walk left it in
+-- I14: a save never throws on frogman's own data, whatever state the walk left it in
 -- (the save hook is critical, so a throw would reach the session manager).
 checks.save = {
 	install = function()
@@ -370,7 +370,7 @@ local function run_step(c, a)
 end
 
 -- A fixed route, checked after every action; for replaying a walk's report.
-_G.CDV_ROUTE = function(names, check)
+_G.FRG_ROUTE = function(names, check)
 	local c = checks[check]
 	if c.install then c.install() end
 	for i, a in ipairs(names) do
@@ -380,7 +380,7 @@ _G.CDV_ROUTE = function(names, check)
 	return nil
 end
 
-_G.CDV_WALK = function(seed, nsteps, names, check)
+_G.FRG_WALK = function(seed, nsteps, names, check)
 	local c = checks[check]
 	if c.install then c.install() end
 	-- Park-Miller's generator: exact in doubles, the same walk on every run.
@@ -414,7 +414,7 @@ Misc.walks = function(child, opts)
 		child.lua(WALKER)
 		local seed = opts.seed * 1000 + w
 		local dumps = child.dump_files()
-		local broke = child.lua('return _G.CDV_WALK(...)', { seed, opts.steps, opts.actions, opts.check })
+		local broke = child.lua('return _G.FRG_WALK(...)', { seed, opts.steps, opts.actions, opts.check })
 		if broke ~= vim.NIL and broke ~= nil then
 			return string.format('%s broke in walk %d (seed %d), step %d: %s\n  route: %s',
 				opts.check, w, seed, broke.step, broke.detail, broke.trail)
@@ -432,7 +432,7 @@ end
 Misc.route = function(child, names, check, setup)
 	child.setup(setup)
 	child.lua(WALKER)
-	local broke = child.lua('return _G.CDV_ROUTE(...)', { names, check })
+	local broke = child.lua('return _G.FRG_ROUTE(...)', { names, check })
 	if broke == vim.NIL then return nil end
 	return broke
 end

@@ -14,12 +14,12 @@ local T = MiniTest.new_set({
 })
 
 -- The project gets a planted .git/HEAD, no git binary. A FocusGained, one of
--- the settle points, makes cavediver read the label and watch HEAD; a HEAD
+-- the settle points, makes frogman read the label and watch HEAD; a HEAD
 -- written afterwards is seen through the watch.
 
 local function plant_head(text)
 	child.lua([[
-		local root, text = _G.CDV_TEST.root, ...
+		local root, text = _G.FRG_TEST.root, ...
 		vim.fn.mkdir(root .. '/.git', 'p')
 		vim.fn.writefile({ text }, root .. '/.git/HEAD')
 	]], { text })
@@ -28,7 +28,7 @@ end
 local function tag_of(stem)
 	return child.lua([[
 		local H = require('frogman.domains.history')
-		local hash = H.get_hash_from_filepath(_G.CDV_TEST.root .. '/' .. ... .. '.txt')
+		local hash = H.get_hash_from_filepath(_G.FRG_TEST.root .. '/' .. ... .. '.txt')
 		return H.data.missing[hash] or vim.NIL
 	]], { stem })
 end
@@ -42,13 +42,13 @@ T['T343 [char] files that go missing at a branch switch are tagged with the bran
 	child.cmd('doautocmd FocusGained')
 	child.settle()
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
-	child.lua('os.remove(_G.CDV_TEST.root .. "/b.txt")')
+	child.lua('os.remove(_G.FRG_TEST.root .. "/b.txt")')
 	plant_head('ref: refs/heads/main')
 	child.settle(300)
 	eq(tag_of('b'), 'feature')
 	child.settle(300)
 	eq(child.lua('return vim.wo.winbar'):find('⎇feature', 1, true) ~= nil, true)
-	child.lua('vim.fn.writefile({ "b" }, _G.CDV_TEST.root .. "/b.txt")')
+	child.lua('vim.fn.writefile({ "b" }, _G.FRG_TEST.root .. "/b.txt")')
 	child.lua('require("frogman.domains.history").cleanup_system()')
 	child.settle(300)
 	eq(tag_of('b'), vim.NIL)
@@ -59,18 +59,18 @@ T['T344 [char] with no label, a file that goes missing is tagged with the time']
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.cmd('bdelete b.txt')
 	child.settle()
-	child.lua('os.remove(_G.CDV_TEST.root .. "/b.txt")')
+	child.lua('os.remove(_G.FRG_TEST.root .. "/b.txt")')
 	child.lua('require("frogman.domains.history").cleanup_system()')
 	local tag = tag_of('b')
 	eq(type(tag) == 'string' and tag:match('^%d%d:%d%d$') ~= nil, true)
 end
 
 T['T345 [char] a label provider in config names the label'] = function()
-	child.lua('_G.CDV_TEST.setup({ label_provider = function() return "jj:main" end })')
+	child.lua('_G.FRG_TEST.setup({ label_provider = function() return "jj:main" end })')
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.cmd('bdelete b.txt')
 	child.settle()
-	child.lua('os.remove(_G.CDV_TEST.root .. "/b.txt")')
+	child.lua('os.remove(_G.FRG_TEST.root .. "/b.txt")')
 	child.lua('require("frogman.domains.history").cleanup_system()')
 	eq(tag_of('b'), 'jj:main')
 end
@@ -83,7 +83,7 @@ T['T346 [char] disable() stops the HEAD watch'] = function()
 	child.cmd('doautocmd FocusGained')
 	child.settle()
 	child.lua('require("frogman").disable()')
-	child.lua('os.remove(_G.CDV_TEST.root .. "/b.txt")')
+	child.lua('os.remove(_G.FRG_TEST.root .. "/b.txt")')
 	plant_head('ref: refs/heads/main')
 	child.settle(300)
 	eq(tag_of('b'), vim.NIL)
@@ -101,7 +101,7 @@ T['T346 [char] a save after disable() doesn\'t watch .git/HEAD again'] = functio
 	child.settle()
 	child.lua('require("frogman").disable()')
 	eq(Misc.save(child), { true })
-	child.lua('os.remove(_G.CDV_TEST.root .. "/b.txt")')
+	child.lua('os.remove(_G.FRG_TEST.root .. "/b.txt")')
 	plant_head('ref: refs/heads/main')
 	child.settle(300)
 	eq(tag_of('b'), vim.NIL)
@@ -139,7 +139,7 @@ T['T348 [char] a file that was never written isn\'t tagged; once written and del
 		{ tag = vim.NIL, winbar = false })
 	child.cmd('write')
 	child.lua('require("frogman.domains.history").cleanup_system()')
-	child.lua('os.remove(_G.CDV_TEST.root .. "/brandnew.txt")')
+	child.lua('os.remove(_G.FRG_TEST.root .. "/brandnew.txt")')
 	child.lua('require("frogman.domains.history").cleanup_system()')
 	eq(type(tag_of('brandnew')), 'string')
 end

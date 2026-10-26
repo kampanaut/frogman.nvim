@@ -3,7 +3,7 @@ local routines = require('frogman.domains.ledger.routines')
 
 ---Ledger domain initialization and API layer.
 ---
----The ledger domain records what set things off (steps) and what cavediver did then (moves).
+---The ledger domain records what set things off (steps) and what frogman did then (moves).
 ---It's read two ways, as the ring of the last steps and as the trail of each day's moves. This
 ---module provides the API layer and the autocmds that begin steps.
 local M = {}
@@ -63,7 +63,7 @@ M.set_session = routines.set_session
 
 ---Raise an error for something that shouldn't happen, dumping the steps that led there first.
 ---
----Every "this is impossible" in cavediver goes through here. The dump is written once per
+---Every "this is impossible" in frogman goes through here. The dump is written once per
 ---distinct message while dumps are on, then the error is raised as `error()` would have raised
 ---it at the caller.
 ---
@@ -78,16 +78,16 @@ end
 ---@param bufnr Bufnr Buffer number
 ---@return boolean dump True if the buffer is a dump's
 local function is_dump(bufnr)
-	return vim.api.nvim_buf_is_valid(bufnr) and vim.b[bufnr].cavediver_dump == true
+	return vim.api.nvim_buf_is_valid(bufnr) and vim.b[bufnr].frogman_dump == true
 end
 
----Create the ledger's autocmds in cavediver's augroup.
+---Create the ledger's autocmds in frogman's augroup.
 ---
 ---They're created before the other domains' in setup(), so a step has begun by the time their
 ---handlers act on the same event. This also hooks the dump into the engine's catch, so a hook
 ---that fails is dumped.
 ---
----@param group integer The cavediver augroup
+---@param group integer The frogman augroup
 ---@return nil
 function M.init_autocmds(group)
 	require('frogman.engine.helpers').on_failure = function(name, err)

@@ -17,11 +17,11 @@ Neg.start = function(child, opts)
 end
 
 -- Everything a test may want to compare before and after something that
--- shouldn't change cavediver's state, for the current window.
+-- shouldn't change frogman's state, for the current window.
 Neg.snapshot = function(child, winid)
 	return child.lua([[
 		local w = ...
-		local T = _G.CDV_TEST
+		local T = _G.FRG_TEST
 		return {
 			slots = T.slots(w), notes = T.notes(w), primary = T.primary(w),
 			closed = T.closed(), ordered = T.ordered(), shown = T.shown(w),
@@ -72,7 +72,7 @@ Neg.queue_holes = function(child, winid)
 	]], { winid })
 end
 
--- Active timers that repeat (cavediver's UI refresh and cleanup are two).
+-- Active timers that repeat (frogman's UI refresh and cleanup are two).
 Neg.repeating_timers = function(child)
 	return child.lua([[
 		local n = 0
@@ -116,7 +116,7 @@ if multi then
 end
 
 local res = { steps = 0, actions = {} }
-local press = _G.CDV_TEST.press
+local press = _G.FRG_TEST.press
 
 local function run(a)
 	if a:sub(1, 3) == ':e ' then
@@ -149,8 +149,8 @@ local function check()
 						return {
 							window = i,
 							entry = which .. '{' .. name(k) .. '>' .. name(v) .. '}',
-							slots = _G.CDV_TEST.slots(win),
-							notes = _G.CDV_TEST.notes(win),
+							slots = _G.FRG_TEST.slots(win),
+							notes = _G.FRG_TEST.notes(win),
 						}
 					end
 				end
@@ -168,7 +168,7 @@ for _ = 1, nkeys do
 		break
 	end
 end
-_G.CDV_NOTES = {}
+_G.FRG_NOTES = {}
 return res
 ]==]
 

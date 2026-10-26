@@ -69,7 +69,7 @@ end
 -- Is the buffer on `stem`.txt registered?
 S2.registered = function(child, stem)
 	return child.lua([[
-		local b = vim.fn.bufnr(_G.CDV_TEST.root .. '/' .. ... .. '.txt')
+		local b = vim.fn.bufnr(_G.FRG_TEST.root .. '/' .. ... .. '.txt')
 		return b ~= -1 and require('frogman.domains.history').get_hash_from_buffer(b) ~= nil
 	]], { stem })
 end
@@ -268,7 +268,7 @@ end
 
 -- The closed-stack picker ---------------------------------------------------------
 
--- Run :CavediverClosed and find its buffer: the current one if the command
+-- Run :FrogmanClosed and find its buffer: the current one if the command
 -- moved the focus, otherwise the buffer it made. Returns
 -- { buf, win, came_from, lines, modifiable }; the picker's window is focused.
 S2.picker = function(child)
@@ -276,7 +276,7 @@ S2.picker = function(child)
 		local came_from = vim.api.nvim_get_current_win()
 		local before = {}
 		for _, b in ipairs(vim.api.nvim_list_bufs()) do before[b] = true end
-		vim.cmd('CavediverClosed')
+		vim.cmd('FrogmanClosed')
 		local win, buf = vim.api.nvim_get_current_win(), vim.api.nvim_get_current_buf()
 		if win == came_from then
 			for _, b in ipairs(vim.api.nvim_list_bufs()) do

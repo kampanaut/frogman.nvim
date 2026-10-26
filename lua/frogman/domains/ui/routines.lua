@@ -69,7 +69,7 @@ local function visit_label(bufnr)
 end
 
 -- the primary pop-up's decoration: the switch, a closed entry's glyph, a missing file's tag
-local primary_ns = vim.api.nvim_create_namespace("cavediver_primary_popup")
+local primary_ns = vim.api.nvim_create_namespace("frogman_primary_popup")
 
 ---Get the picker the primary pop-up adds files through.
 ---
@@ -121,7 +121,7 @@ end
 ---@return nil
 function M.search_primary_popup(dbuf)
 	local text = vim.trim(vim.api.nvim_get_current_line())
-	local filepath = (vim.b[dbuf].cavediver_names or {})[text] or (text ~= "" and text) or nil
+	local filepath = (vim.b[dbuf].frogman_names or {})[text] or (text ~= "" and text) or nil
 	if filepath and not filepath:match("^NONAME_") then
 		require('frogman.domains.ui.trail').open(vim.fs.basename(filepath))
 	end
@@ -137,7 +137,7 @@ end
 function M.pick_into_primary_popup(dbuf)
 	local picker = primary_picker()
 	if not picker then
-		vim.notify("cavediver: no file picker: install telescope.nvim, or set primary_picker in the config.", vim.log.levels.WARN)
+		vim.notify("frogman: no file picker: install telescope.nvim, or set primary_picker in the config.", vim.log.levels.WARN)
 		return
 	end
 	local dwin = vim.b[dbuf].display_window
@@ -146,7 +146,7 @@ function M.pick_into_primary_popup(dbuf)
 		if not vim.api.nvim_buf_is_valid(dbuf) or #paths == 0 then
 			return
 		end
-		local names = vim.b[dbuf].cavediver_names or {}
+		local names = vim.b[dbuf].frogman_names or {}
 		local lines = vim.tbl_map(function(path)
 			local line = vim.fn.fnamemodify(path, ":.")
 			-- a line the pop-up would read as another file's short name goes in as a path of its own
@@ -181,14 +181,14 @@ function M.show_primary_buffer_history()
 		return
 	end
 
-	local existing = vim.fn.bufnr("cavediver://primary-buffer-queue-history")
+	local existing = vim.fn.bufnr("frogman://primary-buffer-queue-history")
 	if existing ~= -1 and vim.bo[existing].modified then
 		-- an edit not written yet stays: the pop-up opens as it is
 		local shown = vim.fn.win_findbuf(existing)[1]
 		if shown then
 			vim.api.nvim_set_current_win(shown)
 		end
-		vim.notify("cavediver: the primary queue has edits not written yet: write them with :w, or leave them, first.", vim.log.levels.WARN)
+		vim.notify("frogman: the primary queue has edits not written yet: write them with :w, or leave them, first.", vim.log.levels.WARN)
 		return
 	end
 	if existing ~= -1 then
@@ -212,11 +212,11 @@ function M.show_primary_buffer_history()
 	local dbuf = vim.api.nvim_create_buf(true, false)
 	local dwin
 
-	vim.bo[dbuf].filetype = "cavediver-primary-buffer-history"
+	vim.bo[dbuf].filetype = "frogman-primary-buffer-history"
 	vim.bo[dbuf].buftype = "acwrite"
 	vim.bo[dbuf].swapfile = false
 	vim.bo[dbuf].bufhidden = "wipe" -- gone once no window shows it, so its name is free for the next one
-	vim.b[dbuf].cavediver_names = basename_filepath_mapping -- what each short name stands for, for the picker
+	vim.b[dbuf].frogman_names = basename_filepath_mapping -- what each short name stands for, for the picker
 	vim.b[dbuf].origin_window = cwin -- the window the queue is for, which the keys' steps are about
 
 	local function to_display(hash)
@@ -248,15 +248,15 @@ function M.show_primary_buffer_history()
 			local filehash = filepath and history.get_hash_from_filepath(filepath)
 			if filehash and history.routines.is_filehash_closed(filehash) then
 				vim.api.nvim_buf_set_extmark(dbuf, primary_ns, i - 1, 0, {
-					virt_text = { { glyphs.closed .. " ", "CavediverTrailClosed" } }, virt_text_pos = "inline",
+					virt_text = { { glyphs.closed .. " ", "FrogmanTrailClosed" } }, virt_text_pos = "inline",
 				})
 			end
 			local after = {}
 			if i == 1 then
-				table.insert(after, { "  primary" .. glyphs.dot .. (triquetra.primary_enabled and "on" or "off"), "CavediverTrailDim" })
+				table.insert(after, { "  primary" .. glyphs.dot .. (triquetra.primary_enabled and "on" or "off"), "FrogmanTrailDim" })
 			end
 			if filehash and history.data.missing[filehash] then
-				table.insert(after, { "  " .. glyphs.tag .. history.data.missing[filehash], "CavediverTrailTag" })
+				table.insert(after, { "  " .. glyphs.tag .. history.data.missing[filehash], "FrogmanTrailTag" })
 			end
 			if #after > 0 then
 				vim.api.nvim_buf_set_extmark(dbuf, primary_ns, i - 1, 0, { virt_text = after, virt_text_pos = "eol" })
@@ -264,7 +264,7 @@ function M.show_primary_buffer_history()
 		end
 	end
 
-	vim.api.nvim_buf_set_name(dbuf, "cavediver://primary-buffer-queue-history")
+	vim.api.nvim_buf_set_name(dbuf, "frogman://primary-buffer-queue-history")
 	vim.api.nvim_buf_set_lines(dbuf, 0, -1, false, vim.tbl_map(to_display, triquetra.primary_buffer))
 	vim.bo[dbuf].modified = false
 	decorate()
@@ -325,7 +325,7 @@ function M.show_primary_buffer_history()
 	vim.b[dbuf].display_window = dwin
 	-- the buffer goes with its window, however that window closes
 	vim.api.nvim_create_autocmd("WinClosed", {
-		group = "cavediver",
+		group = "frogman",
 		pattern = tostring(dwin),
 		once = true,
 		callback = function()
@@ -349,12 +349,12 @@ end
 -- again as you edit: the closed glyph, the close time, a No Name text's filetype, a missing file's
 -- tag, a list's tabs.
 
-local closed_ns = vim.api.nvim_create_namespace("cavediver_closed_lists")
+local closed_ns = vim.api.nvim_create_namespace("frogman_closed_lists")
 -- each open closed-lists buffer's state, by buffer
 local closed_pickers = {}
 
 
----Get the glyphs cavediver's views draw with.
+---Get the glyphs frogman's views draw with.
 ---
 ---They're the config's chosen set (unicode by default), with any glyph the config names on its
 ---own in that glyph's place.
@@ -443,17 +443,17 @@ end
 ---It shows a No Name text's filetype, the close time and a missing file's tag. It's the default
 ---`closed_entry` formatter.
 ---
----@param entry CavediverClosedEntry The entry, as the formatter gets it
+---@param entry FrogmanClosedEntry The entry, as the formatter gets it
 ---@param glyphs table The views' glyphs
 ---@return table[] chunks The virtual text's { text, group } chunks
 local function closed_entry_text(entry, glyphs)
 	local after = {}
 	if entry.filetype then
-		table.insert(after, { "  " .. entry.filetype, "CavediverTrailDim" })
+		table.insert(after, { "  " .. entry.filetype, "FrogmanTrailDim" })
 	end
-	table.insert(after, { "  " .. close_time_text(entry.time), "CavediverTrailTime" })
+	table.insert(after, { "  " .. close_time_text(entry.time), "FrogmanTrailTime" })
 	if entry.tag then
-		table.insert(after, { "  " .. glyphs.tag .. entry.tag, "CavediverTrailTag" })
+		table.insert(after, { "  " .. glyphs.tag .. entry.tag, "FrogmanTrailTag" })
 	end
 	return after
 end
@@ -481,8 +481,8 @@ local function decorate_closed_lists(dbuf)
 		if pool then
 			current = pool
 			vim.api.nvim_buf_set_extmark(dbuf, closed_ns, i - 1, 0, {
-				end_col = #line, hl_group = "CavediverTrailList",
-				virt_text = { { "  " .. picker.where[pool], "CavediverTrailDim" } }, virt_text_pos = "eol",
+				end_col = #line, hl_group = "FrogmanTrailList",
+				virt_text = { { "  " .. picker.where[pool], "FrogmanTrailDim" } }, virt_text_pos = "eol",
 			})
 		elseif filehash then
 			local entry = {
@@ -494,7 +494,7 @@ local function decorate_closed_lists(dbuf)
 				list = current and picker.label[current] or "",
 			}
 			vim.api.nvim_buf_set_extmark(dbuf, closed_ns, i - 1, 0, {
-				virt_text = { { "  " .. glyphs.closed .. " ", "CavediverTrailClosed" } }, virt_text_pos = "inline",
+				virt_text = { { "  " .. glyphs.closed .. " ", "FrogmanTrailClosed" } }, virt_text_pos = "inline",
 			})
 			vim.api.nvim_buf_set_extmark(dbuf, closed_ns, i - 1, 0, { virt_text = formatter(entry, glyphs) or closed_entry_text(entry, glyphs), virt_text_pos = "eol" })
 		end
@@ -674,7 +674,7 @@ local function write_closed_lists(dbuf, leaving)
 		end
 	end
 	if #errors > 0 then
-		vim.notify("cavediver: the closed lists weren't written: these lines name no list or entry (a list's header comes first):\n  " ..
+		vim.notify("frogman: the closed lists weren't written: these lines name no list or entry (a list's header comes first):\n  " ..
 			table.concat(errors, "\n  "), vim.log.levels.ERROR)
 		return false
 	end
@@ -753,7 +753,7 @@ local function write_closed_lists(dbuf, leaving)
 	if file_changes then
 		local ok, problem = storage.write_file_only_lists(file_changes)
 		if not ok then
-			vim.notify("cavediver: the closed lists' edits to the lists in the whole editor's file alone weren't written, since " ..
+			vim.notify("frogman: the closed lists' edits to the lists in the whole editor's file alone weren't written, since " ..
 				(problem == "missing" and "there's no whole-editor session file" or problem) ..
 				(leaving and "; the lists in memory keep their edits." or "; they're still on screen."), vim.log.levels.WARN)
 			written = false
@@ -857,7 +857,7 @@ function M.reopen_from_closed_lists(dbuf, stay)
 				end
 				local ok, problem = storage.write_file_only_lists({ [list.label] = #closed > 0 and { closed = closed, times = times } or false })
 				if not ok then
-					vim.notify("cavediver: " .. text .. " was reopened, but couldn't be taken off " .. list.label .. " in the whole editor's file, since " .. tostring(problem) .. ".", vim.log.levels.WARN)
+					vim.notify("frogman: " .. text .. " was reopened, but couldn't be taken off " .. list.label .. " in the whole editor's file, since " .. tostring(problem) .. ".", vim.log.levels.WARN)
 				end
 			end
 		end
@@ -943,14 +943,14 @@ function M.show_closed_lists(opts)
 	if vim.api.nvim_win_get_config(cwin).relative ~= "" and window.data.last_valid_window then
 		cwin = window.data.last_valid_window -- opened from a float: reopen into the last tracked window
 	end
-	local existing = vim.fn.bufnr("cavediver://closed-lists")
+	local existing = vim.fn.bufnr("frogman://closed-lists")
 	if existing ~= -1 and vim.bo[existing].modified then
 		-- an edit not written yet stays: the lists open as they are
 		local shown = vim.fn.win_findbuf(existing)[1]
 		if shown then
 			vim.api.nvim_set_current_win(shown)
 		end
-		vim.notify("cavediver: the closed lists have edits not written yet: write them with :w, or leave them, first.", vim.log.levels.WARN)
+		vim.notify("frogman: the closed lists have edits not written yet: write them with :w, or leave them, first.", vim.log.levels.WARN)
 		return
 	end
 	if existing ~= -1 then
@@ -961,7 +961,7 @@ function M.show_closed_lists(opts)
 	vim.bo[dbuf].buftype = "acwrite"
 	vim.bo[dbuf].swapfile = false
 	vim.bo[dbuf].bufhidden = "wipe" -- the buffer goes with its window, however the window closes
-	vim.api.nvim_buf_set_name(dbuf, "cavediver://closed-lists")
+	vim.api.nvim_buf_set_name(dbuf, "frogman://closed-lists")
 	closed_pickers[dbuf] = { came_from = cwin }
 	draw_closed_lists(dbuf)
 
@@ -1014,7 +1014,7 @@ function M.show_closed_lists(opts)
 	vim.wo[dwin].foldexpr = "v:lua.require'frogman.domains.ui.routines'.closed_lists_fold()"
 	vim.wo[dwin].foldlevel = 99
 	vim.wo[dwin].foldenable = true
-	vim.bo[dbuf].filetype = "cavediver-closed-lists"
+	vim.bo[dbuf].filetype = "frogman-closed-lists"
 	local focus = opts and opts.focus
 	if focus then
 		for i, line in ipairs(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) do
@@ -1350,7 +1350,7 @@ local winbar_segments = {}
 
 ---Put a window's winbar, and keep its triquetra segment.
 ---
----Nothing is put when cavediver doesn't own the winbar (config's `winbar.own`), and the winbar
+---Nothing is put when frogman doesn't own the winbar (config's `winbar.own`), and the winbar
 ---is empty while it's hidden. The segment is kept for `M.winbar_segment()` either way.
 ---
 ---@param winid WinId The window
@@ -1649,7 +1649,7 @@ function M.is_real_file(bufnr, win_id)
 	return value
 end
 
----Check if a window is visiting something cavediver doesn't track.
+---Check if a window is visiting something frogman doesn't track.
 ---
 ---A loaded buffer with no file hash (help, a terminal) is visited, so the window's winbar shows
 ---the visit. Floats and the skipped filetypes never visit, as they get no winbar for files
@@ -1675,7 +1675,7 @@ local function window_touches_top(win_id)
 end
 
 
--- the visit bars cavediver wrote, by window: it writes only where the winbar is empty or one of these
+-- the visit bars frogman wrote, by window: it writes only where the winbar is empty or one of these
 local visit_bars = {}
 
 ---Draw the visit bars of the windows with no triquetra.
@@ -1735,7 +1735,7 @@ local function update_all_winbars()
 
 	-- First pass: identify windows touching the upper boundary
 	for win, _ in pairs(window.data.crux) do
-		-- a window gone without its WinClosed (closed while cavediver was off) is cleanup's to drop
+		-- a window gone without its WinClosed (closed while frogman was off) is cleanup's to drop
 		local buf = vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win)
 		if buf and (M.is_real_file(buf, win) or M.is_visiting(buf, win)) then
 			if window_touches_top(win) then

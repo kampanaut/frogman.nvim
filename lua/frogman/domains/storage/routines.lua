@@ -131,8 +131,8 @@ local function scratch_reader(path, key, filehash)
 		if not plaintext or not ok or type(text) ~= "table" then
 			if not said then -- said once for the text, however often it's read
 				said = true
-				vim.notify(bytes == nil and "cavediver: a No Name text's file is missing, so that text is lost."
-					or "cavediver: a No Name text's file failed its integrity check (edited or corrupted), so that text is lost.", vim.log.levels.WARN)
+				vim.notify(bytes == nil and "frogman: a No Name text's file is missing, so that text is lost."
+					or "frogman: a No Name text's file failed its integrity check (edited or corrupted), so that text is lost.", vim.log.levels.WARN)
 			end
 			return nil
 		end
@@ -158,7 +158,7 @@ local function known(filehash)
 		return filehash
 	end
 	-- nothing knows this hash (a path is kept while anything references it, so this shouldn't
-	-- happen). it's dropped rather than failing the save on cavediver's own data.
+	-- happen). it's dropped rather than failing the save on frogman's own data.
 	return nil
 end
 
@@ -223,8 +223,8 @@ local function load_buffer_history(buffers, paths)
 
 	for _, bufnr in pairs(vim.api.nvim_list_bufs()) do
 		local name = vim.api.nvim_buf_get_name(bufnr)
-		if name == "" and vim.b[bufnr].cavediver_noname then
-			name = "NONAME_" .. vim.b[bufnr].cavediver_noname
+		if name == "" and vim.b[bufnr].frogman_noname then
+			name = "NONAME_" .. vim.b[bufnr].frogman_noname
 		end
 		if
 			vim.api.nvim_buf_is_valid(bufnr)
@@ -305,7 +305,7 @@ local function load_window_buffer_relationships(window_buffer, tabpage)
 		end
 		local shows = shown_by(actual_winid)
 		local triquetra_serialised = shows and unmatched[shows] and table.remove(unmatched[shows], 1)
-		local reopened = vim.b[vim.api.nvim_win_get_buf(actual_winid)].cavediver_reopened
+		local reopened = vim.b[vim.api.nvim_win_get_buf(actual_winid)].frogman_reopened
 		if not triquetra_serialised and reopened and unmatched[reopened] then
 			-- a No Name text an earlier load reopened, still under the hash the file knows it by
 			triquetra_serialised = table.remove(unmatched[reopened], 1)
@@ -507,7 +507,7 @@ local function serialise_window_relationships(outsiders, tabpage)
 
 			-- what the window shows, which is what the session manager saves
 			local shows, outsider = shown_by(winid)
-			if outsider and not is_known(shows) then -- a file cavediver knows isn't one, even through its unlisted buffer
+			if outsider and not is_known(shows) then -- a file frogman knows isn't one, even through its unlisted buffer
 				outsiders[shows] = outsider
 			end
 
@@ -731,9 +731,9 @@ end
 local function noname_already_back(filehash)
 	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
 		if vim.api.nvim_buf_get_name(bufnr) == "" then
-			local id = vim.b[bufnr].cavediver_noname
+			local id = vim.b[bufnr].frogman_noname
 			if
-				(vim.b[bufnr].cavediver_reopened == filehash or
+				(vim.b[bufnr].frogman_reopened == filehash or
 				(id ~= nil and history.routines.get_filehash("NONAME_" .. id) == filehash))
 				and history.routines.is_trackable(bufnr) -- one turned nofile since isn't that buffer any more
 			then
@@ -768,7 +768,7 @@ local function reopen_noname_buffers(noname_content, key, scratch_dir)
 			end
 			if bufnr == nil then
 				bufnr = history.routines.buffer_from_text(content)
-				vim.b[bufnr].cavediver_reopened = filehash
+				vim.b[bufnr].frogman_reopened = filehash
 			end
 			local new_filehash = history.register_buffer(bufnr)
 			if new_filehash ~= filehash then
@@ -1457,15 +1457,24 @@ function M.load_history(cwd, name)
 	-- the migration script as it runs in this install: its path in the plugin's directory, on the runtimepath
 	local migrate = "nvim --clean -l " ..
 		(vim.api.nvim_get_runtime_file("scripts/migrate_sessions.lua", false)[1] or "scripts/migrate_sessions.lua")
+	-- cavediver's sessions folder, from before the rename, while session_dir is left as it is: the migration
+	-- script moves what it holds
+	local cavediver_dir = configs.session_dir == vim.fn.stdpath("data") .. "/frogman/sessions/"
+		and vim.fn.stdpath("data") .. "/cavediver/sessions/"
+	local old_name = vim.fn.sha256(cwd .. "\n"):sub(1, 32) .. ".json"
 	if problem == "newer" then
-		vim.notify("cavediver: this session's file was made by a newer cavediver. It's left alone, and the session starts fresh.", vim.log.levels.WARN)
+		vim.notify("frogman: this session's file was made by a newer frogman. It's left alone, and the session starts fresh.", vim.log.levels.WARN)
 	elseif problem == "unencrypted" then
-		vim.notify("cavediver: this session's file is in the format from before encryption. Run the migration script to convert it, " .. migrate .. "; the session starts fresh.", vim.log.levels.WARN)
+		vim.notify("frogman: this session's file is in the format from before encryption. Run the migration script to convert it, " .. migrate .. "; the session starts fresh.", vim.log.levels.WARN)
 	elseif problem == "integrity" then
-		vim.notify("cavediver: this session's file failed its integrity check (edited or corrupted). The session starts fresh, and the next save replaces the file.", vim.log.levels.WARN)
-	elseif problem == "missing" and vim.uv.fs_stat(configs.session_dir .. vim.fn.sha256(cwd .. "\n"):sub(1, 32) .. ".json") then
-		-- a file named the way it was before sessions had names and were encrypted: left as it is
-		vim.notify("cavediver: this session has a file from before encryption. Run the migration script to convert it, " .. migrate .. "; the session starts fresh.", vim.log.levels.WARN)
+		vim.notify("frogman: this session's file failed its integrity check (edited or corrupted). The session starts fresh, and the next save replaces the file.", vim.log.levels.WARN)
+	elseif problem == "missing" and cavediver_dir and vim.uv.fs_stat(cavediver_dir .. vim.fs.basename(file_path)) then
+		-- cavediver's folder still has it: left there until the migration script moves it
+		vim.notify("frogman: this session's file is still in cavediver's folder. Run the migration script to move it, " .. migrate .. "; the session starts fresh.", vim.log.levels.WARN)
+	elseif problem == "missing" and (vim.uv.fs_stat(configs.session_dir .. old_name)
+		or cavediver_dir and vim.uv.fs_stat(cavediver_dir .. old_name)) then
+		-- a file named the way it was before sessions had names and were encrypted, in either folder: left as it is
+		vim.notify("frogman: this session has a file from before encryption. Run the migration script to convert it, " .. migrate .. "; the session starts fresh.", vim.log.levels.WARN)
 	end
 	if saved_data and not (saved_data.paths and saved_data.buffers and saved_data.windows) then
 		saved_data = nil
@@ -1474,11 +1483,11 @@ function M.load_history(cwd, name)
 	fixed = saved_data and fixed or {}
 
 	-- why there's no data, for the trail
-	local why = ({ missing = "no session file", newer = "made by a newer cavediver", unencrypted = "from before encryption",
+	local why = ({ missing = "no session file", newer = "made by a newer frogman", unencrypted = "from before encryption",
 		integrity = "failed its integrity check" })[problem] or "its file holds no session"
 	local ledger = require('frogman.domains.ledger')
 	if #fixed > 0 then
-		vim.notify("cavediver: this session's file broke its own rules, and the load fixed them: " .. table.concat(fixed, "; ") .. ".",
+		vim.notify("frogman: this session's file broke its own rules, and the load fixed them: " .. table.concat(fixed, "; ") .. ".",
 			vim.log.levels.WARN)
 	end
 	---Record the load in the ledger, with how many windows matched or started fresh, and how many
@@ -1634,7 +1643,7 @@ end
 ---
 ---The salt is read from the file's bytes and stays from one save to the next, so the key does too,
 ---and a text that didn't change keeps its file. A file with no usable salt gets a new random one.
----Throws if a newer cavediver made the file, so it isn't overwritten.
+---Throws if a newer frogman made the file, so it isn't overwritten.
 ---
 ---@param file_path string The session's main file
 ---@param directory string The session's directory
@@ -1644,7 +1653,7 @@ end
 local function session_key(file_path, directory, existing)
 	existing = existing or ""
 	if existing:match("^CDV%d") and existing:sub(1, #HEADER) ~= HEADER then
-		error("cavediver: this session's file was made by a newer cavediver, so it isn't overwritten: " .. file_path)
+		error("frogman: this session's file was made by a newer frogman, so it isn't overwritten: " .. file_path)
 	end
 	local salt = existing:sub(#HEADER + 1, #HEADER + crypto.salt_length)
 	if existing:sub(1, #HEADER) ~= HEADER or #salt ~= crypto.salt_length then
@@ -1794,7 +1803,7 @@ local function page_name(key, day)
 	return vim.fn.sha256(hex(key) .. "\ntrail\n" .. day) .. ".trail"
 end
 
----Trail pages read since cavediver started (a view reads only the pages it shows or searches, and
+---Trail pages read since frogman started (a view reads only the pages it shows or searches, and
 ---a save reads a day's earlier page only the first time it writes that day)
 M.page_reads = 0
 
@@ -1827,9 +1836,9 @@ end
 ---tab. A tab session keeps the steps in its tab and those whose moves name its pool or its list.
 ---
 ---@param owner Pool|nil The session's pool (nil for the whole editor's session)
----@param steps CavediverLedgerStep[] The steps to filter
+---@param steps FrogmanLedgerStep[] The steps to filter
 ---@param session string|nil The whole editor's session's key (`ledger.session_of`), nil before the first
----@return CavediverLedgerStep[] kept The steps the file keeps, in their order
+---@return FrogmanLedgerStep[] kept The steps the file keeps, in their order
 local function steps_kept(owner, steps, session)
 	local out = {}
 	local list = owner and history.routines.list_name(owner)
@@ -1863,7 +1872,7 @@ local pages_written = {}
 local trail_warned = false
 
 ---Lets go the past days whose steps are all on their pages (defined further down, with the records)
----@type fun(file_path: string, steps: CavediverLedgerStep[])
+---@type fun(file_path: string, steps: FrogmanLedgerStep[])
 local settle_days
 
 ---Check if a step read from a trail page stays beside the day's steps in memory.
@@ -1898,7 +1907,7 @@ end
 ---@param key string The session's key
 ---@param kept table<string, boolean> The names to keep in `<main>.d/`, which the pages are added to
 ---@return table<string, string>|nil trail The pages the main file lists now (nil if none)
----@return CavediverLedgerStep[] paged This editor's steps the pages hold now
+---@return FrogmanLedgerStep[] paged This editor's steps the pages hold now
 local function write_trail_pages(file_path, old_trail, owner, session, key, kept)
 	local ledger = require('frogman.domains.ledger')
 	local scratch_dir = file_path .. ".d/"
@@ -2090,7 +2099,7 @@ local function refresh_unnamed()
 		return written, why
 	end)
 	if not ok and problem ~= "missing" then
-		vim.notify("cavediver: the whole editor's session file wasn't refreshed with its closed files and No Name texts, since " .. problem, vim.log.levels.WARN)
+		vim.notify("frogman: the whole editor's session file wasn't refreshed with its closed files and No Name texts, since " .. problem, vim.log.levels.WARN)
 	end
 end
 
@@ -2256,7 +2265,7 @@ function M.settle_merging()
 	end
 end
 
----Get every session cavediver knows, the whole editor's and each tab session's.
+---Get every session frogman knows, the whole editor's and each tab session's.
 ---@return {id: string, name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, tabs: table|nil, scope: string}[]
 local function known_sessions()
 	local sessions = {}
@@ -2273,12 +2282,12 @@ end
 ---
 ---Runs once a main file that lists the pages has landed. A day before today, but the open step's,
 ---goes from the ledger's memory once every step on it is on one page at least, and on the page of
----every session cavediver knows that keeps it, and none of them is still in the ring. So a session
+---every session frogman knows that keeps it, and none of them is still in the ring. So a session
 ---with no file keeps its steps, and so does a step no page has taken. The page cache of a day that
 ---goes is dropped, so a step landing on it later is written beside what its page holds.
 ---
 ---@param file_path string The session's main file, just committed
----@param steps CavediverLedgerStep[] The steps its pages hold
+---@param steps FrogmanLedgerStep[] The steps its pages hold
 ---@return nil
 settle_days = function(file_path, steps)
 	local ledger = require('frogman.domains.ledger')
@@ -2387,7 +2396,7 @@ local function write_now(session)
 		dirty[session.id] = nil
 	elseif problem ~= "missing" and not told[session.id .. problem] then
 		told[session.id .. problem] = true
-		vim.notify("cavediver: " .. (session.name or vim.fn.fnamemodify(session.directory, ":t")) .. "'s closed files and No Name texts weren't written, since " .. problem, vim.log.levels.WARN)
+		vim.notify("frogman: " .. (session.name or vim.fn.fnamemodify(session.directory, ":t")) .. "'s closed files and No Name texts weren't written, since " .. problem, vim.log.levels.WARN)
 	end
 	return ok
 end
@@ -2419,8 +2428,8 @@ local function close_now(pool)
 			return
 		end
 		ledger.move("detached_left", { subject = pool.id, name = pool.name, words = "kept, with no tab" })
-		vim.notify("cavediver: " .. pool.name .. "'s tab is gone, and its closed files couldn't be written into the whole editor's session file (" ..
-			(problem == "missing" and "it has no session file yet" or problem) .. "); they stay, with no tab, in :CavediverClosed.", vim.log.levels.WARN)
+		vim.notify("frogman: " .. pool.name .. "'s tab is gone, and its closed files couldn't be written into the whole editor's session file (" ..
+			(problem == "missing" and "it has no session file yet" or problem) .. "); they stay, with no tab, in :FrogmanClosed.", vim.log.levels.WARN)
 		return
 	end
 	local ok, problem = write_records({ name = pool.name, directory = pool.directory, pools = { pool }, owner = pool, scope = "tab" })
@@ -2434,8 +2443,8 @@ local function close_now(pool)
 		return
 	end
 	ledger.move("tab_closed", { subject = pool.id, name = history.routines.list_name(pool), words = "kept, with no tab" })
-	vim.notify("cavediver: " .. (pool.name or vim.fn.fnamemodify(pool.directory or "", ":t")) .. "'s tab closed, and its closed files couldn't be written (" ..
-		(problem == "missing" and "it has no session file yet" or problem) .. "); they stay, with no tab, in :CavediverClosed.", vim.log.levels.WARN)
+	vim.notify("frogman: " .. (pool.name or vim.fn.fnamemodify(pool.directory or "", ":t")) .. "'s tab closed, and its closed files couldn't be written (" ..
+		(problem == "missing" and "it has no session file yet" or problem) .. "); they stay, with no tab, in :FrogmanClosed.", vim.log.levels.WARN)
 end
 
 ---Write every changed session's records.
@@ -2693,7 +2702,7 @@ function M.save_history(cwd, name, tab)
 		end
 		if not trail_warned then
 			trail_warned = true
-			vim.notify("cavediver: the trail's page couldn't be written (" .. tostring(trail) .. "); the session is saved without it.",
+			vim.notify("frogman: the trail's page couldn't be written (" .. tostring(trail) .. "); the session is saved without it.",
 				vim.log.levels.WARN)
 		end
 	end

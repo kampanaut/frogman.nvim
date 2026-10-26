@@ -45,29 +45,29 @@ local function crypto()
 		if ffi == nil then
 			local ok, module = pcall(require, 'ffi')
 			if not ok then
-				error("cavediver: this Neovim has no LuaJIT FFI, which encrypts the session files; a Neovim built with LuaJIT has it.", 0)
+				error("frogman: this Neovim has no LuaJIT FFI, which encrypts the session files; a Neovim built with LuaJIT has it.", 0)
 			end
 			ffi = module
-			-- each function under a name of cavediver's own, its symbol named by __asm__, so another
+			-- each function under a name of frogman's own, its symbol named by __asm__, so another
 			-- plugin's declaration of the same function, even a different one, never stands in for it
 			for _, declaration in ipairs({
 				"typedef struct evp_cipher_ctx_st EVP_CIPHER_CTX;",
 				"typedef struct evp_cipher_st EVP_CIPHER;",
 				"typedef struct evp_md_st EVP_MD;",
 				"typedef struct engine_st ENGINE;",
-				'EVP_CIPHER_CTX *cdv_EVP_CIPHER_CTX_new(void) __asm__("EVP_CIPHER_CTX_new");',
-				'void cdv_EVP_CIPHER_CTX_free(EVP_CIPHER_CTX *ctx) __asm__("EVP_CIPHER_CTX_free");',
-				'const EVP_CIPHER *cdv_EVP_aes_256_gcm(void) __asm__("EVP_aes_256_gcm");',
-				'const EVP_MD *cdv_EVP_sha256(void) __asm__("EVP_sha256");',
-				'int cdv_EVP_EncryptInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *type, ENGINE *impl, const unsigned char *key, const unsigned char *iv) __asm__("EVP_EncryptInit_ex");',
-				'int cdv_EVP_EncryptUpdate(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl, const unsigned char *in, int inl) __asm__("EVP_EncryptUpdate");',
-				'int cdv_EVP_EncryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl) __asm__("EVP_EncryptFinal_ex");',
-				'int cdv_EVP_DecryptInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *type, ENGINE *impl, const unsigned char *key, const unsigned char *iv) __asm__("EVP_DecryptInit_ex");',
-				'int cdv_EVP_DecryptUpdate(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl, const unsigned char *in, int inl) __asm__("EVP_DecryptUpdate");',
-				'int cdv_EVP_DecryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl) __asm__("EVP_DecryptFinal_ex");',
-				'int cdv_EVP_CIPHER_CTX_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg, void *ptr) __asm__("EVP_CIPHER_CTX_ctrl");',
-				'int cdv_PKCS5_PBKDF2_HMAC(const char *pass, int passlen, const unsigned char *salt, int saltlen, int iter, const EVP_MD *digest, int keylen, unsigned char *out) __asm__("PKCS5_PBKDF2_HMAC");',
-				'int cdv_RAND_bytes(unsigned char *buf, int num) __asm__("RAND_bytes");',
+				'EVP_CIPHER_CTX *frg_EVP_CIPHER_CTX_new(void) __asm__("EVP_CIPHER_CTX_new");',
+				'void frg_EVP_CIPHER_CTX_free(EVP_CIPHER_CTX *ctx) __asm__("EVP_CIPHER_CTX_free");',
+				'const EVP_CIPHER *frg_EVP_aes_256_gcm(void) __asm__("EVP_aes_256_gcm");',
+				'const EVP_MD *frg_EVP_sha256(void) __asm__("EVP_sha256");',
+				'int frg_EVP_EncryptInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *type, ENGINE *impl, const unsigned char *key, const unsigned char *iv) __asm__("EVP_EncryptInit_ex");',
+				'int frg_EVP_EncryptUpdate(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl, const unsigned char *in, int inl) __asm__("EVP_EncryptUpdate");',
+				'int frg_EVP_EncryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl) __asm__("EVP_EncryptFinal_ex");',
+				'int frg_EVP_DecryptInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *type, ENGINE *impl, const unsigned char *key, const unsigned char *iv) __asm__("EVP_DecryptInit_ex");',
+				'int frg_EVP_DecryptUpdate(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl, const unsigned char *in, int inl) __asm__("EVP_DecryptUpdate");',
+				'int frg_EVP_DecryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl) __asm__("EVP_DecryptFinal_ex");',
+				'int frg_EVP_CIPHER_CTX_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg, void *ptr) __asm__("EVP_CIPHER_CTX_ctrl");',
+				'int frg_PKCS5_PBKDF2_HMAC(const char *pass, int passlen, const unsigned char *salt, int saltlen, int iter, const EVP_MD *digest, int keylen, unsigned char *out) __asm__("PKCS5_PBKDF2_HMAC");',
+				'int frg_RAND_bytes(unsigned char *buf, int num) __asm__("RAND_bytes");',
 			}) do
 				pcall(ffi.cdef, declaration)
 			end
@@ -94,18 +94,18 @@ local function crypto()
 			local ok, lib = pcall(ffi.load, name)
 			-- a library that loads but has no libcrypto in it counts as one that won't load
 			local why = not ok and tostring(lib):match("[^\n]*")
-				or not pcall(function() return lib.cdv_EVP_aes_256_gcm end) and "it isn't libcrypto (no EVP_aes_256_gcm)"
+				or not pcall(function() return lib.frg_EVP_aes_256_gcm end) and "it isn't libcrypto (no EVP_aes_256_gcm)"
 			if not why then
 				libcrypto = lib
 				break
 			elseif i == 1 and type(configured) == "string" and configured ~= "" and not warned[name] then
 				warned[name] = true
-				vim.notify("cavediver: libcrypto_path (" .. name .. ") didn't load: " .. why
-					.. "; trying cavediver's own list.", vim.log.levels.WARN)
+				vim.notify("frogman: libcrypto_path (" .. name .. ") didn't load: " .. why
+					.. "; trying frogman's own list.", vim.log.levels.WARN)
 			end
 		end
 		if libcrypto == nil then
-			failed = { configured = configured, error = "cavediver: OpenSSL's libcrypto was not found; it encrypts the session files. Tried: "
+			failed = { configured = configured, error = "frogman: OpenSSL's libcrypto was not found; it encrypts the session files. Tried: "
 				.. table.concat(names, ", ") .. ". Set libcrypto_path to its file." }
 			error(failed.error, 0)
 		end
@@ -122,8 +122,8 @@ end
 function M.random_bytes(n)
 	local lib = crypto()
 	local buf = ffi.new("unsigned char[?]", n)
-	if lib.cdv_RAND_bytes(buf, n) ~= 1 then
-		error("cavediver: libcrypto couldn't make random bytes.")
+	if lib.frg_RAND_bytes(buf, n) ~= 1 then
+		error("frogman: libcrypto couldn't make random bytes.")
 	end
 	return ffi.string(buf, n)
 end
@@ -138,9 +138,9 @@ end
 function M.derive_key(directory, salt)
 	local lib = crypto()
 	local key = ffi.new("unsigned char[?]", M.key_length)
-	local ok = lib.cdv_PKCS5_PBKDF2_HMAC(directory, #directory, salt, #salt, M.rounds, lib.cdv_EVP_sha256(), M.key_length, key)
+	local ok = lib.frg_PKCS5_PBKDF2_HMAC(directory, #directory, salt, #salt, M.rounds, lib.frg_EVP_sha256(), M.key_length, key)
 	if ok ~= 1 then
-		error("cavediver: libcrypto couldn't derive the session key.")
+		error("frogman: libcrypto couldn't derive the session key.")
 	end
 	return ffi.string(key, M.key_length)
 end
@@ -157,26 +157,26 @@ end
 function M.seal(key, plaintext, aad)
 	local lib = crypto()
 	local nonce = M.random_bytes(M.nonce_length)
-	local ctx = lib.cdv_EVP_CIPHER_CTX_new()
+	local ctx = lib.frg_EVP_CIPHER_CTX_new()
 	if ctx == nil then
-		error("cavediver: libcrypto couldn't make a cipher context (out of memory?).", 0) -- an environment failure
+		error("frogman: libcrypto couldn't make a cipher context (out of memory?).", 0) -- an environment failure
 	end
 	local out = ffi.new("unsigned char[?]", #plaintext + 16)
 	local tag = ffi.new("unsigned char[?]", M.tag_length)
 	local outl = ffi.new("int[1]")
 	local ok, sealed = pcall(function()
-		assert(lib.cdv_EVP_EncryptInit_ex(ctx, lib.cdv_EVP_aes_256_gcm(), nil, key, nonce) == 1)
-		assert(lib.cdv_EVP_EncryptUpdate(ctx, nil, outl, aad, #aad) == 1)
-		assert(lib.cdv_EVP_EncryptUpdate(ctx, out, outl, plaintext, #plaintext) == 1)
+		assert(lib.frg_EVP_EncryptInit_ex(ctx, lib.frg_EVP_aes_256_gcm(), nil, key, nonce) == 1)
+		assert(lib.frg_EVP_EncryptUpdate(ctx, nil, outl, aad, #aad) == 1)
+		assert(lib.frg_EVP_EncryptUpdate(ctx, out, outl, plaintext, #plaintext) == 1)
 		local length = outl[0]
-		assert(lib.cdv_EVP_EncryptFinal_ex(ctx, out + length, outl) == 1)
+		assert(lib.frg_EVP_EncryptFinal_ex(ctx, out + length, outl) == 1)
 		length = length + outl[0]
-		assert(lib.cdv_EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, M.tag_length, tag) == 1)
+		assert(lib.frg_EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, M.tag_length, tag) == 1)
 		return nonce .. ffi.string(out, length) .. ffi.string(tag, M.tag_length)
 	end)
-	lib.cdv_EVP_CIPHER_CTX_free(ctx)
+	lib.frg_EVP_CIPHER_CTX_free(ctx)
 	if not ok then
-		error("cavediver: libcrypto couldn't encrypt the session file.")
+		error("frogman: libcrypto couldn't encrypt the session file.")
 	end
 	return sealed
 end
@@ -198,9 +198,9 @@ function M.open(key, sealed, aad)
 	local nonce = sealed:sub(1, M.nonce_length)
 	local ciphertext = sealed:sub(M.nonce_length + 1, #sealed - M.tag_length)
 	local tag = sealed:sub(#sealed - M.tag_length + 1)
-	local ctx = lib.cdv_EVP_CIPHER_CTX_new()
+	local ctx = lib.frg_EVP_CIPHER_CTX_new()
 	if ctx == nil then
-		error("cavediver: libcrypto couldn't make a cipher context (out of memory?).", 0) -- an environment failure
+		error("frogman: libcrypto couldn't make a cipher context (out of memory?).", 0) -- an environment failure
 	end
 	local out = ffi.new("unsigned char[?]", #ciphertext + 16)
 	local outl = ffi.new("int[1]")
@@ -209,16 +209,16 @@ function M.open(key, sealed, aad)
 	ffi.copy(tagbuf, tag, M.tag_length)
 	local plaintext
 	local ok = pcall(function()
-		assert(lib.cdv_EVP_DecryptInit_ex(ctx, lib.cdv_EVP_aes_256_gcm(), nil, key, nonce) == 1)
-		assert(lib.cdv_EVP_DecryptUpdate(ctx, nil, outl, aad, #aad) == 1)
-		assert(lib.cdv_EVP_DecryptUpdate(ctx, out, outl, ciphertext, #ciphertext) == 1)
+		assert(lib.frg_EVP_DecryptInit_ex(ctx, lib.frg_EVP_aes_256_gcm(), nil, key, nonce) == 1)
+		assert(lib.frg_EVP_DecryptUpdate(ctx, nil, outl, aad, #aad) == 1)
+		assert(lib.frg_EVP_DecryptUpdate(ctx, out, outl, ciphertext, #ciphertext) == 1)
 		local length = outl[0]
-		assert(lib.cdv_EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, M.tag_length, tagbuf) == 1)
+		assert(lib.frg_EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, M.tag_length, tagbuf) == 1)
 		-- the tag is checked here; the bytes decrypted so far are thrown away when it fails
-		assert(lib.cdv_EVP_DecryptFinal_ex(ctx, out + length, outl) == 1)
+		assert(lib.frg_EVP_DecryptFinal_ex(ctx, out + length, outl) == 1)
 		plaintext = ffi.string(out, length + outl[0])
 	end)
-	lib.cdv_EVP_CIPHER_CTX_free(ctx)
+	lib.frg_EVP_CIPHER_CTX_free(ctx)
 	if not ok then
 		return nil
 	end

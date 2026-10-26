@@ -25,7 +25,7 @@ M.crux = {}
 M.landing = {}
 
 ---Each window's last arrival (window → the buffer, and its triquetra just before and just after),
----so the arrival can be undone when that buffer turns into something cavediver doesn't track
+---so the arrival can be undone when that buffer turns into something frogman doesn't track
 ---@type table<WinId, { hash: Filehash, before: WindowTriquetra, after: WindowTriquetra|nil }>
 M.arrivals = {}
 
