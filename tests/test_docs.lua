@@ -278,10 +278,12 @@ T['Q5 [char] the meaningless 30 in math.max(#ordered, 30) is gone'] = function()
 	eq(c:find('math%.max%(%s*#history%.data%.ordered%.crux%s*,%s*30%s*%)') ~= nil, false)
 end
 
--- The desk --------------------------------------------------------------------
+-- The desk, as of 2026-10-21, archived --------------------------------------
+
+local DESK = 'archive/DESK-2026-10-21.md'
 
 T['A12 [char] the desk narrows the cokeline item and its Dropped line to the fallback'] = function()
-	local desk = read('DESK.md')
+	local desk = read(DESK)
 	local dropped = section(desk, '## Dropped', '## ')
 	local phrase = 'only a fallback when cokeline is missing'
 	local _, n = desk:gsub(phrase:gsub('%p', '%%%0'), '')
@@ -289,7 +291,7 @@ T['A12 [char] the desk narrows the cokeline item and its Dropped line to the fal
 end
 
 T['D14 [char] the desk\'s new-file wipe bug and its repro name the faster trigger'] = function()
-	local desk = read('DESK.md')
+	local desk = read(DESK)
 	eq({ has(desk, 'Sooner still, the next `BufEnter` anywhere wipes it'), has(desk, 'Or skip the wait') }, { true, true })
 end
 
