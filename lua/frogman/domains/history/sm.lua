@@ -21,7 +21,7 @@ historySM:register_state(states.ATTACHED)
 historySM:register_state(states.DETACHED)
 
 -- Set initial state
-historySM.current_state = states.ATTACHED
+historySM:force_state(states.ATTACHED)
 
 historySM:register_mode(states.mode.DELETE)
 historySM:register_mode(states.mode.UPDATE)

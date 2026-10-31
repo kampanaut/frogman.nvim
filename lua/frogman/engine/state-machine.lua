@@ -18,6 +18,12 @@ local helper = require('frogman.engine.helpers')
 ---@field hooks tHooksRegistry Registry of all transition-specific hooks by name
 ---@field general_hooks gHooksRegistry Array of hooks that run on all transitions
 ---@field history transitionName[] History of executed transitions
+---@field members table<stateName, table<iStateMachine, true>> The instances in each state, the machine's own included, kept weakly
+---@field labeler (fun(instance: iStateMachine): string)|nil Names an instance in messages
+---@field own {transitions: table<transitionName, false>, hooks: table<string, false>} The built-in instance's own switches
+---@field pending table[] Transitions asked for inside the running one's hooks, waiting for it to finish
+---@field running transitionName|nil The transition the machine is in the middle of
+---@field depth integer How deep the running transition is in transitions asked for inside hooks
 local StateMachine = {
 	-- The starting state of the StateMachine
 	---@type stateName
@@ -113,6 +119,243 @@ local StateMachine = {
 	transition_modes = {}
 }
 
+---A machine instance: a current state, a history and switches of its own, moved by its model.
+---
+---A machine made by the factory is a model with one built-in instance, the machine itself. A model
+---makes more with `instantiate`, each sharing its states, transitions and hooks.
+---
+---@class iStateMachine
+---@field model mStateMachine The model that moves this instance
+---@field current_state stateName The instance's current state
+---@field history string[] The transitions the instance made, a nested one with its parent after it
+---@field own {transitions: table<transitionName, false>, hooks: table<string, false>} The instance's own switches
+---@field pending table[] Transitions asked for inside the running one's hooks, waiting for it to finish
+---@field running transitionName|nil The transition the instance is in the middle of
+---@field depth integer How deep the running transition is in transitions asked for inside hooks
+---@field unregistered boolean|nil Whether the instance was unregistered
+
+---A machine model: the states, transitions, hooks and switches its instances share.
+---
+---@class mStateMachine: StateMachine
+---@field members table<stateName, table<iStateMachine, true>> The instances in each state, kept weakly
+---@field labeler (fun(instance: iStateMachine): string)|nil Names an instance in messages
+
+---How deep transitions asked for inside hooks may go before it's taken for a loop.
+local MAX_DEPTH = 16
+
+local MachineInstance = {}
+local instance_mt = { __index = MachineInstance }
+
+---Make an empty set of instances, which doesn't keep them alive.
+---@return table<iStateMachine, true> set
+local function weak_set()
+	return setmetatable({}, { __mode = "k" })
+end
+
+---Name an instance for a message: its model's labeler's answer, or the model's name.
+---@param model StateMachine|mStateMachine
+---@param instance iStateMachine|StateMachine
+---@return string label
+local function label_of(model, instance)
+	if model.labeler then
+		local ok, label = pcall(model.labeler, instance)
+		if ok and label then
+			return tostring(label)
+		end
+	end
+	return model.name
+end
+
+---Move an instance to a state, keeping its model's sets of who's in each state.
+---@param model StateMachine|mStateMachine
+---@param instance iStateMachine|StateMachine
+---@param state stateName
+---@return nil
+local function place(model, instance, state)
+	local before = model.members[instance.current_state]
+	if before then
+		before[instance] = nil
+	end
+	model.members[state] = model.members[state] or weak_set()
+	model.members[state][instance] = true
+	instance.current_state = state
+end
+
+---Run a transition on an instance of a model.
+---
+---A transition asked for inside the running one's hooks waits, and runs once it's done, from the
+---state it ended in, its history entry naming the one it was asked for in. When the running
+---transition is abandoned, what it asked for goes with it.
+---
+---@param model StateMachine|mStateMachine The model whose transitions and hooks run
+---@param instance iStateMachine|StateMachine The instance being moved
+---@param next_state stateName The state to transition to
+---@param context_arg transitionContextArg? Optional mutable data passed to all hooks. `caller` is reserved.
+---@param mode transitionMode?
+---@param parent transitionName? The transition it was asked for in
+---@param depth integer? How deep it is in transitions asked for inside hooks
+---@return nil
+local function transition(model, instance, next_state, context_arg, mode, parent, depth)
+	helper.validate_state_name_param(next_state, "next_state")
+	helper.validate_param(context_arg, "context", "table", true)
+	helper.validate_mode_pattern(mode, model)
+	if instance.unregistered then
+		error("Cannot transition " .. label_of(model, instance) .. ": its instance is unregistered", 3)
+	end
+	if not model:is_state_registered(next_state) then
+		error("Cannot transition to unregistered state: " .. next_state, 3) -- the caller's line
+	end
+	if instance.running then
+		-- inside its own hooks: it runs once the running transition is done
+		table.insert(instance.pending, {
+			next_state = next_state, context = context_arg, mode = mode,
+			parent = instance.running, depth = instance.depth + 1,
+		})
+		return
+	end
+	depth = depth or 0
+	if depth > MAX_DEPTH then
+		instance.pending = {}
+		error("Transitions asked for inside hooks went past a depth of " .. MAX_DEPTH .. ", at " .. parent ..
+			" of " .. label_of(model, instance))
+	end
+
+	local context = vim.deepcopy(context_arg or {})
+	---@cast context transitionContext
+	context.caller = model.name
+	context.mode = mode or "*" -- this is not run all hooks, but only run hooks that aren't registered with a mode.
+
+	local from_state = instance.current_state
+	---@type transitionName
+	local transition_name = from_state .. "->" .. next_state
+	-- Check if transition is enabled
+	if model.transitions[transition_name] == nil then
+		error("Transition '" .. transition_name .. "' is not registered")
+	end
+	if model.transitions[transition_name] == false or instance.own.transitions[transition_name] == false then
+		error("Transition '" .. transition_name .. "' is disabled")
+	end
+
+	instance.running, instance.depth = transition_name, depth
+	local entry = parent and (transition_name .. " <- " .. parent) or transition_name
+	local ok, err = pcall(helper.execute_transition, from_state, next_state, context.mode, context, model, instance, entry)
+	instance.running = nil
+	if not ok then
+		instance.pending = {}
+		error(err, 0)
+	end
+	place(model, instance, next_state)
+
+	while #instance.pending > 0 do
+		local asked = table.remove(instance.pending, 1)
+		transition(model, instance, asked.next_state, asked.context, asked.mode, asked.parent, asked.depth)
+	end
+end
+
+---Set an instance's state with no transition run, recorded in its history as forced.
+---@param model StateMachine|mStateMachine
+---@param instance iStateMachine|StateMachine
+---@param state stateName A registered state
+---@return nil
+local function force(model, instance, state)
+	helper.validate_state_name_param(state, "state")
+	if not model:is_state_registered(state) then
+		error("Cannot force an unregistered state: " .. state, 3)
+	end
+	if type(instance.current_state) == "string" then
+		table.insert(instance.history, instance.current_state .. "->" .. state .. " (forced)")
+	end
+	place(model, instance, state)
+end
+
+---Switch one of an instance's own transitions off, or back to its model's.
+---@param model StateMachine|mStateMachine
+---@param instance iStateMachine|StateMachine
+---@param from_state stateName Source state (supports wildcards "*")
+---@param to_state stateName Destination state (supports wildcards "*")
+---@param off boolean Whether to switch it off
+---@return nil
+local function switch_own_transitions(model, instance, from_state, to_state, off)
+	for _, transition_name in ipairs(helper.parse_transition_pattern(from_state .. "->" .. to_state, model)) do
+		if off then
+			instance.own.transitions[transition_name] = false
+		else
+			instance.own.transitions[transition_name] = nil
+		end
+	end
+end
+
+---Get the instance's current state.
+---@return stateName current_state The name of the instance's current state
+function MachineInstance:state()
+	return self.current_state
+end
+
+---Transition the instance to a new state, running its model's hooks.
+---@param next_state stateName The state to transition to
+---@param context_arg transitionContextArg? Optional mutable data passed to all hooks. `caller` is reserved.
+---@param mode transitionMode?
+---@return nil
+function MachineInstance:to(next_state, context_arg, mode)
+	transition(self.model, self, next_state, context_arg, mode)
+end
+
+---Set the instance's state with no transition run.
+---
+---The hooks don't run, and the history records the move as forced. It's for putting a state in
+---place, as a teardown or a replay does, never for moving through one.
+---
+---@param state stateName A registered state
+---@return nil
+function MachineInstance:force_state(state)
+	force(self.model, self, state)
+end
+
+---Unregister the instance from its model.
+---
+---It leaves its model's sets of who's in each state, and its history goes. A transition asked of it
+---afterwards is an error.
+---
+---@return nil
+function MachineInstance:unregister()
+	local members = self.model.members[self.current_state]
+	if members then
+		members[self] = nil
+	end
+	self.history = {}
+	self.unregistered = true
+end
+
+---Switch transitions off for this instance alone.
+---@param from_state stateName Source state (supports wildcards "*")
+---@param to_state stateName Destination state (supports wildcards "*")
+---@return nil
+function MachineInstance:disable_transition(from_state, to_state)
+	switch_own_transitions(self.model, self, from_state, to_state, true)
+end
+
+---Give this instance its model's transitions back, where it switched them off.
+---@param from_state stateName Source state (supports wildcards "*")
+---@param to_state stateName Destination state (supports wildcards "*")
+---@return nil
+function MachineInstance:enable_transition(from_state, to_state)
+	switch_own_transitions(self.model, self, from_state, to_state, false)
+end
+
+---Switch a hook off for this instance alone.
+---@param name string Name of the hook
+---@return nil
+function MachineInstance:disable_hook(name)
+	self.own.hooks[name] = false
+end
+
+---Give this instance its model's hook back, where it switched it off.
+---@param name string Name of the hook
+---@return nil
+function MachineInstance:enable_hook(name)
+	self.own.hooks[name] = nil
+end
+
 
 ---Get the current active state.
 ---@return stateName current_state The name of the currently active state
@@ -149,12 +392,17 @@ end
 ---Unregister a state and cascade delete all related transitions.
 ---
 ---Removes the state and automatically cleans up all transitions and bindings
----that reference this state (both as source and destination).
+---that reference this state (both as source and destination). It refuses while
+---an instance is in the state.
 ---
 ---@param state_name stateName The name of the existing state to remove
 ---@return nil
 function StateMachine:unregister_state(state_name)
 	helper.validate_state_name_param(state_name, "state_name")
+	-- an instance still in it would be left in a state nothing knows: making sure none is is the caller's job
+	if self.members and self.members[state_name] and next(self.members[state_name]) ~= nil then
+		error("Cannot unregister state '" .. state_name .. "': instances are in it", 2) -- the caller's line
+	end
 	if self.states[state_name] then
 		for transition_name, _ in pairs(self.transitions) do
 			local previous, next = helper.parse_transition_name(transition_name)
@@ -494,30 +742,54 @@ end
 ---@param mode transitionMode?
 ---@return nil
 function StateMachine:to(next_state, context_arg, mode)
-	helper.validate_state_name_param(next_state, "next_state")
-	helper.validate_param(context_arg, "context", "table", true)
-	helper.validate_mode_pattern(mode, self)
-	if not self:is_state_registered(next_state) then
-		error("Cannot transition to unregistered state: " .. next_state, 2) -- the caller's line
-	end
+	-- the machine is its own built-in instance
+	transition(self, self, next_state, context_arg, mode)
+end
 
-	local context = vim.deepcopy(context_arg or {})
-	---@cast context transitionContext
-	context.caller = self.name
-	context.mode = mode or "*" -- this is not run all hooks, but only run hooks that aren't registered with a mode.
+---Set the machine's state with no transition run.
+---
+---The hooks don't run, and the history records the move as forced. It's for putting a state in
+---place, as a teardown, a replay or the machine's first state does, never for moving through one.
+---
+---@param state stateName A registered state
+---@return nil
+function StateMachine:force_state(state)
+	force(self, self, state)
+end
 
-	---@type transitionName
-	local transition_name = self:state() .. "->" .. next_state
-	-- Check if transition is enabled
-	if self.transitions[transition_name] == nil then
-		error("Transition '" .. transition_name .. "' is not registered")
+---Make an instance of this machine in its first state.
+---
+---The instance shares the machine's states, transitions and hooks, and has a state, a history and
+---switches of its own. It isn't in the factory's list of machines.
+---
+---@param first_state stateName A registered state for the instance to start in
+---@return iStateMachine instance The new instance
+function StateMachine:instantiate(first_state)
+	helper.validate_state_name_param(first_state, "first_state")
+	if not self:is_state_registered(first_state) then
+		error("Cannot make an instance in unregistered state: " .. first_state, 2) -- the caller's line
 	end
-	if self.transitions[transition_name] == false then
-		error("Transition '" .. transition_name .. "' is disabled")
-	end
+	local instance = setmetatable({
+		model = self,
+		history = {},
+		own = { transitions = {}, hooks = {} },
+		pending = {},
+		depth = 0,
+	}, instance_mt)
+	place(self, instance, first_state)
+	return instance
+end
 
-	helper.execute_transition(self:state(), next_state, context.mode, context, self)
-	self.current_state = next_state
+---Set the function that names an instance of this machine in its messages.
+---
+---It's called with the instance whenever a message has to say which one: a failing hook's
+---notification, and the engine's own errors. With none, an instance goes by the machine's name.
+---
+---@param labeler fun(instance: iStateMachine): string The function naming an instance
+---@return nil
+function StateMachine:set_labeler(labeler)
+	helper.validate_param(labeler, "labeler", "function", false)
+	self.labeler = labeler
 end
 
 return StateMachine

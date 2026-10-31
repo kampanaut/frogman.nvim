@@ -36,6 +36,11 @@ function StateMachineFactory:create(name)
 		hooks = {},
 		general_hooks = {},
 		history = {},
+		-- the machine is a model, and its own built-in instance too
+		members = {},
+		own = { transitions = {}, hooks = {} },
+		pending = {},
+		depth = 0,
 	}, { __index = StateMachine })
 
 

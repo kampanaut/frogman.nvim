@@ -312,9 +312,9 @@ local function plant_snapshot(snapshot, plant)
 	local cycling = snapshot.navigation == "cycling" and snapshot.cycle and windows[snapshot.cycle]
 	if cycling then
 		local navigation = require('frogman.domains.navigation')
-		navigation.sm.current_state = navigation.states.CYCLING
+		navigation.sm:force_state(navigation.states.CYCLING)
 		navigation.data.cycling_window = cycling
-		history.sm.current_state = history.states.DETACHED
+		history.sm:force_state(history.states.DETACHED)
 		history.data.cycling_origins[cycling] = require('frogman.domains.window').data.crux[cycling]
 	end
 	history.routines.construct_crux(vim.api.nvim_get_current_win())

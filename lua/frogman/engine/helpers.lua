@@ -18,15 +18,22 @@ end
 ---@param to_state stateName
 ---@param context transitionContext
 ---@param mode transitionMode
----@param statemachine StateMachine
-function M.execute_transition(from_state, to_state, mode, context, statemachine)
-	
+---@param statemachine StateMachine The model whose hooks run
+---@param instance iStateMachine|StateMachine The instance being moved, the machine itself for its built-in one
+---@param entry string What the instance's history records, the transition or it with its parent
+function M.execute_transition(from_state, to_state, mode, context, statemachine, instance, entry)
+
 	-- Get the pipeline of hooks to execute for this transition
-	local pipeline = M.compute_transition_pipeline(from_state, to_state, mode, statemachine)
-	
+	local pipeline = M.compute_transition_pipeline(from_state, to_state, mode, statemachine, instance)
+
 	-- Add transition to history
 	local transition_name = from_state .. "->" .. to_state
-	table.insert(statemachine.history, transition_name)
+	table.insert(instance.history, entry)
+	local of = ""
+	if statemachine.labeler then
+		local ok, label = pcall(statemachine.labeler, instance)
+		of = ok and label and (" of " .. tostring(label)) or ""
+	end
 	
 	-- print("Executing transition: " .. transition_name)
 	-- for index, hook in ipairs(pipeline) do
@@ -38,10 +45,10 @@ function M.execute_transition(from_state, to_state, mode, context, statemachine)
 		if hook.enabled then
 			-- Call the hook function with the transition context
 			-- The context is mutable and passed through the entire pipeline
-			local success, error_msg = xpcall(hook.func, debug.traceback, context, from_state, to_state)
-			
+			local success, error_msg = xpcall(hook.func, debug.traceback, context, instance, from_state, to_state)
+
 			if not success then
-				local message = "Hook '" .. hook.name .. "' failed during transition " .. transition_name .. ": " .. tostring(error_msg)
+				local message = "Hook '" .. hook.name .. "' failed during transition " .. transition_name .. of .. ": " .. tostring(error_msg)
 				if hook.critical then
 					-- the transition is abandoned, so the machine stays where it was and the caller sees it.
 					error(message, 0)
@@ -60,7 +67,9 @@ end
 ---@param to_state stateName
 ---@param mode transitionMode
 ---@param statemachine StateMachine
-function M.compute_transition_pipeline(from_state, to_state, mode, statemachine)
+---@param instance iStateMachine|StateMachine|nil The instance being moved, whose own switches leave a hook out
+function M.compute_transition_pipeline(from_state, to_state, mode, statemachine, instance)
+	local own = instance and instance.own and instance.own.hooks or {}
 	local pipeline = {}
 	
 	-- Get transition name and collect hooks
@@ -70,7 +79,7 @@ function M.compute_transition_pipeline(from_state, to_state, mode, statemachine)
 	-- Get hooks for this exact transition (wildcards already expanded during registration)
 	if statemachine.bindings[transition_name] then
 		for _, hook in ipairs(statemachine.bindings[transition_name]) do
-			if hook.enabled and M.should_execute_hook(statemachine, mode, hook) then
+			if hook.enabled and own[hook.name] ~= false and M.should_execute_hook(statemachine, mode, hook) then
 				table.insert(hooks_to_execute, hook)
 			end
 		end

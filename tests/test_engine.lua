@@ -105,7 +105,7 @@ T['T5 [char] off(from, to, name) removes that hook from that transition and noth
 		sm:register_state('b')
 		sm.current_state = 'a'
 		local ran = {}
-		local function hook(name) return function(_, from, to) table.insert(ran, name .. ':' .. from .. '->' .. to) end end
+		local function hook(name) return function(_, _, from, to) table.insert(ran, name .. ':' .. from .. '->' .. to) end end
 		sm:on('a', 'b', 'h', hook('h'), 1, true)
 		sm:on('b', 'a', 'h', nil, nil, nil)
 		sm:on('a', 'b', 'g', hook('g'), 2, true)
@@ -151,6 +151,172 @@ T['T7 [char] sm.history keeps every transition: 1,000 transitions, 1,000 entries
 		return { n = #sm.history, all_same = all_same }
 	]])
 	eq(got, { n = 1000, all_same = true })
+end
+
+-- Machine models and instances (M11, decided 2026-10-27) -------------------
+
+-- a model with states a, b and c in the child, under a name of the case's own
+local function model_with(name)
+	return ([[
+		local E = require('frogman.engine')
+		local m = E:create('%s')
+		m:register_state('a')
+		m:register_state('b')
+		m:register_state('c')
+	]]):format(name)
+end
+
+T['T658 [char] two instances of one model move apart, and its hooks run for both'] = function()
+	local got = child.lua(model_with('t658') .. [[
+		local ran = 0
+		m:on('a', 'b', 'count', function() ran = ran + 1 end, 1, true)
+		local one, two = m:instantiate('a'), m:instantiate('a')
+		one:to('b')
+		local names = E:list()
+		return { one = one:state(), two = two:state(), ran = ran, listed = vim.tbl_contains(names, 't658'), n = #vim.tbl_filter(function(n) return n:find('t658', 1, true) end, names) }
+	]])
+	eq(got, { one = 'b', two = 'a', ran = 1, listed = true, n = 1 })
+end
+
+T['T659 [char] a hook gets the instance second, then the states'] = function()
+	local got = child.lua(model_with('t659') .. [[
+		local seen = {}
+		m:on('a', 'b', 'look', function(_, instance, from, to) table.insert(seen, { instance = instance, from = from, to = to }) end, 1, true)
+		local one = m:instantiate('a')
+		one:to('b')
+		m.current_state = 'a'
+		m:to('b')
+		return { first = seen[1].instance == one, states = { seen[1].from, seen[1].to }, built_in = seen[2].instance == m }
+	]])
+	eq(got, { first = true, states = { 'a', 'b' }, built_in = true })
+end
+
+T['T660 [char] an instance\'s first state must be registered'] = function()
+	local got = child.lua(model_with('t660') .. [[
+		local ok, err = pcall(m.instantiate, m, 'nowhere')
+		return { ok = ok, names = tostring(err):find('nowhere', 1, true) ~= nil }
+	]])
+	eq(got, { ok = false, names = true })
+end
+
+T['T661 [char] a transition asked for inside its own instance\'s hooks runs after, linked'] = function()
+	local got = child.lua(model_with('t661') .. [[
+		m:on('b', 'c', 'noop', function() end, 1, true)
+		local inside
+		m:on('a', 'b', 'ask', function(_, instance) instance:to('c'); inside = instance:state() end, 1, true)
+		local one = m:instantiate('a')
+		one:to('b')
+		return { inside = inside, after = one:state(), history = one.history }
+	]])
+	eq(got, { inside = 'a', after = 'c', history = { 'a->b', 'b->c <- a->b' } })
+end
+
+T['T662 [char] an abandoned transition drops what it asked for'] = function()
+	local got = child.lua(model_with('t662') .. [[
+		m:on('b', 'c', 'noop', function() end, 1, true)
+		m:on('a', 'b', 'ask', function(_, instance) instance:to('c'); error('boom') end, 1, true)
+		m:make_hook_critical('ask')
+		local one = m:instantiate('a')
+		local ok = pcall(one.to, one, 'b')
+		return { ok = ok, state = one:state(), history = one.history }
+	]])
+	eq(got, { ok = false, state = 'a', history = { 'a->b' } })
+end
+
+T['T663 [char] nested transitions stop at a depth of 16, naming the parent and the label'] = function()
+	local got = child.lua(model_with('t663') .. [[
+		m:set_labeler(function() return 'x.txt' end)
+		m:on('a', 'b', 'there', function(_, instance) instance:to('a') end, 1, true)
+		m:on('b', 'a', 'back', function(_, instance) instance:to('b') end, 1, true)
+		local one = m:instantiate('a')
+		local ok, err = pcall(one.to, one, 'b')
+		err = tostring(err)
+		return { ok = ok, label = err:find('x.txt', 1, true) ~= nil, depth = err:find('16', 1, true) ~= nil }
+	]])
+	eq(got, { ok = false, label = true, depth = true })
+end
+
+T['T664 [char] a failing hook\'s notification names the instance by the labeler'] = function()
+	child.messages()
+	local got = child.lua(model_with('t664') .. [[
+		m:set_labeler(function() return 'x.txt' end)
+		m:on('a', 'b', 'breaks', function() error('boom') end, 1, true)
+		m:instantiate('a'):to('b')
+	]])
+	local said = vim.tbl_filter(function(msg) return msg.msg:find("Hook 'breaks' failed during transition a->b of x.txt", 1, true) end, child.messages())
+	eq(#said, 1)
+end
+
+T['T665 [char] an instance\'s switch stops that instance alone, the model\'s every one'] = function()
+	local got = child.lua(model_with('t665') .. [[
+		m:on('a', 'b', 'noop', function() end, 1, true)
+		local one, two = m:instantiate('a'), m:instantiate('a')
+		one:disable_transition('a', 'b')
+		local ok_one = pcall(one.to, one, 'b')
+		two:to('b')
+		local three = m:instantiate('a')
+		m:disable_transition('a', 'b')
+		local ok_three = pcall(three.to, three, 'b')
+		return { ok_one = ok_one, one = one:state(), two = two:state(), ok_three = ok_three }
+	]])
+	eq(got, { ok_one = false, one = 'a', two = 'b', ok_three = false })
+end
+
+T['T666 [char] an instance nothing holds isn\'t kept alive by its model'] = function()
+	local got = child.lua(model_with('t666') .. [[
+		m:instantiate('a')
+		collectgarbage(); collectgarbage()
+		return next(m.members.a) == nil
+	]])
+	eq(got, true)
+end
+
+T['T667 [char] unregister_state refuses while an instance is in the state'] = function()
+	local got = child.lua(model_with('t667') .. [[
+		m:on('a', 'b', 'there', function() end, 1, true)
+		m:on('b', 'a', 'back', function() end, 1, true)
+		local one = m:instantiate('a')
+		one:to('b')
+		local refused = not pcall(m.unregister_state, m, 'b')
+		local kept = m:is_state_registered('b')
+		one:to('a')
+		local ok = pcall(m.unregister_state, m, 'b')
+		return { refused = refused, kept = kept, ok = ok, gone = not m:is_state_registered('b') }
+	]])
+	eq(got, { refused = true, kept = true, ok = true, gone = true })
+end
+
+T['T668 [char] force_state runs no hook, is recorded as forced, and keeps the sets'] = function()
+	local got = child.lua(model_with('t668') .. [[
+		local ran = false
+		m:on('a', 'b', 'would', function() ran = true end, 1, true)
+		local one = m:instantiate('a')
+		one:force_state('b')
+		return { ran = ran, state = one:state(), last = one.history[#one.history], refused = not pcall(m.unregister_state, m, 'b') }
+	]])
+	eq(got, { ran = false, state = 'b', last = 'a->b (forced)', refused = true })
+end
+
+T['T669 [char] an unregistered instance refuses transitions'] = function()
+	local got = child.lua(model_with('t669') .. [[
+		m:set_labeler(function() return 'x.txt' end)
+		m:on('a', 'b', 'noop', function() end, 1, true)
+		local one = m:instantiate('a')
+		one:unregister()
+		local ok, err = pcall(one.to, one, 'b')
+		return { ok = ok, label = tostring(err):find('x.txt', 1, true) ~= nil, free = pcall(m.unregister_state, m, 'a') }
+	]])
+	eq(got, { ok = false, label = true, free = true })
+end
+
+T['T670 [char] no state is written directly outside the engine'] = function()
+	local found = {}
+	for _, path in ipairs(vim.fn.globpath('lua/frogman/domains', '**/*.lua', false, true)) do
+		for n, line in ipairs(vim.fn.readfile(path)) do
+			if line:find('current_state%s*=') then table.insert(found, path .. ':' .. n) end
+		end
+	end
+	eq(found, {})
 end
 
 return T

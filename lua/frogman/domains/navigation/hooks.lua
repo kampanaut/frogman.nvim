@@ -14,7 +14,7 @@ local navigationSM = require('frogman.domains.navigation.sm')
 local storageSM = require('frogman.domains.storage.sm')
 local storageStates = require('frogman.domains.storage.states')
 storageSM:on(storageStates.IDLE, storageStates.BARE, "navigation_teardown", function()
-	navigationSM.current_state = states.NORMAL
+	navigationSM:force_state(states.NORMAL)
 	data.cycling_window = nil
 	data.window_jump_history = {}
 end, 1, true)

@@ -1,4 +1,4 @@
----@alias hookFunction fun(context: transitionContext, from_state: stateName, to_state: stateName): nil
+---@alias hookFunction fun(context: transitionContext, instance: iStateMachine|StateMachine, from_state: stateName, to_state: stateName): nil
 ---
 ---@class tHook
 ---@field class number Provides a way to group hooks by class and priority.

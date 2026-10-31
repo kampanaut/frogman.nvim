@@ -1524,7 +1524,7 @@ function M.load_history(cwd, name)
 		if cycling and vim.api.nvim_win_is_valid(cycling) then
 			if vim.api.nvim_win_get_tabpage(cycling) == tabpage then
 				-- a cycle running in the tab ends with nothing picked, as at a whole-editor load
-				navigation.sm.current_state = navigation.states.NORMAL
+				navigation.sm:force_state(navigation.states.NORMAL)
 				navigation.data.cycling_window = nil
 			else
 				-- one running elsewhere is cancelled, as a window jump cancels it: the load attaches history

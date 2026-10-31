@@ -45,7 +45,7 @@ end, 2, true)
 ---@type table<Bufnr, { hash: Filehash, history: table, targets: table|nil }>
 local noname_deleted = {}
 
-historySM:on("*", "*", "handle_deletion", function(context, from, to)
+historySM:on("*", "*", "handle_deletion", function(context, _, from, to)
 	-- Handle deletion immediately, regardless of state
 	-- print("FUCK")
 	if not context.buf then
@@ -76,7 +76,7 @@ local storageSM = require('frogman.domains.storage.sm')
 local storageStates = require('frogman.domains.storage.states')
 storageSM:on(storageStates.IDLE, storageStates.BARE, "history_teardown", function()
 	routines.teardown()
-	historySM.current_state = states.ATTACHED
+	historySM:force_state(states.ATTACHED)
 end, 3, true)
 
 navigationSM:on("*", "*", "winenter_update_history_view", function(context)

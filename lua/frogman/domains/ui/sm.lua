@@ -15,21 +15,21 @@ local loopSM = SMFactory:get("ui_loop") or SMFactory:create("ui_loop")
 -- Register bufferline states
 bufferlineSM:register_state(states.BUFFERLINE.VISIBLE)
 bufferlineSM:register_state(states.BUFFERLINE.HIDDEN)
-bufferlineSM.current_state = states.BUFFERLINE.VISIBLE
+bufferlineSM:force_state(states.BUFFERLINE.VISIBLE)
 
 -- Register indicators states
 indicatorsSM:register_state(states.INDICATORS.ON)
 indicatorsSM:register_state(states.INDICATORS.OFF)
-indicatorsSM.current_state = states.INDICATORS.ON
+indicatorsSM:force_state(states.INDICATORS.ON)
 
 -- Register winbar states
 winbarSM:register_state(states.WINBAR.ACTIVE)
 winbarSM:register_state(states.WINBAR.MINIMAL)
-winbarSM.current_state = states.WINBAR.ACTIVE
+winbarSM:force_state(states.WINBAR.ACTIVE)
 
 -- Register loop state (single state that transitions to itself)
 loopSM:register_state(states.LOOP.SELF)
-loopSM.current_state = states.LOOP.SELF
+loopSM:force_state(states.LOOP.SELF)
 
 return {
     bufferline = bufferlineSM,

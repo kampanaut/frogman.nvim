@@ -26,6 +26,6 @@ storageSM:register_state(states.ERROR)
 storageSM:register_state(states.AUTO_SAVING)
 
 -- Set initial state
-storageSM.current_state = states.BARE
+storageSM:force_state(states.BARE)
 
 return storageSM

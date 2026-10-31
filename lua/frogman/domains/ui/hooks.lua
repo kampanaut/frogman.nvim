@@ -42,7 +42,7 @@ uiMachines.loop:on("*", states.LOOP.SELF, "update_ui_state", function()
 	end
 end, 1, true)
 
-history.sm:on("*", history.states.ATTACHED, "refresh_ui_attached", function(context, from_state, to_state)
+history.sm:on("*", history.states.ATTACHED, "refresh_ui_attached", function(context, _, from_state, to_state)
 	if context.history_modified == nil then
 		error("history_modified is nil in refresh_ui_attached hook")
 	elseif context.history_modified == false then
