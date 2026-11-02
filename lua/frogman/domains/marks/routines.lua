@@ -47,9 +47,9 @@ function M.scope(kind, id, create)
 	return scopes[id]
 end
 
----Get a scope's first group, the one the keys use.
+---Get a scope's first group that isn't held over, the one the keys use.
 ---
----A scope where no group has been typed gets its default group, named by the config.
+---A scope with none gets its default group, named by the config, first, ahead of what's held over.
 ---
 ---@param scope MarksScope|nil
 ---@param create boolean|nil Whether to make the default group when there's none
@@ -58,10 +58,16 @@ function M.first_group(scope, create)
 	if scope == nil then
 		return nil
 	end
-	if scope.groups[1] == nil and create then
-		table.insert(scope.groups, { name = require('frogman.configs').marks.default_group, marks = {} })
+	for _, group in ipairs(scope.groups) do
+		if not group.held then
+			return group
+		end
 	end
-	return scope.groups[1]
+	if create then
+		table.insert(scope.groups, 1, { name = require('frogman.configs').marks.default_group, marks = {} })
+		return scope.groups[1]
+	end
+	return nil
 end
 
 ---Get the handle a mark holds now.
@@ -145,6 +151,8 @@ function M.teardown()
 	end
 	data.scopes = { window = {}, tab = {}, session = {} }
 	data.flashes = {}
+	data.pending = {} -- what was queued to be held over goes with the rest
+	data.tab_shows = {}
 end
 
 ---Get the aliases' order: each alias's index in the config's table.
@@ -391,7 +399,7 @@ function M.serialise(kind, id)
 			end
 		end
 		if next(marks) then
-			table.insert(groups, { name = group.name, marks = marks })
+			table.insert(groups, { name = group.name, marks = marks, held = group.held or nil })
 		end
 	end
 	return #groups > 0 and groups or nil
@@ -409,7 +417,7 @@ end
 function M.restore(kind, id, groups)
 	local scope = { groups = {} }
 	for _, saved in ipairs(type(groups) == "table" and groups or {}) do
-		local group = { name = saved.name, marks = {} }
+		local group = { name = saved.name, marks = {}, held = saved.held == true or nil }
 		for alias, filehash in pairs(type(saved.marks) == "table" and saved.marks or {}) do
 			local handle = history.handles.of_hash(filehash)
 			if handle then
@@ -434,6 +442,152 @@ function M.copy_scope(kind, id, to_id)
 	local scope = data.scopes[kind][id]
 	data.scopes[kind][to_id] = scope and vim.deepcopy(scope) or nil
 	M.hold_scope(kind, to_id)
+end
+
+---Get what a window shows, as a held-over group names it: its file's name, or its buffer's.
+---
+---@param winid WinId
+---@return string what
+function M.shows(winid)
+	if not vim.api.nvim_win_is_valid(winid) then
+		return "[No Name]"
+	end
+	local bufnr = vim.api.nvim_win_get_buf(winid)
+	local filehash = history.get_hash_from_buffer(bufnr)
+	if filehash then
+		return require('frogman.domains.ui').routines.get_smart_basename(filehash)
+	end
+	local name = vim.api.nvim_buf_get_name(bufnr)
+	return name ~= "" and vim.fs.basename(name) or "[No Name]"
+end
+
+---Get a held-over group's name: what it was and when, numbered on when the scope has that name.
+---
+---@param scope MarksScope|nil The scope it goes to
+---@param what string What it was, like "window on api.lua" or "proj, loaded into tab 2"
+---@return string name Like "held over · window on api.lua · 10-31 13:05"
+local function held_name(scope, what)
+	local base = "held over · " .. what .. " · " .. os.date("%m-%d %H:%M")
+	local taken = {}
+	for _, group in ipairs(scope and scope.groups or {}) do
+		taken[group.name] = true
+	end
+	local name, n = base, 1
+	while taken[name] do
+		n = n + 1
+		name = base .. " #" .. n
+	end
+	return name
+end
+
+---Hold groups over in a session's scope, below its groups.
+---
+---Each group with marks becomes one of its own, held over, named after what it was and when. A
+---held-over group drives the keys only once you move it first yourself.
+---
+---@param session_id string The session's pool id ("" for the whole editor's)
+---@param groups MarksGroup[]|{name: string, marks: table<string, Filehash>}[] The groups, live (handle ids) or saved (hashes)
+---@param what string What they were, like "window on api.lua"
+---@param saved boolean|nil Whether the groups are saved ones, their marks by hash
+---@return nil
+function M.hold_over(session_id, groups, what, saved)
+	local scope = M.scope("session", session_id, true)
+	local several = #groups > 1
+	for _, group in ipairs(groups) do
+		local marks = {}
+		for alias, value in pairs(group.marks or {}) do
+			local handle
+			if saved then
+				handle = history.handles.of_hash(value)
+			else
+				handle = M.handle_of(group, alias)
+			end
+			if handle then
+				marks[alias] = handle.id
+			end
+		end
+		if next(marks) then
+			if not M.first_group(scope) then
+				M.first_group(scope, true) -- the keys keep a group of their own, ahead of what's held over
+			end
+			table.insert(scope.groups, { name = held_name(scope, several and (what .. ", " .. group.name) or what), marks = marks, held = true })
+		end
+	end
+	M.hold_scope("session", session_id)
+	if scope.groups[1] == nil then
+		data.scopes.session[session_id] = nil
+	end
+end
+
+---Queue a closed window's or tab's groups to be held over once the editor settles.
+---
+---A session manager's switch closes windows and tabs inside its teardown, and the load it ends with
+---drops what's queued, so a switch holds nothing over. A tab session's load drops what came from the
+---tab it loads into.
+---
+---@param tabpage integer The tab the window or tab was in
+---@param session_id string The session's pool id ("" for the whole editor's)
+---@param groups MarksGroup[] The groups, live
+---@param what string What they were
+---@return nil
+function M.queue_hold_over(tabpage, session_id, groups, what)
+	local copy = {}
+	for _, group in ipairs(groups) do
+		local marks = {}
+		for alias, _ in pairs(group.marks) do
+			local handle = M.handle_of(group, alias)
+			if handle then
+				marks[alias] = handle.hash
+			end
+		end
+		if next(marks) then
+			table.insert(copy, { name = group.name, marks = marks })
+		end
+	end
+	if #copy == 0 then
+		return
+	end
+	-- its files stay held while it waits, by a place of its own, so none is let go in between
+	data.waited = data.waited + 1
+	local place = "mark:waiting:" .. data.waited
+	local hashes = {}
+	for _, group in ipairs(copy) do
+		for _, filehash in pairs(group.marks) do
+			table.insert(hashes, filehash)
+		end
+	end
+	history.handles.hold(place, hashes)
+	data.places["waiting:" .. data.waited] = { [place] = true }
+	local entry = { tab = tabpage, session = session_id, groups = copy, what = what, place = place, key = "waiting:" .. data.waited }
+	table.insert(data.pending, entry)
+	vim.schedule(function()
+		-- one a teardown or a load dropped meanwhile isn't there any more
+		for i, waiting in ipairs(data.pending) do
+			if waiting == entry then
+				table.remove(data.pending, i)
+				M.hold_over(entry.session, entry.groups, entry.what, true)
+				repaint()
+				history.handles.drop_place(entry.place)
+				data.places[entry.key] = nil
+				return
+			end
+		end
+	end)
+end
+
+---Drop the held-over groups still queued from a tab, as a tab session's load into it starts.
+---
+---@param tabpage integer
+---@return nil
+function M.drop_pending(tabpage)
+	for i = #data.pending, 1, -1 do
+		local entry = data.pending[i]
+		if entry.tab == tabpage then
+			table.remove(data.pending, i)
+			history.handles.drop_place(entry.place)
+			data.places[entry.key] = nil
+		end
+	end
 end
 
 ---Get the hashes of the files a session's marks hold.

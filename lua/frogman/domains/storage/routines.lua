@@ -792,12 +792,13 @@ end
 ---Give each plain tab the marks of the saved tab it is.
 ---
 ---A saved tab finds its tab by what its windows show, and among several that show the same, by its
----number, among the tabs in no tab session that no saved tab took yet. One no tab shows the same is
----left.
+---number, among the tabs in no tab session that no saved tab took yet. One no tab takes is held
+---over in the whole editor's scope, naming the load.
 ---
 ---@param saved_tabs table[]|nil The file's `tabs`
+---@param what string The load, as a held-over group names it
 ---@return nil
-local function restore_tabs(saved_tabs)
+local function restore_tabs(saved_tabs, what)
 	local taken = {}
 	for _, saved in ipairs(type(saved_tabs) == "table" and saved_tabs or {}) do
 		local want = table.concat(type(saved.shows) == "table" and saved.shows or {}, ",")
@@ -816,6 +817,8 @@ local function restore_tabs(saved_tabs)
 		if best then
 			taken[best.tabpage] = true
 			marks().restore("tab", best.tabpage, saved.groups)
+		else
+			marks().hold_over("", type(saved.groups) == "table" and saved.groups or {}, what, true)
 		end
 	end
 end
@@ -860,10 +863,26 @@ local function carry_marked_texts(texts, saved, key, scratch_dir, references)
 	end
 end
 
+---Hold a tab's tab marks over in a session's scope, as the tab becomes that session's tab.
+---
+---A tab session's tab has no tab marks of its own: its tab mode is its session's.
+---
+---@param tabpage integer
+---@param session_id string The session's pool id
+---@return nil
+local function tab_marks_held_over(tabpage, session_id)
+	local scope = marks().scope("tab", tabpage)
+	if scope then
+		marks().hold_over(session_id, scope.groups, "tab on " .. marks().shows(vim.api.nvim_tabpage_get_win(tabpage)))
+		marks().drop_scope("tab", tabpage)
+	end
+end
+
 ---Give the scopes a session file's marks.
 ---
 ---The session's own come from its `marks`, unless it's open already, when memory's stay, each
----matched window's from the entry it took, and each plain tab's from the saved tab it is. A No Name text a mark names that no list holds and that
+---matched window's from the entry it took, and each plain tab's from the saved tab it is. What no
+---window or tab takes is held over, and so, when memory's marks win, are the file's it doesn't hold. A No Name text a mark names that no list holds and that
 ---isn't reopened is held unread, as a closed one is, on no list.
 ---
 ---@param saved_data table The file's data
@@ -872,18 +891,42 @@ end
 ---@param own boolean Whether the session's own marks come from the file
 ---@param key string The session's key
 ---@param scratch_dir string The session's scratch directory
+---@param what string The load, as a held-over group names it
 ---@return nil
-local function restore_marks(saved_data, taken, session_id, own, key, scratch_dir)
+local function restore_marks(saved_data, taken, session_id, own, key, scratch_dir, what)
 	if own then
 		marks().restore("session", session_id, saved_data.marks)
-	end
-	for i, winid in pairs(taken or {}) do
-		local entry = saved_data.windows[i]
-		if entry and type(entry[10]) == "table" and vim.api.nvim_win_is_valid(winid) then
-			marks().restore("window", winid, entry[10])
+	else
+		-- memory's marks win: every file mark memory doesn't hold, alias by alias, is held over
+		local scope = marks().scope("session", session_id)
+		for _, saved in ipairs(type(saved_data.marks) == "table" and saved_data.marks or {}) do
+			local left = {}
+			for alias, filehash in pairs(type(saved.marks) == "table" and saved.marks or {}) do
+				local held = false
+				for _, group in ipairs(scope and scope.groups or {}) do
+					local handle = group.marks[alias] and marks().handle_of(group, alias)
+					held = held or (handle ~= nil and handle.hash == filehash)
+				end
+				if not held then
+					left[alias] = filehash
+				end
+			end
+			if next(left) then
+				marks().hold_over(session_id, { { name = saved.name, marks = left } }, what, true)
+			end
 		end
 	end
-	restore_tabs(saved_data.tabs) -- a tab session's file has none
+	for i, entry in ipairs(saved_data.windows or {}) do
+		local winid = (taken or {})[i]
+		if type(entry) == "table" and type(entry[10]) == "table" then
+			if winid and vim.api.nvim_win_is_valid(winid) then
+				marks().restore("window", winid, entry[10])
+			else
+				marks().hold_over(session_id, entry[10], what, true) -- a window the load didn't bring back
+			end
+		end
+	end
+	restore_tabs(saved_data.tabs, what) -- a tab session's file has none
 	for filehash, _ in pairs(marks().held_by(nil)) do
 		local entry = type(saved_data.noname_content) == "table" and saved_data.noname_content[filehash]
 		local filepath = history.get_filepath_from_hash(filehash)
@@ -1536,8 +1579,10 @@ local function start_tab_fresh(directory, name, tabpage)
 	if data.unnamed == nil and data.editor_session then
 		data.unnamed = vim.deepcopy(data.editor_session) -- the whole editor's session, as tab sessions start
 	end
+	marks().drop_pending(tabpage)
 	load_pool = join_for_load(tabpage, name, directory)
 	push_out(load_pool, tabpage)
+	tab_marks_held_over(tabpage, load_pool.id)
 	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
 		local bufnr = vim.api.nvim_win_get_buf(winid)
 		if vim.api.nvim_win_get_config(winid).relative == "" and history.routines.is_trackable(bufnr) then
@@ -1575,6 +1620,7 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 	end
 	-- a session already open in a tab, or whose list was kept: what's in memory is newer than the file
 	local open = history.data.pools[history.routines.pool_id(name, directory)] ~= nil
+	marks().drop_pending(tabpage) -- what its closes queued to hold over goes, as the load replaces it
 	load_pool = join_for_load(tabpage, name, directory)
 	push_out(load_pool, tabpage)
 	local scratch_dir = file_path .. ".d/"
@@ -1595,7 +1641,9 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 	for winid, window_crux in pairs(window_histories) do
 		history.data.crux_internals.window[winid] = window_crux
 	end
-	restore_marks(saved_data, taken, load_pool.id, not open, key, scratch_dir) -- before the texts reopen under new hashes
+	restore_marks(saved_data, taken, load_pool.id, not open, key, scratch_dir,
+		vim.fn.fnamemodify(name or directory, ":t") .. ", loaded into tab " .. vim.api.nvim_tabpage_get_number(tabpage)) -- before the texts reopen under new hashes
+	tab_marks_held_over(tabpage, load_pool.id)
 	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
 		if window.data.crux[winid] then
 			history.routines.ensure_window_entry(winid)
@@ -1770,7 +1818,7 @@ function M.load_history(cwd, name)
 			end
 		end
 		load_pool = history.routines.pools()[""]
-		restore_marks(saved_data, taken, "", true, key, scratch_dir) -- before the texts reopen under new hashes
+		restore_marks(saved_data, taken, "", true, key, scratch_dir, vim.fn.fnamemodify(name or cwd, ":t") .. ", loaded") -- before the texts reopen under new hashes
 		reopen_noname_buffers(saved_data.noname_content or {}, key, scratch_dir)
 		for filehash, tag in pairs(saved_data.missing or {}) do
 			history.data.missing[filehash] = tag
@@ -2844,6 +2892,7 @@ function M.save_history(cwd, name, tab)
 	if tab then
 		local before = history.routines.pool_of_tab(tab)
 		pool = history.routines.join_pool(tab, name, cwd)
+		tab_marks_held_over(tab, pool.id) -- a plain tab's tab marks, now its session's to hold over
 		if pool ~= before and next(pool.visits) == nil then
 			-- a tab saved as this session for the first time: its own visits start the pool's
 			for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do

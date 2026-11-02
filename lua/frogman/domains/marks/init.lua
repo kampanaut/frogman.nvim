@@ -30,8 +30,8 @@ end, 2.5, true)
 
 ---Create the marks domain's autocmds in frogman's augroup.
 ---
----Called by setup(), so nothing runs at require. A window's marks go with the window, and a tab's
----with the tab. The marks pop-up's keys are mapped on its buffer.
+---Called by setup(), so nothing runs at require. A closed window's marks, and a closed tab's, are held
+---over in its session's scope once the editor settles. The marks pop-up's keys are mapped on its buffer.
 ---
 ---@param group integer The frogman augroup
 ---@return nil
@@ -47,10 +47,37 @@ function M.init_autocmds(group)
 		group = group,
 		callback = function(args)
 			local winid = tonumber(args.file)
-			if winid and data.scopes.window[winid] then
+			local scope = winid and data.scopes.window[winid]
+			-- a tab session's tab closing ends the session there, as a switch does: its windows' marks live
+			-- on their entries, and come back with them
+			if scope and data.ending[vim.api.nvim_win_get_tabpage(winid)] then
+				routines.drop_scope("window", winid)
+			elseif scope then
+				-- held over in its session's scope once the editor settles, unless a load comes first
+				local tabpage = vim.api.nvim_win_get_tabpage(winid)
+				routines.queue_hold_over(tabpage, require('frogman.domains.history').data.tab_pools[tabpage] or "", scope.groups,
+					"window on " .. routines.shows(winid))
 				routines.drop_scope("window", winid)
 			end
 			data.flashes[winid or -1] = nil
+		end,
+	})
+	-- what each tab showed and its session, read before it closes
+	vim.api.nvim_create_autocmd("TabClosedPre", {
+		group = group,
+		callback = function()
+			-- the tab closing is the current one; a tab session's, but a detached list's, ends there
+			local closing = vim.api.nvim_get_current_tabpage()
+			local pool = require('frogman.domains.history').data.pools[require('frogman.domains.history').data.tab_pools[closing] or ""]
+			if pool and pool.id ~= "" and not pool.detached then
+				data.ending[closing] = true
+			end
+			for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+				if data.scopes.tab[tabpage] then
+					data.tab_shows[tabpage] = { session = require('frogman.domains.history').data.tab_pools[tabpage] or "",
+						what = "tab on " .. routines.shows(vim.api.nvim_tabpage_get_win(tabpage)) }
+				end
+			end
 		end,
 	})
 	vim.api.nvim_create_autocmd("TabClosed", {
@@ -60,9 +87,17 @@ function M.init_autocmds(group)
 			for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
 				alive[tabpage] = true
 			end
-			for tabpage, _ in pairs(data.scopes.tab) do
+			for tabpage, _ in pairs(data.ending) do
 				if not alive[tabpage] then
+					data.ending[tabpage] = nil
+				end
+			end
+			for tabpage, scope in pairs(data.scopes.tab) do
+				if not alive[tabpage] then
+					local shown = data.tab_shows[tabpage] or { session = "", what = "tab" }
+					routines.queue_hold_over(tabpage, shown.session, scope.groups, shown.what)
 					routines.drop_scope("tab", tabpage)
+					data.tab_shows[tabpage] = nil
 				end
 			end
 		end,

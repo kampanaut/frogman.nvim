@@ -362,8 +362,8 @@ T['T728 [char] (M15, S2 Closed-stack picker) the closed lists keep a text a mark
 	eq({ asked = asked, closed = closed, opened = opened() }, { asked = 0, closed = '', opened = { '[No Name]', { 'kept' } } })
 end
 
--- The split's marks name the text; once the split closes, memory lets the text go, and only the
--- file's window entry names it when the records are written.
+-- The split's marks name the text; once the split closes and its held-over group is cleared, memory
+-- lets the text go, and only the file's window entry names it when the records are written.
 T['T734 [char] (M15, S1 Records) a records write carries a text only its file\'s window marks name'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
@@ -379,6 +379,9 @@ T['T734 [char] (M15, S1 Records) a records write carries a text only its file\'s
 	child.settle(100)
 	eq(S2.save(child), { true })
 	child.cmd('close')
+	child.settle(100)
+	-- the split's marks are held over now: cleared, as deleting their rows in the pop-up clears them
+	child.lua('require("frogman.domains.marks.routines").drop_scope("session", "")')
 	child.settle(100)
 	local known = child.lua('return require("frogman.domains.history").data.hash_filepath_registry.filepaths')
 	local forgotten = true
@@ -879,6 +882,230 @@ T['T750 [char] (M15) the pop-up doesn\'t write the marks of a window that\'s gon
 	local scope = child.lua('return require("frogman.domains.marks").data.scopes.window[...] ~= nil', { split })
 	eq({ said = said, scope = scope, modified = popup().modified },
 		{ said = { "frogman: the window these marks are for is gone, so they aren't written." }, scope = false, modified = true })
+end
+
+-- Held-over groups (M15, 4d) --------------------------------------------------------------
+
+-- A session scope's groups: each one's name, whether it's held over, and its marks by file name.
+local function session_groups(id)
+	return child.lua([[
+		local d = require('frogman.domains.marks').data
+		local H = require('frogman.domains.history')
+		local s = d.scopes.session[...]
+		local out = {}
+		for _, g in ipairs(s and s.groups or {}) do
+			local marks = {}
+			for alias, hid in pairs(g.marks) do
+				local h = H.handles.get(H.handles.resolve(hid))
+				marks[alias] = h and vim.fn.fnamemodify(H.get_filepath_from_hash(h.hash), ':t:r') or false
+			end
+			table.insert(out, { name = g.name, held = g.held == true, marks = marks })
+		end
+		return out
+	]], { id })
+end
+
+local STAMP = ' · %d%d%-%d%d %d%d:%d%d'
+
+-- The route T751 takes: a split on b with b marked a, closed.
+local function window_held_over()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ADD .. 'a>' })
+	child.cmd('close')
+	child.settle(100)
+end
+
+T['T751 [char] (M15) a window closed while you work leaves its marks held over'] = function()
+	window_held_over()
+	local groups = session_groups('')
+	child.steps({ ':e a', "<M-'><M-3>", JUMP .. 'a>' })
+	eq({ n = #groups, first = groups[1], held = groups[2] and groups[2].held, marks = groups[2] and groups[2].marks,
+		name = groups[2] and groups[2].name:match('^held over · window on b%.txt' .. STAMP .. '$') ~= nil, jumped = child.shown() },
+		{ n = 2, first = { name = 'main', held = false, marks = {} }, held = true, marks = { a = 'b' }, name = true, jumped = 'a' })
+end
+
+T['T752 [char] (M15) a closed tab leaves one group for its tab marks and one for each of its marked windows'] = function()
+	child.steps({ ':e a' })
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ "<M-'><M-2>", ':e c', ADD .. 'a>', "<M-'><M-1>", ':e d', ADD .. 'a>' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e e', ADD .. 'a>' })
+	child.cmd('tabclose')
+	child.settle(100)
+	local names = {}
+	for _, g in ipairs(session_groups('')) do
+		if g.held then
+			table.insert(names, (g.name:match('^held over · (%a+) on ')))
+		end
+	end
+	table.sort(names)
+	eq(names, { 'tab', 'window', 'window' })
+end
+
+T['T753 [char] (M15) a switch holds nothing over'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ADD .. 'a>' })
+	eq(S2.save(child), { true })
+	child.lua('vim.cmd("close"); require("frogman").load_session()')
+	child.settle(300)
+	local held = vim.tbl_filter(function(g) return g.held end, session_groups(''))
+	eq(#held, 0)
+end
+
+T['T754 [char] (M15, S1) a window entry no window takes at a load leaves a held-over group naming the load'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e d', ADD .. 'a>', ':e c' })
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local project = vim.fn.fnamemodify(s.root, ':t')
+	local held = vim.tbl_filter(function(g) return g.held end, session_groups(''))
+	eq({ n = #held, marks = held[1] and held[1].marks,
+		name = held[1] and held[1].name:match('^held over · ' .. vim.pesc(project) .. ', loaded' .. STAMP .. '$') ~= nil },
+		{ n = 1, marks = { a = 'd' }, name = true })
+end
+
+T['T755 [char] (M15) a held-over group drives the keys only once you move it first'] = function()
+	window_held_over()
+	child.steps({ ':e a', "<M-'><M-3>", OPEN })
+	local lines = popup().lines
+	lines[3] = 's -> c.txt'
+	write_lines(lines)
+	local still = session_groups('')[2].held
+	lines = popup().lines
+	local at = vim.fn.index(lines, '❖ ' .. session_groups('')[2].name) + 1
+	local moved = vim.list_slice(lines, at)
+	vim.list_extend(moved, vim.list_slice(lines, 1, at - 1))
+	write_lines(moved)
+	child.cmd('close')
+	child.settle()
+	local first = session_groups('')[1]
+	child.steps({ JUMP .. 'a>' })
+	eq({ still = still, first_held = first.held, jumped = child.shown() }, { still = true, first_held = false, jumped = 'b' })
+end
+
+T['T756 [char] (M15) a plain tab\'s tab marks are held over when it becomes a tab session\'s tab'] = function()
+	child.steps({ ':e a' })
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ "<M-'><M-2>", ':e c', ADD .. 'a>', ':e d' })
+	local tab = child.lua('return vim.api.nvim_get_current_tabpage()')
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = ... }) }', { tab }), { true })
+	local id = child.lua('return require("frogman.domains.history").data.tab_pools[...]', { tab })
+	local groups = session_groups(id)
+	local tab_scope = child.lua('return require("frogman.domains.marks").data.scopes.tab[...] ~= nil', { tab })
+	local held = vim.tbl_filter(function(g) return g.held end, groups)
+	eq({ n = #held, marks = held[1] and held[1].marks, name = held[1] and held[1].name:match('^held over · tab on d%.txt' .. STAMP .. '$') ~= nil,
+		tab_scope = tab_scope }, { n = 1, marks = { a = 'c' }, name = true, tab_scope = false })
+end
+
+T['T757 [char] (M15, S1 Load) a tab session loaded where it\'s open keeps memory\'s marks and holds the file\'s others over'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	child.steps({ "<M-'><M-3>", ':e c', ADD .. 'a>', ':e d' })
+	eq(save_t(), { true })
+	-- in memory, c moves to s and d takes a
+	child.lua([[
+		local M = require('frogman.domains.marks').routines
+		local H = require('frogman.domains.history')
+		local kind, id = M.scope_key('session')
+		local g = M.first_group(M.scope(kind, id))
+		local function h(f) return H.handles.of_hash(H.routines.get_filehash(_G.FRG_TEST.root .. '/' .. f .. '.txt')).id end
+		g.marks = { a = h('d'), s = h('c') }
+		M.hold_scope(kind, id)
+	]])
+	local id = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	eq(S2.load_tab_session(child, 't'), { true })
+	local groups = session_groups(id)
+	local tab = child.lua('return vim.api.nvim_tabpage_get_number(0)')
+	eq({ n = #groups, first = groups[1] and groups[1].marks, held = groups[2] and groups[2].held, file = groups[2] and groups[2].marks,
+		name = groups[2] and groups[2].name:match('^held over · t, loaded into tab ' .. tab .. STAMP .. '$') ~= nil },
+		{ n = 2, first = { a = 'd', s = 'c' }, held = true, file = { a = 'c' }, name = true })
+end
+
+T['T758 [char] (M15) two held-over groups that would read the same are numbered'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ADD .. 'a>' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ADD .. 'a>' })
+	child.cmd('close')
+	child.settle(100)
+	child.cmd('close')
+	child.settle(100)
+	local held = vim.tbl_filter(function(g) return g.held end, session_groups(''))
+	eq({ n = #held, numbered = held[2] and held[2].name:match(' #2$') ~= nil }, { n = 2, numbered = true })
+end
+
+T['T759 [char] (M15, S1) a held-over group is saved and loaded as one'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	window_held_over()
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	child.steps({ ':e a', "<M-'><M-3>", JUMP .. 'a>' })
+	local held = vim.tbl_filter(function(g) return g.held end, session_groups(''))
+	eq({ n = #held, marks = held[1] and held[1].marks, jumped = child.shown() }, { n = 1, marks = { a = 'b' }, jumped = 'a' })
+end
+
+T['T760 [char] (M15) a tab session\'s tab closing holds nothing over'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	local id = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	child.steps({ ':e c', ADD .. 'a>', ':e d' })
+	eq(save_t(), { true })
+	local rounds = {}
+	for _ = 1, 2 do
+		child.cmd('tabclose')
+		child.settle(300)
+		eq(S2.load_tab_session(child, 't'), { true })
+		child.steps({ JUMP .. 'a>' })
+		table.insert(rounds, { held = #vim.tbl_filter(function(g) return g.held end, session_groups(id)), jumped = child.shown() })
+		child.steps({ ':e d' })
+		eq(save_t(), { true })
+	end
+	eq(rounds, { { held = 0, jumped = 'c' }, { held = 0, jumped = 'c' } })
+end
+
+T['T761 [char] (M15) a tab session\'s load drops what its own tab\'s closes queued and keeps the rest'] = function()
+	child.steps({ ':e a' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e b', ADD .. 'a>' })
+	local one = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e c' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e d', ADD .. 'a>' })
+	local got = child.lua('return { vim.api.nvim_get_current_win(), vim.api.nvim_get_current_tabpage() }')
+	child.lua([[
+		local one, two, tab2 = ...
+		vim.api.nvim_win_close(two, true)
+		vim.api.nvim_win_close(one, true)
+		require('frogman').load_session('u', { tab = tab2 })
+	]], { one, got[1], got[2] })
+	child.settle(300)
+	local held = vim.tbl_filter(function(g) return g.held end, session_groups(''))
+	eq({ n = #held, marks = held[1] and held[1].marks }, { n = 1, marks = { a = 'b' } })
 end
 
 return T

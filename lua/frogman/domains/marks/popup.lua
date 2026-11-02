@@ -120,26 +120,32 @@ end
 ---@return string[] lines
 ---@return table<string, Filehash> names
 ---@return table<string, string> states Row (alias and hash) → "incoming" or "already set"
+---@return table<string, boolean> held The names of the groups held over
 local function draw(kind, id, conflict)
 	local scope = data.scopes[kind][id]
 	local groups = scope and scope.groups or {}
-	if #groups == 0 then
-		groups = { { name = require('frogman.configs').marks.default_group, marks = {} } }
+	if routines().first_group(scope) == nil then
+		-- the keys' group first, the default one, ahead of anything held over
+		groups = vim.list_extend({ { name = require('frogman.configs').marks.default_group, marks = {} } }, vim.list_slice(groups))
 	end
-	local lines, names, states = {}, {}, {}
+	local keys_group = routines().first_group({ groups = groups })
+	local lines, names, states, held = {}, {}, {}, {}
 	local glyph = group_glyph()
 	local known = {}
 	for _, alias in ipairs(aliases()) do
 		known[alias] = true
 	end
-	for g, group in ipairs(groups) do
+	for _, group in ipairs(groups) do
 		table.insert(lines, glyph .. " " .. group.name)
+		if group.held then
+			held[group.name] = true
+		end
 		local function row(alias, filehash)
 			table.insert(lines, alias .. " -> " .. (filehash and name_of(filehash, names) or ""))
 		end
 		for _, alias in ipairs(aliases()) do
 			local handle = routines().handle_of(group, alias)
-			if g == 1 and conflict and conflict.alias == alias and (handle == nil or handle.hash ~= conflict.hash) then
+			if group == keys_group and conflict and conflict.alias == alias and (handle == nil or handle.hash ~= conflict.hash) then
 				row(alias, conflict.hash)
 				states[alias .. "\0" .. conflict.hash] = "incoming"
 				if handle then
@@ -164,7 +170,7 @@ local function draw(kind, id, conflict)
 			end
 		end
 	end
-	return lines, names, states
+	return lines, names, states, held
 end
 
 ---Read one of the pop-up's lines.
@@ -268,8 +274,8 @@ end
 ---@param conflict {alias: string, hash: Filehash}|nil
 ---@return nil
 local function redraw(conflict)
-	local lines, names, states = draw(open.kind, open.id, conflict)
-	open.names, open.states = names, states
+	local lines, names, states, held = draw(open.kind, open.id, conflict)
+	open.names, open.states, open.held = names, states, held
 	vim.api.nvim_buf_set_lines(open.buf, 0, -1, false, lines)
 	vim.bo[open.buf].modified = conflict ~= nil -- a conflict waits to be settled and written
 	decorate()
@@ -349,7 +355,7 @@ local function write()
 	end
 	local scope = routines().scope(open.kind, open.id, true)
 	scope.groups = {}
-	for _, group in ipairs(groups) do
+	for g, group in ipairs(groups) do
 		local marks = {}
 		for alias, filehash in pairs(group.marks) do
 			local handle = history.handles.of_hash(filehash)
@@ -357,7 +363,8 @@ local function write()
 				marks[alias] = handle.id
 			end
 		end
-		table.insert(scope.groups, { name = group.name, marks = marks })
+		-- a held-over group stays held over, unless you moved it first
+		table.insert(scope.groups, { name = group.name, marks = marks, held = (g > 1 and open.held[group.name]) or nil })
 	end
 	routines().hold_scope(open.kind, open.id)
 	redraw(nil)
