@@ -114,12 +114,14 @@ local function settle_rename(bufnr, rename)
 	local old_name = ledger.name_of(rename.hash)
 	local moved_from = routines.settle_rename(bufnr, rename.hash, rename.history)
 	local new_label = new_name ~= "" and vim.fs.basename(new_name) or "[No Name]"
+	-- the hash the file has now, which the trail's search follows from the old one
+	local new_hash = routines.get_filehash(new_name ~= "" and new_name or routines.noname_name(bufnr))
 	if moved_from then
-		ledger.move("moved", { subject = rename.hash, name = old_name, words = moved_from:match("^NONAME_") and
+		ledger.move("moved", { subject = rename.hash, name = old_name, to = new_hash, words = moved_from:match("^NONAME_") and
 			"written as " .. new_label .. ": a move" or "renamed to " .. new_label .. ": a move" })
 	elseif routines.get_hash_from_buffer(bufnr) == rename.hash and routines.is_trackable(bufnr) then
 		-- a new name frogman doesn't track is no copy: the old name is closed all the same, and its close says so
-		ledger.move("copied", { subject = rename.hash, name = old_name,
+		ledger.move("copied", { subject = rename.hash, name = old_name, to = new_hash,
 			words = "renamed to " .. new_label .. ": a copy, " .. (old_name or "the old name") .. " is still on disk" })
 	end
 	if not moved_from and routines.get_hash_from_buffer(bufnr) == rename.hash then

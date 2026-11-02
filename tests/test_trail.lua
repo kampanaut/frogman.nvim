@@ -931,4 +931,89 @@ T['T458 [char] (M13) the glyph sets are in the config, and a pair is changed the
 		{ defaults = { { '⦉', '⦊' }, { '<', '>' } }, row = true, closed = 'v' })
 end
 
+
+-- A file's line across moves and copies -----------------------------------------
+
+-- Press * on the nth line (1 = first, -1 = last) holding `piece`, its cursor on the piece's name,
+-- and give the search's header and lines; q goes back to the day after.
+local function star_on(piece, nth)
+	local found = {}
+	for i, l in ipairs(lines()) do
+		if l:find(piece, 1, true) then table.insert(found, i) end
+	end
+	local row = nth < 0 and found[#found + 1 + nth] or found[nth]
+	local col = lines()[row]:find(piece, 1, true) - 1 + #'↓ '
+	cursor_to(row, col)
+	type_in('*')
+	local got = lines()
+	type_in('q')
+	return got[1], table.concat(got, '\n')
+end
+
+-- b closed, reopened and moved to g, then g closed.
+local function moved_b()
+	child.setup()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('bdelete b.txt')
+	child.settle()
+	child.steps({ ':e b' })
+	child.lua([[
+		local root = _G.FRG_TEST.root
+		os.rename(root .. '/b.txt', root .. '/g.txt')
+		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/b.txt'), root .. '/g.txt')
+	]])
+	child.settle(300)
+	child.cmd('bdelete g.txt')
+	child.settle(100)
+end
+
+T['T706 [char] (A27) * on a file follows it back across a move'] = function()
+	moved_b()
+	open_trail()
+	local header = star_on('↓ g.txt', -1)
+	eq(header:find('4 moves over 1 day', 1, true) ~= nil, true)
+end
+
+T['T707 [char] (A27) a move ends a name\'s line'] = function()
+	moved_b()
+	child.lua('vim.fn.writefile({ "new b" }, _G.FRG_TEST.root .. "/b.txt")')
+	child.steps({ ':e b' })
+	child.cmd('bdelete b.txt')
+	child.settle(100)
+	open_trail()
+	local new_b = star_on('↓ b.txt', -1)
+	local old_b, old_lines = star_on('↓ b.txt', 1)
+	eq({ new_b = new_b:find('1 move over 1 day', 1, true) ~= nil, old_b = old_b:find('4 moves over 1 day', 1, true) ~= nil,
+		through_g = old_lines:find('g.txt', 1, true) ~= nil },
+		{ new_b = true, old_b = true, through_g = true })
+end
+
+T['T708 [char] (A27) a copy\'s file inherits its source\'s past up to the copy'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('bdelete b.txt')
+	child.settle()
+	child.steps({ ':e b' })
+	child.cmd('saveas g.txt')
+	child.settle(300)
+	child.cmd('bdelete g.txt')
+	child.settle(100)
+	open_trail()
+	local g = star_on('↓ g.txt', -1)
+	local b = star_on('↓ b.txt', -1)
+	eq({ g = g:find('4 moves over 1 day', 1, true) ~= nil, b = b:find('4 moves over 1 day', 1, true) ~= nil }, { g = true, b = true })
+end
+
+T['T709 [char] (A27, M5) a No Name text\'s reopen keeps it one line'] = function()
+	child.setup()
+	child.steps({ ':e a', ':enew' })
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "n" })')
+	child.settle()
+	child.steps({ '<M-.>', '<M-S-w>', '<M-.>' })
+	child.settle(100)
+	open_trail()
+	local header = star_on('↓ [No Name]', -1)
+	eq(header:find('3 moves over 1 day', 1, true) ~= nil, true)
+end
+
 return T

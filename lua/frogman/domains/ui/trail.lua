@@ -577,35 +577,141 @@ local function day_lines(glyphs, winwidth)
 	return lines
 end
 
+---Get the two hashes a move links, when it records a file taking a new hash.
+---
+---A move, a No Name text's reopen and a copy record the new hash as `to`; a load's reopen of a No
+---Name text records the old one as `from`.
+---
+---@param move FrogmanLedgerMove
+---@return string|nil from The hash before
+---@return string|nil to The hash after
+local function link_of(move)
+	if move.to then
+		return move.subject, move.to
+	elseif move.from then
+		return move.from, move.subject
+	end
+end
+
+---Pick the moves of one file's line, around the move a search starts from.
+---
+---Back from that move, the line takes the file's moves, and at a link into its hash (a move, a
+---reopen, or a copy's source) goes on with the hash it came from, up to the link. It stops at a move
+---or a reopen away from its hash: what went by that hash before was another file. Forward, it takes
+---the file's moves and follows its own moves and reopens, not its copies, up to where another file
+---takes the name.
+---
+---The move is found as drawn, or as the same move of the same step when its page was read again; with
+---none found, the line starts from the file's newest move.
+---
+---@param entries { move: FrogmanLedgerMove, step: FrogmanLedgerStep }[] Every move, oldest first
+---@param subject Filehash The file's hash
+---@param anchor { move: FrogmanLedgerMove, step: FrogmanLedgerStep }|nil The move the search starts from, and its step
+---@return table<integer, boolean> wanted The entries on the line (index → true)
+local function file_line(entries, subject, anchor)
+	local at
+	for i = #entries, 1, -1 do
+		local entry = entries[i]
+		if anchor and (entry.move == anchor.move or (anchor.step and entry.step.seq == anchor.step.seq and
+			entry.step.time == anchor.step.time and vim.deep_equal(entry.move, anchor.move))) then
+			at = i
+			break
+		end
+	end
+	for i = #entries, 1, -1 do
+		local move = entries[i].move
+		local _, to = link_of(move)
+		if at then
+			break
+		elseif move.subject == subject or to == subject then
+			at = i
+		end
+	end
+	local wanted = {}
+	if not at then
+		return wanted
+	end
+	wanted[at] = true
+	local start = entries[at].move
+	local from, to = link_of(start)
+	local back, ahead = start.subject, start.subject
+	if to == start.subject then
+		back = from -- a reopen into this hash: before it, the text went by the one it came from
+	elseif to and start.kind ~= "copied" then
+		ahead = to -- a move or a reopen away: after it, the file goes by its new hash
+	end
+	for i = at - 1, 1, -1 do
+		local move = entries[i].move
+		local f, t = link_of(move)
+		if t == back and f and f ~= back then
+			wanted[i] = true
+			back = f
+		elseif f == back and t and t ~= back and move.kind ~= "copied" then
+			break
+		elseif move.subject == back then
+			wanted[i] = true
+		end
+	end
+	for i = at + 1, #entries do
+		local move = entries[i].move
+		local f, t = link_of(move)
+		if t == ahead and f and f ~= ahead then
+			break
+		elseif f == ahead and t and t ~= ahead and move.kind ~= "copied" then
+			wanted[i] = true
+			ahead = t
+		elseif move.subject == ahead then
+			wanted[i] = true
+		end
+	end
+	return wanted
+end
+
 ---Find every move about a name, on every page, oldest first.
 ---
 ---Each result carries the name's state after its move, and a file back on disk returns to the
----state it had before it went. With a subject, only its own moves are found, not every one of
----that name, and a window's, this editor's alone.
+---state it had before it went. With a file's hash, the file's own line is found, across its moves,
+---reopens and the copy it came from (see `file_line()`), and with a window's id, that window's moves,
+---this editor's alone.
 ---
 ---@param name string The name to search for
 ---@param subject string|nil A file's hash or a window's id
 ---@param mine boolean|nil Whether only this editor's steps count, as for a window
+---@param anchor { move: FrogmanLedgerMove, step: FrogmanLedgerStep }|nil For a file, the move the search starts from, and its step
 ---@return table[] results Each move found, with its day, its step and the state after it
-local function find(name, subject, mine)
-	local results, state, before_gone = {}, "Open", nil
+local function find(name, subject, mine, anchor)
+	local entries = {}
 	for _, day in ipairs(view.reader.days()) do
 		for _, step in ipairs(view.reader.steps(day)) do
 			for _, move in ipairs((not mine or of_this_editor(step)) and step.moves or {}) do
-				if (subject and move.subject == subject) or (not subject and move.name == name) then
-					if move.kind == "gone" then
-						before_gone = state
-					end
-					if move.kind == "back" then
-						state = before_gone or "Closed"
-					elseif move.state then
-						state = move.state == "closed" and "Closed" or "Open"
-					else
-						state = STATE_AFTER[move.kind] or state
-					end
-					table.insert(results, { day = day, step = step, move = move, state = state })
-				end
+				table.insert(entries, { day = day, step = step, move = move })
 			end
+		end
+	end
+	local wanted = subject and not mine and file_line(entries, subject, anchor)
+	local results, state, before_gone = {}, "Open", nil
+	for i, entry in ipairs(entries) do
+		local move = entry.move
+		local hit
+		if wanted then
+			hit = wanted[i]
+		elseif subject then
+			hit = move.subject == subject
+		else
+			hit = move.name == name
+		end
+		if hit then
+			if move.kind == "gone" then
+				before_gone = state
+			end
+			if move.kind == "back" then
+				state = before_gone or "Closed"
+			elseif move.state then
+				state = move.state == "closed" and "Closed" or "Open"
+			else
+				state = STATE_AFTER[move.kind] or state
+			end
+			table.insert(results, { day = entry.day, step = entry.step, move = move, state = state })
 		end
 	end
 	return results
@@ -831,13 +937,14 @@ end
 ---@param name string The name to search for
 ---@param subject string|nil A file's hash or a window's id, to follow that one alone
 ---@param mine boolean|nil Whether only this editor's steps count, as for a window
+---@param anchor { move: FrogmanLedgerMove, step: FrogmanLedgerStep }|nil For a file, the move the search starts from, and its step
 ---@return nil
-function M.search(name, subject, mine)
+function M.search(name, subject, mine, anchor)
 	if not view or name == nil or name == "" then
 		return
 	end
 	view.mode, view.query = "search", name
-	view.results = find(name, subject, mine)
+	view.results = find(name, subject, mine, anchor)
 	draw()
 	pcall(vim.api.nvim_win_set_cursor, view.win, { math.min(3, vim.api.nvim_buf_line_count(view.buf)), 0 })
 end
@@ -905,7 +1012,8 @@ function M.search_word()
 	local name = target and (target.name or target.value)
 	if type(name) == "string" then
 		-- a file follows its hash and a window its id, this editor's; anything else is its name
-		M.search(name, (target.kind == "file" or target.kind == "window") and tostring(target.value) or nil, target.kind == "window")
+		M.search(name, (target.kind == "file" or target.kind == "window") and tostring(target.value) or nil, target.kind == "window",
+			target.kind == "file" and line and line.move and { move = line.move, step = line.step } or nil)
 	end
 end
 

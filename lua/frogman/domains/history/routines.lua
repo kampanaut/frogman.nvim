@@ -476,7 +476,7 @@ end
 ---also gets a message.
 ---
 ---@param filehash Filehash
----@return nil
+---@return FrogmanLedgerMove|nil move The reopen the trail recorded, when it took the file off a list
 function M.open_out_of_pools(filehash)
 	local left = {}
 	for id, pool in pairs(M.pools()) do
@@ -499,10 +499,11 @@ function M.open_out_of_pools(filehash)
 		-- a file never written comes back as a new one, which the trail says
 		local filepath = data.hash_filepath_registry.filepaths[filehash]
 		local new = data.unwritten[filehash] ~= nil and filepath ~= nil and vim.fn.filereadable(filepath) == 0
-		ledger.move("reopened", { subject = filehash, name = name, lists = lists, dim = #others == 0, new = new or nil })
+		local move = ledger.move("reopened", { subject = filehash, name = name, lists = lists, dim = #others == 0, new = new or nil })
 		if #others > 0 then
 			ledger.tell("reopened", name, others)
 		end
+		return move
 	end
 end
 
@@ -1299,7 +1300,7 @@ function M.reopen_filehash(filehash)
 			return nil
 		end
 	end
-	M.open_out_of_pools(filehash)
+	local reopened = M.open_out_of_pools(filehash)
 	local bufnr
 	if filepath:match("^NONAME_") then
 		bufnr = M.buffer_from_text(cache)
@@ -1309,6 +1310,9 @@ function M.reopen_filehash(filehash)
 		-- the text keeps its handle under the new id it comes back with
 		handles.renamed(old_filehash, M.get_filehash(M.noname_name(bufnr)))
 		filehash = M.register_buffer(bufnr)
+		if reopened and filehash ~= old_filehash then
+			reopened.to = filehash -- the trail's search follows the text to its new id
+		end
 		if filehash ~= old_filehash then
 			-- it comes back under a new name, and everything that named the old one follows: slots, notes
 			-- and history.

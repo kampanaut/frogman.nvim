@@ -456,6 +456,8 @@ function M.move(kind, fields)
 		end
 	end
 	name(move.subject)
+	name(move.to)
+	name(move.from)
 	for _, row in ipairs(move.row and { move.row.before, move.row.after } or {}) do
 		name(row.c)
 		name(row.s)

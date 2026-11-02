@@ -906,6 +906,44 @@ T['T567 [char] (A27) a past day leaves memory once its pages have it, and the tr
 	})
 end
 
+-- c's close planted on yesterday, saved, and let go from memory by a close today and its write.
+T['T710 [char] (A27) * on a file\'s move read from a page follows it'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.lua('require("frogman").ledger.data.started = os.time() - 3 * 86400')
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(S2.save(child), { true })
+	local yesterday = child.lua(PLANT, { 1, 'c', false })
+	child.lua([==[
+		local L, day = require('frogman').ledger, ...
+		local steps = L.data.days[day]
+		steps[#steps].moves[1].subject = require('frogman.domains.history').routines.get_filehash(_G.FRG_TEST.root .. '/c.txt')
+	]==], { yesterday })
+	child.cmd('bdelete b.txt')
+	child.settle(1500)
+	eq(child.lua('return #require("frogman").ledger.trail(...)', { yesterday }), 0)
+	child.cmd('FrogmanTrail')
+	child.settle(100)
+	child.type_keys('H')
+	child.settle(100)
+	local got = child.lua([[
+		local buf = vim.api.nvim_get_current_buf()
+		for i, l in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+			local at = l:find('c.txt', 1, true)
+			if at then
+				vim.api.nvim_win_set_cursor(0, { i, at - 1 })
+				return true
+			end
+		end
+		return false
+	]])
+	eq(got, true)
+	child.type_keys('*')
+	child.settle(100)
+	local header = child.lua('return vim.api.nvim_buf_get_lines(0, 0, 1, false)[1]')
+	eq(header:find('1 move over 1 day', 1, true) ~= nil, true)
+end
+
 -- Another editor's step is sealed into yesterday's page by hand: the number of this editor's step there,
 -- a later time.
 T['T570 [char] (A27) another editor\'s step on a shared page isn\'t read as this editor\'s'] = function()

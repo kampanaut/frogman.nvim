@@ -775,7 +775,7 @@ local function reopen_noname_buffers(noname_content, key, scratch_dir)
 			history.handles.renamed(filehash, history.routines.get_filehash(history.routines.noname_name(bufnr)))
 			local new_filehash = history.register_buffer(bufnr)
 			if new_filehash ~= filehash then
-				require('frogman.domains.ledger').move("reopened", { subject = new_filehash, name = "[No Name]",
+				require('frogman.domains.ledger').move("reopened", { subject = new_filehash, name = "[No Name]", from = filehash,
 					words = "open at the save, reopened under a new id" })
 				window.data.rename_hash_in_triquetras(filehash, new_filehash)
 				history.routines.rename_hash_in_history(filehash, new_filehash)
