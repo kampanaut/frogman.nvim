@@ -263,6 +263,7 @@ local function close_if_not_restored(filehash)
 		not vim.tbl_contains(closed, filehash)
 	then
 		table.insert(closed, 1, filehash)
+		history.routines.hold_pool(load_pool or history.routines.pools()[""])
 		local ledger = require('frogman.domains.ledger')
 		ledger.move("closed", { subject = filehash, name = ledger.name_of(filehash),
 			lists = { history.routines.list_name(load_pool or history.routines.pools()[""]) },
@@ -853,6 +854,7 @@ local function load_closed_buffers(closed_buffers, noname_content, key, scratch_
 		load_pool.times[filehash] = load_pool.times[filehash] or (times and times[filehash]) or nil
 		::continue::
 	end
+	history.routines.hold_pool(load_pool)
 	-- print_table(history.data.closed_buffers)
 end
 
@@ -1209,6 +1211,7 @@ local function push_out(pool, tabpage)
 			in_file = in_file or file_detached_lists()
 			local detached = new_detached_pool(detached_label(pool, in_file), pool.id)
 			detached.closed, detached.times, detached.visits = vim.deepcopy(pool.closed), vim.deepcopy(pool.times), vim.deepcopy(pool.visits)
+			history.routines.hold_pool(detached)
 			join_detached(other, detached)
 			history.routines.pool_changed(detached)
 			require('frogman.domains.ledger').move("detached", { subject = detached.id, name = detached.name,
@@ -2257,6 +2260,7 @@ function M.settle_merging()
 			pool.merging = nil
 			if #pool.closed == 0 then
 				history.data.pools[id] = nil
+				history.routines.drop_pool(pool)
 				require('frogman.domains.ledger').move("detached_left", { subject = id, name = pool.name, words = "merged, and gone" })
 				local session = whole_editor_session()
 				if session then
@@ -2428,6 +2432,7 @@ local function close_now(pool)
 		local ledger = require('frogman.domains.ledger')
 		if ok then
 			history.data.pools[pool.id] = nil
+			history.routines.drop_pool(pool)
 			ledger.move("detached_left", { subject = pool.id, name = pool.name, words = data.replayed and "let go" or "into the whole editor's file" })
 			return
 		end
@@ -2441,6 +2446,7 @@ local function close_now(pool)
 	if ok then
 		dirty[pool.id] = nil
 		history.data.pools[pool.id] = nil
+		history.routines.drop_pool(pool)
 		forget_closed_keys()
 		ledger.move("tab_closed", { subject = pool.id, name = history.routines.list_name(pool),
 			words = data.replayed and "its list let go" or "its records written; its list let go" })

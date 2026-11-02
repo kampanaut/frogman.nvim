@@ -216,6 +216,32 @@ function M.known_filehashes()
 	return known
 end
 
+---Get the name of a list's place, as the handles' holders know it.
+---
+---@param pool Pool
+---@return string place "pool:editor", or "pool:" and the session's name and directory
+local function pool_place(pool)
+	return "pool:" .. (pool.id == "" and "editor" or (pool.id:gsub("\n", " ")))
+end
+
+---Hold the files a list holds now, by its place.
+---
+---Called at every change to a list's closed files, and once a list is made or filled.
+---
+---@param pool Pool
+---@return nil
+function M.hold_pool(pool)
+	handles.hold(pool_place(pool), pool.closed)
+end
+
+---Let go of everything a list held, as it leaves memory.
+---
+---@param pool Pool
+---@return nil
+function M.drop_pool(pool)
+	handles.drop_place(pool_place(pool))
+end
+
 ---Get the editor's pool.
 ---
 ---Its closed stack is closed_buffers itself, whatever replaced that table last. When it isn't,
@@ -227,6 +253,7 @@ local function editor_pool()
 	if pool == nil or not rawequal(pool.closed, data.closed_buffers) then
 		pool = { id = "", closed = data.closed_buffers, times = {}, visits = {}, tabs = {} }
 		data.pools[""] = pool
+		M.hold_pool(pool) -- the table it's made around holds what it holds
 	end
 	return pool
 end
@@ -245,6 +272,7 @@ M.on_records_change = nil
 ---@param pool Pool The pool whose closed list or close times changed
 ---@return nil
 local function changed(pool)
+	M.hold_pool(pool) -- its holders follow its closed files at once
 	if M.on_records_change then
 		M.on_records_change(pool.id)
 	end
@@ -308,6 +336,9 @@ end
 ---
 ---@return nil
 function M.reset_pools()
+	for _, pool in pairs(data.pools) do
+		M.drop_pool(pool)
+	end
 	data.pools = {}
 	data.tab_pools = {}
 	data.came_from = {}
@@ -1192,7 +1223,7 @@ function M.snapshot_origin(winid)
 		sslot_display_string = get_smart_basename(secondary_slot)
 	end
 
-	data.cycling_origins[winid].current_slot = current_slot
+	data.cycling_origins[winid]:set("current_slot", current_slot)
 
 	vim.notify(
 		"Checkpoint saved: \n" ..
@@ -1371,8 +1402,8 @@ function M.settle_rename(bufnr, old_hash, old_history)
 		local gone = triquetra.current_slot == new_hash and old_hash or new_hash
 		if triquetra.current_slot == old_hash or triquetra.current_slot == new_hash or
 			triquetra.secondary_slot == old_hash or triquetra.ternary_slot == old_hash then
-			if triquetra.secondary_slot == gone then triquetra.secondary_slot = nil end
-			if triquetra.ternary_slot == gone then triquetra.ternary_slot = nil end
+			if triquetra.secondary_slot == gone then triquetra:set("secondary_slot", nil) end
+			if triquetra.ternary_slot == gone then triquetra:set("ternary_slot", nil) end
 		end
 	end
 	window_data.rename_hash_in_triquetras(old_hash, new_hash)
@@ -1383,7 +1414,7 @@ function M.settle_rename(bufnr, old_hash, old_history)
 		for i = #triquetra.primary_buffer, 1, -1 do
 			if triquetra.primary_buffer[i] == new_hash then
 				if seen[new_hash] then
-					table.remove(triquetra.primary_buffer, seen[new_hash])
+					triquetra:queue_remove(seen[new_hash])
 				end
 				seen[new_hash] = i
 			end

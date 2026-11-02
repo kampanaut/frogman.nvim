@@ -167,24 +167,24 @@ local function resolve_next_slot(triquetra, except)
 	end
 	local bufnr = open(triquetra.ternary_slot)
 	if bufnr then
-		triquetra.current_slot, triquetra.ternary_slot = triquetra.ternary_slot, nil
+		triquetra:update({ current_slot = triquetra.ternary_slot, ternary_slot = vim.NIL })
 		return "ternary", bufnr
 	end
 	bufnr = open(triquetra.secondary_slot)
 	if bufnr then
-		triquetra.current_slot, triquetra.secondary_slot = triquetra.secondary_slot, nil
+		triquetra:update({ current_slot = triquetra.secondary_slot, secondary_slot = vim.NIL })
 		return "secondary", bufnr
 	end
 	bufnr = open(triquetra.primary_buffer[1])
 	if bufnr then
-		triquetra.current_slot = triquetra.primary_buffer[1]
+		triquetra:set("current_slot", triquetra.primary_buffer[1])
 		return "primary", bufnr
 	end
 	-- the most recent buffer, in the bufferline's order (it follows history_view).
 	for _, item in ipairs(history.get_ordered_buffers()) do
 		local filehash = history.get_hash_from_buffer(item.buf)
 		if filehash and filehash ~= triquetra.current_slot and open(filehash) then
-			triquetra.current_slot = filehash
+			triquetra:set("current_slot", filehash)
 			return "recent", item.buf
 		end
 	end
@@ -209,10 +209,12 @@ function M.undo_arrival(bufnr)
 		if triquetra.current_slot == filehash then
 			local before = ledger.slots(winid)
 			if arrival and arrival.hash == filehash and arrival.after and vim.deep_equal(arrival.after, triquetra) then
+				local restored = {}
 				for _, key in ipairs({ "current_slot", "secondary_slot", "ternary_slot", "primary_buffer",
 					"primary_enabled", "displacement_ternary_map", "displacement_secondary_map" }) do
-					triquetra[key] = arrival.before[key]
+					restored[key] = arrival.before[key] == nil and vim.NIL or arrival.before[key]
 				end
+				triquetra:update(restored)
 			elseif not resolve_next_slot(triquetra, bufnr) then
 				data.unregister_triquetra(winid) -- nothing to come back to.
 			end
@@ -322,7 +324,7 @@ function M.update_primary_buffer(primary_filepaths, winid)
 	if first and first ~= triquetra.primary_buffer[1] then
 		triquetra.primary_enabled = true
 	end
-	triquetra.primary_buffer = vim.tbl_map(history.get_hash_from_filepath, valid_filepaths)
+	triquetra:set_queue(vim.tbl_map(history.get_hash_from_filepath, valid_filepaths))
 
 	loop_sm:to(loop_states.SELF)
 	return true
@@ -406,8 +408,7 @@ function M.reconcile_triquetra(winid, new_bufnr, is_pick)
 		if triquetra.ternary_slot == new_filehash then
 			triquetra.displacement_ternary_map[triquetra.current_slot .. "-swap"] = triquetra.ternary_slot
 			temp = triquetra.current_slot
-			triquetra.current_slot = triquetra.ternary_slot
-			triquetra.ternary_slot = temp
+			triquetra:update({ current_slot = triquetra.ternary_slot, ternary_slot = temp })
 			proc = true
 		end
 		if triquetra.secondary_slot == new_filehash then
@@ -426,8 +427,7 @@ function M.reconcile_triquetra(winid, new_bufnr, is_pick)
 					.. "]", vim.log.levels.WARN)
 			end
 			temp = triquetra.current_slot
-			triquetra.current_slot = triquetra.secondary_slot
-			triquetra.secondary_slot = temp
+			triquetra:update({ current_slot = triquetra.secondary_slot, secondary_slot = temp })
 			proc = true
 		end
 
@@ -442,7 +442,7 @@ function M.reconcile_triquetra(winid, new_bufnr, is_pick)
 					.. (history.get_buffer_from_hash(triquetra.current_slot) or "")
 					.. "]", vim.log.levels.WARN)
 			end
-			triquetra.current_slot = new_filehash
+			triquetra:set("current_slot", new_filehash)
 			-- a pick outside the slots notes where the cycle started, so a ternary restore brings it
 			-- back; the picked buffer's older swap note would win the restore, so it goes.
 			if is_pick and left ~= nil then
@@ -588,23 +588,24 @@ function M.enforce_editor_policy(bufnr_ondelete)
 				end
 				-- like navigation: the old current goes into the ternary, or trades places with the
 				-- secondary when that's what the window shows now, with the notes navigation writes.
+				local healed = { current_slot = current_slot_candidate }
 				if gone then
 					if current_slot_candidate == triquetra.secondary_slot then
-						triquetra.secondary_slot = nil
+						healed.secondary_slot = vim.NIL
 					elseif current_slot_candidate == triquetra.ternary_slot then
-						triquetra.ternary_slot = nil
+						healed.ternary_slot = vim.NIL
 					end
 				elseif current_slot_candidate == triquetra.secondary_slot then
 					M.write_secondary_swap_notes(triquetra)
-					triquetra.secondary_slot = triquetra.current_slot
+					healed.secondary_slot = triquetra.current_slot
 				else
 					if triquetra.ternary_slot and current_slot_candidate ~= triquetra.ternary_slot then
 						triquetra.displacement_ternary_map[triquetra.current_slot .. "-swap"] = nil
 						triquetra.displacement_ternary_map[triquetra.current_slot] = triquetra.ternary_slot
 					end
-					triquetra.ternary_slot = triquetra.current_slot
+					healed.ternary_slot = triquetra.current_slot
 				end
-				triquetra.current_slot = current_slot_candidate
+				triquetra:update(healed)
 			else
 				-- print("Running enforce_editor_policy [" .. winid .. "] with unregistered current slot: " .. (history.get_filepath_from_hash(triquetra.current_slot) or "nil"))
 				-- yes if the noname buffer turns evolved into a terminal, we don't want to track it.
@@ -690,7 +691,7 @@ function M.enforce_editor_policy(bufnr_ondelete)
 						-- print("#5")
 						local candidate_hash = history.get_hash_from_buffer(history.get_ordered_buffers()[1].buf)
 						if candidate_hash then
-							triquetra.current_slot = candidate_hash
+							triquetra:set("current_slot", candidate_hash)
 						else
 							require('frogman.domains.ledger').never(
 								"This is impossible. Ordered history buffers should always have a hash associated with it.")
@@ -730,7 +731,7 @@ function M.enforce_editor_policy(bufnr_ondelete)
 			if bufnr then
 				history.routines.unregister_buffer(bufnr)
 			end
-			triquetra.secondary_slot = nil
+			triquetra:set("secondary_slot", nil)
 		end
 
 		bufnr = history.get_buffer_from_hash(triquetra.ternary_slot)
@@ -738,7 +739,7 @@ function M.enforce_editor_policy(bufnr_ondelete)
 			if bufnr then
 				history.routines.unregister_buffer(bufnr)
 			end
-			triquetra.ternary_slot = nil
+			triquetra:set("ternary_slot", nil)
 		end
 
 		local pfilehash
@@ -749,7 +750,7 @@ function M.enforce_editor_policy(bufnr_ondelete)
 				if bufnr then
 					history.routines.unregister_buffer(bufnr)
 				end
-				table.remove(triquetra.primary_buffer, index)
+				triquetra:queue_remove(index)
 			end
 		end
 
@@ -836,11 +837,10 @@ function M.swap_with_secondary(winid)
 	if triquetra.secondary_slot == nil then
 		cbufnr = history.get_buffer_from_hash(triquetra.current_slot)
 		if triquetra.ternary_slot ~= nil then
-			triquetra.secondary_slot = triquetra.ternary_slot
+			triquetra:update({ secondary_slot = triquetra.ternary_slot, ternary_slot = vim.NIL })
 			triquetra.displacement_secondary_map[triquetra.secondary_slot] =
 				triquetra.displacement_ternary_map[triquetra.secondary_slot]
 			triquetra.displacement_secondary_map[triquetra.secondary_slot .. "-swap"] = nil
-			triquetra.ternary_slot = nil
 			M.enforce_note_maps_policy(triquetra)
 			vim.notify("Secondary buffer set to ternary slot. Ternary slot graduated.", vim.log.levels.INFO)
 		elseif #history.data.ordered.crux >= 2 then
@@ -849,7 +849,7 @@ function M.swap_with_secondary(winid)
 			for _, entry in ipairs(history.data.ordered.crux) do
 				local filehash = history.get_hash_from_buffer(entry.buf)
 				if filehash and filehash ~= triquetra.current_slot then
-					triquetra.secondary_slot = filehash
+					triquetra:set("secondary_slot", filehash)
 					break
 				end
 			end
@@ -882,7 +882,7 @@ function M.swap_with_secondary(winid)
 				vim.notify(
 					"Removed secondary file not found in filesystem: " .. old_basename,
 					vim.log.levels.WARN)
-				triquetra.secondary_slot = nil
+				triquetra:set("secondary_slot", nil)
 				loop_sm:to(loop_states.SELF)
 				return
 			else
@@ -966,7 +966,7 @@ function M.swap_with_ternary(winid)
 		if cbufnr == nil then
 			vim.notify("Removed ternary file not found in filesystem: " .. old_basename,
 				vim.log.levels.WARN)
-			triquetra.ternary_slot = nil
+			triquetra:set("ternary_slot", nil)
 			loop_sm:to(loop_states.SELF)
 			return
 		else
@@ -1026,7 +1026,7 @@ function M.jump_to_primary(winid)
 		end
 
 		vim.api.nvim_set_current_buf(origin_bufnr)
-		triquetra.current_slot = cycling_origins.current_slot
+		triquetra:set("current_slot", cycling_origins.current_slot)
 		vim.notify("Returned to cycling origin buffer: " .. ui_get_basename(cycling_origins.current_slot),
 			vim.log.levels.INFO)
 		return
@@ -1044,15 +1044,14 @@ function M.jump_to_primary(winid)
 	if cbufnr == nil then
 		cbufnr = history.reopen_filehash(triquetra.primary_buffer[1])
 		if cbufnr and history.get_filepath_from_buffer(cbufnr):match("^NONAME_") then
-			table.remove(triquetra.primary_buffer, 1)
-			table.insert(triquetra.primary_buffer, 1, history.get_hash_from_buffer(cbufnr))
+			triquetra:queue_set(1, history.get_hash_from_buffer(cbufnr))
 		end
 		if cbufnr == nil then
 			-- a No Name text that's lost can't come back, so it leaves the queue
 			vim.notify("Removed primary file not found in filesystem: " ..
 				require('frogman.domains.ui').routines.get_smart_basename(triquetra.primary_buffer[1]),
 				vim.log.levels.WARN)
-			table.remove(triquetra.primary_buffer, 1)
+			triquetra:queue_remove(1)
 			loop_sm:to(loop_states.SELF)
 			return
 		end
@@ -1060,8 +1059,7 @@ function M.jump_to_primary(winid)
 	if triquetra.current_slot ~= triquetra.primary_buffer[1] then -- We only do displacment if we are not already in the primary buffer.
 		local left, ternary_before = triquetra.current_slot, triquetra.ternary_slot
 		triquetra.displacement_ternary_map[triquetra.current_slot .. "-swap"] = triquetra.ternary_slot
-		triquetra.ternary_slot = triquetra.current_slot
-		triquetra.current_slot = triquetra.primary_buffer[1]
+		triquetra:update({ ternary_slot = triquetra.current_slot, current_slot = triquetra.primary_buffer[1] })
 		M.enforce_secondary_map_policy(triquetra, triquetra.current_slot, triquetra.secondary_slot)
 		M.enforce_ternary_map_policy(triquetra, triquetra.current_slot, left, ternary_before, left)
 	else
@@ -1085,7 +1083,7 @@ function M.toggle_primary_buffer(winid)
 
 	if #triquetra.primary_buffer == 0 then
 		-- an empty queue takes the current buffer and switches on, in one press.
-		triquetra.primary_buffer[1] = triquetra.current_slot
+		triquetra:queue_set(1, triquetra.current_slot)
 		triquetra.primary_enabled = true
 	else
 		triquetra.primary_enabled = not triquetra.primary_enabled
@@ -1107,14 +1105,14 @@ function M.set_primary_buffer(winid)
 	end
 
 	if triquetra.primary_buffer[1] == nil then
-		triquetra.primary_buffer[1] = triquetra.current_slot
+		triquetra:queue_set(1, triquetra.current_slot)
 		triquetra.primary_enabled = true
 	elseif triquetra.primary_buffer[1] ~= triquetra.current_slot then
 		local existing_index = vim.fn.index(triquetra.primary_buffer, triquetra.current_slot)
 		if existing_index ~= -1 then
-			table.remove(triquetra.primary_buffer, existing_index + 1)
+			triquetra:queue_remove(existing_index + 1)
 		end
-		table.insert(triquetra.primary_buffer, 1, triquetra.current_slot)
+		triquetra:queue_insert(1, triquetra.current_slot)
 		triquetra.primary_enabled = true
 	else
 		triquetra.primary_enabled = not triquetra.primary_enabled
@@ -1167,17 +1165,15 @@ local function restore_from_displacement_map(type, triquetra)
 		local ui_get_basename = require('frogman.domains.ui').routines.get_smart_basename
 		if type == "ternary" then
 			if remembered_relationship == triquetra.secondary_slot then
-				triquetra.secondary_slot = triquetra.ternary_slot
-				triquetra.ternary_slot = remembered_relationship
+				triquetra:update({ secondary_slot = triquetra.ternary_slot or vim.NIL, ternary_slot = remembered_relationship })
 			else
-				triquetra.ternary_slot = remembered_relationship
+				triquetra:set("ternary_slot", remembered_relationship)
 			end
 		elseif type == "secondary" then
 			if remembered_relationship == triquetra.ternary_slot then
-				triquetra.ternary_slot = triquetra.secondary_slot
-				triquetra.secondary_slot = remembered_relationship
+				triquetra:update({ ternary_slot = triquetra.secondary_slot or vim.NIL, secondary_slot = remembered_relationship })
 			else
-				triquetra.secondary_slot = remembered_relationship
+				triquetra:set("secondary_slot", remembered_relationship)
 			end
 		end
 		local restored = "Restored " .. type .. " slot to: " .. remembered_relationship .. " (" .. ui_get_basename(remembered_relationship) .. ")"
@@ -1224,7 +1220,7 @@ function M.repopulate_window_relationships()
 		-- a window closed while frogman was off too: what the UI kept of it goes, its winbar only if it's there
 		require('frogman.domains.ui.routines').remove_winbar_string(winid)
 	end
-	data.crux = {}
+	data.drop_all_triquetras()
 	data.last_valid_window = vim.api.nvim_get_current_win()
 
 	for _, winid in pairs(vim.api.nvim_list_wins()) do
@@ -1238,7 +1234,7 @@ function M.repopulate_window_relationships()
 		end
 
 		history.routines.ensure_window_entry(winid) -- every triquetra comes with its window's history entry.
-		data.crux[winid] = {
+		data.make_triquetra(winid, {
 			current_slot = current_slot,
 			secondary_slot = nil,
 			ternary_slot = nil,
@@ -1246,7 +1242,7 @@ function M.repopulate_window_relationships()
 			displacement_secondary_map = {},
 			displacement_ternary_map = {},
 			primary_enabled = false,
-		}
+		})
 		set_cache_from_window_triquetra(winid)
 		::continue::
 	end

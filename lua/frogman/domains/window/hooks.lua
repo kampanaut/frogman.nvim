@@ -18,7 +18,7 @@ storageSM:on(storageStates.IDLE, storageStates.BARE, "window_teardown", function
 		-- a window closed while frogman was off too: what the UI kept of it goes, its winbar only if it's there
 		require('frogman.domains.ui.routines').remove_winbar_string(winid)
 	end
-	data.crux = {}
+	data.drop_all_triquetras()
 	data.landing = {}
 	data.arrivals = {}
 	data.current_window = vim.api.nvim_get_current_win()
@@ -75,8 +75,7 @@ history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_ma
 			require('frogman.domains.ledger').note("ternary", triquetra.ternary_slot, new_filehash, triquetra.current_slot, "guard")
 			vim.notify("Avoided conflict of ternary's remembered relationship becoming current.", vim.log.levels.WARN)
 		end
-		triquetra.secondary_slot = triquetra.current_slot
-		triquetra.current_slot = new_filehash
+		triquetra:update({ secondary_slot = triquetra.current_slot, current_slot = new_filehash })
 		routines.enforce_ternary_map_policy(triquetra, new_filehash, left, ternary, ternary)
 	elseif triquetra.current_slot ~= new_filehash then
 		-- Only create displacement mapping if NOT in cycling mode
@@ -118,8 +117,7 @@ history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_ma
 		-- We are tracking for buffers outside, that were ternary slots.
 
 		-- Always update slots
-		triquetra.ternary_slot = triquetra.current_slot
-		triquetra.current_slot = new_filehash
+		triquetra:update({ ternary_slot = triquetra.current_slot, current_slot = new_filehash })
 		routines.enforce_secondary_map_policy(triquetra, new_filehash, triquetra.secondary_slot)
 	end
 	if arriving then -- entering the current buffer again is no arrival, and keeps the last one
@@ -150,7 +148,7 @@ history.sm:on(history.states.DETACHED, history.states.DETACHED, "nondisplacement
 
 	local triquetra = data.crux[winid]
 	if triquetra and triquetra.current_slot ~= new_filehash then
-		triquetra.current_slot = new_filehash
+		triquetra:set("current_slot", new_filehash)
 	end
 
 end, 2, true, history.states.mode.UPDATE)

@@ -330,4 +330,55 @@ T['T691 [char] (M2 Handles, S1) a load mints fresh handles, above every handle b
 	eq(after[1] > before[#before], true)
 end
 
+-- Holders (M2 Holders, M6 Triquetra) ------------------------------------------
+
+-- The places holding a file, by its stem, sorted, the window's id written <w>.
+local function holders(stem)
+	return child.lua([[
+		local H = require('frogman.domains.history')
+		local h = H.handles.of_hash(H.routines.get_filehash(_G.FRG_TEST.root .. '/' .. ... .. '.txt'))
+		local w = tostring(vim.api.nvim_get_current_win())
+		local out = {}
+		for _, place in ipairs(h and H.handles.holders(h.hash) or {}) do
+			table.insert(out, (place:gsub(':' .. w .. ':', ':<w>:')))
+		end
+		table.sort(out)
+		return out
+	]], { stem })
+end
+
+T['T693 [char] (M2 Holders) strong holders hold by place'] = function()
+	child.steps({ ':e a', ':e b', ':e c', ':bdelete a.txt' })
+	eq(holders('a'), { 'pool:editor' })
+	eq(holders('b'), { 'buffer', 'win:<w>:ternary' })
+	eq(holders('c'), { 'buffer', 'win:<w>:current' })
+	child.steps({ '<M-;><M-c>' })
+	eq(holders('c'), { 'buffer', 'win:<w>:current', 'win:<w>:primary' })
+end
+
+T['T695 [char] (M6 Triquetra) an update that would leave a file in two slots is refused, and dumps'] = function()
+	child.steps({ ':e a', ':e b' })
+	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
+	local dumps = child.dump_files()
+	local ok = child.lua([[
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		return (pcall(t.update, t, { secondary_slot = t.current_slot }))
+	]])
+	child.settle(100)
+	eq({ ok, child.slots(), child.dumped_since(dumps) ~= nil }, { false, '⦉a⦊ [b] ⟦-⟧', true })
+end
+
+T['T696 [char] (M6 Triquetra) a copy of a triquetra holds nothing'] = function()
+	child.steps({ ':e c', ':e a', ':e b', ':bdelete c.txt' })
+	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
+	eq(holders('c'), { 'pool:editor' })
+	child.lua([[
+		local H = require('frogman.domains.history')
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local copy = vim.deepcopy(t)
+		copy:set('ternary_slot', H.routines.get_filehash(_G.FRG_TEST.root .. '/c.txt'))
+	]])
+	eq({ holders('c'), child.slots() }, { { 'pool:editor' }, '⦉a⦊ [b] ⟦-⟧' })
+end
+
 return T

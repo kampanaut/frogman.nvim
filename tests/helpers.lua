@@ -158,9 +158,30 @@ Helpers.new_child = function()
 		return fired
 	end
 
-	-- Let scheduled callbacks and short timers run.
+	-- Let scheduled callbacks and short timers run. With FRG_CHECK_HOLDERS set, it then checks the
+	-- handles' holders against follow-along's scan (M2 Holders), and fails the case where they differ.
 	child.settle = function(ms)
 		child.lua('vim.wait(...)', { ms or 30 })
+		if os.getenv('FRG_CHECK_HOLDERS') then
+			local drift = child.lua([[
+				if not package.loaded['frogman.domains.history'] then return nil end
+				local H = require('frogman.domains.history')
+				if not H.handles or not H.handles.holders then return nil end
+				local known, held = H.routines.known_filehashes(), {}
+				for _, h in pairs(H.handles.live()) do
+					if next(h.holders) then held[h.hash] = true end
+				end
+				for hash in pairs(known) do
+					if not held[hash] and H.handles.of_hash(hash) then return 'known, no holder: ' .. hash end
+				end
+				for hash in pairs(held) do
+					if not known[hash] then return 'held, not known: ' .. hash .. ' by ' .. table.concat(H.handles.holders(hash), ', ') end
+				end
+			]])
+			if drift ~= nil and drift ~= vim.NIL then
+				error('holders drift: ' .. drift, 2)
+			end
+		end
 	end
 
 	-- One step. A string starting with ':' is an Ex command, with a bare file

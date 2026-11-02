@@ -13,6 +13,7 @@ local data = require("frogman.domains.history.data")
 ---@field hash Filehash The hash of the file's name, which a rename changes
 ---@field gone boolean Whether the file is gone from disk (it has a tag)
 ---@field copy_of integer|nil The number of the handle it was copied from, for the trail
+---@field holders table<string, true> The places holding it now (place → true)
 
 ---@class HandleModes
 ---@field RENAME "rename" The file took a new hash: a move, or a No Name text reopened
@@ -46,6 +47,9 @@ local by_hash = {}
 ---The next handle's number: it only goes up, a teardown included
 ---@type integer
 local next_id = 1
+---What each place holds (place → handle → true): a window's slot, an open buffer, a list
+---@type table<string, table<FileHandle, true>>
+local places = {}
 
 ---Keep a handle's fields from its transition's context.
 ---
@@ -95,6 +99,7 @@ local function mint(hash, state)
 	local handle = model:instantiate(state)
 	---@cast handle FileHandle
 	handle.id, handle.hash, handle.gone = next_id, hash, data.missing[hash] ~= nil
+	handle.holders = {}
 	next_id = next_id + 1
 	live[handle.id], by_hash[hash] = handle, handle
 	return handle
@@ -142,6 +147,104 @@ function M.live()
 	return live
 end
 
+---Put a handle in a place.
+---
+---@param handle FileHandle
+---@param place string
+---@return nil
+local function add(handle, place)
+	handle.holders[place] = true
+	places[place] = places[place] or {}
+	places[place][handle] = true
+end
+
+---Take a handle out of a place.
+---
+---@param handle FileHandle
+---@param place string
+---@return nil
+local function remove(handle, place)
+	handle.holders[place] = nil
+	if places[place] then
+		places[place][handle] = nil
+		if next(places[place]) == nil then
+			places[place] = nil
+		end
+	end
+end
+
+---Set what a place holds.
+---
+---A strong holder calls it at the write that changes what it holds: the handles it held and no
+---longer holds leave it, and the new ones join it. A hash with no handle holds nothing.
+---
+---@param place string The holder's place, like "win:1000:ternary" or "pool:editor"
+---@param hashes table<any, Filehash> The hashes it holds now (a list, or any table of them)
+---@return nil
+function M.hold(place, hashes)
+	local now = {}
+	for _, hash in pairs(hashes) do
+		local handle = by_hash[hash]
+		if handle then
+			now[handle] = true
+		end
+	end
+	for handle, _ in pairs(places[place] or {}) do
+		if not now[handle] then
+			remove(handle, place)
+		end
+	end
+	for handle, _ in pairs(now) do
+		add(handle, place)
+	end
+end
+
+---Add one file to what a place holds.
+---
+---@param place string
+---@param hash Filehash
+---@return nil
+function M.take(place, hash)
+	local handle = by_hash[hash]
+	if handle then
+		add(handle, place)
+	end
+end
+
+---Take one file out of what a place holds.
+---
+---@param place string
+---@param hash Filehash
+---@return nil
+function M.leave(place, hash)
+	local handle = by_hash[hash]
+	if handle then
+		remove(handle, place)
+	end
+end
+
+---Let a place go, and everything it held.
+---
+---@param place string
+---@return nil
+function M.drop_place(place)
+	for handle, _ in pairs(places[place] or {}) do
+		handle.holders[place] = nil
+	end
+	places[place] = nil
+end
+
+---Get the places holding a file.
+---
+---@param hash Filehash
+---@return string[] places The places, sorted
+function M.holders(hash)
+	local handle = by_hash[hash]
+	local out = handle and vim.tbl_keys(handle.holders) or {}
+	table.sort(out)
+	return out
+end
+
 ---Make sure a file the path registry knows has its handle.
 ---
 ---Called when a path is registered. A hash with no handle gets one, closed, since no buffer is
@@ -155,18 +258,19 @@ end
 
 ---Mark a file's handle open, its hash now registered to a buffer.
 ---
----A hash with no handle gets one, open. A closed handle moves to open, and an open one stays.
+---A hash with no handle gets one, open. A closed handle moves to open, and an open one stays. The
+---open buffer holds it.
 ---
 ---@param hash Filehash
 ---@return FileHandle handle The file's handle
 function M.opened(hash)
 	local handle = by_hash[hash]
 	if handle == nil then
-		return mint(hash, states.OPEN)
-	end
-	if handle:state() == states.CLOSED then
+		handle = mint(hash, states.OPEN)
+	elseif handle:state() == states.CLOSED then
 		move(handle, states.OPEN)
 	end
+	add(handle, "buffer")
 	return handle
 end
 
@@ -176,7 +280,11 @@ end
 ---@return nil
 function M.closed(hash)
 	local handle = M.of_hash(hash)
-	if handle and handle:state() == states.OPEN then
+	if handle == nil then
+		return
+	end
+	remove(handle, "buffer")
+	if handle:state() == states.OPEN then
 		move(handle, states.CLOSED)
 	end
 end
@@ -184,8 +292,9 @@ end
 ---Give a file's handle the hash of its new name.
 ---
 ---Used when a file takes a new hash: a rename that was a move, or a No Name text reopened under a
----new id. A live handle the new hash had is let go, since the moved file wins. When a buffer is
----registered under the new hash already, the handle is open.
+---new id. A live handle the new hash had is let go, since the moved file wins, and the places that
+---held it hold the moved file now. When a buffer is registered under the new hash already, the
+---handle is open.
 ---
 ---@param old_hash Filehash The hash it had
 ---@param new_hash Filehash The hash it takes
@@ -195,7 +304,11 @@ function M.renamed(old_hash, new_hash)
 	if handle == nil or old_hash == new_hash then
 		return
 	end
-	if by_hash[new_hash] then
+	local other = by_hash[new_hash]
+	if other then
+		for place, _ in pairs(other.holders) do
+			add(handle, place)
+		end
 		M.let_go(new_hash)
 	end
 	by_hash[old_hash], by_hash[new_hash] = nil, handle
@@ -254,6 +367,9 @@ function M.let_go(hash)
 		return
 	end
 	by_hash[hash], live[handle.id] = nil, nil
+	for place, _ in pairs(handle.holders) do
+		remove(handle, place)
+	end
 	handle:unregister()
 end
 
@@ -266,7 +382,7 @@ function M.reset()
 	for _, handle in pairs(live) do
 		handle:unregister()
 	end
-	live, by_hash = {}, {}
+	live, by_hash, places = {}, {}, {}
 end
 
 return M

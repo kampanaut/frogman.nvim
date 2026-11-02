@@ -48,7 +48,7 @@ function M.set_buffer_relationship(winid, relationship_table)
 
     -- Set the relationship data
 	history.routines.ensure_window_entry(winid) -- every triquetra comes with its window's history entry.
-    data.crux[winid] = {
+    data.make_triquetra(winid, {
 		current_slot = relationship_table.current_slot,
 		secondary_slot = relationship_table.secondary_slot,
 		ternary_slot = relationship_table.ternary_slot,
@@ -56,7 +56,7 @@ function M.set_buffer_relationship(winid, relationship_table)
 		displacement_secondary_map = relationship_table.displacement_secondary_map,
 		displacement_ternary_map = relationship_table.displacement_ternary_map,
 		primary_enabled = relationship_table.primary_enabled == true
-    }
+    })
 
     return true
 end

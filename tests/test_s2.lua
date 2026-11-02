@@ -2092,6 +2092,32 @@ T['T322 [char] (S2) a tab session\'s tab closed with nothing wired writes its re
 	eq({ notices = notices, got = got, reopened = child.shown() }, { notices = {}, got = { true }, reopened = 'c' })
 end
 
+-- The places holding anything, each as its name: t's list is `pool:t <its directory>`.
+local function pool_places()
+	return child.lua([[
+		local seen = {}
+		for _, h in pairs(require('frogman.domains.history').handles.live()) do
+			for place in pairs(h.holders) do
+				if place:match('^pool:') then seen[place:match('^pool:(%S+)')] = true end
+			end
+		end
+		local out = vim.tbl_keys(seen)
+		table.sort(out)
+		return out
+	]])
+end
+
+T['T697 [char] (M2 Holders, M5) a list leaving memory lets go of what it held'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	child.cmd('bdelete c.txt')
+	child.settle()
+	eq(vim.tbl_contains(pool_places(), 't'), true)
+	child.cmd('tabclose')
+	child.settle(300)
+	eq(vim.tbl_contains(pool_places(), 't'), false)
+end
+
 -- The whole editor is saved (the unnamed session) at ⦉x⦊ [t]; then t is loaded
 -- into a second tab, x is closed and e visited in the first tab, and t is saved.
 T['T323 [char] (S2) a tab-session save refreshes the unnamed session\'s records and leaves its references'] = function()

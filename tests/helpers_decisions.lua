@@ -111,6 +111,27 @@ checks.HANDLES = { post = function()
 	end
 end }
 
+-- Holders (M2 Holders): the hashes whose handles have a holder are exactly
+-- what follow-along calls known.
+checks.HOLDERS = { post = function()
+	local known = H.routines.known_filehashes()
+	local held = {}
+	for _, h in pairs(H.handles.live()) do
+		if next(h.holders) then held[h.hash] = true end
+	end
+	for hash in pairs(known) do
+		if not held[hash] and H.handles.of_hash(hash) then
+			return string.format('%s is known, and its handle has no holder', name(hash))
+		end
+	end
+	for hash in pairs(held) do
+		if not known[hash] then
+			return string.format('%s has a holder (%s), and is not known', name(hash),
+				table.concat(H.handles.holders(hash), ', '))
+		end
+	end
+end }
+
 -- I9: every triquetra belongs to a valid, non-floating window.
 checks.I9 = { post = function()
 	for winid in pairs(W.data.crux) do
