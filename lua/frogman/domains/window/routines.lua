@@ -404,9 +404,9 @@ end
 
 ---Check if a slot's file is one cleanup lets go of.
 ---
----It is when no path is known for it, or when it's a file with no buffer that's on no closed stack:
----nothing holds it, so the slot couldn't bring it back. A No Name buffer's hash isn't let go this
----way, since its text is what holds it.
+---It is when no path is known for it, or when it's a file with no buffer that nothing besides the
+---windows' slots holds, no closed list and no mark: the slot couldn't bring it back. A No Name buffer's
+---hash isn't let go this way, since its text is what holds it.
 ---
 ---@param filehash Filehash The slot's hash
 ---@return boolean stale True if the slot lets it go
@@ -416,7 +416,7 @@ local function is_filehash_stale(filehash)
 	-- registered as closed in the closed buffers list. something is wrong with the triquetra, so we
 	-- just remove it.
 	return not filepath or (not filepath:match("^NONAME_") and history.get_buffer_from_hash(filehash) == nil
-		and not history.routines.is_filehash_closed(filehash))
+		and not history.handles.held_beyond_windows(filehash))
 end
 
 ---Say that a slot's file is gone from disk, and that the slot keeps it.
@@ -627,7 +627,7 @@ function M.enforce_editor_policy(bufnr_ondelete)
 				-- every other slot, goes into none, and the window lost nothing to say so
 				local old_path = history.get_filepath_from_hash(triquetra.current_slot)
 				local gone = old_path ~= nil and old_path:match("^NONAME_") ~= nil
-					and not history.routines.is_filehash_closed(triquetra.current_slot)
+					and not history.handles.kept_closed(triquetra.current_slot)
 				if not gone then
 					vim.notify("Healed the triquetra of window " ..
 						winid .. " with current slot: " .. vim.api.nvim_win_get_buf(winid))
@@ -686,7 +686,7 @@ function M.enforce_editor_policy(bufnr_ondelete)
 					-- (a reload without events). there's nothing to heal.
 					goto continue
 				end
-				if history.routines.is_filehash_closed(triquetra.current_slot) then
+				if history.handles.kept_closed(triquetra.current_slot) then
 					-- the window is visiting something we don't track and keeps its triquetra: a closed
 					-- current slot stays, it's the file the window was last on.
 					goto continue
@@ -1046,6 +1046,57 @@ function M.swap_with_ternary(winid)
 	loop_sm:to(loop_states.SELF)
 end
 
+---Jump to a marked file in the target window, as a primary jump goes to the primary.
+---
+---The current buffer goes into the ternary with its swap note, and the file becomes current. A
+---file that's the window's secondary is a swap with it, as <M-f> makes one. A closed file is
+---reopened, a file only a mark holds included; one gone from disk is said instead, and nothing
+---changes.
+---
+---@param winid WinId The target window ID
+---@param filehash Filehash The marked file
+---@param label string How the mark is named in messages, like "⟨a⟩"
+---@return nil
+function M.jump_to_mark(winid, filehash, label)
+	local triquetra = data.get_window_triquetra(winid)
+	if not triquetra then
+		vim.notify("Window with unregistered buffer.", vim.log.levels.WARN)
+		return
+	end
+	if triquetra.secondary_slot == filehash then
+		M.swap_with_secondary(winid)
+		return
+	end
+	if is_missing(filehash) then
+		say_missing(filehash, "mark")
+		return
+	end
+	local cbufnr = history.get_buffer_from_hash(filehash)
+	if cbufnr == nil then
+		local basename = require('frogman.domains.ui').routines.get_smart_basename(filehash)
+		local reason
+		cbufnr, reason = history.reopen_filehash(filehash)
+		if cbufnr == nil then
+			if reason ~= "taken" then -- another buffer has its name: the reopen said so
+				vim.notify(basename .. " can't be reopened, so " .. label .. " goes nowhere.", vim.log.levels.WARN)
+			end
+			return
+		end
+		filehash = history.get_hash_from_buffer(cbufnr) -- a No Name text comes back under a new id
+	end
+	if triquetra.current_slot ~= filehash then
+		local left, ternary_before = triquetra.current_slot, triquetra.ternary_slot
+		triquetra.displacement_ternary_map[left .. "-swap"] = ternary_before
+		triquetra:update({ ternary_slot = left, current_slot = filehash })
+		M.enforce_secondary_map_policy(triquetra, filehash, triquetra.secondary_slot)
+		M.enforce_ternary_map_policy(triquetra, filehash, left, ternary_before, left)
+	end
+	if vim.api.nvim_win_get_buf(winid) ~= cbufnr then
+		vim.api.nvim_win_set_buf(winid, cbufnr)
+	end
+	loop_sm:to(loop_states.SELF)
+end
+
 ---Jump to the target window's primary buffer.
 ---
 ---@param winid WinId The target window ID
@@ -1066,7 +1117,7 @@ function M.jump_to_primary(winid)
 		end
 
 		local origin_bufnr = history.get_buffer_from_hash(cycling_origins.current_slot)
-		if not origin_bufnr and history.routines.is_filehash_closed(cycling_origins.current_slot) then
+		if not origin_bufnr and history.handles.kept_closed(cycling_origins.current_slot) then
 			-- the start closed while the window cycled through something untracked: going back to it
 			-- reopens it, as <M-f> does.
 			if is_missing(cycling_origins.current_slot) then

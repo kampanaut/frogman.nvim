@@ -105,7 +105,6 @@ T['D27 [char] README\'s requirements (D4, D27)'] = function()
 		'- neovim 0.12+',
 		'- nvim-cokeline',
 		"- openssl 3 or 4 (system installed, its libcrypto is used for encrypting the session files. Hashing is done with neovim's built-in `vim.fn.sha256`. When frogman can't find it, set `libcrypto_path` to its file. Windows is untested: there, set `libcrypto_path` to the DLL, such as `libcrypto-3-x64.dll`)",
-		'- harpoon (optional, harpooned buffers are marked in the bufferline; any other marks plugin through `marks_provider`)',
 		'- telescope.nvim (used for adding files in the primary buffer pop-up)',
 		'- a session manager (optional, resession.nvim is used in the examples below)',
 	}
@@ -113,7 +112,8 @@ T['D27 [char] README\'s requirements (D4, D27)'] = function()
 	for _, item in ipairs(items) do
 		if not has(flat(req), item) then table.insert(missing, item) end
 	end
-	eq(missing, {})
+	-- harpoon is gone: frogman has marks of its own (M15)
+	eq({ missing = missing, harpoon = has(flat(req), 'harpoon') }, { missing = {}, harpoon = false })
 end
 
 T['D27 [char] README\'s lazy.nvim example depends on cokeline, not harpoon, with no comment'] = function()

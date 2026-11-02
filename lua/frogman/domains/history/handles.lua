@@ -50,6 +50,9 @@ local next_id = 1
 ---What each place holds (place → handle → true): a window's slot, an open buffer, a list
 ---@type table<string, table<FileHandle, true>>
 local places = {}
+---Where a handle let go for a moved file went (handle number → the moved file's handle number)
+---@type table<integer, integer>
+local forwards = {}
 
 ---Keep a handle's fields from its transition's context.
 ---
@@ -387,12 +390,49 @@ function M.renamed(old_hash, new_hash)
 			add(handle, place)
 		end
 		M.let_go(new_hash)
+		forwards[other.id] = handle.id -- what held the other file holds the moved one now
 	end
 	by_hash[old_hash], by_hash[new_hash] = nil, handle
 	move(handle, handle:state(), { hash = new_hash }, states.mode.RENAME)
 	if data.hash_buffer_registry.buffers[new_hash] then
 		M.opened(new_hash)
 	end
+end
+
+---Follow a handle's number to the handle that took its file's name, when it was let go for a moved file.
+---
+---@param id integer
+---@return integer id The live handle's number, or the one given when nothing took its place
+function M.resolve(id)
+	local seen = 0
+	while forwards[id] and seen < 64 do
+		id, seen = forwards[id], seen + 1
+	end
+	return id
+end
+
+---Check if a file is held by anything besides the windows' slots: an open buffer, a list or a mark.
+---
+---@param hash Filehash|nil
+---@return boolean held
+function M.held_beyond_windows(hash)
+	local handle = M.of_hash(hash)
+	for place, _ in pairs(handle and handle.holders or {}) do
+		if not place:match("^win:") then
+			return true
+		end
+	end
+	return false
+end
+
+---Check if a file is closed and kept: no buffer, and something besides the windows' slots holds it, a
+---list or a mark, so a slot keeps it and using it reopens it.
+---
+---@param hash Filehash|nil
+---@return boolean kept
+function M.kept_closed(hash)
+	local handle = M.of_hash(hash)
+	return handle ~= nil and handle:state() == states.CLOSED and M.held_beyond_windows(hash)
 end
 
 ---Link a copy's handle to the handle of the file it was copied from.

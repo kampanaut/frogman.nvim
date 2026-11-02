@@ -313,40 +313,32 @@ T['T448 [char] (M12) the winbar\'s skip list is configurable, and replaces the d
 	eq({ default = default, skipped = skipped, replaced = replaced }, { default = true, skipped = '', replaced = true })
 end
 
-T['T527 [char] (M4, P26) the unmarked list\'s rebuild reads the marks once'] = function()
+T['T527 [char] (M4, M15) the unmarked list\'s rebuild reads the marks once'] = function()
 	child.steps({ ':e a', ':e b', ':e c', ':e d', ':e e' })
 	local tries = child.lua([[
-		-- harpoon not installed: the harness's stub taken away, and each try counted
-		package.preload['harpoon'], package.loaded['harpoon'] = nil, nil
-		local real, n = require, 0
-		_G.require = function(name, ...)
-			if name == 'harpoon' then n = n + 1 end
-			return real(name, ...)
-		end
+		-- each read of the marks counted
+		local marks = require('frogman.domains.marks')
+		local real, n = marks.marked_paths, 0
+		marks.marked_paths = function(...) n = n + 1; return real(...) end
 		require('frogman.domains.history').routines.update_buffer_history_ordered_nonharpooned()
-		_G.require = real
+		marks.marked_paths = real
 		return { n = n, ordered = #require('frogman.domains.history').data.ordered.crux }
 	]])
 	eq(tries, { n = 1, ordered = 5 })
 end
 
-T['T450 [char] (M12, P26) marked buffers come from the provider'] = function()
-	child.lua([[
-		local root = _G.FRG_TEST.root
-		_G.FRG_TEST.setup({ marks_provider = function() return { root .. '/b.txt' } end })
-	]])
-	child.steps({ ':e a', ':e b', ':e c' })
+T['T450 [char] (M12, M15) marked buffers are frogman\'s own marks'] = function()
+	child.lua([[_G.FRG_TEST.setup({ marks_provider = function() error('read') end })]])
+	local warned = child.messages()
+	child.steps({ ':e a', ':e b', "<M-'><M-'><M-a>", ':e c' })
 	child.settle(300)
 	local bl = 'local bl = require("frogman").bufferline; local b = ...; return { bl.is_harpooned(b), bl.get_harpoon_index(b) }'
 	local marked = { a = child.lua(bl, { bufnr('a.txt') })[1], b = child.lua(bl, { bufnr('b.txt') }), c = child.lua(bl, { bufnr('c.txt') })[1] }
-	child.lua([[
-		package.loaded['harpoon'] = { list = function() return { display = function() return { 'b.txt' } end } end }
-		_G.FRG_TEST.setup({ marks_provider = false })
-	]])
-	child.steps({ ':e a' })
-	child.settle(300)
-	local off = child.lua(bl, { bufnr('b.txt') })[1]
-	eq({ marked = marked, off = off }, { marked = { a = false, b = { true, 1 }, c = false }, off = false })
+	local said = 0
+	for _, m in ipairs(warned) do
+		if m.msg:find('marks_provider is gone', 1, true) then said = said + 1 end
+	end
+	eq({ marked = marked, said = said }, { marked = { a = false, b = { true, 'a' }, c = false }, said = 1 })
 end
 
 
@@ -357,12 +349,8 @@ local comps = require('frogman').bufferline.cokeline.create_buffer_components()
 return comps[7].text({ number = ..., filename = 'b.txt', index = 1, is_focused = true })
 ]==]
 
-T['T456 [char] (M12) the indicators by kind'] = function()
-	child.lua([[
-		local root = _G.FRG_TEST.root
-		_G.FRG_TEST.setup({ marks_provider = function() return { root .. '/b.txt' } end })
-	]])
-	child.steps({ ':e a', ':e b' })
+T['T456 [char] (M12, M15) the indicators by kind'] = function()
+	child.steps({ ':e a', ':e b', "<M-'><M-'><M-a>" })
 	child.settle(300)
 	local b = bufnr('b.txt')
 	local function drawn()
@@ -373,18 +361,18 @@ T['T456 [char] (M12) the indicators by kind'] = function()
 	child.cmd('FrogmanIndicators roles off')
 	got.roles_off = drawn()
 	child.cmd('FrogmanIndicators roles on')
-	child.cmd('FrogmanIndicators harpoon off')
-	got.harpoon_off = drawn()
+	child.cmd('FrogmanIndicators marks off')
+	got.marks_off = drawn()
 	child.cmd('FrogmanIndicators off')
 	got.off = drawn()
 	child.cmd('FrogmanIndicators on')
 	got.again = drawn()
 	eq(got, {
-		on = { '[' .. b .. '] 󰛢  ', 'b.txt ⥤ {1}' },
-		roles_off = { '󰛢  ', 'b.txt ⥤ {1}' },
-		harpoon_off = { '[' .. b .. ']  ', 'b.txt' },
+		on = { '[' .. b .. '] 󰛢  ', 'b.txt ⟨a⟩' },
+		roles_off = { '󰛢  ', 'b.txt ⟨a⟩' },
+		marks_off = { '[' .. b .. ']  ', 'b.txt' },
 		off = { ' ', 'b.txt' },
-		again = { '[' .. b .. '] 󰛢  ', 'b.txt ⥤ {1}' },
+		again = { '[' .. b .. '] 󰛢  ', 'b.txt ⟨a⟩' },
 	})
 end
 

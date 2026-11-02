@@ -156,6 +156,19 @@ checks.HOLDERS = { post = function()
 		local bad = same(H.routines.pool_place(pool), pool.closed)
 		if bad then return bad end
 	end
+	-- each mark's place holds its file (M15)
+	local Mk = package.loaded['frogman.domains.marks']
+	for kind, scopes in pairs(Mk and Mk.data.scopes or {}) do
+		for id, scope in pairs(scopes) do
+			for position, group in ipairs(scope.groups) do
+				for alias, hid in pairs(group.marks) do
+					local handle = H.handles.get(H.handles.resolve(hid))
+					local bad = same('mark:' .. kind .. ':' .. tostring(id) .. ':' .. position .. ':' .. alias, { handle and handle.hash })
+					if bad then return bad end
+				end
+			end
+		end
+	end
 	local bufs = {}
 	for h in pairs(H.data.hash_buffer_registry.buffers) do table.insert(bufs, h) end
 	local bad = same('buffer', bufs)

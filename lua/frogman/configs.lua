@@ -14,6 +14,7 @@
 ---@field toggle_window string Jump between previous windows
 ---@field open_primary_buffer_history string Open primary buffer history window
 ---@field open_closed_lists string Open the closed lists
+---@field mark_prefix string|false The marks' keys begin with it: its mode keys, its jumps and its adds
 ---@field views FrogmanViewKeymaps Keys inside frogman's own views (the same keys in each)
 
 ---Keys inside frogman's own views, the same in each. A key set to false isn't mapped.
@@ -211,7 +212,7 @@ local defaults = {
 			inactive = "#575653",
 			unfocused = "#575653"
 		},
-		harpooned = {
+		marked = {
 			unfocused = {
 				fg = "#8B7EC8", -- purple-400
 			}
@@ -315,6 +316,10 @@ local defaults = {
 		open_primary_buffer_history = "<M-;>F", -- Open primary buffer history
 		open_closed_lists = "<M-;>W", -- Open the closed lists
 
+		-- Marks: the prefix, then <M-1>, <M-2> or <M-3> for the window's, the tab's or the session's
+		-- marks; then an alias, <M-a>, to jump to its mark; twice, <M-'><M-'><M-a>, to mark the buffer there
+		mark_prefix = "<M-'>",
+
 		-- Inside frogman's own views
 		views = {
 			leave = "q",
@@ -338,8 +343,12 @@ local defaults = {
 	},
 	-- label_provider: where you are, for tagging files that go missing: nil reads .git/HEAD, a
 	-- function returning a string gives the label, false turns labels off (the tag is then the time).
-	-- marks_provider: the marked files, for the bufferline's marks: nil reads harpoon's list when it's
-	-- installed, a function returning their paths in order gives them, false marks nothing.
+	-- frogman's marks: `aliases`, each mark's key and its index (one alias to one index), and
+	-- `default_group`, the name of the group a scope gets at its first mark
+	marks = {
+		aliases = { a = 1, s = 2, d = 3, f = 4, u = 5, i = 6, o = 7, p = 8 },
+		default_group = "main",
+	},
 	-- the winbar: `own`, whether frogman writes it (otherwise `require('frogman').winbar_segment()`
 	-- gives its segment to place yourself); `skip_filetypes`, windows of these filetypes get none
 	winbar = {

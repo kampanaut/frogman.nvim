@@ -241,7 +241,7 @@ function M.show_primary_buffer_history()
 			local text = vim.trim(line)
 			local filepath = basename_filepath_mapping[text] or (text ~= "" and vim.fn.fnamemodify(text, ":p")) or nil
 			local filehash = filepath and history.get_hash_from_filepath(filepath)
-			if filehash and history.routines.is_filehash_closed(filehash) then
+			if filehash and history.handles.kept_closed(filehash) then
 				vim.api.nvim_buf_set_extmark(dbuf, primary_ns, i - 1, 0, {
 					virt_text = { { glyphs.closed .. " ", "FrogmanTrailClosed" } }, virt_text_pos = "inline",
 				})
@@ -1279,7 +1279,8 @@ local function derive_cache_from_window_triquetra(winid, again)
 			return bufnr, display_name, true, is_loaded, false
 		else
 			-- Check if it's a closed buffer
-			local is_closed = history.routines.is_filehash_closed(filehash) -- on any pool
+			-- closed and kept by something besides the windows' slots: a list or a mark
+			local is_closed = history.get_buffer_from_hash(filehash) == nil and history.handles.held_beyond_windows(filehash)
 			if is_closed then
 				-- Closed buffer - can be reopened
 				derive_cache_lock[winid] = nil
@@ -1367,28 +1368,14 @@ end
 function M.refresh_ui(cwin)
 	local cbuf = vim.api.nvim_win_get_buf(cwin)
 	local cache = data.bufferline_state
-	-- Update harpooned buffers cache: the marked files, from config's marks_provider or harpoon
-	local harpooned_list = history.routines.marked_paths()
-	-- Helper function to map keys (from original buffers.lua)
-	local function map_keys_trans_bufnr(tbl)
-		local return_tbl = {}
-		for idx, value in ipairs(tbl) do
-			return_tbl[value] = idx
-		end
-		return return_tbl
-	end
-	cache.harpooned_lookup = map_keys_trans_bufnr(harpooned_list)
-	-- Pre-compute which buffers are harpooned
-	cache.harpooned_buffers = {}
+	-- the marked buffers: frogman's own marks, the first group of the current mode's scope, each with
+	-- the aliases it has there
+	local marks = require('frogman.domains.marks')
+	cache.harpooned_lookup, cache.harpooned_buffers = {}, {}
 	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-		if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
-			local path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":p")
-			cache.harpooned_buffers[bufnr] = cache.harpooned_lookup[path] ~= nil
-			if cache.harpooned_buffers[bufnr] then
-				cache.harpooned_lookup[bufnr] = cache.harpooned_lookup[path]
-				cache.harpooned_lookup[path] = nil
-			end
-		end
+		local label = vim.api.nvim_buf_is_valid(bufnr) and marks.label_of(history.get_hash_from_buffer(bufnr), cwin) or nil
+		cache.harpooned_buffers[bufnr] = label ~= nil
+		cache.harpooned_lookup[bufnr] = label
 	end
 	-- Pre-compute buffer rankings using history domain data
 	cache.buffer_ranking = {}
@@ -1639,6 +1626,13 @@ local function construct_winbar_string(winid, theme)
 			display_string_length = display_string_length + vim.api.nvim_strwidth(triquetra.secondary_display_name)
 		end
 		missing_tag("secondary")
+	end
+
+	-- what a mark's add or a switch of mode did, said for a moment (M15)
+	local flash = require('frogman.domains.marks').flash_of(winid)
+	if flash then
+		display_string = display_string .. string.format("%%#%s# %s ", theme.base, esc(flash))
+		display_string_length = display_string_length + vim.api.nvim_strwidth(flash) + 2
 	end
 
 	local segment = display_string

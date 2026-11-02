@@ -12,6 +12,7 @@ local history = require('frogman.domains.history')
 local window = require('frogman.domains.window')
 local ui = require('frogman.domains.ui')
 local storage = require('frogman.domains.storage')
+local marks = require('frogman.domains.marks')
 local ledger = require('frogman.domains.ledger')
 local settle = require('frogman.settle')
 local engine = require('frogman.engine')
@@ -80,8 +81,30 @@ local function setup_keymaps(keymaps)
 		end
 	end
 
+	-- the marks' keys: the prefix and a mode's number switches the mode, the prefix and an alias jumps
+	-- to its mark, and the prefix twice and an alias marks the buffer there
+	local prefix = keymaps.mark_prefix
+	if type(prefix) == "string" then
+		local marks_keys = {
+			{ prefix .. "<M-1>", function() M.mark_mode("window") end, "Use the window's marks" },
+			{ prefix .. "<M-2>", function() M.mark_mode("tab") end, "Use the tab's marks" },
+			{ prefix .. "<M-3>", function() M.mark_mode("session") end, "Use the session's marks" },
+		}
+		for alias, _ in pairs(settings.marks.aliases or {}) do
+			table.insert(marks_keys, { prefix .. "<M-" .. alias .. ">", function() M.mark_jump(alias) end, "Jump to mark " .. alias })
+			table.insert(marks_keys, { prefix .. prefix .. "<M-" .. alias .. ">", function() M.mark_add(alias) end, "Mark the buffer as " .. alias })
+		end
+		for _, key in ipairs(marks_keys) do
+			local lhs, run, desc = key[1], key[2], key[3]
+			vim.keymap.set('n', lhs, function()
+				ledger.run_key(lhs, nil, run)
+			end, { desc = desc })
+			mapped[lhs] = vim.fn.maparg(lhs, 'n', false, true).callback
+		end
+	end
+
 	for action, lhs in pairs(keymaps) do
-		if type(lhs) == "string" and type(defaults.keymaps[action]) == "string" then
+		if type(lhs) == "string" and type(defaults.keymaps[action]) == "string" and action ~= "mark_prefix" then
 			mapped[lhs] = vim.fn.maparg(lhs, 'n', false, true).callback
 		end
 	end
@@ -138,6 +161,17 @@ function M.setup(user_config)
 	end
 
 	deep_merge_into(settings, user_config or {})
+	-- a user's aliases replace the default table whole, so an alias moved to another index can't clash
+	-- with the default it replaced; one alias to one index is checked here
+	if type(user_config) == "table" and type(user_config.marks) == "table" and type(user_config.marks.aliases) == "table" then
+		settings.marks.aliases = vim.deepcopy(user_config.marks.aliases)
+	end
+	marks.routines.check_aliases(settings.marks.aliases)
+	-- the marks are frogman's own: a config that still names a provider is told so
+	if settings.marks_provider ~= nil then
+		settings.marks_provider = nil
+		vim.notify("frogman: marks_provider is gone: frogman has marks of its own.", vim.log.levels.WARN)
+	end
 	-- the primary pop-up's picker is telescope's: a config that still names its own is told so
 	if settings.primary_picker ~= nil then
 		settings.primary_picker = nil
@@ -157,6 +191,7 @@ function M.setup(user_config)
 	window.init_autocmds(group)
 	ui.init_autocmds(group)
 	storage.init_autocmds(group)
+	marks.init_autocmds(group)
 
 	ui.init_winbar_highlights()
 	ui.init_trail_highlights()
@@ -174,7 +209,7 @@ function M.setup(user_config)
 	for name, part in pairs({ FrogmanWinbar = "winbar", FrogmanIndicators = "indicators", FrogmanBufferline = "bufferline" }) do
 		vim.api.nvim_create_user_command(name, function(opts)
 			local args = vim.deepcopy(opts.fargs)
-			local kind = part == "indicators" and (args[1] == "roles" or args[1] == "harpoon") and table.remove(args, 1) or nil
+			local kind = part == "indicators" and (args[1] == "roles" or args[1] == "marks") and table.remove(args, 1) or nil
 			local hidden = ui.is_hidden(part, kind)
 			local want = args[1] or "toggle"
 			if #args > 1 then
@@ -185,11 +220,11 @@ function M.setup(user_config)
 			elseif want == "off" or (want == "toggle" and not hidden) then
 				ui["hide_" .. part](kind)
 			else
-				vim.notify("frogman: :" .. name .. " takes " .. (part == "indicators" and "roles or harpoon, then " or "")
+				vim.notify("frogman: :" .. name .. " takes " .. (part == "indicators" and "roles or marks, then " or "")
 					.. "on, off or toggle.", vim.log.levels.WARN)
 			end
 		end, { nargs = "*", complete = function()
-			return part == "indicators" and { "roles", "harpoon", "on", "off", "toggle" } or { "on", "off", "toggle" }
+			return part == "indicators" and { "roles", "marks", "on", "off", "toggle" } or { "on", "off", "toggle" }
 		end,
 			desc = "Switch frogman's " .. part .. " on or off, or toggle it" })
 	end
@@ -504,6 +539,40 @@ end
 -- Each key's export runs once frogman has settled: keys in one batch (a macro, a mapping,
 -- frogman's own or a user's) can come before the settle work their events queued. A cycle still
 -- running in another window, which no window entry queued a cancel for, ends too.
+---Switch the editor's marks to a mode: the window's, the tab's or the session's.
+---
+---@param mode "window"|"tab"|"session"
+---@return nil
+function M.mark_mode(mode)
+	marks.set_mode(mode)
+end
+
+---Jump to the file an alias marks, in the first group of the current mode's scope.
+---
+---@param alias string
+---@return nil
+function M.mark_jump(alias)
+	marks.jump(alias)
+end
+
+---Mark the current buffer under an alias, in the first group of the current mode's scope.
+---
+---@param alias string
+---@return nil
+function M.mark_add(alias)
+	marks.add(alias)
+end
+
+for _, export in ipairs({ "mark_mode", "mark_jump", "mark_add" }) do
+	local run = M[export]
+	M[export] = function(...)
+		return settle.now(function(...)
+			navigation.cancel_cycle_elsewhere()
+			return run(...)
+		end, ...)
+	end
+end
+
 for _, action in ipairs(keymap_actions) do
 	local export = M[action[2]]
 	M[action[2]] = function(...)

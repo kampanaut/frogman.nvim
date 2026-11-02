@@ -149,14 +149,18 @@ end
 
 ---Check if anything still references a filehash.
 ---
----Looks in every window's slots, primary queue and displacement maps (keys and values), in the
----history (overall, each window's and each pool's visits), and on every pool's closed stack.
+---Asks the hash's handle for a strong holder first, a mark among them, then looks in every window's
+---slots, primary queue and notes, in the history and the pools' visits, and on every closed stack.
 ---
 ---@param filehash Filehash
 ---@return boolean referenced True if anything still references the filehash
 function M.is_filehash_referenced(filehash)
 	if data.crux[filehash] or data.crux_internals.global[filehash] then
 		return true
+	end
+	local handle = handles.of_hash(filehash)
+	if handle and next(handle.holders) ~= nil then
+		return true -- a strong holder, a mark among them, holds it
 	end
 	for _, window_crux in pairs(data.crux_internals.window) do
 		if window_crux[filehash] then
@@ -1135,31 +1139,11 @@ end
 
 ---Get the marked files, in their order, as full paths.
 ---
----The `marks_provider` config gives them. A function there returns their paths, and `false`
----marks nothing. With no provider set, harpoon's list is used when harpoon is installed.
----Anything in the list that isn't a string is skipped.
+---They're frogman's own marks: the first group of the current mode's scope, in its aliases' order.
 ---
 ---@return string[] paths Full paths of the marked files
 function M.marked_paths()
-	local provider = require('frogman.configs').marks_provider
-	local list = {}
-	if type(provider) == "function" then
-		local ok, result = pcall(provider)
-		list = ok and type(result) == "table" and result or {}
-	elseif provider == nil then
-		local ok, harpoon = pcall(require, "harpoon")
-		if ok then
-			local listed, result = pcall(function() return harpoon:list():display() end)
-			list = listed and type(result) == "table" and result or {}
-		end
-	end
-	local paths = {}
-	for _, path in ipairs(list) do
-		if type(path) == "string" then
-			table.insert(paths, vim.fn.fnamemodify(path, ":p"))
-		end
-	end
-	return paths
+	return require('frogman.domains.marks').marked_paths()
 end
 
 ---Check if a bufnr is harpooned mark.
@@ -1486,6 +1470,17 @@ function M.track_closing_filehash(filehash, quiet, text)
 		local lines = text and text.lines or vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 
 		-- Check if buffer is empty (no lines or single empty line)
+		local marked = false
+		for place, _ in pairs((handles.of_hash(filehash) or { holders = {} }).holders) do
+			marked = marked or place:match("^mark:") ~= nil
+		end
+		if (#lines == 0 or (#lines == 1 and lines[1] == "")) and marked then
+			-- a marked one keeps its empty text, for its mark alone: closed, and on no list
+			local winid = vim.fn.bufwinid(bufnr)
+			data.noname_content[filehash] = text or { lines = { "" }, filetype = vim.bo[bufnr].filetype,
+				cursor = winid ~= -1 and vim.api.nvim_win_get_cursor(winid) or { 1, 0 } }
+			return true, {}
+		end
 		if #lines == 0 or (#lines == 1 and lines[1] == "") then
 			M.untrack_buffer(bufnr) -- its own history goes first, and it leaves the slots.
 			require('frogman.domains.window.data').forget_hash_in_slots(filehash)

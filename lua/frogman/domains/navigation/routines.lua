@@ -138,7 +138,7 @@ function M.cancel_cycle(cycling_window)
 	local returned = false
 	if triquetra and vim.api.nvim_win_is_valid(cycling_window) then
 		local start_bufnr = history.get_buffer_from_hash(triquetra.current_slot)
-		if start_bufnr == nil and history.routines.is_filehash_closed(triquetra.current_slot) then
+		if start_bufnr == nil and history.handles.kept_closed(triquetra.current_slot) then
 			start_bufnr = history.reopen_filehash(triquetra.current_slot) -- a start closed meanwhile comes back, as a pick's would
 		end
 		if start_bufnr and vim.api.nvim_win_get_buf(cycling_window) ~= start_bufnr then

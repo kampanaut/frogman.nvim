@@ -155,7 +155,7 @@ function M.show_winbar()
 end
 
 -- the indicators, by kind: the role marks, and a marked buffer's mark and label
-local hidden_indicators = { roles = false, harpoon = false }
+local hidden_indicators = { roles = false, marks = false }
 
 ---Hide or show the indicators of one kind, or of every kind.
 ---
@@ -168,13 +168,13 @@ local function set_indicators(kind, hidden)
 			hidden_indicators[name] = hidden
 		end
 	end
-	local all = hidden_indicators.roles and hidden_indicators.harpoon
+	local all = hidden_indicators.roles and hidden_indicators.marks
 	ui_machines.indicators:to(all and states.INDICATORS.OFF or states.INDICATORS.ON)
 end
 
 ---Turn off indicators.
 ---
----@param kind "roles"|"harpoon"|nil Indicator kind to turn off, or every kind when nil
+---@param kind "roles"|"marks"|nil Indicator kind to turn off, or every kind when nil
 ---@return nil
 function M.hide_indicators(kind)
 	set_indicators(kind, true)
@@ -182,7 +182,7 @@ end
 
 ---Turn on indicators.
 ---
----@param kind "roles"|"harpoon"|nil Indicator kind to turn on, or every kind when nil
+---@param kind "roles"|"marks"|nil Indicator kind to turn on, or every kind when nil
 ---@return nil
 function M.show_indicators(kind)
 	set_indicators(kind, false)
@@ -198,7 +198,7 @@ end
 ---Check if a UI component is currently hidden.
 ---
 ---@param component string Component name ("bufferline", "winbar", "indicators")
----@param kind "roles"|"harpoon"|nil Indicator kind to check, or every kind when nil
+---@param kind "roles"|"marks"|nil Indicator kind to check, or every kind when nil
 ---@return boolean hidden True if component is hidden
 function M.is_hidden(component, kind)
 	if component == "bufferline" then
@@ -209,7 +209,7 @@ function M.is_hidden(component, kind)
 		local off = ui_machines.indicators:state() == states.INDICATORS.OFF
 		if kind then
 			-- the machine speaks for every kind when it's off, and when it was turned on with every kind off
-			local all = hidden_indicators.roles and hidden_indicators.harpoon
+			local all = hidden_indicators.roles and hidden_indicators.marks
 			return off or (not all and hidden_indicators[kind] == true)
 		end
 		return off
@@ -324,7 +324,7 @@ function M.bufferline.get_theme_fg_color(bufnr, is_focused)
 	elseif is_focused then
 		return configs.colors.cokeline.fg.focused
 	elseif bufferline_state.harpooned_buffers[bufnr] then
-		return configs.colors.harpooned.unfocused.fg
+		return configs.colors.marked.unfocused.fg
 	else
 		return configs.colors.cokeline.fg.unfocused
 	end
@@ -366,7 +366,7 @@ local function get_theme_fg_by_slot(bufnr)
 	elseif bufnr == ctriquetra.ternary_bufnr then
 		return configs.colors.ternary.focused.bufnr
 	elseif bufferline_state.harpooned_buffers[bufnr] then
-		return configs.colors.harpooned.unfocused.fg
+		return configs.colors.marked.unfocused.fg
 	else
 		return configs.colors.cokeline.fg.unfocused
 	end
@@ -461,7 +461,7 @@ function M.bufferline.cokeline.create_buffer_components()
 				local ctriquetra = bufferline_state.current_window_triquetra
 				if not ctriquetra then return ' ' end -- Graceful fallback
 				local string
-				local harpooned = bufferline_state.harpooned_buffers[buffer.number] and not M.is_hidden("indicators", "harpoon")
+				local harpooned = bufferline_state.harpooned_buffers[buffer.number] and not M.is_hidden("indicators", "marks")
 				if M.is_hidden("indicators", "roles") then -- the role marks, switched off: a marked buffer keeps its mark
 					return harpooned and "󰛢  " or ' '
 				end
@@ -527,8 +527,8 @@ function M.bufferline.cokeline.create_buffer_components()
 				-- a % drawn full-width: cokeline measures and cuts the text before the tabline reads it, so a
 				-- doubled one would count two columns and could be cut apart
 				local filename = buffer.filename:gsub("%%", "％")
-				if bufferline_state.harpooned_buffers[buffer.number] and not M.is_hidden("indicators", "harpoon") then
-					return filename .. " ⥤ {" .. bufferline_state.harpooned_lookup[buffer.number] .. "}"
+				if bufferline_state.harpooned_buffers[buffer.number] and not M.is_hidden("indicators", "marks") then
+					return filename .. " ⟨" .. bufferline_state.harpooned_lookup[buffer.number] .. "⟩"
 				else
 					return filename
 				end
