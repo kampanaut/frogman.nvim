@@ -208,23 +208,42 @@ end
 
 ---Switch the editor's mode.
 ---
+---From inside the marks pop-up it shows the new mode's scope there, writing its edits first; outside
+---it, while the pop-up has edits not written yet, it refuses and says why.
+---
 ---@param mode "window"|"tab"|"session"
 ---@return nil
 function M.set_mode(mode)
-	data.mode = mode
-	local kind = M.scope_key(mode)
-	flash(vim.api.nvim_get_current_win(), "marks · " .. kind)
+	local popup = require('frogman.domains.marks.popup')
+	local winid = vim.api.nvim_get_current_win()
+	if popup.is_current() then
+		-- inside the pop-up: its edits written first, then the new mode's scope shown
+		if not popup.switch_mode(mode) then
+			return
+		end
+		winid = popup.origin() or winid
+	elseif popup.refuse_if_dirty() then
+		return
+	else
+		data.mode = mode
+	end
+	local kind = M.scope_key(mode, winid)
+	flash(winid, "marks · " .. kind)
 	repaint()
 end
 
 ---Mark the current buffer under an alias, in the first group of the current mode's scope.
 ---
----Something frogman doesn't track can't be marked, and an alias another file holds is left as it is.
----The winbar says what the add did.
+---Something frogman doesn't track can't be marked, and onto an alias another file holds it opens the
+---marks pop-up on the conflict. The winbar says what the add did. While the pop-up has edits not
+---written yet, it refuses and says why.
 ---
 ---@param alias string
 ---@return nil
 function M.add(alias)
+	if require('frogman.domains.marks.popup').refuse_if_dirty() then
+		return
+	end
 	local winid = vim.api.nvim_get_current_win()
 	local filehash = history.get_hash_from_buffer(vim.api.nvim_win_get_buf(winid))
 	local handle = filehash and history.handles.of_hash(filehash)
@@ -236,9 +255,8 @@ function M.add(alias)
 	local group = M.first_group(M.scope(kind, id, true), true)
 	local held = M.handle_of(group, alias)
 	if held and held ~= handle then
-		local name = require('frogman.domains.ui').routines.get_smart_basename
-		vim.notify("frogman: ⟨" .. alias .. "⟩ holds " .. name(held.hash) .. ", so " .. name(filehash) ..
-			" isn't marked there.", vim.log.levels.WARN)
+		-- the conflict is settled in the marks pop-up: the incoming file, and the one already set
+		require('frogman.domains.marks.popup').open({ conflict = { alias = alias, hash = filehash } })
 		return
 	end
 	group.marks[alias] = handle.id
@@ -250,7 +268,8 @@ end
 ---Jump to the file an alias marks, in the first group of the current mode's scope.
 ---
 ---It goes there as a primary jump goes to the primary. An alias that marks nothing does nothing,
----and so does every jump while a cycle runs, which says so.
+---and so does every jump while a cycle runs, which says so, and while the marks pop-up has edits not
+---written yet. From the pop-up, it leaves it and jumps in the window it was opened from.
 ---
 ---@param alias string
 ---@return nil
@@ -258,6 +277,18 @@ function M.jump(alias)
 	if require('frogman.domains.navigation').is_cycling() then
 		vim.notify("frogman: pick or cancel the cycle first.", vim.log.levels.WARN)
 		return
+	end
+	local popup = require('frogman.domains.marks.popup')
+	if popup.refuse_if_dirty() then
+		return
+	end
+	if popup.is_current() then
+		-- from the pop-up, the jump goes in the window it was opened from
+		local origin = popup.origin()
+		popup.leave()
+		if origin then
+			vim.api.nvim_set_current_win(origin)
+		end
 	end
 	local winid = vim.api.nvim_get_current_win()
 	local group = M.first_group(M.scope(M.scope_key(data.mode, winid)))

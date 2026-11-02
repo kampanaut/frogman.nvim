@@ -30,6 +30,17 @@ local function discard(name)
 	child.settle(100)
 end
 
+-- The aliases a file has in the current mode's scope, by its name: the scope of the window you're
+-- in, or, from the marks pop-up, of the window it was opened from.
+local function label(name)
+	return child.lua([[
+		local H = require('frogman.domains.history')
+		local popup = require('frogman.domains.marks').popup
+		local win = popup.is_current() and popup.origin() or nil
+		return require('frogman.domains.marks').label_of(H.routines.get_filehash(_G.FRG_TEST.root .. '/' .. ... .. '.txt'), win) or false
+	]], { name })
+end
+
 T['T711 [char] (M15) harpoon is gone'] = function()
 	child.lua([[_G.FRG_TEST.setup({ marks_provider = function() error('read') end })]])
 	local warned = vim.tbl_filter(function(m) return m:find('marks_provider is gone', 1, true) ~= nil end, said())
@@ -108,17 +119,23 @@ T['T717 [char] (M15) the add'] = function()
 	child.steps({ ':e a', ':e b', ADD .. 'a>' })
 	local bar = child.lua('return vim.wo.winbar')
 	child.steps({ ADD .. 's>' })
-	local label = child.lua('return require("frogman.domains.marks").label_of(require("frogman.domains.history").get_hash_from_buffer(vim.api.nvim_get_current_buf()))')
-	said()
+	local label_b = child.lua('return require("frogman.domains.marks").label_of(require("frogman.domains.history").get_hash_from_buffer(vim.api.nvim_get_current_buf()))')
 	child.steps({ ':e c', ADD .. 'a>' })
-	local taken = said()
+	local conflict = child.lua([[
+		local buf = vim.fn.bufnr('frogman://marks')
+		return buf ~= -1 and vim.api.nvim_get_current_buf() == buf and vim.api.nvim_buf_get_lines(buf, 1, 3, false) or false
+	]])
+	local c_marked = label('c')
+	child.lua('local b = vim.fn.bufnr("frogman://marks"); if b ~= -1 then vim.api.nvim_buf_delete(b, { force = true }) end')
+	child.settle()
 	child.cmd('help')
 	child.settle()
+	said()
 	child.steps({ ADD .. 'd>' })
 	local untracked = said()
-	eq({ bar = bar:find('⟨a⟩ marked', 1, true) ~= nil, label = label, taken = #taken == 1 and taken[1]:find('holds b.txt', 1, true) ~= nil,
-		untracked = untracked },
-		{ bar = true, label = 'a,s', taken = true, untracked = { 'frogman: only files can be marked.' } })
+	eq({ bar = bar:find('⟨a⟩ marked', 1, true) ~= nil, label = label_b, conflict = conflict, c_marked = c_marked, untracked = untracked },
+		{ bar = true, label = 'a,s', conflict = { 'a -> c.txt', 'a -> b.txt' }, c_marked = false,
+		untracked = { 'frogman: only files can be marked.' } })
 end
 
 T['T718 [char] (M15) the jump'] = function()
@@ -187,13 +204,6 @@ end
 
 -- Saved and loaded (M15, 4b) ---------------------------------------------------------
 
--- The aliases a file has in the current mode's scope, by its name.
-local function label(name)
-	return child.lua([[
-		local H = require('frogman.domains.history')
-		return require('frogman.domains.marks').label_of(H.routines.get_filehash(_G.FRG_TEST.root .. '/' .. ... .. '.txt')) or false
-	]], { name })
-end
 
 -- A tab session t saved from a second tab at ⦉c⦊ [d] (S2.save_tab_session),
 -- then a fresh editor with its first tab at ⦉x⦊ [t] loads t into a second tab
@@ -536,6 +546,339 @@ T['T733 [char] (M15, S1 Load) a load leaves out a mark no path names'] = functio
 		return out
 	]])
 	eq({ warned = #warns, marks = marks }, { warned = 1, marks = { 'a' } })
+end
+
+-- The marks pop-up (M15, 4c) -----------------------------------------------------------
+
+local OPEN = "<M-'><M-e>"
+
+-- The pop-up's buffer and its lines, once it's the current window; nil when it isn't open.
+local function popup()
+	return child.lua([[
+		local buf = vim.fn.bufnr('frogman://marks')
+		if buf == -1 then return vim.NIL end
+		return { buf = buf, lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false), modified = vim.bo[buf].modified,
+			ft = vim.bo[buf].filetype, bt = vim.bo[buf].buftype, current = vim.api.nvim_get_current_buf() == buf }
+	]])
+end
+
+-- The pop-up's lines replaced, then written with :w.
+local function write_lines(lines)
+	child.lua('vim.api.nvim_buf_set_lines(vim.fn.bufnr("frogman://marks"), 0, -1, false, ...)', { lines })
+	child.cmd('silent! write')
+	child.settle(100)
+end
+
+-- The virtual text drawn on the pop-up's lines, joined line by line, with the mode line first.
+local function decoration()
+	return child.lua([[
+		local buf = vim.fn.bufnr('frogman://marks')
+		local ns = vim.api.nvim_get_namespaces()['frogman_marks_popup']
+		local out = {}
+		for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })) do
+			local d = m[4]
+			local text = {}
+			for _, chunk in ipairs(d.virt_text or {}) do table.insert(text, chunk[1]) end
+			for _, l in ipairs(d.virt_lines or {}) do for _, chunk in ipairs(l) do table.insert(text, chunk[1]) end end
+			out[m[2] + 1] = (out[m[2] + 1] or '') .. table.concat(text)
+		end
+		return out
+	]])
+end
+
+-- The default rows for a group with only these marks, every other alias empty.
+local function rows(marked)
+	local out = {}
+	for _, alias in ipairs({ 'a', 's', 'd', 'f', 'u', 'i', 'o', 'p' }) do
+		table.insert(out, alias .. ' -> ' .. (marked[alias] or ''))
+	end
+	return out
+end
+
+T['T735 [char] (M15) the marks pop-up shows the scope\'s groups, a row for every alias'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', ADD .. 's>', ':e a', OPEN })
+	local p = popup()
+	local deco = decoration()
+	child.lua('vim.cmd("redraw")')
+	local drawn = tostring(child.get_screenshot()):find('marks · window', 1, true) ~= nil
+	child.cmd('close')
+	child.settle()
+	child.cmd('FrogmanMarks')
+	child.settle()
+	local again = popup()
+	eq({ lines = p.lines, ft = p.ft, bt = p.bt, current = p.current, mode = deco[1], drawn = drawn, again = again.lines },
+		{ lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt', s = 'c.txt' })), ft = 'frogman-marks', bt = 'acwrite',
+		current = true, mode = 'marks · window', drawn = true, again = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt', s = 'c.txt' })) })
+end
+
+T['T736 [char] (M15) a row typed and written marks its file, and a row emptied unmarks it'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	write_lines(vim.list_extend({ '❖ main' }, rows({ s = 'c.txt', d = 'd.txt' })))
+	local p = popup()
+	child.cmd('close')
+	child.settle()
+	eq({ modified = p.modified, b = label('b'), c = label('c'), d = label('d') }, { modified = false, b = false, c = 's', d = 'd' })
+end
+
+T['T737 [char] (M15) an alias holding two files refuses the write'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
+	table.insert(lines, 3, 'a -> c.txt')
+	child.messages()
+	write_lines(lines)
+	local said = vim.tbl_map(function(m) return m.msg end, child.messages())
+	local p = popup()
+	eq({ said = said, modified = p.modified, b = label('b'), c = label('c') },
+		{ said = { 'frogman: ⟨a⟩ holds two files in ❖ main: keep one.' }, modified = true, b = 'a', c = false })
+end
+
+T['T738 [char] (M15) a row naming no file is asked about, and No writes nothing'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.answer('No')
+	write_lines(vim.list_extend({ '❖ main' }, rows({ a = 'b.txt', s = 'missing.txt', d = 'd.txt' })))
+	local asked = child.prompts()
+	local after_no = { modified = popup().modified, d = label('d') }
+	child.answer('Yes')
+	child.cmd('silent! write')
+	child.settle(100)
+	eq({ asked = #asked, names = asked[1] and asked[1]:find('s -> missing.txt  names no file', 1, true) ~= nil, after_no = after_no,
+		d = label('d'), modified = popup().modified },
+		{ asked = 1, names = true, after_no = { modified = true, d = false }, d = 'd', modified = false })
+end
+
+T['T739 [char] (M15) a header typed makes a group, and the first group drives the keys'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
+	table.insert(lines, '❖ feature')
+	table.insert(lines, 'a -> c.txt')
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	local groups = child.lua([[
+		local s = require('frogman.domains.marks').data.scopes.window[vim.api.nvim_get_current_win()]
+		return vim.tbl_map(function(g) return g.name end, s.groups)
+	]])
+	child.steps({ JUMP .. 'a>' })
+	eq({ groups = groups, jumped = child.shown(), c = label('c') }, { groups = { 'main', 'feature' }, jumped = 'b', c = false })
+end
+
+T['T740 [char] (M15) a header deleted moves its rows up; the first one deleted refuses'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
+	table.insert(lines, '❖ feature')
+	table.insert(lines, 's -> c.txt')
+	write_lines(lines)
+	-- feature's header deleted: s -> c.txt joins main
+	local now = popup().lines
+	table.remove(now, vim.fn.index(now, '❖ feature') + 1)
+	write_lines(now)
+	local joined = { c = label('c'), groups = #child.lua('return require("frogman.domains.marks").data.scopes.window[vim.fn.win_getid(vim.fn.winnr("#"))].groups') }
+	child.messages()
+	now = popup().lines
+	table.remove(now, 1)
+	write_lines(now)
+	local said = vim.tbl_map(function(m) return m.msg end, child.messages())
+	eq({ joined = joined, said = said, modified = popup().modified },
+		{ joined = { c = 's', groups = 1 },
+		said = { "frogman: the marks above the first group's header have no group: put a header back above them, or delete them." },
+		modified = true })
+end
+
+T['T741 [char] (M15) two groups of one name are asked about, and Yes keeps both'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
+	table.insert(lines, '❖ main')
+	table.insert(lines, 'a -> c.txt')
+	child.answer('Yes')
+	write_lines(lines)
+	local asked = child.prompts()
+	child.cmd('close')
+	child.settle()
+	local groups = child.lua([[
+		local s = require('frogman.domains.marks').data.scopes.window[vim.api.nvim_get_current_win()]
+		return vim.tbl_map(function(g) return g.name end, s.groups)
+	]])
+	eq({ asked = #asked, second = asked[1] and asked[1]:find('is a second group of that name', 1, true) ~= nil, groups = groups },
+		{ asked = 1, second = true, groups = { 'main', 'main' } })
+end
+
+-- Telescope stubbed as far as the pop-up uses it: each picker picks the next of _G.FRG_PICKS.
+local function stub_pickers()
+	child.lua([[
+		for _, m in ipairs({ 'telescope.builtin', 'telescope.actions', 'telescope.actions.state', 'telescope.pickers', 'telescope.finders', 'telescope.config' }) do
+			package.loaded[m] = nil
+		end
+		local chosen
+		package.preload['telescope.actions'] = function()
+			return { select_default = { replace = function(_, fn) chosen = fn end }, close = function() end }
+		end
+		package.preload['telescope.actions.state'] = function()
+			return { get_selected_entry = function()
+				local v = table.remove(_G.FRG_PICKS, 1)
+				return v and { v, value = v, path = v } or nil
+			end }
+		end
+		package.preload['telescope.finders'] = function() return { new_table = function(t) return t end } end
+		package.preload['telescope.config'] = function() return { values = { generic_sorter = function() end } } end
+		package.preload['telescope.pickers'] = function()
+			return { new = function(_, opts) return { find = function() opts.attach_mappings(1); chosen() end } end }
+		end
+		package.preload['telescope.builtin'] = function()
+			return { find_files = function(opts) opts.attach_mappings(1); chosen() end }
+		end
+	]])
+end
+
+T['T742 [char] (M15) a picks an alias and a file, and onto a taken alias shows both'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
+	stub_pickers()
+	child.lua('_G.FRG_PICKS = { "s", _G.FRG_TEST.root .. "/c.txt" }; vim.api.nvim_win_set_cursor(0, { 2, 0 })')
+	child.step('a')
+	child.settle()
+	local free = popup().lines[3]
+	child.lua('_G.FRG_PICKS = { "a", _G.FRG_TEST.root .. "/d.txt" }')
+	child.step('a')
+	child.settle()
+	local p = popup()
+	local deco = decoration()
+	child.messages()
+	child.cmd('silent! write')
+	child.settle(100)
+	local refused = #vim.tbl_filter(function(m) return m.msg:find('holds two files', 1, true) ~= nil end, child.messages())
+	local i = vim.fn.index(p.lines, 'a -> b.txt') + 1
+	eq({ free = free, rows = { p.lines[2], p.lines[3] }, deco = { deco[2], deco[3] }, refused = refused },
+		{ free = 's -> c.txt', rows = { 'a -> b.txt', 'a -> d.txt' }, deco = { '  already set', '  incoming' }, refused = 1 })
+	eq(i, 2)
+end
+
+T['T743 [char] (M15) the add onto a taken alias opens the pop-up on the conflict'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', ADD .. 'a>' })
+	local p = popup()
+	local deco = decoration()
+	local cursor = child.lua('return vim.api.nvim_win_get_cursor(0)[1]')
+	eq({ rows = { p.lines[2], p.lines[3] }, deco = { deco[2], deco[3] }, cursor = cursor, modified = p.modified },
+		{ rows = { 'a -> c.txt', 'a -> b.txt' }, deco = { '  incoming', '  already set' }, cursor = 2, modified = true })
+end
+
+T['T744 [char] (M15) the primary key makes the line\'s file the opening window\'s primary'] = function()
+	child.steps({ ':e c', '<M-;><M-c>', ':e b', ADD .. 'a>', ':e a' })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ OPEN })
+	child.lua('vim.api.nvim_win_set_cursor(0, { 2, 0 })')
+	child.step('<M-c>')
+	child.settle()
+	local queue = child.lua([[
+		local t = require('frogman.domains.window').data.crux[...]
+		local H = require('frogman.domains.history')
+		return { vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_hash(h), ':t:r') end, t.primary_buffer), t.primary_enabled }
+	]], { win })
+	eq(queue, { { 'b', 'c' }, true })
+end
+
+T['T745 [char] (M15) the mark keys refuse while the pop-up has unsaved edits'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.lua('vim.api.nvim_buf_set_lines(0, 2, 3, false, { "s -> d.txt" })')
+	child.cmd('wincmd p')
+	child.settle()
+	child.messages()
+	child.steps({ JUMP .. 'a>', ADD .. 's>', "<M-'><M-2>" })
+	local said = vim.tbl_map(function(m) return m.msg end, child.messages())
+	local dirty = 'frogman: the marks pop-up has edits not written yet: write them with :w, or leave them, first.'
+	eq({ said = said, shown = child.shown(), mode = child.lua('return require("frogman.domains.marks").data.mode'), c = label('c') },
+		{ said = { dirty, dirty, dirty }, shown = 'c', mode = 'window', c = false })
+end
+
+T['T746 [char] (M15) an unassigned mark shows as unassigned and keeps its file through a write'] = function()
+	child.lua('_G.FRG_TEST.setup({ marks = { aliases = { q = 1, a = 2 } } })')
+	child.steps({ ':e b', "<M-'><M-'><M-q>", ':e c' })
+	child.lua('_G.FRG_TEST.setup({})')
+	child.steps({ OPEN })
+	local p = popup()
+	local deco = decoration()
+	child.lua('vim.api.nvim_buf_set_lines(0, 1, 2, false, { "a -> c.txt" })')
+	child.cmd('silent! write')
+	child.settle(100)
+	local after = popup().lines
+	local held = child.lua([[
+		local H = require('frogman.domains.history')
+		return require('frogman.domains.marks').routines.holds(H.routines.get_filehash(_G.FRG_TEST.root .. '/b.txt'))
+	]])
+	eq({ last = p.lines[#p.lines], deco = deco[#p.lines], kept = after[#after], held = held },
+		{ last = 'q -> b.txt', deco = '  unassigned', kept = 'q -> b.txt', held = true })
+end
+
+T['T747 [char] (M15) q writes and leaves, :q refuses, and :q! discards'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.lua('vim.api.nvim_buf_set_lines(0, 2, 3, false, { "s -> c.txt" })')
+	local ok = child.lua('return { pcall(vim.cmd, "quit") }')
+	local still = popup() ~= vim.NIL
+	child.cmd('quit!')
+	child.settle()
+	local discarded = label('c')
+	child.steps({ OPEN })
+	child.lua('vim.api.nvim_buf_set_lines(0, 2, 3, false, { "s -> c.txt" })')
+	child.step('q')
+	child.settle(100)
+	eq({ e37 = (ok[2] or ''):find('E37', 1, true) ~= nil, still = still, discarded = discarded, gone = popup() == vim.NIL, c = label('c') },
+		{ e37 = true, still = true, discarded = false, gone = true, c = 's' })
+end
+
+T['T748 [char] (M15) a mode key in the pop-up shows the new scope, writing the edits first'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.steps({ "<M-'><M-2>" })
+	local tab = { lines = popup().lines, mode = decoration()[1] }
+	child.lua('vim.api.nvim_buf_set_lines(0, 1, 2, false, { "a -> c.txt" })')
+	child.steps({ "<M-'><M-1>" })
+	local back = popup().lines
+	child.cmd('close')
+	child.settle()
+	child.steps({ "<M-'><M-2>" })
+	local in_tab = label('c')
+	eq({ tab = tab, back = back[2], in_tab = in_tab },
+		{ tab = { lines = vim.list_extend({ '❖ main' }, rows({})), mode = 'marks · tab' }, back = 'a -> b.txt', in_tab = 'a' })
+end
+
+T['T749 [char] (M15) <CR>, gf and a jump key act in the window the pop-up came from'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', ADD .. 's>', ':e d' })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ OPEN })
+	child.lua('vim.api.nvim_win_set_cursor(0, { 2, 0 })')
+	child.step('<CR>')
+	child.settle()
+	local cr = { shown = child.shown(win), open = popup() ~= vim.NIL }
+	child.steps({ ':e d', OPEN })
+	child.lua('vim.api.nvim_win_set_cursor(0, { 3, 0 })')
+	child.step('gf')
+	child.settle()
+	local gf = { shown = child.shown(win), open = popup() ~= vim.NIL, current = popup().current }
+	child.cmd('close')
+	child.settle()
+	child.steps({ ':e d', OPEN, JUMP .. 's>' })
+	local jump = { shown = child.shown(win), open = popup() ~= vim.NIL, here = child.lua('return vim.api.nvim_get_current_win()') == win }
+	eq({ cr = cr, gf = gf, jump = jump }, {
+		cr = { shown = 'b', open = false },
+		gf = { shown = 'c', open = true, current = true },
+		jump = { shown = 'c', open = false, here = true },
+	})
+end
+
+T['T750 [char] (M15) the pop-up doesn\'t write the marks of a window that\'s gone'] = function()
+	child.steps({ ':e b' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ADD .. 'a>' })
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ OPEN })
+	child.lua('vim.api.nvim_win_close(..., true)', { split })
+	child.settle()
+	child.lua('vim.api.nvim_buf_set_lines(0, 2, 3, false, { "s -> c.txt" })')
+	child.messages()
+	child.cmd('silent! write')
+	child.settle(100)
+	local said = vim.tbl_map(function(m) return m.msg end, child.messages())
+	local scope = child.lua('return require("frogman.domains.marks").data.scopes.window[...] ~= nil', { split })
+	eq({ said = said, scope = scope, modified = popup().modified },
+		{ said = { "frogman: the window these marks are for is gone, so they aren't written." }, scope = false, modified = true })
 end
 
 return T

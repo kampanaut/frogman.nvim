@@ -89,6 +89,7 @@ local function setup_keymaps(keymaps)
 			{ prefix .. "<M-1>", function() M.mark_mode("window") end, "Use the window's marks" },
 			{ prefix .. "<M-2>", function() M.mark_mode("tab") end, "Use the tab's marks" },
 			{ prefix .. "<M-3>", function() M.mark_mode("session") end, "Use the session's marks" },
+			{ prefix .. "<M-e>", function() M.mark_popup() end, "Open the marks pop-up" },
 		}
 		for alias, _ in pairs(settings.marks.aliases or {}) do
 			table.insert(marks_keys, { prefix .. "<M-" .. alias .. ">", function() M.mark_jump(alias) end, "Jump to mark " .. alias })
@@ -202,6 +203,9 @@ function M.setup(user_config)
 	vim.api.nvim_create_user_command("FrogmanClosed", function()
 		M.open_closed_lists()
 	end, { desc = "Open the closed lists" })
+	vim.api.nvim_create_user_command("FrogmanMarks", function()
+		M.mark_popup()
+	end, { desc = "Open the marks pop-up" })
 	vim.api.nvim_create_user_command("FrogmanDump", function(opts)
 		require('frogman.domains.ledger.dump').open(opts.args)
 	end, { nargs = 1, complete = "file", desc = "Open a flight recorder dump, decrypted, in a window (only from the directory it was written in)" })
@@ -563,7 +567,14 @@ function M.mark_add(alias)
 	marks.add(alias)
 end
 
-for _, export in ipairs({ "mark_mode", "mark_jump", "mark_add" }) do
+---Open the marks pop-up on the marks of the current mode's scope.
+---
+---@return nil
+function M.mark_popup()
+	marks.open_popup()
+end
+
+for _, export in ipairs({ "mark_mode", "mark_jump", "mark_add", "mark_popup" }) do
 	local run = M[export]
 	M[export] = function(...)
 		return settle.now(function(...)

@@ -30,6 +30,8 @@
 ---@field search string|false Search every page for a name, in the trail
 ---@field search_word string|false Search the trail for the name under the cursor (in the pop-ups, the line's file)
 ---@field write string|false Write the view's edits, in the closed lists and the primary pop-up
+---@field add string|false Add a mark through the picker, an alias then a file, in the marks pop-up
+---@field make_primary string|false Make the line's file the primary of the window the marks pop-up came from
 
 ---@class FrogmanGlyphs
 ---@field set "unicode"|"ascii" The glyph set (a glyph named here, outside the sets, replaces the set's own)
@@ -130,6 +132,10 @@ local defaults = {
 		height = 0.8, -- can be a ratio or a whole number
 		width = 0.8, -- can be a ratio or a whole number
 	},
+	marks_popup = {
+		height = 0.5, -- can be a ratio or a whole number
+		width = 0.6, -- can be a ratio or a whole number
+	},
 	-- the trail's header: its tally of the day's moves, its gauge of the days, its fill shaded by depth
 	trail = {
 		header = { tally = true, gauge = true, shade = true },
@@ -137,7 +143,7 @@ local defaults = {
 	glyphs = {
 		set = "unicode", -- "unicode" | "ascii"; a glyph named here, outside the sets, replaces the set's
 		unicode = {
-			list = "≡", closed = "↓", tag = "⎇", more = "…",
+			list = "≡", closed = "↓", tag = "⎇", more = "…", group = "❖",
 			-- the trail's: its title, fills by depth (and unshaded), gauge, marks, branches, folds, arrows, and a
 			-- search's mark and life line
 			title = "⦉ trail ⦊", shade0 = "≋", shade1 = "░", shade2 = "▒", shade3 = "▓", rule = "─",
@@ -153,7 +159,7 @@ local defaults = {
 			detached_left = "≡",
 		},
 		ascii = {
-			list = "#", closed = "v", tag = "@", more = "...",
+			list = "#", closed = "v", tag = "@", more = "...", group = "*",
 			title = "[ trail ]", shade0 = "~", shade1 = ".", shade2 = ":", shade3 = "#", rule = "-",
 			bars = "_.-=+*#", now_left = "(", now_right = ")", dot = " - ", older = "<<<", newer = ">>>",
 			branch = "|- ", last = "`- ", stem = "|  ", folded = "+", unfolded = "-", arrow = " -> ", ring = ":",
@@ -333,6 +339,8 @@ local defaults = {
 			search = "s", -- the trail's: search every page for a name
 			search_word = "*", -- the trail's: search for the name under the cursor
 			write = "<C-s>", -- the closed lists' and the primary pop-up's: write the edits
+			add = "a", -- the marks pop-up's: add a mark through the picker, an alias then a file
+			make_primary = "<M-c>", -- the marks pop-up's: make the line's file the primary
 		},
 	},
 	-- the ledger: `ring`, how many of the last steps are kept in memory, and `dump`, whether something

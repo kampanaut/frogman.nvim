@@ -18,6 +18,8 @@ M.set_mode = routines.set_mode
 M.label_of = routines.label_of
 M.marked_paths = routines.marked_paths
 M.flash_of = routines.flash_of
+M.popup = require('frogman.domains.marks.popup')
+M.open_popup = M.popup.open
 
 -- a load from idle starts from nothing, as at startup: every scope empty
 local storageSM = require('frogman.domains.storage.sm')
@@ -29,11 +31,18 @@ end, 2.5, true)
 ---Create the marks domain's autocmds in frogman's augroup.
 ---
 ---Called by setup(), so nothing runs at require. A window's marks go with the window, and a tab's
----with the tab.
+---with the tab. The marks pop-up's keys are mapped on its buffer.
 ---
 ---@param group integer The frogman augroup
 ---@return nil
 function M.init_autocmds(group)
+	vim.api.nvim_create_autocmd("FileType", {
+		group = group,
+		pattern = "frogman-marks",
+		callback = function(args)
+			M.popup.map_keys(args.buf)
+		end,
+	})
 	vim.api.nvim_create_autocmd("WinClosed", {
 		group = group,
 		callback = function(args)
