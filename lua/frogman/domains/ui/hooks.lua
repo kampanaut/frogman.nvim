@@ -139,6 +139,9 @@ function M.init_autocmds(group)
 		callback = function(args)
 			local function close_window()
 				vim.cmd("write!")
+				if vim.bo[args.buf].modified then
+					return -- the save was answered no: the pop-up stays, its lines as typed
+				end
 				local dwin = vim.b[args.buf].display_window
 
 				vim.api.nvim_win_close(dwin, true) -- its WinClosed deletes the buffer

@@ -242,9 +242,13 @@ end
 ---This will take in FILEPATHS and validates the input FILEPATHS, to be put as the
 ---new primary buffers history for the triquetra.
 ---
+---The lines it would leave out are asked about first, in one prompt. No saves nothing, and a path
+---typed in isn't registered either.
+---
 ---@param primary_filepaths Filepath[] The filepaths to update in the primary buffer
 ---@param winid WinId The window ID to update the primary buffer for
----@return nil
+---@return boolean saved False when the prompt was answered no
+---@return integer|nil at The index in primary_filepaths of the first line left out, when not saved
 function M.update_primary_buffer(primary_filepaths, winid)
 	local triquetra = data.get_window_triquetra(winid)
 
@@ -253,14 +257,17 @@ function M.update_primary_buffer(primary_filepaths, winid)
 	end
 
 	local error_lines = {}
+	local first_error = nil -- where the first line left out is, for the cursor when it's not saved
+	local to_register = {} -- registered, and put on the closed stack, only once it's saved
 	local valid_filepaths = {}
 	local seen = {}
 	local queued = {} -- what the queue holds now: an entry gone from disk stays, as every pointer does
 	for _, filehash in ipairs(triquetra.primary_buffer) do
 		queued[filehash] = true
 	end
-	for _, filepath in ipairs(primary_filepaths) do
+	for index, filepath in ipairs(primary_filepaths) do
 		local typed = filepath -- the messages name the line as it was typed
+		local errors_before = #error_lines
 		if not filepath:match("^NONAME_") and vim.trim(filepath) ~= "" then
 			filepath = vim.fn.fnamemodify(filepath, ":p") -- a relative path, as :e takes it
 		end
@@ -287,23 +294,27 @@ function M.update_primary_buffer(primary_filepaths, winid)
 					"] is not a registered no name buffer. You can only add registered no name buffers to the primary buffer.")
 				goto continue
 			else
-				history.register_filepath(filepath)
-				local filehash = history.get_hash_from_filepath(filepath)
-				if filehash then
-					history.routines.track_closing_filehash_force(filehash) -- It's fine, this line guarantees that the filepath is not NONAME_
-				end
+				table.insert(to_register, filepath)
 			end
 		end
 		table.insert(valid_filepaths, filepath)
 		seen[filepath] = true
 		::continue::
+		if #error_lines > errors_before and not first_error then
+			first_error = index
+		end
 	end
 
-	if #error_lines > 0 then
-		vim.notify(
-			"Error updating primary buffer for window " .. winid .. ":\n" .. table.concat(error_lines, "\n"),
-			vim.log.levels.ERROR
-		)
+	if #error_lines > 0 and vim.fn.confirm("frogman: these lines would be left out:\n" .. table.concat(error_lines, "\n") ..
+			"\nSave the rest?", "&Yes\n&No", 2) ~= 1 then
+		return false, first_error
+	end
+	for _, filepath in ipairs(to_register) do
+		history.register_filepath(filepath)
+		local filehash = history.get_hash_from_filepath(filepath)
+		if filehash then
+			history.routines.track_closing_filehash_force(filehash) -- It's fine, this line guarantees that the filepath is not NONAME_
+		end
 	end
 
 	-- the primary switches on only when the first row changed; otherwise it stays as it was
@@ -314,6 +325,7 @@ function M.update_primary_buffer(primary_filepaths, winid)
 	triquetra.primary_buffer = vim.tbl_map(history.get_hash_from_filepath, valid_filepaths)
 
 	loop_sm:to(loop_states.SELF)
+	return true
 end
 
 ---Check if a slot's file isn't on disk right now.

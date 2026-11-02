@@ -3951,14 +3951,23 @@ T['T376 [char] (S2) discarding a No Name entry in the picker asks first'] = func
 	eq({ kept = kept, discarded = not noname_listed() }, { kept = true, discarded = true })
 end
 
-T['T377 [char] (S2) a typed header that names no list refuses the write'] = function()
+T['T377 [char] (S2) a typed header that names no list is asked about'] = function()
 	two_closed()
 	local p = S2.picker(child)
 	local lines = vim.deepcopy(p.lines)
 	table.insert(lines, '≡nowhere')
-	child.messages()
+	child.answer('No')
 	S2.write_picker(child, p, lines)
-	eq({ named = S2.has(child.messages(), 'nowhere'), closed = child.closed() }, { named = true, closed = 'b,c' })
+	local no = {
+		named = (child.prompts()[1] or ''):find('≡nowhere', 1, true) ~= nil,
+		closed = child.closed(),
+		modified = child.lua('return vim.bo[...].modified', { p.buf }),
+	}
+	child.answer('Yes')
+	child.lua('vim.api.nvim_buf_call(..., function() vim.cmd("write") end)', { p.buf })
+	child.settle()
+	eq({ no, { closed = child.closed(), modified = child.lua('return vim.bo[...].modified', { p.buf }) } },
+		{ { named = true, closed = 'b,c', modified = true }, { closed = 'b,c', modified = false } })
 end
 
 -- The guard's cases type keys one group at a time, letting the editor settle between, as
@@ -4036,6 +4045,71 @@ T['T674 [char] (S2) a redraw of frogman\'s own is the state the guard takes back
 	on_t_header(redrawn)
 	keys('dd')
 	eq({ x_gone = S2.line_of(redrawn, 'x.txt') == nil, lines = picker_lines() }, { x_gone = true, lines = redrawn })
+end
+
+T['T675 [char] (S2) the write asks first about the lines it would leave out'] = function()
+	two_closed()
+	local p = S2.picker(child)
+	local b = S2.line_of(p.lines, 'b.txt')
+	local lines = vim.deepcopy(p.lines)
+	table.insert(lines, b + 1, lines[b]) -- a pasted copy, under the list that drew it
+	table.insert(lines, 'typo.txt')
+	child.answer('No')
+	S2.write_picker(child, p, lines)
+	local prompt = child.prompts()
+	local no = {
+		prompts = #prompt,
+		named = (prompt[1] or ''):find('typo.txt', 1, true) ~= nil and (prompt[1] or ''):find('twice under', 1, true) ~= nil,
+		closed = child.closed(),
+		lines = child.lua('return vim.api.nvim_buf_get_lines(..., 0, -1, false)', { p.buf }),
+		modified = child.lua('return vim.bo[...].modified', { p.buf }),
+		cursor = child.lua('return vim.api.nvim_win_get_cursor(...)[1]', { p.win }),
+	}
+	child.answer('Yes')
+	child.lua('vim.api.nvim_buf_call(..., function() vim.cmd("write") end)', { p.buf })
+	child.settle()
+	local yes = { closed = child.closed(), modified = child.lua('return vim.bo[...].modified', { p.buf }) }
+	eq({ no, yes }, {
+		{ prompts = 1, named = true, closed = 'b,c', lines = lines, modified = true, cursor = b + 1 },
+		{ closed = 'b,c', modified = false },
+	})
+end
+
+T['T676 [char] (S2) a merge\'s duplicate isn\'t asked about'] = function()
+	local s = S2.shared()
+	x_on_both(s)
+	local before = child.lua(LISTS_STATE)
+	local p = S2.picker(child)
+	local xs = {}
+	for i, l in ipairs(p.lines) do
+		if l:find('x.txt', 1, true) then table.insert(xs, i) end
+	end
+	eq(#xs, 2)
+	local lines = vim.deepcopy(p.lines)
+	local moved = table.remove(lines, xs[2])
+	table.insert(lines, xs[1] + 1, moved)
+	child.answer('No')
+	S2.write_picker(child, p, lines)
+	local after = child.lua(LISTS_STATE)
+	eq({ prompts = #child.prompts(), editor = after[''] }, { prompts = 0, editor = 'x@' .. before.t:match('x@([%d%.]+)') })
+end
+
+T['T677 [char] (S2) q stays open when the prompt is answered No'] = function()
+	two_closed()
+	local p = S2.picker(child)
+	child.lua('vim.api.nvim_buf_set_lines(..., -1, -1, false, { "typo.txt" })', { p.buf })
+	child.answer('No')
+	child.type_keys('q')
+	child.settle()
+	local no = {
+		open = child.lua('return vim.api.nvim_win_is_valid(...)', { p.win }),
+		modified = child.lua('return vim.api.nvim_buf_is_valid(...) and vim.bo[...].modified', { p.buf }),
+	}
+	child.answer('Yes')
+	child.type_keys('q')
+	child.settle()
+	eq({ no, { open = child.lua('return vim.api.nvim_win_is_valid(...)', { p.win }), closed = child.closed() } },
+		{ { open = true, modified = true }, { open = false, closed = 'b,c' } })
 end
 
 T['T525 [char] (S1 Load) a window entry whose maps are saved as null loads with empty ones'] = function()

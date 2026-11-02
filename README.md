@@ -251,7 +251,7 @@ You can backtrack your previous primary buffers. Every time you set a new buffer
     - Or just delete, to really remove it.
     - Type up a filereadable filepath and just save.
         - The system validates if it is readable. If it is readable, it registers it.
-        - If not, then vim.notify() an error for that line, the other lines still get saved.
+        - If not, then it asks you first, listing the lines it would leave out. Say yes and the other lines still get saved, say no and you're back in the pop-up with nothing saved.
     - If you press enter while under a line (in normal mode), that line will be put on top which will be promoted as the current primary buffer.
 - `<m-;><m-f>` always selects the first element `primary_buffer[1]`
 - If you disable primary buffer, `<m-;><m-f>` will just act like `<m-f>`, until you set it to active again. Setting a new primary from the pop-up window (a new first line, saved) sets it active again too.

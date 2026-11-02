@@ -200,6 +200,29 @@ Helpers.new_child = function()
 		return m
 	end
 
+	-- Answer every confirm() from now on with the choice whose label is `choice` ("Yes", "No"),
+	-- and keep each prompt's text: an unanswered confirm() blocks a headless child.
+	child.answer = function(choice)
+		child.lua([[
+			local choice = ...
+			_G.FRG_PROMPTS = _G.FRG_PROMPTS or {}
+			vim.fn.confirm = function(msg, choices)
+				table.insert(_G.FRG_PROMPTS, msg)
+				local i = 0
+				for c in (choices or ''):gmatch('[^\n]+') do
+					i = i + 1
+					if c:gsub('&', '') == choice then return i end
+				end
+				return 0
+			end
+		]], { choice })
+	end
+
+	-- The prompts confirm() was given since the last call.
+	child.prompts = function()
+		return child.lua('local p = _G.FRG_PROMPTS or {}; _G.FRG_PROMPTS = {}; return p')
+	end
+
 	return child
 end
 

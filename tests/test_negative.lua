@@ -278,19 +278,16 @@ T['T217 [char] (I10, A2) a :copen quickfix buffer is not left registered, and it
 end
 
 -- Decided 2026-10-21: a repeated file is refused loudly, like a typo'd path (Q11's partial save).
-T['T218 [char] (I18) a repeated file in the primary queue window is refused with an error, and saved once'] = function()
+T['T218 [char] (I18) a repeated file in the primary queue window is asked about, and saved once'] = function()
 	local w = queue_ba()
 	open_popup()
-	child.messages()
+	child.answer('Yes')
 	child.popup_set({ 'a.txt', 'b.txt', 'a.txt' })
 	child.cmd('write')
 	child.settle()
-	local errors = 0
-	for _, m in ipairs(child.messages()) do
-		if (m.level or 0) >= vim.log.levels.ERROR then errors = errors + 1 end
-	end
-	eq(errors >= 1, true)
-	eq(child.primary(w), '[a,b]on')
+	local prompt = child.prompts()
+	eq({ prompts = #prompt, named = (prompt[1] or ''):find('Repeated: [^\n]*a%.txt') ~= nil, primary = child.primary(w) },
+		{ prompts = 1, named = true, primary = '[a,b]on' })
 end
 
 T['T219 [char] (I19, Q14) an empty queue that is switched on stays on: navigation, slot keys and UI ticks leave it'] = function()
@@ -583,7 +580,7 @@ end
 
 -- The help file is loaded, readable and untracked; NONAME_999 was never a
 -- No Name buffer frogman knew.
-T['T234 [char] (A18, Q11) the pop-up rejects an untracked buffer and an unknown No Name, drops a blank line, and keeps the good lines'] = function()
+T['T234 [char] (A18, Q11) the pop-up asks about an untracked buffer and an unknown No Name, drops a blank line, and keeps the good lines'] = function()
 	local w = queue_ba()
 	child.cmd('help')
 	child.settle()
@@ -593,15 +590,17 @@ T['T234 [char] (A18, Q11) the pop-up rejects an untracked buffer and an unknown 
 	child.settle()
 	eq(child.win(), w)
 	open_popup()
-	child.messages()
+	child.answer('Yes')
 	child.popup_set({ 'a.txt', '', help, 'NONAME_999', 'b.txt' })
 	child.cmd('write')
 	child.settle()
-	eq(child.primary(w), '[a,b]on')
-	local errors = Extra.at_least(child.messages())
-	eq(#errors, 1)
-	eq(errors[1]:find(help, 1, true) ~= nil, true)
-	eq(errors[1]:find('NONAME_999', 1, true) ~= nil, true)
+	local prompt = child.prompts()
+	eq({
+		primary = child.primary(w),
+		prompts = #prompt,
+		help = (prompt[1] or ''):find(help, 1, true) ~= nil,
+		noname = (prompt[1] or ''):find('NONAME_999', 1, true) ~= nil,
+	}, { primary = '[a,b]on', prompts = 1, help = true, noname = true })
 end
 
 -- Decided 2026-10-21: a relative path is resolved against the current directory, as :e does.

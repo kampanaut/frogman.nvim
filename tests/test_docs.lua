@@ -86,8 +86,9 @@ T['D5 [char] README says a disabled primary makes <M-;><M-f> act like <M-f>'] = 
 	eq({ has(r, "won't do anything at all"), says }, { false, true })
 end
 
-T['D6 [char] README says a pop-up save keeps the good lines and reports the bad ones'] = function()
-	eq(has(read(README), 'nothing is saved'), false)
+T['D6 [char] README says a pop-up save asks first about the bad lines, and yes saves the good ones'] = function()
+	local r = flat(read(README))
+	eq({ has(r, 'nothing is saved'), has(r, 'listing the lines it would leave out') }, { false, true })
 end
 
 T['D26 [char] README\'s triquetra sentence follows the visiting rule, and "tiquetra" is fixed'] = function()

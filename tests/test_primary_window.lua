@@ -76,17 +76,21 @@ T['T98 [char] a typed path to an unloaded readable file is registered, queued an
 	eq(child.closed(), 'x')
 end
 
-T['T99 [char] valid lines are saved and invalid ones reported'] = function()
+T['T99 [char] with a mix of valid and invalid lines, the save asks first, and Yes saves the valid ones'] = function()
 	local w = queue_ba()
 	open()
 	child.messages()
+	child.answer('Yes')
 	child.popup_set({ 'a.txt', 'nonexistent.txt' })
 	child.cmd('write')
 	child.settle()
-	eq(child.primary(w), '[a]on')
-	local errors = Extra.at_least(child.messages())
-	eq(#errors, 1)
-	eq(errors[1]:find('File does not exist: nonexistent.txt', 1, true) ~= nil, true)
+	local prompt = child.prompts()
+	eq({
+		primary = child.primary(w),
+		prompts = #prompt,
+		named = (prompt[1] or ''):find('nonexistent.txt', 1, true) ~= nil,
+		errors = Extra.at_least(child.messages()),
+	}, { primary = '[a]on', prompts = 1, named = true, errors = {} })
 end
 
 T['T100 [char] q saves, then closes the window'] = function()
@@ -98,6 +102,52 @@ T['T100 [char] q saves, then closes the window'] = function()
 	eq(child.primary(w), '[a,b]on')
 	eq(child.popup(), nil)
 	eq(child.win(), w)
+end
+
+T['T678 [char] (A18) the save asks first about the lines it would leave out'] = function()
+	local w = queue_ba()
+	local pw = open()
+	local lines = { 'a.txt', 'b.txt', 'missing.txt', 'a.txt' }
+	child.answer('No')
+	child.popup_set(lines)
+	child.cmd('write')
+	child.settle()
+	local prompt = child.prompts()
+	local no = {
+		primary = child.primary(w),
+		prompts = #prompt,
+		named = (prompt[1] or ''):find('missing.txt', 1, true) ~= nil and (prompt[1] or ''):find('Repeated', 1, true) ~= nil,
+		lines = child.popup_lines(),
+		modified = child.lua('return vim.bo[vim.api.nvim_win_get_buf(...)].modified', { pw }),
+		cursor = child.lua('return vim.api.nvim_win_get_cursor(...)[1]', { pw }),
+	}
+	child.answer('Yes')
+	child.messages()
+	child.cmd('write')
+	child.settle()
+	eq({ no, { primary = child.primary(w), errors = Extra.at_least(child.messages()) } }, {
+		{ primary = '[b,a]on', prompts = 1, named = true, lines = lines, modified = true, cursor = 3 },
+		{ primary = '[a,b]on', errors = {} },
+	})
+end
+
+T['T679 [char] (A18) a save answered No changes nothing, and q stays open'] = function()
+	local w = queue_ba()
+	local pw = open()
+	local x_path = child.lua('return _G.FRG_TEST.root .. "/x.txt"')
+	eq(child.lua('return vim.fn.bufnr(...)', { x_path }), -1)
+	child.answer('No')
+	child.popup_set({ 'b.txt', 'a.txt', x_path, 'missing.txt' })
+	child.steps({ 'q' })
+	settle_close()
+	local no = { open = child.popup() == pw, primary = child.primary(w), x = child.hash_of('x') ~= vim.NIL, closed = child.closed() }
+	child.answer('Yes')
+	child.steps({ 'q' })
+	settle_close()
+	eq({ no, { open = child.popup() ~= nil, primary = child.primary(w), closed = child.closed() } }, {
+		{ open = true, primary = '[b,a]on', x = false, closed = '' },
+		{ open = false, primary = '[b,a,x]on', closed = 'x' },
+	})
 end
 
 T['T100 [char] <C-c> saves, then closes the window'] = function()

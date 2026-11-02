@@ -293,12 +293,24 @@ function M.show_primary_buffer_history()
 			if not vim.bo[dbuf].modified then
 				return
 			end
-			local lines = vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)
-			lines = vim.tbl_map(function(basename)
+			-- the blank lines dropped, each line's row kept for the cursor when the save is declined
+			local lines, rows = {}, {}
+			for row, basename in ipairs(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) do
 				basename = vim.trim(basename)
-				return basename_filepath_mapping[basename] or basename
-			end, vim.tbl_filter(function(value) return vim.trim(value) ~= "" end, lines))
-			window.update_primary_buffer(lines, cwin)
+				if basename ~= "" then
+					table.insert(lines, basename_filepath_mapping[basename] or basename)
+					table.insert(rows, row)
+				end
+			end
+			local saved, at = window.update_primary_buffer(lines, cwin)
+			if not saved then
+				-- nothing saved: the lines stay as typed, and the buffer stays modified
+				local win = vim.fn.bufwinid(dbuf)
+				if win ~= -1 and at and rows[at] then
+					vim.api.nvim_win_set_cursor(win, { rows[at], 0 })
+				end
+				return
+			end
 			vim.api.nvim_buf_set_lines(dbuf, 0, -1, false,
 				vim.tbl_map(to_display, triquetra.primary_buffer))
 			vim.bo[dbuf].modified = false
@@ -694,40 +706,73 @@ end
 ---drawn is kept as its newest. A deleted line is discarded, and a No Name text only once it's
 ---confirmed, since it exists nowhere else.
 ---
----A line that names no list or entry refuses the whole write, and so does a No Name text kept at
----the question. When the lists in the whole editor's file alone can't be written, it says so and
----returns false, with the other lists already written.
+---The lines it would leave out are asked about first, in one prompt: a line that names no list or
+---file, a file with no list above it, and a file twice under one header that no other list drew,
+---which can only be a pasted copy. A file twice under a header that another list drew too is a
+---merge, and kept once without asking. No writes nothing, and puts the cursor on the first of those
+---lines; so does a No Name text kept at its question. When the lists in the whole editor's file
+---alone can't be written, it says so and returns false, with the other lists already written.
 ---
 ---@param dbuf Bufnr The closed-lists buffer
 ---@param leaving boolean|nil True when the lines won't stay as edited after the write, the window left
 ---or drawn again, so the message says the lists in memory keep their edits rather than that they're
 ---still on screen
 ---@return boolean written True if every list was written
----@return string|nil why "file" when only the write into the whole editor's file failed
+---@return string|nil why "file" when only the write into the whole editor's file failed, "declined"
+---when the prompt was answered no
 local function write_closed_lists(dbuf, leaving)
 	local picker = closed_pickers[dbuf]
-	local current, new, count, errors = nil, {}, {}, {}
-	for _, line in ipairs(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) do
+	-- which lists drew each file: a file twice under a header another list drew too is a merge
+	local drawn_by = {}
+	for pool, filehashes in pairs(picker.drawn) do
+		for _, filehash in ipairs(filehashes) do
+			drawn_by[filehash] = drawn_by[filehash] or {}
+			drawn_by[filehash][pool] = true
+		end
+	end
+	local function merged(filehash, pool)
+		for other in pairs(drawn_by[filehash] or {}) do
+			if other ~= pool then
+				return true
+			end
+		end
+		return false
+	end
+	local current, current_header, new, count, left_out = nil, nil, {}, {}, {}
+	for row, line in ipairs(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) do
 		local text = vim.trim(line)
 		if text ~= "" then
 			local filehash = picker.hashes[text]
 			if picker.headers[text] then
-				current = picker.headers[text]
+				current, current_header = picker.headers[text], text
 				new[current], count[current] = new[current] or {}, count[current] or {}
 			elseif filehash and current then
 				count[current][filehash] = (count[current][filehash] or 0) + 1
 				if count[current][filehash] == 1 then
 					table.insert(new[current], filehash)
+				elseif not merged(filehash, current) then
+					table.insert(left_out, { row = row, text = text, why = "twice under " .. current_header })
 				end
+			elseif filehash then
+				table.insert(left_out, { row = row, text = text, why = "has no list above it" })
 			else
-				table.insert(errors, text)
+				table.insert(left_out, { row = row, text = text, why = "names no list or file" })
 			end
 		end
 	end
-	if #errors > 0 then
-		vim.notify("frogman: the closed lists weren't written: these lines name no list or entry (a list's header comes first):\n  " ..
-			table.concat(errors, "\n  "), vim.log.levels.ERROR)
-		return false
+	if #left_out > 0 then
+		local listed = {}
+		for _, line in ipairs(left_out) do
+			table.insert(listed, "  " .. line.text .. "  (" .. line.why .. ")")
+		end
+		if vim.fn.confirm("frogman: these lines would be left out:\n" .. table.concat(listed, "\n") .. "\nWrite the rest?",
+				"&Yes\n&No", 2) ~= 1 then
+			local win = vim.fn.bufwinid(dbuf)
+			if win ~= -1 then
+				vim.api.nvim_win_set_cursor(win, { left_out[1].row, 0 })
+			end
+			return false, "declined"
+		end
 	end
 
 	-- what's left on no list: a No Name text goes for good, so it's asked first
