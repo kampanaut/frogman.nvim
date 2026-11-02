@@ -236,6 +236,36 @@ function M.open()
 	vim.wo[win].concealcursor = "nvic"
 end
 
+---Show the snapshot on the cursor's line in the window the list was opened from, leaving the list.
+---
+---While the list has edits not written yet, it refuses and says so.
+---
+---@return nil
+function M.show()
+	if not is_open() then
+		return
+	end
+	if vim.bo[open.buf].modified then
+		vim.notify("frogman: the snapshot list has edits not written yet: write them with :w, or leave them, first.", vim.log.levels.WARN)
+		return
+	end
+	local id = id_in(vim.api.nvim_get_current_line())
+	local snapshot = id and routines.find(id)
+	local origin = M.origin()
+	if not snapshot then
+		return
+	end
+	if not origin then
+		vim.notify("frogman: the window this list was for is gone.", vim.log.levels.WARN)
+		return
+	end
+	if open.win and vim.api.nvim_win_is_valid(open.win) then
+		vim.api.nvim_win_close(open.win, true)
+	end
+	vim.api.nvim_set_current_win(origin)
+	require('frogman.domains.snapshots.preview').start(snapshot, origin)
+end
+
 ---Map the list's keys on its buffer, from `keymaps.views`.
 ---
 ---@param buf Bufnr
@@ -253,6 +283,7 @@ function M.map_keys(buf)
 	map(keys.write, function() vim.cmd("write") end, "Write the snapshot list")
 	map(keys.leave, M.leave, "Write the snapshot list and leave")
 	map(keys.leave_too, M.leave, "Write the snapshot list and leave")
+	map(keys.act, M.show, "Show the snapshot in its window")
 end
 
 return M

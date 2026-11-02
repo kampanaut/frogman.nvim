@@ -1559,4 +1559,19 @@ T['T581 [char] (A8, A12) <M-;><M-f> mid-cycle reopens a start closed meanwhile']
 		{ ok = true, err = nil, shown = 'b', dump = nil, state = CYCLING })
 end
 
+T['T788 [char] (A12) a cycle\'s cancel ahead of typed keys keeps their slots'] = function()
+	child.steps({ ':e a', ':e b', ':e d', ':e e' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e c' })
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	eq(child.slots(split), '⦉e⦊ [c] ⟦-⟧')
+	child.cmd('wincmd p')
+	child.settle()
+	child.steps({ '<M-m>' })
+	child.lua([[vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-w>w:e x.txt<CR>', true, false, true), 'xt', false)]])
+	child.settle(300)
+	eq(child.slots(split), '⦉c⦊ [x] ⟦-⟧')
+end
+
 return T

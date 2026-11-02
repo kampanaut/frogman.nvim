@@ -15,6 +15,21 @@ local M = {
 M.take = routines.take
 M.list = require('frogman.domains.snapshots.list')
 M.open_list = M.list.open
+M.preview = require('frogman.domains.snapshots.preview')
+
+-- going to another window leaves a snapshot showing, once the editor settles, as it cancels a cycle
+local navigation = require('frogman.domains.navigation')
+navigation.sm:on("*", "*", "cancel_preview_on_window_jump", function()
+	local shown_in = M.preview.window()
+	if shown_in == nil or shown_in == vim.api.nvim_get_current_win() or vim.fn.getcmdwintype() ~= "" then
+		return
+	end
+	require('frogman.settle').later("preview cancel", function()
+		if M.preview.window() and M.preview.window() ~= vim.api.nvim_get_current_win() then
+			M.preview.cancel()
+		end
+	end)
+end, 2, true, navigation.states.mode.WINENTER)
 
 -- a load from idle starts from nothing, as at startup: no snapshot, before the handles go
 local storageSM = require('frogman.domains.storage.sm')

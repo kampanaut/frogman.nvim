@@ -1240,7 +1240,9 @@ local derive_cache_lock = {}
 ---
 ---@param again boolean|nil True on the one retry after a cleanup
 local function derive_cache_from_window_triquetra(winid, again)
-	local window_triquetra = window.get_triquetra(winid)
+	-- a snapshot showing in the window is drawn in its place
+	local preview = package.loaded['frogman.domains.snapshots.preview']
+	local window_triquetra = preview and preview.triquetra_of(winid) or window.get_triquetra(winid)
 	if not  window_triquetra then
 		return nil
 	end
@@ -1394,6 +1396,16 @@ function M.refresh_ui(cwin)
 			if recent and recent.buf then
 				cache.recent_buffers[recent.buf] = true
 			end
+		end
+	end
+	-- a snapshot showing in the window: the bufferline draws its stored order, the first drawn the newest
+	local preview = package.loaded['frogman.domains.snapshots.preview']
+	if preview and preview.window() == cwin then
+		cache.buffer_ranking, cache.recent_buffers = {}, {}
+		local order = preview.order()
+		for i, bufnr in ipairs(order) do
+			cache.buffer_ranking[bufnr] = #order - i + 1
+			cache.recent_buffers[bufnr] = true
 		end
 	end
 	cache.current_buf = cbuf

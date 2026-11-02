@@ -162,19 +162,30 @@ function M.cancel_cycle(cycling_window)
 		vim.notify("Cycling cancelled.", vim.log.levels.INFO)
 	end
 	navigationSM:to(states.NORMAL) -- no mode, so this isn't a pick
-	-- history attaches on the landed window's own current slot, so no slot moves; what the window
-	-- shows, if that's something else, is then an ordinary visit.
+	M.attach_on_landing()
+	local ui = require('frogman.domains.ui')
+	ui.sm.loop:to(ui.states.LOOP.SELF)
+end
+
+---Attach history again on the window you landed in, as a cancel leaves it.
+---
+---History attaches on that window's own current slot, so no slot moves; what the window shows, if
+---that's something else, is then an ordinary visit, so keys typed ahead of the cancel move its slots
+---as typed by hand. A window visiting something untracked gets no visit.
+---
+---@return nil
+function M.attach_on_landing()
 	local landed = require('frogman.domains.window.data').crux[vim.api.nvim_get_current_win()]
 	local shown_bufnr = vim.api.nvim_get_current_buf()
-	-- a window visiting something untracked gets no visit: its current slot's file isn't what it shows
-	local visiting = history.get_hash_from_buffer(shown_bufnr) == nil
+	-- a window visiting something untracked gets no visit: its current slot's file isn't what it shows.
+	-- A file it was switched to in the same batch, its arrival dropped while history was detached, isn't
+	-- untracked: it's the other buffer it shows, taken in as plain navigation.
+	local visiting = history.get_hash_from_buffer(shown_bufnr) == nil and not history.routines.is_trackable(shown_bufnr)
 	local current_bufnr = landed and not visiting and history.get_buffer_from_hash(landed.current_slot)
 	history.sm:to(history.states.ATTACHED, { buf = current_bufnr or shown_bufnr }, history.states.mode.UPDATE)
 	if current_bufnr and current_bufnr ~= shown_bufnr then
 		history.sm:to(history.states.ATTACHED, { buf = shown_bufnr }, history.states.mode.UPDATE)
 	end
-	local ui = require('frogman.domains.ui')
-	ui.sm.loop:to(ui.states.LOOP.SELF)
 end
 
 return M

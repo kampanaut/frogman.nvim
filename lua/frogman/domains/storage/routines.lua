@@ -1758,8 +1758,17 @@ function M.load_history(cwd, name)
 		ledger.move("loaded", { name = vim.fn.fnamemodify(name or cwd, ":t"), words = table.concat(parts, " · "), parts = parts })
 	end
 	if (saved_data == nil and hint) or (saved_data and saved_data.scope == "tab") then
-		-- either tab route drops the tab's triquetras and attaches history: a cycle ends first
+		-- either tab route drops the tab's triquetras and attaches history: a cycle ends first, and so
+		-- does a snapshot showing: forgotten in the tab, as its windows start over, cancelled elsewhere
 		local tabpage = hint or vim.api.nvim_get_current_tabpage()
+		local preview = require('frogman.domains.snapshots').preview
+		local shown_in = preview.window()
+		if shown_in and vim.api.nvim_win_is_valid(shown_in) and vim.api.nvim_win_get_tabpage(shown_in) == tabpage then
+			preview.teardown()
+			history.sm:force_state(history.states.ATTACHED)
+		elseif shown_in then
+			preview.cancel()
+		end
 		local navigation = require('frogman.domains.navigation')
 		local cycling = navigation.data.cycling_window
 		if cycling and vim.api.nvim_win_is_valid(cycling) then

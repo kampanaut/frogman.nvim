@@ -195,6 +195,10 @@ function M.teardown()
 		end
 	end
 	data.by_window = {}
+	local preview = package.loaded['frogman.domains.snapshots.preview']
+	if preview then
+		preview.teardown()
+	end
 end
 
 return M

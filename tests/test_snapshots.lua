@@ -237,4 +237,262 @@ T['T771 [char] (M16) a window\'s snapshots go with it'] = function()
 	eq(left, { snapshots = false, x = false })
 end
 
+-- The preview, its cancel and its commit (M16, 5b) ---------------------------------------
+
+-- The window's display: what its winbar is drawn from, by file name, and the bufferline's first file.
+local function shown_as(win)
+	return child.lua([[
+		local win = ...
+		local UI = require('frogman.domains.ui')
+		local c = UI.data.window_display_cache[win] or {}
+		local function name(b) return b and vim.api.nvim_buf_is_valid(b) and vim.fn.fnamemodify(vim.api.nvim_buf_get_name(b), ':t:r') or '-' end
+		local best, at = nil, -math.huge
+		for b, t in pairs(UI.data.bufferline_state.buffer_ranking or {}) do
+			if t > at then best, at = b, t end
+		end
+		return { slots = '⦉' .. name(c.ternary_bufnr) .. '⦊ [' .. name(c.current_bufnr) .. '] ⟦' .. name(c.secondary_bufnr) .. '⟧',
+			first = name(best), detached = require('frogman.domains.history').is_detached() }
+	]], { win })
+end
+
+-- T762's snapshot, then :e a and :e e (⦉a⦊ [e] ⟦b⟧), and the snapshot shown from the list.
+local function previewing()
+	taken()
+	child.steps({ ':e a', ':e e' })
+	eq(child.slots(), '⦉a⦊ [e] ⟦b⟧')
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	return win
+end
+
+T['T772 [char] (M16) <CR> shows a snapshot in the window the list came from'] = function()
+	local win = previewing()
+	child.lua('require("frogman").set_cache_from_window_triquetra(...); require("frogman.domains.ui").routines.refresh_ui(...)', { win, win })
+	eq({ list = list() == vim.NIL, shown = child.shown(win), as = shown_as(win), slots = child.slots(win) },
+		{ list = true, shown = 'd', as = { slots = '⦉c⦊ [d] ⟦b⟧', first = 'd', detached = true }, slots = '⦉a⦊ [e] ⟦b⟧' })
+end
+
+T['T773 [char] (M16) <M-n> and <M-m> step through the stored order'] = function()
+	local win = previewing()
+	local order = snapshots(win)[1].order
+	local second = vim.split(order, ',')[2]
+	child.step('<M-m>')
+	child.settle()
+	local stepped = child.shown(win)
+	child.step('<M-n>')
+	child.settle()
+	eq({ stepped = stepped, back = child.shown(win), slots = child.slots(win) }, { stepped = second, back = 'd', slots = '⦉a⦊ [e] ⟦b⟧' })
+end
+
+T['T774 [char] (M16) a jump to another window cancels'] = function()
+	taken()
+	child.steps({ ':e a', ':e e' })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('vsplit')
+	child.settle()
+	child.cmd('wincmd p')
+	child.settle()
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	local during = child.shown(win)
+	child.cmd('wincmd w') -- into the split: the window before was the list, gone
+	child.settle(200)
+	eq({ during = during, back = child.shown(win), slots = child.slots(win),
+		detached = child.lua('return require("frogman.domains.history").is_detached()') },
+		{ during = 'd', back = 'e', slots = '⦉a⦊ [e] ⟦b⟧', detached = false })
+end
+
+T['T775 [char] (M16) opening the list cancels'] = function()
+	local win = previewing()
+	child.steps({ LIST })
+	child.settle(200)
+	eq({ back = child.shown(win), detached = child.lua('return require("frogman.domains.history").is_detached()'), open = list() ~= vim.NIL },
+		{ back = 'e', detached = false, open = true })
+end
+
+T['T776 [char] (M16) <M-v> on the snapshot\'s current takes it'] = function()
+	local win = previewing()
+	child.step('<M-v>')
+	child.settle(100)
+	local after = { slots = child.slots(win), queue = child.lua([[
+		local t = require('frogman.domains.window').data.crux[...]
+		local H = require('frogman.domains.history')
+		return vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_hash(h), ':t:r') end, t.primary_buffer)[1] .. (t.primary_enabled and 'on' or 'off')
+	]], { win }), newest = child.ordered():match('^[^,]+'), detached = child.lua('return require("frogman.domains.history").is_detached()') }
+	local before = child.dump_files()
+	child.messages()
+	child.steps({ '<M-;><M-r>', '<M-;><M-t>' })
+	local errors = vim.tbl_map(function(m) return m.msg end, vim.tbl_filter(function(m) return m.level == 4 end, child.messages()))
+	eq({ after = after, errors = errors, dumped = child.dumped_since(before) },
+		{ after = { slots = '⦉c⦊ [d] ⟦b⟧', queue = 'don', newest = 'd', detached = false }, errors = {} })
+end
+
+T['T777 [char] (M16) <M-v> on the snapshot\'s ternary makes a pick\'s swap'] = function()
+	local win = previewing()
+	child.lua('vim.api.nvim_win_set_buf(..., vim.fn.bufnr(_G.FRG_TEST.root .. "/c.txt"))', { win })
+	child.settle()
+	child.step('<M-v>')
+	child.settle(100)
+	eq(child.slots(win), '⦉d⦊ [c] ⟦b⟧')
+end
+
+T['T778 [char] (M16) the buffer the preview left keeps the arrangement it had'] = function()
+	local win = previewing()
+	child.step('<M-v>')
+	child.settle(100)
+	child.steps({ ':e e' })
+	local before = child.slots(win)
+	child.steps({ '<M-;><M-r>' })
+	local ternary = child.slots(win)
+	child.steps({ '<M-;><M-t>' })
+	eq({ before = before, ternary = ternary:match('^⦉(%a)⦊'), secondary = child.slots(win):match('⟦(%a)⟧$') },
+		{ before = before, ternary = 'a', secondary = 'b' })
+end
+
+T['T779 [char] (M16) every other key refuses while a snapshot shows'] = function()
+	local win = previewing()
+	child.messages()
+	child.steps({ '<M-f>', '<M-.>', "<M-'><M-a>" })
+	local said = vim.tbl_map(function(m) return m.msg end, child.messages())
+	local words = 'frogman: a snapshot is showing: <M-v> takes it, and opening the snapshot list or going to another window leaves it.'
+	eq({ said = said, shown = child.shown(win), detached = child.lua('return require("frogman.domains.history").is_detached()') },
+		{ said = { words, words, words }, shown = 'd', detached = true })
+end
+
+T['T780 [char] (M16) <CR> refuses while the list has unsaved edits'] = function()
+	taken()
+	child.steps({ ':e e', TAKE, LIST })
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, 1, false, {})')
+	child.messages()
+	child.step('<CR>')
+	child.settle()
+	eq({ said = vim.tbl_map(function(m) return m.msg end, child.messages()), open = list() ~= vim.NIL },
+		{ said = { 'frogman: the snapshot list has edits not written yet: write them with :w, or leave them, first.' }, open = true })
+end
+
+T['T781 [char] (M16) a snapshot whose current is closed isn\'t shown yet'] = function()
+	taken()
+	child.steps({ ':e a' })
+	child.cmd('bdelete d.txt')
+	child.settle()
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ LIST })
+	child.messages()
+	child.step('<CR>')
+	child.settle()
+	eq({ said = vim.tbl_map(function(m) return m.msg end, child.messages()), shown = child.shown(win),
+		detached = child.lua('return require("frogman.domains.history").is_detached()') },
+		{ said = { 'frogman: d.txt is closed; showing a closed file comes with borrowing.' }, shown = 'a', detached = false })
+end
+
+T['T782 [char] (M16) in the window view the commit lays the stored order into the window\'s history'] = function()
+	child.lua('_G.FRG_TEST.setup({ bufferline = { history_view = "window" } })')
+	local win = previewing()
+	local order = snapshots(win)[1].order
+	child.step('<M-v>')
+	child.settle(100)
+	local ranked = child.lua([[
+		local H = require('frogman.domains.history')
+		local own = H.data.crux_internals.window[...] or {}
+		local items = {}
+		for h, t in pairs(own) do table.insert(items, { vim.fn.fnamemodify(H.get_filepath_from_hash(h) or h, ':t:r'), t }) end
+		table.sort(items, function(a, b) return a[2] > b[2] end)
+		return table.concat(vim.tbl_map(function(i) return i[1] end, items), ',')
+	]], { win })
+	eq(ranked:sub(1, #order), order)
+end
+
+T['T783 [char] (M16, A20) the rename rule: a slot that ends up holding the current\'s file lets it go'] = function()
+	child.steps({ ':e a', ':e b', '<M-f>', ':e a' })
+	eq(child.slots():match('%[(%a)%] ⟦(%a)⟧'), 'a')
+	child.steps({ TAKE, ':e c' })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('bwipeout a.txt')
+	child.settle()
+	child.lua([[
+		local root = _G.FRG_TEST.root
+		os.rename(root .. '/b.txt', root .. '/a.txt')
+		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/b.txt'), root .. '/a.txt')
+	]])
+	child.settle(300)
+	local before = child.dump_files()
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	child.step('<M-v>')
+	child.settle(100)
+	eq({ secondary = child.slots(win):match('⟦(.-)⟧$'), dumped = child.dumped_since(before) }, { secondary = '-' })
+end
+
+T['T784 [char] (M16) <M-v> on the snapshot\'s secondary makes a pick\'s swap'] = function()
+	local win = previewing()
+	child.lua('vim.api.nvim_win_set_buf(..., vim.fn.bufnr(_G.FRG_TEST.root .. "/b.txt"))', { win })
+	child.settle()
+	child.step('<M-v>')
+	child.settle(100)
+	eq(child.slots(win), '⦉c⦊ [b] ⟦d⟧')
+end
+
+T['T785 [char] (M16) <M-v> outside the snapshot\'s slots'] = function()
+	local win = previewing()
+	child.lua('vim.api.nvim_win_set_buf(..., vim.fn.bufnr(_G.FRG_TEST.root .. "/a.txt"))', { win })
+	child.settle()
+	child.step('<M-v>')
+	child.settle(100)
+	local note = child.lua([[
+		local t = require('frogman.domains.window').data.crux[...]
+		local H = require('frogman.domains.history')
+		local a = H.routines.get_filehash(_G.FRG_TEST.root .. '/a.txt')
+		local v = t.displacement_ternary_map[a]
+		return v and vim.fn.fnamemodify(H.get_filepath_from_hash(v), ':t:r') or false
+	]], { win })
+	eq({ slots = child.slots(win), note = note }, { slots = '⦉c⦊ [a] ⟦b⟧', note = 'd' })
+end
+
+T['T786 [char] (M16, A12) a cancel ahead of typed keys keeps their slots'] = function()
+	taken()
+	child.steps({ ':e a', ':e e' })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e c' })
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	local before = child.slots(split)
+	child.cmd('wincmd p')
+	child.settle()
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	child.lua([[vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-w>w:e x.txt<CR>', true, false, true), 'xt', false)]])
+	child.settle(300)
+	eq({ before = before, split = child.slots(split), back = child.shown(win) },
+		{ before = before, split = '⦉' .. before:match('%[(%a)%]') .. '⦊ [x] ⟦-⟧', back = 'e' })
+end
+
+T['T787 [char] (M16, S1 Load) a tab session\'s load ends a preview'] = function()
+	local got = {}
+	for _, where in ipairs({ 'here', 'elsewhere' }) do
+		child.setup()
+		local win = previewing()
+		local tab = child.lua('return vim.api.nvim_get_current_tabpage()')
+		if where == 'elsewhere' then
+			child.lua('vim.cmd("noautocmd tabnew"); vim.cmd("noautocmd edit f.txt")')
+			tab = child.lua('return vim.api.nvim_get_current_tabpage()')
+			child.lua('vim.api.nvim_set_current_win(...)', { win })
+		end
+		child.lua('require("frogman").load_session("u", { tab = ... })', { tab })
+		child.settle(300)
+		local attached = not child.lua('return require("frogman.domains.history").is_detached()')
+		local active = child.lua('return require("frogman.domains.snapshots").preview.active()')
+		child.messages()
+		child.steps({ '<M-f>' })
+		local refused = #vim.tbl_filter(function(m) return m.msg:find('a snapshot is showing', 1, true) ~= nil end, child.messages())
+		table.insert(got, { attached = attached, active = active, refused = refused })
+	end
+	eq(got, { { attached = true, active = false, refused = 0 }, { attached = true, active = false, refused = 0 } })
+end
+
 return T

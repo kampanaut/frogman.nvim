@@ -592,16 +592,35 @@ for _, export in ipairs({ "mark_mode", "mark_jump", "mark_add", "mark_popup" }) 
 	local run = M[export]
 	M[export] = function(...)
 		return settle.now(function(...)
+			if snapshots.preview.active() then
+				vim.notify(snapshots.preview.REFUSED, vim.log.levels.WARN)
+				return
+			end
 			navigation.cancel_cycle_elsewhere()
 			return run(...)
 		end, ...)
 	end
 end
 
+-- while a snapshot shows, the cycle keys step through its order and take it, opening the list leaves it,
+-- and every other key says so: here, so a user's own mapping that calls an export does the same
+local while_previewing = {
+	cycle_left = function() snapshots.preview.step(1) end,
+	cycle_right = function() snapshots.preview.step(2) end,
+	cycle_select = function() snapshots.preview.commit() end,
+}
 for _, action in ipairs(keymap_actions) do
 	local export = M[action[2]]
+	local name = action[2]
 	M[action[2]] = function(...)
 		return settle.now(function(...)
+			if snapshots.preview.active() and name ~= "open_snapshots" then
+				if while_previewing[name] then
+					return while_previewing[name]()
+				end
+				vim.notify(snapshots.preview.REFUSED, vim.log.levels.WARN)
+				return
+			end
 			navigation.cancel_cycle_elsewhere()
 			return export(...)
 		end, ...)
