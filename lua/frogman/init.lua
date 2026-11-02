@@ -138,6 +138,11 @@ function M.setup(user_config)
 	end
 
 	deep_merge_into(settings, user_config or {})
+	-- the primary pop-up's picker is telescope's: a config that still names its own is told so
+	if settings.primary_picker ~= nil then
+		settings.primary_picker = nil
+		vim.notify("frogman: primary_picker is gone: the primary pop-up's file picker is telescope's.", vim.log.levels.WARN)
+	end
 	-- the session directory as Neovim reads a path, `~` and variables expanded, with one slash at its end
 	local session_dir = vim.fs.normalize(settings.session_dir)
 	settings.session_dir = session_dir:sub(-1) == "/" and session_dir or session_dir .. "/"

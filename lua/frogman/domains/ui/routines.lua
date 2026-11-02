@@ -73,16 +73,11 @@ local primary_ns = vim.api.nvim_create_namespace("frogman_primary_popup")
 
 ---Get the picker the primary pop-up adds files through.
 ---
----It's the config's `primary_picker` when set, a function given a callback that it calls with
----the picked files' paths. With none set, it's telescope's find_files when telescope is
----installed, which picks the selected entries, or the entry under the cursor when none are.
+---It's telescope's find_files, which picks the selected entries, or the entry under the cursor
+---when none are. Telescope is required; without it there's no picker.
 ---
----@return fun(add: fun(paths: string[]))|nil picker The picker, or nil when there's none
+---@return fun(add: fun(paths: string[]))|nil picker The picker, or nil when telescope isn't installed
 local function primary_picker()
-	local configured = require('frogman.configs').primary_picker
-	if type(configured) == "function" then
-		return configured
-	end
 	local ok, builtin = pcall(require, "telescope.builtin")
 	if not ok then
 		return nil
@@ -130,14 +125,14 @@ end
 ---Add files to the primary pop-up through the picker.
 ---
 ---The picked paths go on the cursor's line when it's empty, otherwise after it. Nothing is
----saved until `:w`. With no picker, it says how to get one.
+---saved until `:w`. Without telescope, it says so.
 ---
 ---@param dbuf Bufnr The pop-up's buffer
 ---@return nil
 function M.pick_into_primary_popup(dbuf)
 	local picker = primary_picker()
 	if not picker then
-		vim.notify("frogman: no file picker: install telescope.nvim, or set primary_picker in the config.", vim.log.levels.WARN)
+		vim.notify("frogman: the primary pop-up's file picker is telescope's, and telescope.nvim isn't installed.", vim.log.levels.WARN)
 		return
 	end
 	local dwin = vim.b[dbuf].display_window
@@ -710,8 +705,9 @@ end
 ---file, a file with no list above it, and a file twice under one header that no other list drew,
 ---which can only be a pasted copy. A file twice under a header that another list drew too is a
 ---merge, and kept once without asking. No writes nothing, and puts the cursor on the first of those
----lines; so does a No Name text kept at its question. When the lists in the whole editor's file
----alone can't be written, it says so and returns false, with the other lists already written.
+---lines. A No Name text kept at its own question writes nothing too. When the lists in the whole
+---editor's file alone can't be written, it says so and returns false, with the other lists already
+---written.
 ---
 ---@param dbuf Bufnr The closed-lists buffer
 ---@param leaving boolean|nil True when the lines won't stay as edited after the write, the window left

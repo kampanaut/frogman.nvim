@@ -32,7 +32,7 @@ You can also see that the two windows have their own history. That's `bufferline
 - nvim-cokeline
 - openssl 3 or 4 (system installed, its libcrypto is used for encrypting the session files. Hashing is done with neovim's built-in `vim.fn.sha256`. When frogman can't find it, set `libcrypto_path` to its file. Windows is untested: there, set `libcrypto_path` to the DLL, such as `libcrypto-3-x64.dll`)
 - harpoon (optional, harpooned buffers are marked in the bufferline; any other marks plugin through `marks_provider`)
-- telescope.nvim (optional, used for adding files in the primary buffer pop-up)
+- telescope.nvim (used for adding files in the primary buffer pop-up)
 - a session manager (optional, resession.nvim is used in the examples below)
 
 ## Installation
@@ -48,6 +48,7 @@ This works for all plugin managers.
     config = true,
     dependencies = {
         "willothy/nvim-cokeline",
+        "nvim-telescope/telescope.nvim",
     },
 }
 ```
@@ -575,8 +576,6 @@ local defaults = {
     },
     -- label_provider: where you are, for tagging files that go missing: nil reads .git/HEAD, a
     -- function returning a string gives the label, false turns labels off (the tag is then the time).
-    -- primary_picker: the primary pop-up's file picker, a function given a callback it calls with the
-    -- picked files' paths: nil uses telescope's find_files when telescope is installed.
     -- marks_provider: the marked files, for the bufferline's marks: nil reads harpoon's list when it's
     -- installed, a function returning their paths in order gives them, false marks nothing.
     -- the winbar: `own`, whether frogman writes it (otherwise `require('frogman').winbar_segment()`

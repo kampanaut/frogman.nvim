@@ -106,7 +106,7 @@ T['D27 [char] README\'s requirements (D4, D27)'] = function()
 		'- nvim-cokeline',
 		"- openssl 3 or 4 (system installed, its libcrypto is used for encrypting the session files. Hashing is done with neovim's built-in `vim.fn.sha256`. When frogman can't find it, set `libcrypto_path` to its file. Windows is untested: there, set `libcrypto_path` to the DLL, such as `libcrypto-3-x64.dll`)",
 		'- harpoon (optional, harpooned buffers are marked in the bufferline; any other marks plugin through `marks_provider`)',
-		'- telescope.nvim (optional, used for adding files in the primary buffer pop-up)',
+		'- telescope.nvim (used for adding files in the primary buffer pop-up)',
 		'- a session manager (optional, resession.nvim is used in the examples below)',
 	}
 	local missing = {}
@@ -120,9 +120,10 @@ T['D27 [char] README\'s lazy.nvim example depends on cokeline, not harpoon, with
 	local block = section(read(README), '### lazy.nvim')
 	eq({
 		has(block, 'nvim-cokeline'),
+		has(block, 'nvim-telescope/telescope.nvim'),
 		has(block, 'harpoon'),
 		has(block, 'resession.nvim and nvim-cokeline, requires this plugin'),
-	}, { true, false, false })
+	}, { true, true, false, false })
 end
 
 T['D27 [char] README\'s cokeline paragraph'] = function()

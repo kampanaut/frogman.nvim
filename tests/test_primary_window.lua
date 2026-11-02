@@ -192,9 +192,31 @@ T['T158 [char] a save switches the primary on only when the first row changed'] 
 	eq(got, { reorder_off = '[a,b]on', drop_a_off = '[b]off', drop_a_on = '[b]on' })
 end
 
--- The picker stubbed: it picks what _G.FRG_PICKED names, full paths.
+-- Telescope stubbed, as far as the picker uses it: find_files picks what _G.FRG_PICKED names,
+-- full paths, as its multi-selection.
 local function stub_picker()
-	child.lua([[_G.FRG_TEST.setup({ primary_picker = function(add) add(_G.FRG_PICKED) end })]])
+	child.lua([[
+		for _, m in ipairs({ 'telescope.builtin', 'telescope.actions', 'telescope.actions.state' }) do
+			package.loaded[m] = nil
+		end
+		local chosen
+		package.preload['telescope.actions'] = function()
+			return { select_default = { replace = function(_, fn) chosen = fn end }, close = function() end }
+		end
+		package.preload['telescope.actions.state'] = function()
+			return {
+				get_current_picker = function()
+					return { get_multi_selection = function()
+						return vim.tbl_map(function(p) return { path = p } end, _G.FRG_PICKED or {})
+					end }
+				end,
+				get_selected_entry = function() return nil end,
+			}
+		end
+		package.preload['telescope.builtin'] = function()
+			return { find_files = function(opts) opts.attach_mappings(1); chosen() end }
+		end
+	]])
 end
 local function pick(files, row)
 	child.lua('_G.FRG_PICKED = vim.tbl_map(function(f) return _G.FRG_TEST.root .. "/" .. f end, ...)', { files })
@@ -347,8 +369,42 @@ T['T160 [char] with no picker, <M-e> gives a message and changes no line'] = fun
 	child.messages()
 	local ok, err = child.step('<M-e>')
 	eq({ ok, err }, { true, nil })
-	eq(#child.messages() > 0, true)
+	local named = false
+	for _, m in ipairs(child.messages()) do
+		if (m.msg or ''):find('telescope.nvim', 1, true) then named = true end
+	end
+	eq(named, true)
 	eq(child.popup_lines(), { 'b.txt', 'a.txt' })
+end
+
+T['T680 [char] (A18) a config that sets primary_picker is told it\'s gone, and the picker is telescope\'s'] = function()
+	child.messages()
+	child.lua([[_G.FRG_TEST.setup({ primary_picker = function(add) _G.FRG_OWN_PICKER = true; add({}) end })]])
+	local warned = 0
+	for _, m in ipairs(child.messages()) do
+		if (m.msg or ''):find('primary_picker', 1, true) and m.level == vim.log.levels.WARN then warned = warned + 1 end
+	end
+	stub_picker()
+	queue_ba()
+	open()
+	child.popup_set({ 'b.txt', 'a.txt', '' })
+	pick({ 'c.txt' }, 3)
+	eq({ warned = warned, lines = child.popup_lines(), own = child.lua('return _G.FRG_OWN_PICKER == true') },
+		{ warned = 1, lines = { 'b.txt', 'a.txt', 'c.txt' }, own = false })
+end
+
+T['T681 [char] (A18) gf answered No keeps the cursor on the first line it would leave out'] = function()
+	local w = queue_ba()
+	local pw = open()
+	child.answer('No')
+	child.popup_set({ 'a.txt', 'missing.txt', 'b.txt' })
+	child.lua('vim.api.nvim_win_set_cursor(0, { 3, 0 })')
+	child.steps({ 'gf' })
+	eq({
+		lines = child.popup_lines(),
+		primary = child.primary(w),
+		cursor = child.lua('return vim.api.nvim_win_get_cursor(...)[1]', { pw }),
+	}, { lines = { 'b.txt', 'a.txt', 'missing.txt' }, primary = '[b,a]on', cursor = 3 })
 end
 
 T['T160 [char] <M-e> is not mapped outside the primary queue window'] = function()

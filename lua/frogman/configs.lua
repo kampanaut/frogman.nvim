@@ -338,8 +338,6 @@ local defaults = {
 	},
 	-- label_provider: where you are, for tagging files that go missing: nil reads .git/HEAD, a
 	-- function returning a string gives the label, false turns labels off (the tag is then the time).
-	-- primary_picker: the primary pop-up's file picker, a function given a callback it calls with the
-	-- picked files' paths: nil uses telescope's find_files when telescope is installed.
 	-- marks_provider: the marked files, for the bufferline's marks: nil reads harpoon's list when it's
 	-- installed, a function returning their paths in order gives them, false marks nothing.
 	-- the winbar: `own`, whether frogman writes it (otherwise `require('frogman').winbar_segment()`

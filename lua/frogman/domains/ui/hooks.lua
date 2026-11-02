@@ -169,7 +169,9 @@ function M.init_autocmds(group)
 
 				if stay then
 					vim.cmd("write!")
-					vim.api.nvim_win_set_cursor(dwin, { 1, 0 })
+					if not vim.bo[dbuf].modified then -- a save answered no leaves the cursor where it put it
+						vim.api.nvim_win_set_cursor(dwin, { 1, 0 })
+					end
 				else
 					close_window()
 				end
