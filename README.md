@@ -370,6 +370,10 @@ local defaults = {
         height = 0.5, -- can be a ratio or a whole number
         width = 0.6, -- can be a ratio or a whole number
     },
+    snapshots_popup = {
+        height = 0.4, -- can be a ratio or a whole number
+        width = 0.8, -- can be a ratio or a whole number
+    },
     -- the trail's header: its tally of the day's moves, its gauge of the days, its fill shaded by depth
     trail = {
         header = { tally = true, gauge = true, shade = true },
@@ -555,6 +559,8 @@ local defaults = {
 
         open_primary_buffer_history = "<M-;>F", -- Open primary buffer history
         open_closed_lists = "<M-;>W", -- Open the closed lists
+        take_snapshot = "<M-;><M-s>", -- Take a snapshot of the window
+        open_snapshots = "<M-;>S", -- Open the window's snapshots
 
         -- Marks: the prefix, then <M-1>, <M-2> or <M-3> for the window's, the tab's or the session's
         -- marks; then an alias, <M-a>, to jump to its mark; twice, <M-'><M-'><M-a>, to mark the buffer there

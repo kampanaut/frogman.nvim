@@ -217,6 +217,19 @@ Helpers.new_child = function()
 						end
 					end
 				end
+				-- each snapshot's place holds its slots', its queue's and its order's files (M16)
+				local Sn = package.loaded['frogman.domains.snapshots']
+				for _, snaps in pairs(Sn and Sn.data.by_window or {}) do
+					for _, sn in ipairs(snaps) do
+						local hashes = {}
+						for _, id in ipairs(vim.list_extend({ sn.current, sn.secondary or false, sn.ternary or false }, vim.list_extend(vim.deepcopy(sn.queue), sn.order))) do
+							local h = id and H.handles.get(H.handles.resolve(id))
+							if h then table.insert(hashes, h.hash) end
+						end
+						local bad = same('snap:' .. sn.id, hashes)
+						if bad then return bad end
+					end
+				end
 				local bufs = {}
 				for h in pairs(H.data.hash_buffer_registry.buffers) do table.insert(bufs, h) end
 				local bad = same('buffer', bufs)

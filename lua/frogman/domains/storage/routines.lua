@@ -1787,6 +1787,7 @@ function M.load_history(cwd, name)
 	elseif saved_data then
 		-- Restore from saved session
 		marks().teardown() -- from bare as from idle: the file's marks alone, and none left on a handle the load lets go
+		require('frogman.domains.snapshots').routines.teardown()
 		load_pool = history.routines.pools()[""]
 		data.editor_session, data.unnamed = { name = name, directory = cwd }, nil
 		ledger.set_session(name, cwd)
@@ -1852,6 +1853,7 @@ function M.load_history(cwd, name)
 		end
 	else
 		marks().teardown() -- before the fresh start lets every handle go
+		require('frogman.domains.snapshots').routines.teardown()
 		populate_history()
 		data.editor_session, data.unnamed = { name = name, directory = cwd }, nil
 		ledger.set_session(name, cwd)

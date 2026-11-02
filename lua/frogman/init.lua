@@ -13,6 +13,7 @@ local window = require('frogman.domains.window')
 local ui = require('frogman.domains.ui')
 local storage = require('frogman.domains.storage')
 local marks = require('frogman.domains.marks')
+local snapshots = require('frogman.domains.snapshots')
 local ledger = require('frogman.domains.ledger')
 local settle = require('frogman.settle')
 local engine = require('frogman.engine')
@@ -56,6 +57,9 @@ local keymap_actions = {
 	{ "close_buffer", "delete_buffer", "Close the current buffer" },
 	{ "open_primary_buffer_history", "open_primary_buffer_history", "Open the primary queue" },
 	{ "open_closed_lists", "open_closed_lists", "Open the closed lists" },
+	-- Snapshots
+	{ "take_snapshot", "take_snapshot", "Take a snapshot of the window" },
+	{ "open_snapshots", "open_snapshots", "Open the window's snapshots" },
 }
 
 ---Setup keymaps for frogman operations
@@ -193,6 +197,7 @@ function M.setup(user_config)
 	ui.init_autocmds(group)
 	storage.init_autocmds(group)
 	marks.init_autocmds(group)
+	snapshots.init_autocmds(group)
 
 	ui.init_winbar_highlights()
 	ui.init_trail_highlights()
@@ -206,6 +211,9 @@ function M.setup(user_config)
 	vim.api.nvim_create_user_command("FrogmanMarks", function()
 		M.mark_popup()
 	end, { desc = "Open the marks pop-up" })
+	vim.api.nvim_create_user_command("FrogmanSnapshots", function()
+		M.open_snapshots()
+	end, { desc = "Open the window's snapshots" })
 	vim.api.nvim_create_user_command("FrogmanDump", function(opts)
 		require('frogman.domains.ledger.dump').open(opts.args)
 	end, { nargs = 1, complete = "file", desc = "Open a flight recorder dump, decrypted, in a window (only from the directory it was written in)" })
@@ -517,6 +525,12 @@ M.cycle_select = navigation.select_buffer
 
 M.open_primary_buffer_history = ui.routines.show_primary_buffer_history
 M.open_closed_lists = ui.routines.show_closed_lists
+M.take_snapshot = function()
+	snapshots.take()
+end
+M.open_snapshots = function()
+	snapshots.open_list()
+end
 M.replay_dump = function(path)
 	return require('frogman.domains.ledger.replay').run(path)
 end
