@@ -190,27 +190,16 @@ end
 
 ---Get every hash frogman still knows, as a set.
 ---
----A hash is known while an open buffer, a slot, a primary queue or a closed stack holds it.
----Notes and history never keep a hash known. They follow along instead. It's built once for a pass
----over many hashes.
+---A hash is known while a strong holder holds its handle: an open buffer, a slot, a primary queue
+---or a closed list, each by its place. Notes and history never keep a hash known. They follow along
+---instead. It's built once for a pass over many hashes.
 ---
 ---@return table<Filehash, boolean> known File hash → true for every known hash
 function M.known_filehashes()
 	local known = {}
-	for filehash, _ in pairs(data.hash_buffer_registry.buffers) do
-		known[filehash] = true
-	end
-	for _, pool in pairs(M.pools()) do
-		for _, filehash in ipairs(pool.closed) do
-			known[filehash] = true
-		end
-	end
-	for _, triquetra in pairs(require('frogman.domains.window.data').crux) do
-		for _, filehash in pairs({ triquetra.current_slot, triquetra.secondary_slot, triquetra.ternary_slot }) do
-			known[filehash] = true
-		end
-		for _, filehash in ipairs(triquetra.primary_buffer or {}) do
-			known[filehash] = true
+	for _, handle in pairs(handles.live()) do
+		if next(handle.holders) ~= nil then
+			known[handle.hash] = true
 		end
 	end
 	return known
@@ -223,6 +212,7 @@ end
 local function pool_place(pool)
 	return "pool:" .. (pool.id == "" and "editor" or (pool.id:gsub("\n", " ")))
 end
+M.pool_place = pool_place
 
 ---Hold the files a list holds now, by its place.
 ---

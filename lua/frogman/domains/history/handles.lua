@@ -158,18 +158,82 @@ local function add(handle, place)
 	places[place][handle] = true
 end
 
+---The handles that lost their last holder in this batch, waiting for its let-go (handle → true)
+---@type table<FileHandle, true>
+local unheld = {}
+
+---Let a handle that lost its last holder go once the editor settles.
+---
+---Never mid-batch: a file let go and held again by the same batch, as a swap's two writes can, is
+---held when its turn comes, and stays. One turn takes every handle the batch let go, and when any is
+---still held by nothing then, follow-along forgets them in one pass.
+---
+---@param handle FileHandle
+---@return nil
+local function let_go_when_settled(handle)
+	local queued = next(unheld) ~= nil
+	unheld[handle] = true
+	if queued then
+		return
+	end
+	require('frogman.settle').later("let go", function()
+		local waiting = unheld
+		unheld = {}
+		M.forget_unheld(waiting)
+	end)
+end
+
+---Forget the handles that nothing holds, of those given.
+---
+---Follow-along drops the notes and history entries naming them and forgets their paths. One that
+---nothing weak names either has its path forgotten after it, and the trail says so as it does for
+---the rest.
+---
+---@param waiting table<FileHandle, true> The handles to look at
+---@return nil
+function M.forget_unheld(waiting)
+	local routines = require('frogman.domains.history.routines')
+	local any = false
+	for handle, _ in pairs(waiting) do
+		if not handle.unregistered and next(handle.holders) == nil then
+			any = true
+		end
+	end
+	if not any then
+		return
+	end
+	routines.follow_along()
+	local ledger = require('frogman.domains.ledger')
+	for handle, _ in pairs(waiting) do
+		local filepath = data.hash_filepath_registry.filepaths[handle.hash]
+		if not handle.unregistered and next(handle.holders) == nil and filepath then
+			local name = ledger.name_of(handle.hash)
+			routines.unregister_filepath(filepath)
+			if data.hash_filepath_registry.filepaths[handle.hash] == nil then
+				ledger.move("forgotten", { subject = handle.hash, name = name, notes = 0, words = "nothing holds it any more" })
+			end
+		end
+	end
+end
+
 ---Take a handle out of a place.
+---
+---A handle left with no place holding it is let go once the editor settles.
 ---
 ---@param handle FileHandle
 ---@param place string
+---@param quiet boolean|nil Whether it's being let go already, so nothing is queued
 ---@return nil
-local function remove(handle, place)
+local function remove(handle, place, quiet)
 	handle.holders[place] = nil
 	if places[place] then
 		places[place][handle] = nil
 		if next(places[place]) == nil then
 			places[place] = nil
 		end
+	end
+	if not quiet and next(handle.holders) == nil then
+		let_go_when_settled(handle)
 	end
 end
 
@@ -229,9 +293,22 @@ end
 ---@return nil
 function M.drop_place(place)
 	for handle, _ in pairs(places[place] or {}) do
-		handle.holders[place] = nil
+		remove(handle, place)
 	end
 	places[place] = nil
+end
+
+---Get the hashes a place holds.
+---
+---@param place string
+---@return Filehash[] hashes The hashes, sorted
+function M.held_by(place)
+	local out = {}
+	for handle, _ in pairs(places[place] or {}) do
+		table.insert(out, handle.hash)
+	end
+	table.sort(out)
+	return out
 end
 
 ---Get the places holding a file.
@@ -368,7 +445,7 @@ function M.let_go(hash)
 	end
 	by_hash[hash], live[handle.id] = nil, nil
 	for place, _ in pairs(handle.holders) do
-		remove(handle, place)
+		remove(handle, place, true)
 	end
 	handle:unregister()
 end
@@ -382,7 +459,7 @@ function M.reset()
 	for _, handle in pairs(live) do
 		handle:unregister()
 	end
-	live, by_hash, places = {}, {}, {}
+	live, by_hash, places, unheld = {}, {}, {}, {}
 end
 
 return M

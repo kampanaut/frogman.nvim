@@ -381,4 +381,59 @@ T['T696 [char] (M6 Triquetra) a copy of a triquetra holds nothing'] = function()
 	eq({ holders('c'), child.slots() }, { { 'pool:editor' }, '⦉a⦊ [b] ⟦-⟧' })
 end
 
+-- With the cleanup timer at an hour, its first tick ran at the setup, and none comes after.
+T['T698 [char] (M2 Holders, P10) a file no holder holds is forgotten once the editor settles, with no cleanup pass'] = function()
+	local S2 = dofile('tests/helpers_s2.lua')
+	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
+	child.steps({ ':e a', ':e b', ':e c', ':e d', ':bdelete a.txt' })
+	local a = handle('a')
+	eq(child.notes(), 'dtm{b>a c>b} dsm{}')
+	local p = S2.picker(child)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, S2.line_of(lines, 'a.txt'))
+	-- written through the picker's own write key, which begins a step of its own
+	child.lua('vim.api.nvim_buf_set_lines(..., 0, -1, false, select(2, ...))', { p.buf, lines })
+	child.step('<C-s>')
+	child.settle(100)
+	child.cmd('close')
+	local got = child.lua([[
+		local H = require('frogman.domains.history')
+		local forgotten = false
+		for _, st in ipairs(require('frogman').ledger.trail()) do
+			for _, m in ipairs(st.moves) do
+				if m.kind == 'forgotten' and m.subject == ... then forgotten = st.trigger end
+			end
+		end
+		return {
+			path = H.get_filepath_from_hash(...) ~= nil,
+			live = H.handles.get(select(2, ...)) ~= nil,
+			forgotten = forgotten,
+		}
+	]], { a.hash, a.id })
+	eq({ got = got, notes = child.notes() }, { got = { path = false, live = false, forgotten = '<C-s>' }, notes = 'dtm{c>b} dsm{}' })
+end
+
+T['T699 [char] (M2 Holders) a file let go and held again in one batch is kept'] = function()
+	child.steps({ ':e a' })
+	local got = child.lua([[
+		local H = require('frogman.domains.history')
+		local path = _G.FRG_TEST.root .. '/x.txt'
+		H.register_filepath(path)
+		local x = H.get_hash_from_filepath(path)
+		H.routines.track_closing_filehash_force(x)
+		vim.wait(50)
+		local id = H.handles.of_hash(x).id
+		H.routines.discard_from_pools(x)
+		H.routines.track_closing_filehash_force(x)
+		return { x = x, id = id }
+	]])
+	child.settle(100)
+	local after = child.lua([[
+		local H = require('frogman.domains.history')
+		local h = H.handles.of_hash(...)
+		return { path = H.get_filepath_from_hash(...) ~= nil, id = h and h.id or false }
+	]], { got.x })
+	eq(after, { path = true, id = got.id })
+end
+
 return T

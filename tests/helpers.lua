@@ -159,7 +159,10 @@ Helpers.new_child = function()
 	end
 
 	-- Let scheduled callbacks and short timers run. With FRG_CHECK_HOLDERS set, it then checks the
-	-- handles' holders against follow-along's scan (M2 Holders), and fails the case where they differ.
+	-- handles' holders (M2 Holders): the files held are the ones known, and each place holds what its
+	-- window's slots and queue, its list or the registered buffers hold; it fails the case where they
+	-- differ. Seven cases plant slots or list entries by hand, so they fail under it by design: T34,
+	-- T275, T276, T589 (slots), T371, T372, T676 (list entries).
 	child.settle = function(ms)
 		child.lua('vim.wait(...)', { ms or 30 })
 		if os.getenv('FRG_CHECK_HOLDERS') then
@@ -177,6 +180,34 @@ Helpers.new_child = function()
 				for hash in pairs(held) do
 					if not known[hash] then return 'held, not known: ' .. hash .. ' by ' .. table.concat(H.handles.holders(hash), ', ') end
 				end
+				local W = require('frogman.domains.window')
+				local function same(place, hashes)
+					local want, seen = {}, {}
+					for _, h in pairs(hashes) do
+						if H.handles.of_hash(h) then want[h] = true end
+					end
+					for _, h in ipairs(H.handles.held_by(place)) do
+						if not want[h] then return place .. ' holds ' .. h .. ', which it does not' end
+						seen[h] = true
+					end
+					for h in pairs(want) do
+						if not seen[h] then return place .. ' misses ' .. h end
+					end
+				end
+				for winid, t in pairs(W.data.crux) do
+					local p = 'win:' .. winid .. ':'
+					local bad = same(p .. 'current', { t.current_slot }) or same(p .. 'secondary', { t.secondary_slot })
+						or same(p .. 'ternary', { t.ternary_slot }) or same(p .. 'primary', t.primary_buffer or {})
+					if bad then return bad end
+				end
+				for _, pool in pairs(H.routines.pools()) do
+					local bad = same(H.routines.pool_place(pool), pool.closed)
+					if bad then return bad end
+				end
+				local bufs = {}
+				for h in pairs(H.data.hash_buffer_registry.buffers) do table.insert(bufs, h) end
+				local bad = same('buffer', bufs)
+				if bad then return bad end
 			]])
 			if drift ~= nil and drift ~= vim.NIL then
 				error('holders drift: ' .. drift, 2)

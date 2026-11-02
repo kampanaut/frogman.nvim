@@ -213,13 +213,15 @@ T['T622 [char] (A6, D11) a fill that finds nothing but the current buffer says t
 end
 
 -- {c=a s=N t=t}, N closed and its text lost.
-T['T623 [char] (A6, M7) a secondary that can\'t be reopened leaves the notes as they were'] = function()
+T['T623 [char] (A6, M7) a secondary that can\'t be reopened writes no note'] = function()
 	child.steps({ ':e a' })
 	local n = noname({ 'n' })
 	child.steps({ '<M-f>', '<M-f>', ':e t', ':e a' })
 	eq(child.slots():match('^⦉t⦊ %[a%] ⟦(.-)⟧$') ~= '-', true)
+	local stem = child.lua('return vim.fn.fnamemodify(require("frogman.domains.history").get_filepath_from_hash(...), ":t:r")', { n })
 	lose(n)
-	local before = child.notes()
+	-- the notes before the key, but the ones naming N, which nothing holds once the key has run
+	local before = child.notes():gsub(' ?[^ {}]*' .. stem .. '[^ {}]*', ''):gsub('{ ', '{')
 	child.messages()
 	child.steps({ '<M-f>' })
 	eq({ notes = child.notes(), slots = child.slots(), said = K.has(K.messages(child), 'Removed secondary file not found in filesystem') },

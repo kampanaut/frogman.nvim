@@ -130,6 +130,36 @@ checks.HOLDERS = { post = function()
 				table.concat(H.handles.holders(hash), ', '))
 		end
 	end
+	-- and each place holds what its own writes say: a window's slots and queue, a list's closed
+	-- files, the registered buffers
+	local W = require('frogman.domains.window')
+	local function same(place, hashes)
+		local want, seen = {}, {}
+		for _, h in pairs(hashes) do
+			if H.handles.of_hash(h) then want[h] = true end
+		end
+		for _, h in ipairs(H.handles.held_by(place)) do
+			if not want[h] then return place .. ' holds ' .. h .. ', which it does not' end
+			seen[h] = true
+		end
+		for h in pairs(want) do
+			if not seen[h] then return place .. ' misses ' .. h end
+		end
+	end
+	for winid, t in pairs(W.data.crux) do
+		local p = 'win:' .. winid .. ':'
+		local bad = same(p .. 'current', { t.current_slot }) or same(p .. 'secondary', { t.secondary_slot })
+			or same(p .. 'ternary', { t.ternary_slot }) or same(p .. 'primary', t.primary_buffer or {})
+		if bad then return bad end
+	end
+	for _, pool in pairs(H.routines.pools()) do
+		local bad = same(H.routines.pool_place(pool), pool.closed)
+		if bad then return bad end
+	end
+	local bufs = {}
+	for h in pairs(H.data.hash_buffer_registry.buffers) do table.insert(bufs, h) end
+	local bad = same('buffer', bufs)
+	if bad then return bad end
 end }
 
 -- I9: every triquetra belongs to a valid, non-floating window.
