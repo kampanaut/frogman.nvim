@@ -152,4 +152,182 @@ T['T14 [char] a buffer whose file is not written yet stays registered after it i
 	eq(bound(), first.buf)
 end
 
+-- Handles (M2 Handles) -------------------------------------------------------
+
+-- A handle as the case reads it: its number, state, gone flag and copy link,
+-- and whether it's live. `of` is a file's stem in the project, or a buffer
+-- number for the buffer's own handle; false when there's none.
+local function handle(of)
+	return child.lua([[
+		local H = require('frogman.domains.history')
+		local of = ...
+		local hash
+		if type(of) == 'number' then
+			hash = H.get_hash_from_buffer(of)
+		else
+			hash = H.routines.get_filehash(_G.FRG_TEST.root .. '/' .. of .. '.txt')
+		end
+		local h = hash and H.handles.of_hash(hash)
+		if not h then return false end
+		return { id = h.id, hash = h.hash, state = h:state(), gone = h.gone, copy_of = h.copy_of or false,
+			live = H.handles.get(h.id) == h }
+	]], { of })
+end
+
+-- Every live handle as `<stem>:<state>`, sorted, a No Name text as NONAME.
+local function live_handles()
+	return child.lua([[
+		local H = require('frogman.domains.history')
+		local out = {}
+		for _, h in pairs(H.handles.live()) do
+			local path = H.get_filepath_from_hash(h.hash) or '?'
+			local stem = path:match('^NONAME_') and 'NONAME' or vim.fn.fnamemodify(path, ':t:r')
+			table.insert(out, stem .. ':' .. h:state())
+		end
+		table.sort(out)
+		return out
+	]])
+end
+
+T['T682 [char] (M2 Handles) a name that comes back while its handle lives gets it back'] = function()
+	child.steps({ ':e a', ':e b', ':bdelete a.txt' })
+	local a, b = handle('a'), handle('b')
+	eq({ a.state, a.live, child.closed() }, { 'closed', true, 'a' })
+	child.steps({ ':e a' })
+	local again = handle('a')
+	eq({ again.id, again.state, again.live }, { a.id, 'open', true })
+	eq(b.id ~= a.id, true)
+end
+
+T['T683 [char] (M2 Handles) a file forgotten gets a fresh handle, above every handle before it'] = function()
+	local S2 = dofile('tests/helpers_s2.lua')
+	child.steps({ ':e a', ':e b', ':e c', ':e d', ':bdelete a.txt' })
+	local a = handle('a')
+	local top = child.lua('local m = 0; for id in pairs(require("frogman.domains.history").handles.live()) do m = math.max(m, id) end; return m')
+	local p = S2.picker(child)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, S2.line_of(lines, 'a.txt'))
+	S2.write_picker(child, p, lines)
+	child.cmd('close')
+	child.lua('require("frogman.domains.history").routines.cleanup_system()')
+	eq({ handle('a'), child.lua('return require("frogman.domains.history").handles.get(...) == nil', { a.id }) }, { false, true })
+	child.steps({ ':e a' })
+	local fresh = handle('a')
+	eq({ fresh.state, fresh.id > top }, { 'open', true })
+end
+
+T['T684 [char] (M2 Handles, A20) a move keeps the handle'] = function()
+	child.steps({ ':e a', ':e b' })
+	local b = handle('b')
+	child.lua([[
+		local root = _G.FRG_TEST.root
+		os.rename(root .. '/b.txt', root .. '/g.txt')
+		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/b.txt'), root .. '/g.txt')
+	]])
+	child.settle(300)
+	local g = handle('g')
+	eq({ g.id, g.state, g.hash ~= b.hash, handle('b') }, { b.id, 'open', true, false })
+end
+
+T['T685 [char] (M2 Handles, M14) gone from disk flips the handle\'s field'] = function()
+	child.steps({ ':e a', ':e b', ':e c', ':bdelete b.txt' })
+	local b = handle('b')
+	eq(b.gone, false)
+	child.lua([[
+		os.remove(_G.FRG_TEST.root .. '/b.txt')
+		require('frogman.domains.history').routines.cleanup_system()
+	]])
+	local gone = handle('b')
+	eq({ gone.id, gone.state, gone.gone }, { b.id, 'closed', true })
+	child.lua([[
+		vim.fn.writefile({ 'b' }, _G.FRG_TEST.root .. '/b.txt')
+		require('frogman.domains.history').routines.cleanup_system()
+	]])
+	local back = handle('b')
+	eq({ back.id, back.state, back.gone }, { b.id, 'closed', false })
+end
+
+T['T686 [char] (M2 Handles) every path has one live handle, and every live handle a path'] = function()
+	child.steps({ ':e a', ':e b', ':e c', ':bdelete b.txt', ':e brandnew.txt' })
+	local paths = child.lua([[
+		local out = {}
+		for _, path in pairs(require('frogman.domains.history').data.hash_filepath_registry.filepaths) do
+			table.insert(out, vim.fn.fnamemodify(path, ':t:r'))
+		end
+		table.sort(out)
+		return out
+	]])
+	eq(paths, { 'a', 'b', 'brandnew', 'c' })
+	eq(live_handles(), { 'a:open', 'b:closed', 'brandnew:open', 'c:open' })
+end
+
+T['T687 [char] (M2 Handles, M5) a No Name text reopened keeps its handle'] = function()
+	child.steps({ ':e a', ':enew' })
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "draft" })')
+	local n = handle(child.lua('return vim.api.nvim_get_current_buf()'))
+	child.steps({ '<M-.>' })
+	eq(handle(child.lua('return vim.api.nvim_get_current_buf()')).state, 'open') -- landed on a
+	child.steps({ '<M-S-w>' })
+	eq(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), { 'draft' })
+	local back = handle(child.lua('return vim.api.nvim_get_current_buf()'))
+	eq({ back.id, back.state, back.hash ~= n.hash }, { n.id, 'open', true })
+end
+
+T['T688 [char] (M2 Handles, A20) a move onto a name a live handle has: the moved file wins'] = function()
+	child.steps({ ':e a', ':e b' })
+	local a, b = handle('a'), handle('b')
+	child.cmd('bwipeout ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/a.txt")'))
+	child.settle(300)
+	eq(handle('a').state, 'closed')
+	child.lua([[
+		local root = _G.FRG_TEST.root
+		os.rename(root .. '/b.txt', root .. '/a.txt')
+		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/b.txt'), root .. '/a.txt')
+	]])
+	child.settle(300)
+	local now = handle('a')
+	eq({ now.id, now.state }, { b.id, 'open' })
+	eq(child.lua('return require("frogman.domains.history").handles.get(...) == nil', { a.id }), true)
+end
+
+T['T689 [char] (M2 Handles, A20) a copy makes a new handle linked to the old'] = function()
+	child.steps({ ':e a', ':e b' })
+	local b = handle('b')
+	child.cmd('saveas g.txt')
+	child.settle(300)
+	local g = handle('g')
+	eq({ g.id > b.id, g.copy_of, g.state, handle('b').state, handle('b').id }, { true, b.id, 'open', 'closed', b.id })
+end
+
+T['T690 [char] (M2 Handles) what isn\'t registered gets no handle'] = function()
+	child.steps({ ':e a' })
+	child.lua([[
+		local win = vim.api.nvim_get_current_win()
+		vim.cmd('help')
+		vim.api.nvim_set_current_win(win)
+		vim.cmd('copen')
+		vim.api.nvim_set_current_win(win)
+		local buf = vim.api.nvim_create_buf(true, false)
+		vim.bo[buf].buftype = 'acwrite'
+		vim.api.nvim_buf_set_name(buf, 'oil://' .. _G.FRG_TEST.root .. '/')
+		vim.api.nvim_win_set_buf(win, buf)
+	]])
+	child.settle(100)
+	eq(live_handles(), { 'a:open' })
+end
+
+T['T691 [char] (M2 Handles, S1) a load mints fresh handles, above every handle before it'] = function()
+	child.steps({ ':e a', ':e b', ':e c' })
+	local ids = 'local out = {}; for id in pairs(require("frogman.domains.history").handles.live()) do table.insert(out, id) end; table.sort(out); return out'
+	local before = child.lua(ids)
+	eq(#before, 3)
+	child.lua('require("frogman").save_session("t691")')
+	child.settle()
+	child.lua('require("frogman").load_session("t691")')
+	child.settle(100)
+	local after = child.lua(ids)
+	eq(#after >= 3, true)
+	eq(after[1] > before[#before], true)
+end
+
 return T

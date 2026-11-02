@@ -306,6 +306,7 @@ local function plant_snapshot(snapshot, plant)
 	history.data.crux_internals.global = vim.deepcopy(snapshot.global or {})
 	history.data.history_index = snapshot.history_index or history.data.history_index
 	history.data.missing = vim.deepcopy(snapshot.missing or {})
+	history.handles.follow_tags()
 	if snapshot.history_view then
 		require('frogman.configs').bufferline.history_view = snapshot.history_view
 	end

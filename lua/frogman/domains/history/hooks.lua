@@ -129,6 +129,10 @@ local function settle_rename(bufnr, rename)
 	if routines.is_trackable(bufnr) and not routines.get_hash_from_buffer(bufnr) then
 		routines.register_buffer(bufnr) -- known by its new name, whatever the history state (a cycle).
 	end
+	if not moved_from then
+		-- a copy's handle is new, and linked to the one it was copied from
+		require('frogman.domains.history.handles').copied(routines.get_hash_from_buffer(bufnr), rename.hash)
+	end
 	-- the window that shows it, the current tab's first, then any tab's
 	local winid = vim.fn.bufwinid(bufnr)
 	winid = winid ~= -1 and winid or (vim.fn.win_findbuf(bufnr)[1] or -1)

@@ -1,5 +1,6 @@
 local data = require("frogman.domains.history.data")
 local configs = require("frogman.configs")
+local handles = require("frogman.domains.history.handles")
 
 local M = {}
 
@@ -100,6 +101,7 @@ function M.register_buffer(bufnr)
 	data.hash_buffer_registry.hashes[bufnr] = filehash
 	data.hash_filepath_registry.filepaths[filehash] = filepath
 	data.hash_filepath_registry.hashes[filepath] = filehash
+	handles.opened(filehash) -- its handle, made or opened
 
 	-- print(
 	-- 	"Registered buffer: " .. bufnr ..
@@ -125,6 +127,7 @@ function M.register_filepath(filepath)
 
 	data.hash_filepath_registry.hashes[filepath] = filehash
 	data.hash_filepath_registry.filepaths[filehash] = filepath
+	handles.known(filehash) -- its handle, made closed when it has none
 
 	-- print("Registered filepath: " .. filepath .. "\n with filehash: " .. filehash)
 end
@@ -139,6 +142,7 @@ function M.unregister_buffer(bufnr)
 
 	data.hash_buffer_registry.hashes[bufnr] = nil
 	data.hash_buffer_registry.buffers[filehash] = nil
+	handles.closed(filehash)
 
 	-- print("Unregistered buffer: " .. bufnr .. "\n with filehash: " .. filehash .. "\n" .. debug.traceback())
 end
@@ -617,11 +621,13 @@ function M.mark_missing(label, limit, known)
 					name = require('frogman.domains.ledger').name_of(filehash), words = "back on disk" })
 			end
 			data.missing[filehash] = nil
+			handles.set_gone(filehash, false)
 			data.unwritten[filehash] = nil
 		elseif data.unwritten[filehash] then
 			return -- never written, so it didn't go missing
 		elseif data.missing[filehash] == nil then
 			data.missing[filehash] = label or os.date("%H:%M")
+			handles.set_gone(filehash, true)
 			require('frogman.domains.ledger').move("gone", { subject = filehash,
 				name = require('frogman.domains.ledger').name_of(filehash), words = "gone from disk ⎇" .. data.missing[filehash] })
 		end
@@ -662,6 +668,7 @@ function M.mark_missing(label, limit, known)
 	for filehash, _ in pairs(data.missing) do
 		if not known[filehash] then
 			data.missing[filehash] = nil
+			handles.set_gone(filehash, false)
 		end
 	end
 	for filehash, mark in pairs(data.unwritten) do
@@ -845,6 +852,7 @@ function M.unregister_filepath(filepath)
 
 	data.hash_filepath_registry.hashes[filepath] = nil
 	data.hash_filepath_registry.filepaths[filehash] = nil
+	handles.let_go(filehash) -- forgotten, its handle goes with it
 
 	-- print("Unregistered filepath: " .. filepath .. "\n with filehash: " .. filehash .. "\n" .. debug.traceback())
 end
@@ -1253,6 +1261,8 @@ function M.reopen_filehash(filehash)
 		vim.bo[bufnr].buftype = ""
 		data.noname_content[filehash] = nil
 		local old_filehash = filehash
+		-- the text keeps its handle under the new id it comes back with
+		handles.renamed(old_filehash, M.get_filehash(M.noname_name(bufnr)))
 		filehash = M.register_buffer(bufnr)
 		if filehash ~= old_filehash then
 			-- it comes back under a new name, and everything that named the old one follows: slots, notes
@@ -1350,6 +1360,7 @@ function M.settle_rename(bufnr, old_hash, old_history)
 	-- a name still on a closed list is open now, the buffer holding it: its old entry goes, nothing remembered
 	M.discard_from_pools(new_hash)
 	data.noname_content[old_hash] = nil -- a No Name buffer's text is in its file now.
+	handles.renamed(old_hash, new_hash) -- the moved file keeps its handle
 	if data.hash_buffer_registry.hashes[bufnr] == old_hash then
 		M.unregister_buffer(bufnr) -- the buffer is registered under its new name next.
 	end
@@ -1707,6 +1718,7 @@ local function detach_filehash_from_crux(filepath, filehash)
 		data.hash_buffer_registry.hashes[bufnr] = nil
 	end
 	data.hash_buffer_registry.buffers[filehash] = nil
+	handles.closed(filehash)
 end
 
 ---Find the buffer whose name is exactly this filepath.
@@ -1778,6 +1790,7 @@ function M.cleanup_system(on_tick)
 			-- closed, it's still known, so its history stays: only its buffer is forgotten
 			data.hash_buffer_registry.hashes[bufnr] = nil
 			data.hash_buffer_registry.buffers[filehash] = nil
+			handles.closed(filehash)
 		else
 			ledger.move("repair", { subject = filehash, name = ledger.name_of(filehash),
 				words = "its buffer vanished without an event, and its text with it" })
@@ -1860,6 +1873,7 @@ function M.teardown()
 	data.unwritten = {}
 	data.last_label = nil
 	data.label_seen = false
+	handles.reset()
 	M.reset_pools()
 	previous_window_constructed = nil
 	mark_queue, mark_next = {}, 1 -- the tick's round starts over, on the new session's files
@@ -1876,6 +1890,7 @@ function M.repopulate_history()
 	data.cycling_origins = {}
 	data.closed_buffers = {}
 	data.noname_content = {}
+	handles.reset()
 	M.reset_pools()
 
 	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do

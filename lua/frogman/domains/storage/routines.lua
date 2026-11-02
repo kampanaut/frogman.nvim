@@ -770,6 +770,8 @@ local function reopen_noname_buffers(noname_content, key, scratch_dir)
 				bufnr = history.routines.buffer_from_text(content)
 				vim.b[bufnr].frogman_reopened = filehash
 			end
+			-- the text keeps its handle under the hash it's back under
+			history.handles.renamed(filehash, history.routines.get_filehash(history.routines.noname_name(bufnr)))
 			local new_filehash = history.register_buffer(bufnr)
 			if new_filehash ~= filehash then
 				require('frogman.domains.ledger').move("reopened", { subject = new_filehash, name = "[No Name]",
@@ -1413,6 +1415,7 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 	for filehash, tag in pairs(saved_data.missing or {}) do
 		history.data.missing[filehash] = history.data.missing[filehash] or tag
 	end
+	history.handles.follow_tags()
 	for _, filehash in ipairs(saved_data.unwritten or {}) do
 		history.data.unwritten[filehash] = true
 	end
@@ -1579,6 +1582,7 @@ function M.load_history(cwd, name)
 		for filehash, tag in pairs(saved_data.missing or {}) do
 			history.data.missing[filehash] = tag
 		end
+		history.handles.follow_tags()
 		for _, filehash in ipairs(saved_data.unwritten or {}) do
 			history.data.unwritten[filehash] = true
 		end

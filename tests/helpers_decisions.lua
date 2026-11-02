@@ -83,6 +83,34 @@ checks.I8 = {
 	end,
 }
 
+-- Handles (M2 Handles): after a cleanup pass, every path has one live handle,
+-- every live handle a path, each open exactly while its hash has a buffer, and
+-- gone exactly while its file has a tag.
+checks.HANDLES = { post = function()
+	H.cleanup_system()
+	local handles = H.handles
+	local paths, buffers = H.data.hash_filepath_registry.filepaths, H.data.hash_buffer_registry.buffers
+	for hash, path in pairs(paths) do
+		local h = handles.of_hash(hash)
+		if not h then return string.format('%s has a path and no handle', base(path)) end
+		if handles.get(h.id) ~= h then return string.format('%s has handle %d, not live', base(path), h.id) end
+		if h.hash ~= hash then return string.format('%s has handle %d, which names another hash', base(path), h.id) end
+		if (h:state() == 'open') ~= (buffers[hash] ~= nil) then
+			return string.format('%s handle %d is %s, its buffer %s', base(path), h.id, h:state(), tostring(buffers[hash]))
+		end
+		if h.gone ~= (H.data.missing[hash] ~= nil) then
+			return string.format('%s handle %d gone %s, its tag %s', base(path), h.id, tostring(h.gone), tostring(H.data.missing[hash]))
+		end
+	end
+	for id, h in pairs(handles.live()) do
+		if paths[h.hash] == nil then return string.format('handle %d names no path', id) end
+		if handles.of_hash(h.hash) ~= h then return string.format('handle %d shares its hash with another', id) end
+	end
+	for hash in pairs(buffers) do
+		if not handles.of_hash(hash) then return string.format('buffer %d is registered with no handle', buffers[hash]) end
+	end
+end }
+
 -- I9: every triquetra belongs to a valid, non-floating window.
 checks.I9 = { post = function()
 	for winid in pairs(W.data.crux) do

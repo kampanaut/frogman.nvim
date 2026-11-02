@@ -759,6 +759,10 @@ T['T283 [char] (I9) every triquetra belongs to a valid, non-floating window, ove
 	walk('I9', join(MWY, CLOSING), 14)
 end
 
+T['T692 [char] (M2 Handles) the handles follow the registry over random walks'] = function()
+	walk('HANDLES', join(MW, CLOSING, { 'new file', 'new file', 'rm/mk', 'rm/mk' }), 16)
+end
+
 T['T284 [char] (I9) :file onto a name not on disk in a split leaves no triquetra for a dead window'] = function()
 	child.steps({ ':e a' })
 	child.cmd('vsplit')

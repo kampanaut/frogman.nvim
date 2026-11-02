@@ -157,7 +157,7 @@ end
 
 T['T170 [char] the engine has no machine named window (D25)'] = function()
 	local got = child.lua('local l = require("frogman.engine"):list(); table.sort(l); return l')
-	eq(got, { 'history', 'navigation', 'storage', 'ui_bufferline', 'ui_indicators', 'ui_loop', 'ui_winbar' })
+	eq(got, { 'handle', 'history', 'navigation', 'storage', 'ui_bufferline', 'ui_indicators', 'ui_loop', 'ui_winbar' })
 end
 
 T['T169 [char] the mapped keys have their own descriptions (D3)'] = function()

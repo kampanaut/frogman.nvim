@@ -21,6 +21,7 @@ local M = {
 	states = states,     -- State constants
 	data = data,         -- Domain data structures
 	routines = routines, -- Domain business logic (sync functions)
+	handles = require('frogman.domains.history.handles'), -- Each known file's handle
 }
 
 M.register_buffer = routines.register_buffer
