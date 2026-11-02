@@ -389,4 +389,153 @@ T['T734 [char] (M15, S1 Records) a records write carries a text only its file\'s
 	eq({ forgotten = forgotten, opened = opened() }, { forgotten = true, opened = { '[No Name]', { '' } } })
 end
 
+-- Saved: in tab mode, the first tab on a with b marked a, the second on c with d marked a. They
+-- come back the other way round.
+T['T729 [char] (M15, S1) tab marks find their tab by what it shows'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ "<M-'><M-2>", ':e b', ADD .. 'a>', ':e a' })
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e d', ADD .. 'a>', ':e c' })
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	S2.restore_tabs(child, { { files = { 'c', 'd' }, shown = 'c' }, { files = { 'a', 'b' }, shown = 'a' } })
+	eq(S2.load(child), { true })
+	child.settle(300)
+	child.steps({ "<M-'><M-2>" })
+	local got = {}
+	for _, n in ipairs({ 1, 2 }) do
+		child.cmd('tabnext ' .. n)
+		child.settle()
+		local from = child.shown()
+		child.steps({ JUMP .. 'a>' })
+		got[from] = child.shown()
+	end
+	eq(got, { c = 'd', a = 'b' })
+end
+
+T['T730 [char] (M15) a mark whose alias is gone is kept, out of reach'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.lua('_G.FRG_TEST.setup({ marks = { aliases = { q = 1, a = 2 } } })')
+	child.steps({ ':e b', "<M-'><M-'><M-q>", ':e c', ADD .. 'a>', ':e a' })
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b', 'c' }, 'a')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local held = child.lua([[
+		local H = require('frogman.domains.history')
+		return require('frogman.domains.marks').routines.holds(H.routines.get_filehash(_G.FRG_TEST.root .. '/b.txt'))
+	]])
+	local labels = { b = label('b'), c = label('c') }
+	child.steps({ JUMP .. 'a>' })
+	eq({ held = held, labels = labels, jumped = child.shown() }, { held = true, labels = { b = false, c = 'a' }, jumped = 'c' })
+end
+
+-- The places t's marks hold by, as many as there are.
+local function t_places()
+	return child.lua([[
+		local n = 0
+		for key, _ in pairs(require('frogman.domains.marks').data.places) do
+			if key:match('^session:t\n') then n = n + 1 end
+		end
+		return n
+	]])
+end
+
+T['T731 [char] (M15, S1 Records) a tab session\'s marks go with its list'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	child.steps({ "<M-'><M-3>", ':e c', ADD .. 'a>', ':e d' })
+	local before = t_places()
+	child.cmd('tabclose')
+	child.settle(300)
+	local after = t_places()
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.steps({ "<M-'><M-3>", JUMP .. 'a>' })
+	eq({ before = before, after = after, jumped = child.shown() }, { before = 1, after = 0, jumped = 'c' })
+end
+
+T['T732 [char] (M15, M5) a detached list keeps a copy of its session\'s marks, and gets it back at a load'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	eq(S2.save(child), { true }) -- the whole editor's file, for the detached list's entry
+	child.steps({ "<M-'><M-3>", ':e c', ADD .. 'a>', ':e d' })
+	local second = child.lua('return vim.api.nvim_get_current_tabpage()')
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.steps({ "<M-'><M-3>", JUMP .. 'a>' })
+	local third = child.shown()
+	child.lua('vim.api.nvim_set_current_tabpage(...)', { second })
+	child.settle()
+	local list = child.lua('return require("frogman.domains.history").routines.current_pool().name')
+	child.steps({ JUMP .. 'a>' })
+	local in_second = child.shown()
+	child.steps({ ':e d', ADD .. 's>' })
+	local d_in_third = child.lua([[
+		local tab = vim.api.nvim_list_tabpages()[3]
+		local win = vim.api.nvim_tabpage_get_win(tab)
+		local H = require('frogman.domains.history')
+		return require('frogman.domains.marks').label_of(H.routines.get_filehash(_G.FRG_TEST.root .. '/d.txt'), win) or false
+	]])
+	eq(S2.save(child), { true })
+	local on_entry = child.lua([[
+		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+		for _, l in ipairs(saved.detached or {}) do
+			if l.label == 't_DETACHED' then return l.marks ~= nil and l.marks[1] ~= nil end
+		end
+		return false
+	]])
+	-- a fresh editor with the three tabs as they were: the detached list's tab gets its copy back
+	S2.start(child, s)
+	S2.restore_tabs(child, { { files = { 'x', 't' }, shown = 't' }, { files = { 'c', 'd' }, shown = 'd' },
+		{ files = { 'c', 'd' }, shown = 'd' } })
+	eq(S2.load(child), { true })
+	child.settle(300)
+	child.cmd('tabnext 2')
+	child.settle()
+	local back = child.lua('return require("frogman.domains.history").routines.current_pool().name')
+	child.steps({ "<M-'><M-3>", JUMP .. 'a>' })
+	eq({ third = third, list = list, in_second = in_second, d_in_third = d_in_third, on_entry = on_entry, back = back,
+		back_jumped = child.shown() },
+		{ third = 'c', list = 't_DETACHED', in_second = 'c', d_in_third = false, on_entry = true, back = 't_DETACHED',
+		back_jumped = 'c' })
+end
+
+-- The file is sealed again by hand, as T541's is: a session mark naming a hash no path names.
+T['T733 [char] (M15, S1 Load) a load leaves out a mark no path names'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ "<M-'><M-3>", ':e b', ADD .. 'a>', ':e a' })
+	eq(Misc.save(child), { true })
+	S2.start(child, s)
+	child.lua([[
+		local crypto = require('frogman.domains.storage.crypto')
+		local dir, name = vim.fn.getcwd(-1, -1), vim.fn.getcwd()
+		local path = require('frogman.configs').session_dir .. vim.fn.sha256(dir .. "\n" .. name)
+		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
+		local salt = bytes:sub(5, 4 + crypto.salt_length)
+		local data = require('frogman.domains.storage.routines').read_session(dir, name)
+		data.marks[1].marks.s = 'deadbeefdeadbeef' -- a mark no path names
+		local header = "CDV1" .. salt
+		local out = header .. crypto.seal(crypto.derive_key(dir, salt), vim.json.encode(data), header)
+		fh = assert(io.open(path, 'wb')); fh:write(out); fh:close()
+	]])
+	Misc.restore(child, { 'a', 'b' }, 'a')
+	child.messages()
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	local warns = vim.tbl_filter(function(m) return m.msg:find("broke its own rules", 1, true) ~= nil end, child.messages())
+	child.steps({ "<M-'><M-3>" })
+	local marks = child.lua([[
+		local g = require('frogman.domains.marks').data.scopes.session[""].groups[1]
+		local out = {}
+		for alias, _ in pairs(g.marks) do table.insert(out, alias) end
+		table.sort(out)
+		return out
+	]])
+	eq({ warned = #warns, marks = marks }, { warned = 1, marks = { 'a' } })
+end
+
 return T

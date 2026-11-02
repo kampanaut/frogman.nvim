@@ -754,20 +754,97 @@ local function noname_already_back(filehash)
 	return nil
 end
 
----Carry into a records write the No Name texts its file's window marks name.
+---Get what a tab's windows show, sorted, and how many windows it has, floats left out.
 ---
----A records write leaves the windows as the last save wrote them, their marks included, so the texts
----those marks name stay: from memory when it holds them, and otherwise carried from the file, unread.
+---@param tabpage integer
+---@return string[] shows What each window shows, its hash, or "" for an untracked buffer with no name
+---@return integer wins How many windows it has
+local function tab_shows(tabpage)
+	local shows, wins = {}, 0
+	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
+		if vim.api.nvim_win_get_config(winid).relative == "" then
+			wins = wins + 1
+			table.insert(shows, shown_by(winid) or "")
+		end
+	end
+	table.sort(shows)
+	return shows, wins
+end
+
+---Serialize the plain tabs' marks for a whole-editor save.
+---
+---Each plain tab with marks keeps what its windows show, how many windows it has and its number, so
+---a load can find it again. A tab session's tab has none: its tab mode is its session's.
+---
+---@return table[]|nil tabs Each tab's `{ shows, wins, position, groups }`, or nil with none
+local function serialise_tabs()
+	local tabs = {}
+	for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+		local groups = marks().serialise("tab", tabpage)
+		if groups and history.data.tab_pools[tabpage] == nil then
+			local shows, wins = tab_shows(tabpage)
+			table.insert(tabs, { shows = shows, wins = wins, position = vim.api.nvim_tabpage_get_number(tabpage), groups = groups })
+		end
+	end
+	return #tabs > 0 and tabs or nil
+end
+
+---Give each plain tab the marks of the saved tab it is.
+---
+---A saved tab finds its tab by what its windows show, and among several that show the same, by its
+---number, among the tabs in no tab session that no saved tab took yet. One no tab shows the same is
+---left.
+---
+---@param saved_tabs table[]|nil The file's `tabs`
+---@return nil
+local function restore_tabs(saved_tabs)
+	local taken = {}
+	for _, saved in ipairs(type(saved_tabs) == "table" and saved_tabs or {}) do
+		local want = table.concat(type(saved.shows) == "table" and saved.shows or {}, ",")
+		local best
+		for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+			if not taken[tabpage] and history.data.tab_pools[tabpage] == nil then
+				local shows = tab_shows(tabpage)
+				if table.concat(shows, ",") == want then
+					local score = vim.api.nvim_tabpage_get_number(tabpage) == saved.position and 1 or 0
+					if best == nil or score > best.score then
+						best = { tabpage = tabpage, score = score }
+					end
+				end
+			end
+		end
+		if best then
+			taken[best.tabpage] = true
+			marks().restore("tab", best.tabpage, saved.groups)
+		end
+	end
+end
+
+---Carry into a write the No Name texts the file's marks name.
+---
+---A records write leaves the windows and the tabs as the last save wrote them, their marks included,
+---and a list in the file alone keeps its marks, so the texts those marks name stay: from memory when
+---it holds them, and otherwise carried from the file, unread. A save writes the windows and tabs anew,
+---so it carries only the lists' in the file alone.
 ---
 ---@param texts table<Filehash, table> The texts the write takes, added to in place
 ---@param saved table The file's data
 ---@param key string The session's key
 ---@param scratch_dir string The session's scratch directory
+---@param references boolean Whether the file's windows and tabs are kept, as a records write keeps them
 ---@return nil
-local function carry_marked_texts(texts, saved, key, scratch_dir)
+local function carry_marked_texts(texts, saved, key, scratch_dir, references)
 	local named = {}
-	for _, entry in ipairs(saved.windows or {}) do
-		marks().named_by(entry[10], named)
+	if references then
+		for _, entry in ipairs(saved.windows or {}) do
+			marks().named_by(entry[10], named)
+		end
+		for _, tab in ipairs(saved.tabs or {}) do
+			marks().named_by(tab.groups, named)
+		end
+	end
+	for _, list in ipairs(saved.detached or {}) do
+		marks().named_by(list.marks, named)
 	end
 	for filehash, _ in pairs(named) do
 		local entry = type(saved.noname_content) == "table" and saved.noname_content[filehash]
@@ -785,8 +862,8 @@ end
 
 ---Give the scopes a session file's marks.
 ---
----The session's own come from its `marks`, unless it's open already, when memory's stay, and each
----matched window's from the entry it took. A No Name text a mark names that no list holds and that
+---The session's own come from its `marks`, unless it's open already, when memory's stay, each
+---matched window's from the entry it took, and each plain tab's from the saved tab it is. A No Name text a mark names that no list holds and that
 ---isn't reopened is held unread, as a closed one is, on no list.
 ---
 ---@param saved_data table The file's data
@@ -806,6 +883,7 @@ local function restore_marks(saved_data, taken, session_id, own, key, scratch_di
 			marks().restore("window", winid, entry[10])
 		end
 	end
+	restore_tabs(saved_data.tabs) -- a tab session's file has none
 	for filehash, _ in pairs(marks().held_by(nil)) do
 		local entry = type(saved_data.noname_content) == "table" and saved_data.noname_content[filehash]
 		local filepath = history.get_filepath_from_hash(filehash)
@@ -1036,9 +1114,9 @@ local forget_closed_keys
 ---Make a session's data keep the session file's policy.
 ---
 ---These are the rules every session file keeps, whichever writer made it: every closed entry, on
----`closed` or on a detached list, has its path in `paths`; a closed No Name entry has its text; and a
----hash the data holds as a record, closed, on a detached list or as a text, isn't an outsider, the
----record winning, since the registry is the authority on what a hash means. Whatever breaks a rule
+---`closed` or on a detached list, has its path in `paths`; a closed No Name entry has its text; a mark
+---has its file's path, and a No Name one its text; and a hash the data holds as a record, closed, on a
+---detached list, as a text or under a mark, isn't an outsider, the record winning, since the registry is the authority on what a hash means. Whatever breaks a rule
 ---is taken out, and said in the lines it gives back.
 ---
 ---@param storage table The session's data, as it's written or as it was read
@@ -1065,6 +1143,36 @@ local function enforce_session_file_policy(storage)
 		return true
 	end
 	storage.closed = vim.tbl_filter(keeps, storage.closed or {})
+	-- a mark keeps its file: one no path names, or a No Name one with no text, is left out
+	local marked = {}
+	local function clean(groups)
+		for _, group in ipairs(type(groups) == "table" and groups or {}) do
+			for alias, filehash in pairs(type(group) == "table" and type(group.marks) == "table" and group.marks or {}) do
+				local filepath = paths[filehash]
+				if filepath == nil then
+					broke("a mark no path names was left out")
+					group.marks[alias] = nil
+				elseif filepath:match("^NONAME_") and (storage.noname_content or {})[filehash] == nil then
+					broke("a No Name mark with no text was left out")
+					group.marks[alias] = nil
+				else
+					marked[filehash] = true
+				end
+			end
+		end
+	end
+	clean(storage.marks)
+	for _, entry in ipairs(storage.windows or {}) do
+		if type(entry) == "table" then
+			clean(entry[10])
+		end
+	end
+	for _, tab in ipairs(storage.tabs or {}) do
+		clean(tab.groups)
+	end
+	for _, list in ipairs(storage.detached or {}) do
+		clean(list.marks)
+	end
 	for _, list in ipairs(storage.detached or {}) do
 		list.closed = vim.tbl_filter(keeps, list.closed or {})
 	end
@@ -1079,6 +1187,9 @@ local function enforce_session_file_policy(storage)
 			end
 		end
 		for filehash, _ in pairs(storage.noname_content or {}) do
+			held[filehash] = true
+		end
+		for filehash, _ in pairs(marked) do
 			held[filehash] = true
 		end
 		storage.outsiders = vim.tbl_filter(function(filehash)
@@ -1286,6 +1397,7 @@ local function push_out(pool, tabpage)
 			detached.closed, detached.times, detached.visits = vim.deepcopy(pool.closed), vim.deepcopy(pool.times), vim.deepcopy(pool.visits)
 			history.routines.hold_pool(detached)
 			join_detached(other, detached)
+			marks().copy_scope("session", pool.id, detached.id) -- the session's marks, the two going their own ways after
 			history.routines.pool_changed(detached)
 			require('frogman.domains.ledger').move("detached", { subject = detached.id, name = detached.name,
 				words = "tab " .. vim.api.nvim_tabpage_get_number(other) .. " keeps " .. history.routines.list_name(pool) .. "'s list" })
@@ -1321,6 +1433,7 @@ local function detached_lists(old, windows_of)
 		table.insert(lists, {
 			label = pool.name, of = pool.of, closed = closed, closed_times = times,
 			windows = windows_of and windows_of(pool) or old_windows[pool.name] or {},
+			marks = marks().serialise("session", pool.id), -- its copy of its session's marks
 		})
 	end
 	for _, list in ipairs(old and old.detached or {}) do
@@ -1653,6 +1766,7 @@ function M.load_history(cwd, name)
 				ledger.move("detached", { subject = load_pool.id, name = list.label,
 					words = "back with tab " .. vim.api.nvim_tabpage_get_number(tabpage) })
 				load_closed_buffers(list.closed or {}, saved_data.noname_content or {}, key, scratch_dir, list.closed_times, true)
+				marks().restore("session", load_pool.id, list.marks)
 			end
 		end
 		load_pool = history.routines.pools()[""]
@@ -2116,10 +2230,13 @@ local function write_records(session, changes)
 		-- the session's own marks are records too; its windows' marks stay as the last save wrote them,
 		-- and so do the texts they name
 		saved.marks = marks().serialise("session", session.scope == "tab" and session.owner.id or "")
-		carry_marked_texts(texts, saved, key, file_path .. ".d/")
+		carry_marked_texts(texts, saved, key, file_path .. ".d/", true)
 		local named = marks().named_by(saved.marks)
 		for _, entry in ipairs(saved.windows or {}) do
 			marks().named_by(entry[10], named)
+		end
+		for _, tab in ipairs(saved.tabs or {}) do
+			marks().named_by(tab.groups, named)
 		end
 		for filehash, _ in pairs(named) do
 			saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
@@ -2144,6 +2261,9 @@ local function write_records(session, changes)
 			saved.detached = #lists > 0 and lists or nil
 			for _, list in ipairs(lists) do
 				for _, filehash in ipairs(list.closed or {}) do
+					saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
+				end
+				for filehash, _ in pairs(marks().named_by(list.marks)) do
 					saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
 				end
 			end
@@ -2357,6 +2477,7 @@ function M.settle_merging()
 			if #pool.closed == 0 then
 				history.data.pools[id] = nil
 				history.routines.drop_pool(pool)
+				marks().drop_scope("session", id)
 				require('frogman.domains.ledger').move("detached_left", { subject = id, name = pool.name, words = "merged, and gone" })
 				local session = whole_editor_session()
 				if session then
@@ -2529,6 +2650,7 @@ local function close_now(pool)
 		if ok then
 			history.data.pools[pool.id] = nil
 			history.routines.drop_pool(pool)
+			marks().drop_scope("session", pool.id) -- its marks are on its entry in the file now
 			ledger.move("detached_left", { subject = pool.id, name = pool.name, words = data.replayed and "let go" or "into the whole editor's file" })
 			return
 		end
@@ -2543,6 +2665,7 @@ local function close_now(pool)
 		dirty[pool.id] = nil
 		history.data.pools[pool.id] = nil
 		history.routines.drop_pool(pool)
+		marks().drop_scope("session", pool.id) -- its marks are in its file now, and go with its list
 		forget_closed_keys()
 		ledger.move("tab_closed", { subject = pool.id, name = history.routines.list_name(pool),
 			words = data.replayed and "its list let go" or "its records written; its list let go" })
@@ -2771,6 +2894,7 @@ function M.save_history(cwd, name, tab)
 			return indices
 		end)
 		carry_detached(detached, live, previous, texts, paths, key, file_path .. ".d/")
+		carry_marked_texts(texts, previous or {}, key, file_path .. ".d/", false)
 	end
 	local noname_content, kept = write_noname_texts(texts, key, file_path .. ".d/")
 	local closed, closed_times = serialise_closed_buffers(pool and { pool } or every_pool())
@@ -2788,6 +2912,7 @@ function M.save_history(cwd, name, tab)
 		label = history.data.last_label, -- where you were at this save: the label being left at the next load
 		unwritten = next(history.data.unwritten) and vim.tbl_keys(history.data.unwritten) or nil, -- files never written
 		marks = marks().serialise("session", pool and pool.id or ""), -- the session's own marks, when it has some
+		tabs = not pool and serialise_tabs() or nil, -- the plain tabs' marks, when there are some
 	}
 
 	if pool then

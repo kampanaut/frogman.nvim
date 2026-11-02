@@ -154,6 +154,16 @@ local function alias_index()
 	return require('frogman.configs').marks.aliases or {}
 end
 
+---Check if an alias has a key: the config's table names it.
+---
+---A saved mark whose alias the config no longer has is kept, holding its file, until it's given one.
+---
+---@param alias string
+---@return boolean assigned
+local function assigned(alias)
+	return alias_index()[alias] ~= nil
+end
+
 ---Check if one alias comes before another, by their indices: numbers by value, anything else by text.
 ---
 ---@param index table<string, any> Alias → index
@@ -273,7 +283,7 @@ function M.label_of(filehash, winid)
 	end
 	local index, found = alias_index(), {}
 	for alias, _ in pairs(group.marks) do
-		local handle = M.handle_of(group, alias)
+		local handle = assigned(alias) and M.handle_of(group, alias)
 		if handle and handle.hash == filehash then
 			table.insert(found, alias)
 		end
@@ -296,7 +306,9 @@ function M.marked_paths(winid)
 	end
 	local index, aliases = alias_index(), {}
 	for alias, _ in pairs(group.marks) do
-		table.insert(aliases, alias)
+		if assigned(alias) then
+			table.insert(aliases, alias)
+		end
 	end
 	table.sort(aliases, function(a, b) return before(index, a, b) end)
 	local paths = {}
@@ -379,6 +391,18 @@ function M.restore(kind, id, groups)
 	end
 	data.scopes[kind][id] = #scope.groups > 0 and scope or nil
 	M.hold_scope(kind, id)
+end
+
+---Copy one scope's marks into another, the two going their own ways after.
+---
+---@param kind "window"|"tab"|"session"
+---@param id any The scope copied
+---@param to_id any The scope it's copied into
+---@return nil
+function M.copy_scope(kind, id, to_id)
+	local scope = data.scopes[kind][id]
+	data.scopes[kind][to_id] = scope and vim.deepcopy(scope) or nil
+	M.hold_scope(kind, to_id)
 end
 
 ---Get the hashes of the files a session's marks hold.
