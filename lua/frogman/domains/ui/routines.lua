@@ -781,7 +781,9 @@ local function write_closed_lists(dbuf, leaving)
 	for text, filehash in pairs(picker.hashes) do
 		if not placed[filehash] and not gone[filehash] then
 			gone[filehash] = true
-			if (history.get_filepath_from_hash(filehash) or picker.paths[filehash] or ""):match("^NONAME_") then
+			-- one a mark holds exists in its mark, and keeps its text
+			if (history.get_filepath_from_hash(filehash) or picker.paths[filehash] or ""):match("^NONAME_")
+				and not require('frogman.domains.marks').routines.holds(filehash) then
 				table.insert(lost, text)
 			end
 		end
@@ -852,7 +854,7 @@ local function write_closed_lists(dbuf, leaving)
 		end
 	end
 	for filehash, _ in pairs(gone) do
-		if not history.routines.is_filehash_closed(filehash) then
+		if not history.routines.is_filehash_closed(filehash) and not require('frogman.domains.marks').routines.holds(filehash) then
 			history.data.noname_content[filehash] = nil
 			history.data.came_from[filehash] = nil
 		end

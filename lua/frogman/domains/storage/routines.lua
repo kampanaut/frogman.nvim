@@ -19,6 +19,7 @@
 ---@field [7] Filehash|vim.NIL What the window shows: its buffer's hash, or an outsider's (oil, help)
 ---@field [8] boolean Whether the primary is on
 ---@field [9] table<Filehash, number> The window's own access history
+---@field [10] {name: string, marks: table<string, Filehash>}[]|nil The window's marks, when it has some
 ---
 ---Window buffer relationships data structure
 ---Holds one entry per window with a triquetra, in window order (tab by tab)
@@ -44,6 +45,12 @@ local configs = require('frogman.configs')
 local crypto = require('frogman.domains.storage.crypto')
 
 local M = {}
+
+---Get the marks domain's routines, required when first used, since it requires the storage machine.
+---@return table routines
+local function marks()
+	return require('frogman.domains.marks').routines
+end
 
 
 ---Format header at the start of a main file, in the clear but covered by the seal's tag
@@ -523,6 +530,7 @@ local function serialise_window_relationships(outsiders, tabpage)
 				[8] = triquetra.primary_enabled == true,
 				[9] = history.data.crux_internals.window[winid] or {}
 			}
+			compressed[compressed_index][10] = marks().serialise("window", winid) -- its marks, when it has some
 			entry_wins[compressed_index] = winid
 			compressed_index = compressed_index + 1
 		end
@@ -645,17 +653,18 @@ end
 ---@return table<Filehash, NoNameBufferContent> texts Each text, by its buffer's hash
 local function serialise_noname_content(owner)
 	local texts = {}
+	local marked = marks().held_by(owner) -- the texts its marks hold go too, open or closed, an empty one included
 	for identifier, content in pairs(history.data.noname_content) do
-		-- print("identifier: " .. identifier)
-		if is_known(identifier) and (owner == nil or vim.tbl_contains(owner.closed, identifier)) then
+		if is_known(identifier) and (owner == nil or vim.tbl_contains(owner.closed, identifier) or marked[identifier]) then
 			texts[identifier] = content
 		end
 	end
 	for filehash, bufnr in pairs(history.data.hash_buffer_registry.buffers) do
 		local filepath = history.get_filepath_from_hash(filehash)
-		if filepath and filepath:match("^NONAME_") and vim.api.nvim_buf_is_loaded(bufnr) and owned(owner, filehash) then
+		if filepath and filepath:match("^NONAME_") and vim.api.nvim_buf_is_loaded(bufnr) and (owned(owner, filehash) or marked[filehash]) then
 			local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-			if not (#lines == 0 or (#lines == 1 and lines[1] == "")) then -- empty ones are skipped, as when closed
+			-- empty ones are skipped, as when closed, but for one a mark holds
+			if marked[filehash] or not (#lines == 0 or (#lines == 1 and lines[1] == "")) then
 				local winid = vim.fn.bufwinid(bufnr)
 				winid = winid ~= -1 and winid or (vim.fn.win_findbuf(bufnr)[1] or -1) -- or one in another tab
 				texts[filehash] = {
@@ -743,6 +752,70 @@ local function noname_already_back(filehash)
 		end
 	end
 	return nil
+end
+
+---Carry into a records write the No Name texts its file's window marks name.
+---
+---A records write leaves the windows as the last save wrote them, their marks included, so the texts
+---those marks name stay: from memory when it holds them, and otherwise carried from the file, unread.
+---
+---@param texts table<Filehash, table> The texts the write takes, added to in place
+---@param saved table The file's data
+---@param key string The session's key
+---@param scratch_dir string The session's scratch directory
+---@return nil
+local function carry_marked_texts(texts, saved, key, scratch_dir)
+	local named = {}
+	for _, entry in ipairs(saved.windows or {}) do
+		marks().named_by(entry[10], named)
+	end
+	for filehash, _ in pairs(named) do
+		local entry = type(saved.noname_content) == "table" and saved.noname_content[filehash]
+		if texts[filehash] == nil then
+			if history.data.noname_content[filehash] and is_known(filehash) then
+				texts[filehash] = history.data.noname_content[filehash]
+			elseif type(entry) == "table" and type(entry.scratch) == "string" then
+				local source = scratch_dir .. entry.scratch
+				texts[filehash] = { scratch = entry.scratch, source = source, key = key,
+					read = scratch_reader(source, key, filehash), reopen = entry.reopen }
+			end
+		end
+	end
+end
+
+---Give the scopes a session file's marks.
+---
+---The session's own come from its `marks`, unless it's open already, when memory's stay, and each
+---matched window's from the entry it took. A No Name text a mark names that no list holds and that
+---isn't reopened is held unread, as a closed one is, on no list.
+---
+---@param saved_data table The file's data
+---@param taken table<integer, WinId> The window each saved entry went to, by the entry's index
+---@param session_id string The session's pool id ("" for the whole editor's)
+---@param own boolean Whether the session's own marks come from the file
+---@param key string The session's key
+---@param scratch_dir string The session's scratch directory
+---@return nil
+local function restore_marks(saved_data, taken, session_id, own, key, scratch_dir)
+	if own then
+		marks().restore("session", session_id, saved_data.marks)
+	end
+	for i, winid in pairs(taken or {}) do
+		local entry = saved_data.windows[i]
+		if entry and type(entry[10]) == "table" and vim.api.nvim_win_is_valid(winid) then
+			marks().restore("window", winid, entry[10])
+		end
+	end
+	for filehash, _ in pairs(marks().held_by(nil)) do
+		local entry = type(saved_data.noname_content) == "table" and saved_data.noname_content[filehash]
+		local filepath = history.get_filepath_from_hash(filehash)
+		if type(entry) == "table" and not entry.reopen and type(entry.scratch) == "string" and filepath
+			and filepath:match("^NONAME_") and history.data.noname_content[filehash] == nil then
+			local source = scratch_dir .. entry.scratch
+			history.data.noname_content[filehash] = { scratch = entry.scratch, source = source, key = key,
+				read = scratch_reader(source, key, filehash) }
+		end
+	end
 end
 
 ---Reopen the No Name buffers that were open at the save.
@@ -1405,10 +1478,11 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 		end
 	end
 	load_closed_buffers(saved_data.closed or {}, saved_data.noname_content or {}, key, scratch_dir, saved_data.closed_times, open)
-	local window_histories, matched = load_window_buffer_relationships(saved_data.windows, tabpage)
+	local window_histories, matched, taken = load_window_buffer_relationships(saved_data.windows, tabpage)
 	for winid, window_crux in pairs(window_histories) do
 		history.data.crux_internals.window[winid] = window_crux
 	end
+	restore_marks(saved_data, taken, load_pool.id, not open, key, scratch_dir) -- before the texts reopen under new hashes
 	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
 		if window.data.crux[winid] then
 			history.routines.ensure_window_entry(winid)
@@ -1551,6 +1625,7 @@ function M.load_history(cwd, name)
 		end
 	elseif saved_data then
 		-- Restore from saved session
+		marks().teardown() -- from bare as from idle: the file's marks alone, and none left on a handle the load lets go
 		load_pool = history.routines.pools()[""]
 		data.editor_session, data.unnamed = { name = name, directory = cwd }, nil
 		ledger.set_session(name, cwd)
@@ -1581,6 +1656,7 @@ function M.load_history(cwd, name)
 			end
 		end
 		load_pool = history.routines.pools()[""]
+		restore_marks(saved_data, taken, "", true, key, scratch_dir) -- before the texts reopen under new hashes
 		reopen_noname_buffers(saved_data.noname_content or {}, key, scratch_dir)
 		for filehash, tag in pairs(saved_data.missing or {}) do
 			history.data.missing[filehash] = tag
@@ -1613,6 +1689,7 @@ function M.load_history(cwd, name)
 			end
 		end
 	else
+		marks().teardown() -- before the fresh start lets every handle go
 		populate_history()
 		data.editor_session, data.unnamed = { name = name, directory = cwd }, nil
 		ledger.set_session(name, cwd)
@@ -1771,6 +1848,14 @@ local function narrow(storage)
 		end
 	end
 	for _, filehash in ipairs(storage.closed) do
+		add(filehash)
+	end
+	-- the files the marks name, one only a mark holds among them
+	local named = marks().named_by(storage.marks)
+	for _, entry in ipairs(storage.windows) do
+		marks().named_by(entry[10], named)
+	end
+	for filehash, _ in pairs(named) do
 		add(filehash)
 	end
 	for _, tbl in ipairs({ storage.buffers.global, storage.noname_content }) do
@@ -2028,6 +2113,17 @@ local function write_records(session, changes)
 		saved.closed, saved.closed_times = serialise_closed_buffers(session.pools)
 		saved.paths = saved.paths or {}
 		local texts = serialise_noname_content(session.owner)
+		-- the session's own marks are records too; its windows' marks stay as the last save wrote them,
+		-- and so do the texts they name
+		saved.marks = marks().serialise("session", session.scope == "tab" and session.owner.id or "")
+		carry_marked_texts(texts, saved, key, file_path .. ".d/")
+		local named = marks().named_by(saved.marks)
+		for _, entry in ipairs(saved.windows or {}) do
+			marks().named_by(entry[10], named)
+		end
+		for filehash, _ in pairs(named) do
+			saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
+		end
 		if session.scope == "editor" then
 			-- the detached lists ride with the whole editor's records
 			local lists, live = detached_lists(saved, nil)
@@ -2691,6 +2787,7 @@ function M.save_history(cwd, name, tab)
 		missing = history.data.missing, -- where each file gone from disk went missing
 		label = history.data.last_label, -- where you were at this save: the label being left at the next load
 		unwritten = next(history.data.unwritten) and vim.tbl_keys(history.data.unwritten) or nil, -- files never written
+		marks = marks().serialise("session", pool and pool.id or ""), -- the session's own marks, when it has some
 	}
 
 	if pool then

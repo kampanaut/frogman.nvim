@@ -328,4 +328,129 @@ function M.check_aliases(aliases)
 	end
 end
 
+---Get a scope's groups as a session file holds them.
+---
+---Each group keeps its name and its marks, each by its alias and its file's hash. A group with no
+---marks isn't kept, and a scope with none gives nil.
+---
+---@param kind "window"|"tab"|"session"
+---@param id any
+---@return {name: string, marks: table<string, Filehash>}[]|nil groups
+function M.serialise(kind, id)
+	local scope = data.scopes[kind][id]
+	local groups = {}
+	for _, group in ipairs(scope and scope.groups or {}) do
+		local marks = {}
+		for alias, _ in pairs(group.marks) do
+			local handle = M.handle_of(group, alias)
+			if handle then
+				marks[alias] = handle.hash
+			end
+		end
+		if next(marks) then
+			table.insert(groups, { name = group.name, marks = marks })
+		end
+	end
+	return #groups > 0 and groups or nil
+end
+
+---Give a scope the groups a session file holds.
+---
+---Each mark takes its file's handle. A file the registry doesn't know is left out, and a scope
+---left with no group goes.
+---
+---@param kind "window"|"tab"|"session"
+---@param id any
+---@param groups {name: string, marks: table<string, Filehash>}[]|nil The file's groups
+---@return nil
+function M.restore(kind, id, groups)
+	local scope = { groups = {} }
+	for _, saved in ipairs(type(groups) == "table" and groups or {}) do
+		local group = { name = saved.name, marks = {} }
+		for alias, filehash in pairs(type(saved.marks) == "table" and saved.marks or {}) do
+			local handle = history.handles.of_hash(filehash)
+			if handle then
+				group.marks[alias] = handle.id
+			end
+		end
+		if next(group.marks) then
+			table.insert(scope.groups, group)
+		end
+	end
+	data.scopes[kind][id] = #scope.groups > 0 and scope or nil
+	M.hold_scope(kind, id)
+end
+
+---Get the hashes of the files a session's marks hold.
+---
+---With no pool, every mark's. With a pool, its own marks, and those of the windows and tabs in its
+---tabs; the editor's pool takes the detached lists' too.
+---
+---@param owner Pool|nil
+---@return table<Filehash, boolean> held
+function M.held_by(owner)
+	local held = {}
+	local function take(kind, id)
+		local scope = data.scopes[kind][id]
+		for _, group in ipairs(scope and scope.groups or {}) do
+			for alias, _ in pairs(group.marks) do
+				local handle = M.handle_of(group, alias)
+				if handle then
+					held[handle.hash] = true
+				end
+			end
+		end
+	end
+	local function its_tab(tabpage)
+		return owner == nil or (vim.api.nvim_tabpage_is_valid(tabpage) and history.routines.pool_of_tab(tabpage) == owner)
+	end
+	for kind, scopes in pairs(data.scopes) do
+		for id, _ in pairs(scopes) do
+			if owner == nil then
+				take(kind, id)
+			elseif kind == "window" then
+				if vim.api.nvim_win_is_valid(id) and its_tab(vim.api.nvim_win_get_tabpage(id)) then
+					take(kind, id)
+				end
+			elseif kind == "tab" then
+				if its_tab(id) then
+					take(kind, id)
+				end
+			elseif id == owner.id or (owner.id == "" and history.data.pools[id] and history.data.pools[id].detached) then
+				take(kind, id)
+			end
+		end
+	end
+	return held
+end
+
+---Check if a mark holds a file.
+---
+---@param filehash Filehash|nil
+---@return boolean held
+function M.holds(filehash)
+	local handle = filehash and history.handles.of_hash(filehash)
+	for place, _ in pairs(handle and handle.holders or {}) do
+		if place:match("^mark:") then
+			return true
+		end
+	end
+	return false
+end
+
+---Get the hashes a file's saved groups name.
+---
+---@param groups {name: string, marks: table<string, Filehash>}[]|nil
+---@param into table<Filehash, boolean>|nil Added to in place, when given
+---@return table<Filehash, boolean> named
+function M.named_by(groups, into)
+	into = into or {}
+	for _, group in ipairs(type(groups) == "table" and groups or {}) do
+		for _, filehash in pairs(type(group.marks) == "table" and group.marks or {}) do
+			into[filehash] = true
+		end
+	end
+	return into
+end
+
 return M
