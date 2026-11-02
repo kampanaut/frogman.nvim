@@ -3961,6 +3961,83 @@ T['T377 [char] (S2) a typed header that names no list refuses the write'] = func
 	eq({ named = S2.has(child.messages(), 'nowhere'), closed = child.closed() }, { named = true, closed = 'b,c' })
 end
 
+-- The guard's cases type keys one group at a time, letting the editor settle between, as
+-- typing does: a burst typed at once fires the events differently.
+local function keys(...)
+	for _, k in ipairs({ ... }) do
+		child.type_keys(k)
+		child.settle()
+	end
+end
+
+local function picker_lines()
+	return child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)')
+end
+
+-- The cursor on t's header, the line above c's, its only entry.
+local function on_t_header(lines)
+	local c = S2.line_of(lines, 'c.txt')
+	child.lua('vim.api.nvim_win_set_cursor(0, { ..., 0 })', { c - 1 })
+end
+
+T['T671 [char] (S2) a header deleted outside insert mode comes back, and <C-r> can\'t take it again'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	local p = S2.picker(child)
+	on_t_header(p.lines)
+	keys('dd')
+	local after_dd = picker_lines()
+	keys('<C-r>')
+	local after_redo = picker_lines()
+	child.lua('vim.cmd("write")')
+	child.settle()
+	eq({ after_dd, after_redo, S2.picker(child).lines }, { p.lines, p.lines, p.lines })
+end
+
+T['T672 [char] (S2) a header can\'t be changed in insert mode, keystroke by keystroke'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	local p = S2.picker(child)
+	local got = {}
+	for name, seq in pairs({
+		clear = { 'S', '<Esc>' },
+		type_over = { 'A', 'x', 'y', 'z', '<Esc>' },
+		join = { 'I', '<BS>', '<Esc>' },
+		split = { 'A', '<Left>', '<CR>', '<Esc>' },
+	}) do
+		on_t_header(p.lines)
+		keys(unpack(seq))
+		got[name] = picker_lines()
+	end
+	child.lua('vim.cmd("write")')
+	child.settle()
+	eq({ got, S2.picker(child).lines },
+		{ { clear = p.lines, type_over = p.lines, join = p.lines, split = p.lines }, p.lines })
+end
+
+T['T673 [char] (S2) a pasted copy of a header is taken back (mine)'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	local p = S2.picker(child)
+	on_t_header(p.lines)
+	keys('yy', 'p')
+	eq(picker_lines(), p.lines)
+end
+
+T['T674 [char] (S2) a redraw of frogman\'s own is the state the guard takes back to'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	local p = S2.picker(child)
+	child.lua('vim.api.nvim_win_set_cursor(0, { ..., 0 })', { S2.line_of(p.lines, 'x.txt') })
+	keys('gf')
+	child.lua('vim.api.nvim_set_current_win(...)', { p.win })
+	child.settle()
+	local redrawn = picker_lines()
+	on_t_header(redrawn)
+	keys('dd')
+	eq({ x_gone = S2.line_of(redrawn, 'x.txt') == nil, lines = picker_lines() }, { x_gone = true, lines = redrawn })
+end
+
 T['T525 [char] (S1 Load) a window entry whose maps are saved as null loads with empty ones'] = function()
 	local s = S2.shared()
 	S2.start(child, s)

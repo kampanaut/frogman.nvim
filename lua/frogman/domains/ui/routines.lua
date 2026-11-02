@@ -596,6 +596,7 @@ local function draw_closed_lists(dbuf)
 	end
 
 	local headers, where, hashes, filetypes, times, drawn, lines = {}, {}, {}, {}, {}, {}, {}
+	local header_order = {}
 	for _, pool in ipairs(order) do
 		local tabs = {}
 		for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
@@ -606,6 +607,7 @@ local function draw_closed_lists(dbuf)
 		where[pool] = pool.file_only and "in the file" or #tabs == 0 and "no tab" or (#tabs == 1 and ("tab " .. tabs[1]) or ("tabs " .. table.concat(tabs, ", ")))
 		local header = glyphs.list .. label[pool]
 		headers[header] = pool
+		table.insert(header_order, header)
 		table.insert(lines, header)
 		times[pool], drawn[pool] = vim.deepcopy(pool.times), {}
 		for i = #pool.closed, 1, -1 do
@@ -623,6 +625,7 @@ local function draw_closed_lists(dbuf)
 		end
 	end
 	picker.order, picker.label, picker.headers, picker.where = order, label, headers, where
+	picker.header_order = header_order
 	picker.hashes, picker.filetypes, picker.times, picker.drawn = hashes, filetypes, times, drawn
 	picker.paths = {} -- the paths of the entries in lists in the file alone
 	for _, file in pairs(files) do
@@ -631,8 +634,56 @@ local function draw_closed_lists(dbuf)
 		end
 	end
 	vim.api.nvim_buf_set_lines(dbuf, 0, -1, false, lines)
+	picker.intact = lines -- what the header guard takes a change back to
 	vim.bo[dbuf].modified = false
 	decorate_closed_lists(dbuf)
+end
+
+---Take back a change that leaves the closed lists' headers broken.
+---
+---The headers are intact when each list's header stands, trimmed, on a line of its own, once, in
+---the order they were drawn, which is how the write reads a header. Outside insert mode the
+---change is undone, so redo can't bring it back either. In insert mode an undo can't run, so the
+---lines go back to how they last stood with their headers intact. A change that keeps them intact
+---is what the next one is taken back to.
+---
+---@param dbuf Bufnr The closed-lists buffer
+---@param insert boolean Whether the change was made in insert mode
+---@return nil
+local function guard_headers(dbuf, insert)
+	local picker = closed_pickers[dbuf]
+	if not picker or not picker.header_order then
+		return
+	end
+	local function intact(lines)
+		local seen = {}
+		for _, line in ipairs(lines) do
+			local text = vim.trim(line)
+			if picker.headers[text] then
+				table.insert(seen, text)
+			end
+		end
+		return vim.deep_equal(seen, picker.header_order)
+	end
+	if intact(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) then
+		picker.intact = vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)
+		return
+	end
+	if not insert then
+		vim.api.nvim_buf_call(dbuf, function()
+			vim.cmd("silent! undo")
+		end)
+		if intact(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) then
+			return
+		end
+	end
+	-- an undo that didn't mend it, or a keystroke in insert mode: the lines as they last stood
+	local win = vim.fn.bufwinid(dbuf)
+	local cursor = win ~= -1 and vim.api.nvim_win_get_cursor(win)
+	vim.api.nvim_buf_set_lines(dbuf, 0, -1, false, picker.intact)
+	if cursor then
+		pcall(vim.api.nvim_win_set_cursor, win, { math.min(cursor[1], #picker.intact), cursor[2] })
+	end
 end
 
 ---Write a closed-lists buffer back to the lists.
@@ -974,9 +1025,10 @@ function M.show_closed_lists(opts)
 		end,
 		desc = "Write the closed lists",
 	})
-	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP" }, {
 		buffer = dbuf,
-		callback = function()
+		callback = function(ev)
+			guard_headers(dbuf, ev.event ~= "TextChanged")
 			decorate_closed_lists(dbuf)
 		end,
 	})
