@@ -935,7 +935,7 @@ function M.reopen_from_closed_lists(dbuf, stay)
 	if section and section.file_only then
 		storage.adopt_file_entry(filehash)
 	end
-	local bufnr = history.routines.reopen_filehash(filehash)
+	local bufnr, reason = history.routines.reopen_filehash(filehash)
 	if bufnr and section and section.file_only then
 		-- the list as the file holds it now, the edits just written included
 		for _, list in ipairs(storage.file_only_lists()) do
@@ -955,7 +955,7 @@ function M.reopen_from_closed_lists(dbuf, stay)
 		end
 	end
 	if not bufnr then
-		if not (history.get_filepath_from_hash(filehash) or ""):match("^NONAME_") then
+		if not (history.get_filepath_from_hash(filehash) or ""):match("^NONAME_") and reason ~= "taken" then
 			vim.notify(text .. " isn't on disk right now; it stays on the closed list.", vim.log.levels.WARN)
 		end
 		draw_closed_lists(dbuf)

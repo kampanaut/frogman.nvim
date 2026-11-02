@@ -177,19 +177,21 @@ function M.init_autocmds(group)
 	})
 
 	-- a buffer whose buftype changes after it was slotted (a plugin's scratch, entered as a plain buffer)
-	-- has its arrival undone, once the editor settles.
+	-- has its file closed, once the editor settles. a No Name text is copied now, as it turns, since
+	-- whatever writes into the buffer next isn't its text.
 	vim.api.nvim_create_autocmd("OptionSet", {
 		group = group,
 		pattern = "buftype",
 		callback = function()
 			local bufnr = vim.api.nvim_get_current_buf()
+			local text = routines.copy_noname_text(bufnr)
 			require('frogman.settle').later("buftype undo", function()
 				if
 					vim.api.nvim_buf_is_valid(bufnr) and
 					history.get_hash_from_buffer(bufnr) and
 					not history.routines.is_trackable(bufnr)
 				then
-					routines.undo_arrival(bufnr)
+					routines.undo_arrival(bufnr, text)
 				end
 			end)
 		end,

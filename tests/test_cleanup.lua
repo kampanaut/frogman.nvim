@@ -534,14 +534,79 @@ end
 
 -- d's arrival is followed by <M-;><M-c>, so the window's triquetra has changed
 -- since and the undo takes the next slot in line instead of the one from before.
-T['T578 [char] (I10) an arrival undone takes the next open slot'] = function()
+-- ⦉c⦊ [d] ⟦b⟧ with [d]on and c closed, then d's buffer set nofile: d is closed, and the window
+-- keeps it, visiting the buffer that took its name.
+local function untracked_d()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d', '<M-;><M-c>' })
 	child.cmd('bdelete c.txt')
 	child.settle()
 	eq({ child.slots(), child.closed() }, { '⦉c⦊ [d] ⟦b⟧', 'c' })
 	child.cmd('setlocal buftype=nofile')
 	child.settle(300)
-	eq(child.slots(), '⦉c⦊ [b] ⟦-⟧')
+	return child.lua('return vim.api.nvim_get_current_buf()')
+end
+
+T['T578 [char] (I10) a file whose buffer turns untracked is closed, and the window keeps it'] = function()
+	local nofile = untracked_d()
+	eq({ slots = child.slots(), primary = child.primary(), closed = child.closed(),
+		shows = child.lua('return { vim.api.nvim_get_current_buf(), vim.bo.buftype }') },
+		{ slots = '⦉c⦊ [d] ⟦b⟧', primary = '[d]on', closed = 'c,d', shows = { nofile, 'nofile' } })
+end
+
+T['T700 [char] (I10, M5) a No Name text whose buffer turns untracked is copied as it turns'] = function()
+	child.steps({ ':e a', ':enew' })
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "draft" })')
+	child.steps({ '<M-;><M-c>' })
+	child.lua([[
+		vim.cmd('setlocal buftype=nofile')
+		vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'plugin' })
+	]])
+	child.settle(300)
+	eq(child.closed():match('^NONAME_%d+$') ~= nil, true)
+	child.steps({ ':e a', '<M-S-w>' })
+	eq(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), { 'draft' })
+end
+
+T['T701 [char] (I10) a file whose name an untracked buffer holds is not reopened until that buffer goes'] = function()
+	local nofile = untracked_d()
+	child.messages()
+	local taken = "can't be reopened while another buffer has its name"
+	child.steps({ '<M-f>' })
+	local said = vim.tbl_map(function(m) return m.msg end, child.messages())
+	eq({ child.slots(), #said, (said[1] or ''):find(taken, 1, true) ~= nil }, { '⦉c⦊ [d] ⟦b⟧', 1, true })
+	child.steps({ '<M-S-w>' })
+	said = vim.tbl_map(function(m) return m.msg end, child.messages())
+	eq({ child.closed(), #said, (said[1] or ''):find(taken, 1, true) ~= nil }, { 'c,d', 1, true })
+	child.cmd('bwipeout! ' .. nofile)
+	child.settle(100)
+	child.steps({ '<M-S-w>' })
+	eq(child.shown(), 'd')
+end
+
+-- d in the first window's ternary, its buffer set nofile from the split it arrived in.
+T['T703 [char] (I10, A7) a closed ternary whose name an untracked buffer holds is not reopened'] = function()
+	child.steps({ ':e d', ':e a' })
+	local w1 = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('vsplit')
+	child.steps({ ':e d' })
+	child.cmd('setlocal buftype=nofile')
+	child.settle(300)
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	child.settle()
+	eq(child.slots(), '⦉d⦊ [a] ⟦-⟧')
+	child.messages()
+	local dumps = child.dump_files()
+	local ok, err = child.step('<M-S-f>')
+	local said = vim.tbl_map(function(m) return m.msg end, child.messages())
+	eq({ ok = ok, err = err, slots = child.slots(), said = said, dump = child.dumped_since(dumps) },
+		{ ok = true, slots = '⦉d⦊ [a] ⟦-⟧', said = { "d.txt can't be reopened while another buffer has its name." }, dump = nil })
+end
+
+T['T702 [char] (I10, A21) a cleanup pass leaves the closed file in the current slot'] = function()
+	local nofile = untracked_d()
+	child.lua('require("frogman.domains.history").routines.cleanup_system()')
+	child.settle(100)
+	eq({ child.slots(), child.lua('return vim.api.nvim_get_current_buf()') }, { '⦉c⦊ [d] ⟦b⟧', nofile })
 end
 
 return T

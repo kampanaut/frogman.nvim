@@ -189,16 +189,37 @@ local function resolve_next_slot(triquetra, except)
 		end
 	end
 end
----Undo a buffer's arrival once it turned into something frogman doesn't track.
----
----Runs when the buffer's buftype changed after it was slotted. A window it just arrived in gets back
----the slots and notes it had before, and is visiting it. A window whose current slot it was otherwise
----takes the next open slot in line, as a landing does. The buffer then leaves every other slot, and is no
----longer tracked.
+---Copy a No Name buffer's text, its lines, filetype and cursor, as it turns into something frogman
+---doesn't track.
 ---
 ---@param bufnr Bufnr
+---@return { lines: string[], filetype: string, cursor: integer[] }|nil text The copy, or nil when it isn't a registered No Name buffer
+function M.copy_noname_text(bufnr)
+	local filehash = history.get_hash_from_buffer(bufnr)
+	local filepath = filehash and history.get_filepath_from_hash(filehash)
+	if not filepath or not filepath:match("^NONAME_") then
+		return nil
+	end
+	local winid = vim.fn.bufwinid(bufnr)
+	return {
+		lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false),
+		filetype = vim.bo[bufnr].filetype,
+		cursor = winid ~= -1 and vim.api.nvim_win_get_cursor(winid) or { 1, 0 },
+	}
+end
+
+---Close a buffer's file once the buffer turned into something frogman doesn't track.
+---
+---Runs when the buffer's buftype changed after it was slotted. Its file isn't open any more, and
+---another buffer has taken its name, so it's closed as a delete closes it: onto its lists, with its
+---history kept, and every slot, queue entry and note holding it keeps it. A window it just arrived in
+---gets back the slots and notes it had before, and is visiting it. Any other window whose current
+---slot it was keeps it there, closed, visiting the buffer that took its name.
+---
+---@param bufnr Bufnr
+---@param text { lines: string[], filetype: string, cursor: integer[] }|nil A No Name buffer's text, copied as it turned
 ---@return nil
-function M.undo_arrival(bufnr)
+function M.undo_arrival(bufnr, text)
 	local filehash = history.get_hash_from_buffer(bufnr)
 	if not filehash then
 		return
@@ -206,37 +227,29 @@ function M.undo_arrival(bufnr)
 	local ledger = require('frogman.domains.ledger')
 	for winid, triquetra in pairs(data.crux) do
 		local arrival = data.arrivals[winid]
-		if triquetra.current_slot == filehash then
+		if
+			triquetra.current_slot == filehash and arrival and arrival.hash == filehash and arrival.after and
+			vim.deep_equal(arrival.after, triquetra)
+		then
 			local before = ledger.slots(winid)
-			if arrival and arrival.hash == filehash and arrival.after and vim.deep_equal(arrival.after, triquetra) then
-				local restored = {}
-				for _, key in ipairs({ "current_slot", "secondary_slot", "ternary_slot", "primary_buffer",
-					"primary_enabled", "displacement_ternary_map", "displacement_secondary_map" }) do
-					restored[key] = arrival.before[key] == nil and vim.NIL or arrival.before[key]
-				end
-				triquetra:update(restored)
-			elseif not resolve_next_slot(triquetra, bufnr) then
-				data.unregister_triquetra(winid) -- nothing to come back to.
+			local restored = {}
+			for _, key in ipairs({ "current_slot", "secondary_slot", "ternary_slot", "primary_buffer",
+				"primary_enabled", "displacement_ternary_map", "displacement_secondary_map" }) do
+				restored[key] = arrival.before[key] == nil and vim.NIL or arrival.before[key]
 			end
-			if data.crux[winid] then
-				ledger.slots_moved("undone", winid, before, { words = "its buffer turned into something untracked" })
-				M.enforce_note_maps_policy(triquetra) -- a slot changed under the current buffer.
-			else
-				ledger.move("dropped", { subject = tostring(winid), name = ledger.window_name(winid),
-					words = "its buffer turned into something untracked, with nothing to come back to" })
-			end
+			triquetra:update(restored)
+			ledger.slots_moved("undone", winid, before, { words = "its buffer turned into something untracked" })
+			M.enforce_note_maps_policy(triquetra) -- a slot changed under the current buffer.
 		end
 		if arrival and arrival.hash == filehash then
 			data.arrivals[winid] = nil
 		end
 	end
-	data.forget_hash_in_slots(filehash)
-
-	local filepath = history.get_filepath_from_hash(filehash)
-	history.routines.untrack_buffer(bufnr)
-	history.routines.unregister_buffer(bufnr)
-	if filepath then
-		history.routines.unregister_filepath(filepath)
+	-- a close: the file goes on its lists, and whatever holds it keeps it
+	if history.routines.track_closing_filehash(filehash, nil, text) then
+		history.routines.unregister_buffer(bufnr)
+		history.routines.update_buffer_history_ordered()
+		history.routines.update_buffer_history_ordered_nonharpooned()
 	end
 	loop_sm:to(loop_states.SELF)
 end
@@ -818,10 +831,13 @@ function M.swap_with_secondary(winid)
 			return
 		end
 		local basename = require('frogman.domains.ui').routines.get_smart_basename(triquetra.current_slot)
-		cbufnr = history.reopen_filehash(triquetra.current_slot)
+		local reason
+		cbufnr, reason = history.reopen_filehash(triquetra.current_slot)
 		if cbufnr == nil then
 			-- it can't come back (a No Name text that's lost): no swap is made from a window off its current slot
-			vim.notify(basename .. " can't be reopened, so the window stays where it is.", vim.log.levels.WARN)
+			if reason ~= "taken" then -- another buffer has its name: the reopen said so
+				vim.notify(basename .. " can't be reopened, so the window stays where it is.", vim.log.levels.WARN)
+			end
 			return
 		end
 	end
@@ -877,8 +893,11 @@ function M.swap_with_secondary(winid)
 		if cbufnr == nil then
 			local old_basename = require('frogman.domains.ui').routines.get_smart_basename(triquetra.secondary_slot)
 			local old_secondary_filehash = triquetra.secondary_slot
-			cbufnr = history.reopen_filehash(triquetra.secondary_slot)
-			if cbufnr == nil then
+			local reason
+			cbufnr, reason = history.reopen_filehash(triquetra.secondary_slot)
+			if cbufnr == nil and reason == "taken" then
+				return -- another buffer has its name: the reopen said so, and the slot keeps it
+			elseif cbufnr == nil then
 				vim.notify(
 					"Removed secondary file not found in filesystem: " .. old_basename,
 					vim.log.levels.WARN)
@@ -932,10 +951,13 @@ function M.swap_with_ternary(winid)
 			return
 		end
 		local basename = require('frogman.domains.ui').routines.get_smart_basename(triquetra.current_slot)
-		cbufnr = history.reopen_filehash(triquetra.current_slot)
+		local reason
+		cbufnr, reason = history.reopen_filehash(triquetra.current_slot)
 		if cbufnr == nil then
 			-- it can't come back (a No Name text that's lost): no swap is made from a window off its current slot
-			vim.notify(basename .. " can't be reopened, so the window stays where it is.", vim.log.levels.WARN)
+			if reason ~= "taken" then -- another buffer has its name: the reopen said so
+				vim.notify(basename .. " can't be reopened, so the window stays where it is.", vim.log.levels.WARN)
+			end
 			return
 		end
 	end
@@ -962,8 +984,11 @@ function M.swap_with_ternary(winid)
 	if cbufnr == nil then
 		local old_basename = require('frogman.domains.ui').routines.get_smart_basename(triquetra.ternary_slot)
 		local old_ternary_filehash = triquetra.ternary_slot
-		cbufnr = history.reopen_filehash(triquetra.ternary_slot)
-		if cbufnr == nil then
+		local reason
+		cbufnr, reason = history.reopen_filehash(triquetra.ternary_slot)
+		if cbufnr == nil and reason == "taken" then
+			return -- another buffer has its name: the reopen said so, and the slot keeps it
+		elseif cbufnr == nil then
 			vim.notify("Removed ternary file not found in filesystem: " .. old_basename,
 				vim.log.levels.WARN)
 			triquetra:set("ternary_slot", nil)
@@ -1042,7 +1067,11 @@ function M.jump_to_primary(winid)
 	end
 	local cbufnr = history.get_buffer_from_hash(triquetra.primary_buffer[1])
 	if cbufnr == nil then
-		cbufnr = history.reopen_filehash(triquetra.primary_buffer[1])
+		local reason
+		cbufnr, reason = history.reopen_filehash(triquetra.primary_buffer[1])
+		if cbufnr == nil and reason == "taken" then
+			return -- another buffer has its name: the reopen said so, and the queue keeps it
+		end
 		if cbufnr and history.get_filepath_from_buffer(cbufnr):match("^NONAME_") then
 			triquetra:queue_set(1, history.get_hash_from_buffer(cbufnr))
 		end

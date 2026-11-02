@@ -1250,8 +1250,13 @@ end
 ---Reopen a filepath derived from a file hash. The file hash
 ---must be registered during this session.
 ---
+---A file whose name another buffer has, one that turned into something frogman doesn't track, isn't
+---reopened while that buffer is there: it says so, and gives "taken" as the reason, so the caller adds
+---nothing and keeps the file where it is.
+---
 ---@param filehash Filehash
 ---@return Bufnr|nil bufnr Buffer number if hash is registered, nil if not found
+---@return "taken"|nil reason Why it wasn't reopened, when another buffer has its name
 function M.reopen_filehash(filehash)
 	local filepath = data.hash_filepath_registry.filepaths[filehash]
 	if filepath == nil then
@@ -1259,6 +1264,12 @@ function M.reopen_filehash(filehash)
 	end
 	if not filepath:match("^NONAME_") and vim.fn.filereadable(filepath) ~= 1 and not data.unwritten[filehash] then
 		return nil -- a file gone from disk keeps its place on the closed stack: it may come back
+	end
+	local holder = M.find_buffer_by_filepath(filepath)
+	if holder and vim.bo[holder].buftype ~= "" and not M.is_nowrite_file(holder) then
+		vim.notify(require('frogman.domains.ui').routines.get_smart_basename(filehash) ..
+			" can't be reopened while another buffer has its name.", vim.log.levels.WARN)
+		return nil, "taken"
 	end
 
 	local cache
@@ -1440,9 +1451,10 @@ end
 ---The filehash must still be rigistered in the hash_buffer_registry.
 ---@param filehash Filehash THE FILEHASH MUST BE REGISTERED
 ---@param quiet boolean|nil Whether the close is left out of the trail, for the caller to record
+---@param text { lines: string[], filetype: string, cursor: integer[] }|nil A No Name buffer's text copied before, to keep in place of what the buffer holds now
 ---@return boolean success True if the filehash was added to the closed buffers registry
 ---@return table<Pool, boolean>|nil targets The pools it went on, when it was added
-function M.track_closing_filehash(filehash, quiet)
+function M.track_closing_filehash(filehash, quiet, text)
 	local filepath = data.hash_filepath_registry.filepaths[filehash]
 	local bufnr = data.hash_buffer_registry.buffers[filehash]
 
@@ -1454,7 +1466,7 @@ function M.track_closing_filehash(filehash, quiet)
 	end
 
 	if filepath:match("^NONAME_") then
-		local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+		local lines = text and text.lines or vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 
 		-- Check if buffer is empty (no lines or single empty line)
 		if #lines == 0 or (#lines == 1 and lines[1] == "") then
@@ -1467,7 +1479,7 @@ function M.track_closing_filehash(filehash, quiet)
 		end
 
 		local winid = vim.fn.bufwinid(bufnr)
-		data.noname_content[filehash] = {
+		data.noname_content[filehash] = text or {
 			lines = lines,
 			filetype = vim.bo[bufnr].filetype,
 			-- the close key switches the window away first, so it keeps the cursor on the buffer.
@@ -1535,10 +1547,10 @@ function M.reopen_last_closed()
 	end
 
 	local filehash = closed[#closed]
-	local bufnr = M.reopen_filehash(filehash)
+	local bufnr, reason = M.reopen_filehash(filehash)
 	if bufnr then
 		vim.api.nvim_set_current_buf(bufnr)
-	elseif closed[#closed] == filehash then
+	elseif closed[#closed] == filehash and reason ~= "taken" then
 		vim.notify(require('frogman.domains.ui').routines.get_smart_basename(filehash) ..
 			" isn't on disk right now; it stays on the closed stack.", vim.log.levels.WARN)
 	end
@@ -1562,11 +1574,13 @@ function M.delete_buffer(winid)
 		-- a window visiting it goes back to the file it was on; a window born on it is left to neovim,
 		-- which closes it, or picks what it shows when it's the only one.
 		local triquetra = require('frogman.domains.window.data').crux[winid]
-		local current_bufnr = triquetra and
-			(M.get_buffer_from_hash(triquetra.current_slot) or M.reopen_filehash(triquetra.current_slot))
+		local current_bufnr, reason = triquetra and M.get_buffer_from_hash(triquetra.current_slot), nil
+		if triquetra and not current_bufnr then
+			current_bufnr, reason = M.reopen_filehash(triquetra.current_slot)
+		end
 		if current_bufnr and vim.api.nvim_buf_is_valid(current_bufnr) then
 			vim.api.nvim_win_set_buf(winid, current_bufnr)
-		elseif triquetra and M.get_filepath_from_hash(triquetra.current_slot) then
+		elseif triquetra and M.get_filepath_from_hash(triquetra.current_slot) and reason ~= "taken" then
 			vim.notify(require('frogman.domains.ui').routines.get_smart_basename(triquetra.current_slot) ..
 				" isn't on disk right now, so the window can't go back to it.", vim.log.levels.WARN)
 		end

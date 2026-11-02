@@ -1230,7 +1230,7 @@ end
 
 -- The text is open in the ternary, the window on b, when the session is saved;
 -- its buffer is then set to nofile, which takes it out of frogman's hands.
-T['T476 [char] (S2) a saved-open No Name text whose buffer turned nofile is reopened from its file, and the load goes through'] = function()
+T['T476 [char] (S2, I10) a saved-open No Name text whose buffer turned nofile comes back closed, and the load goes through'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -1243,8 +1243,11 @@ T['T476 [char] (S2) a saved-open No Name text whose buffer turned nofile is reop
 	local dumps = child.dump_files()
 	eq(Misc.load(child), { true })
 	child.settle(300)
-	eq({ errors = Misc.errors(child), dump = child.dumped_since(dumps), holding = S2.holding(child, 'turned text') },
-		{ errors = {}, dump = nil, holding = 2 })
+	eq({ errors = Misc.errors(child), dump = child.dumped_since(dumps), holding = S2.holding(child, 'turned text'),
+		closed = child.closed():match('NONAME_%d+') ~= nil },
+		{ errors = {}, dump = nil, holding = 1, closed = true })
+	child.steps({ '<M-S-w>' })
+	eq(S2.holding(child, 'turned text'), 2)
 end
 
 -- libcrypto made unloadable in the fresh editor before anything has needed it.
