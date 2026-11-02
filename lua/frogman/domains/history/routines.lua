@@ -811,7 +811,8 @@ function M.follow_along(known_set)
 		end
 		return known_set[filehash] == true
 	end
-	for _, triquetra in pairs(require('frogman.domains.window.data').crux) do
+	local window_data = require('frogman.domains.window.data')
+	for _, triquetra in pairs(window_data.crux) do
 		for _, map in ipairs({ triquetra.displacement_ternary_map or {}, triquetra.displacement_secondary_map or {} }) do
 			for key, value in pairs(map) do
 				local base = key:gsub("%-swap$", "")
@@ -820,6 +821,18 @@ function M.follow_along(known_set)
 					map[key] = nil
 					local gone = not key_known and base or value
 					notes[gone] = (notes[gone] or 0) + 1
+				end
+			end
+		end
+	end
+	-- the arrivals' copies follow along too, so a note dropped from the window is dropped from its copy
+	for _, arrival in pairs(window_data.arrivals) do
+		for _, copy in ipairs({ arrival.before or {}, arrival.after or {} }) do
+			for _, map in ipairs({ copy.displacement_ternary_map or {}, copy.displacement_secondary_map or {} }) do
+				for key, value in pairs(map) do
+					if not known_set[(key:gsub("%-swap$", ""))] or not known_set[value] then
+						map[key] = nil
+					end
 				end
 			end
 		end

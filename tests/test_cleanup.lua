@@ -602,6 +602,53 @@ T['T703 [char] (I10, A7) a closed ternary whose name an untracked buffer holds i
 		{ ok = true, slots = '⦉d⦊ [a] ⟦-⟧', said = { "d.txt can't be reopened while another buffer has its name." }, dump = nil })
 end
 
+T['T704 [char] (M6 Arrivals, I2) an arrival\'s copy keeps no file'] = function()
+	local S2 = dofile('tests/helpers_s2.lua')
+	child.steps({ ':e x', ':e a' })
+	child.cmd('bdelete x.txt')
+	child.settle()
+	eq(child.slots(), '⦉x⦊ [a] ⟦-⟧')
+	child.steps({ ':enew' })
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "n" })')
+	child.settle()
+	local w = child.lua('return vim.api.nvim_get_current_win()')
+	local p = S2.picker(child)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, S2.line_of(lines, 'x.txt'))
+	S2.write_picker(child, p, lines)
+	child.cmd('close')
+	child.lua('vim.api.nvim_set_current_win(...)', { w })
+	child.settle(100)
+	eq(child.lua('return require("frogman.domains.history").get_hash_from_filepath(_G.FRG_TEST.root .. "/x.txt")'), vim.NIL)
+	child.cmd('setlocal buftype=nofile')
+	child.settle(300)
+	local pathless = child.lua([[
+		local H = require('frogman.domains.history')
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local bad = {}
+		local function check(h) if h and not H.get_filepath_from_hash((h:gsub('%-swap$', ''))) then table.insert(bad, h) end end
+		check(t.current_slot); check(t.secondary_slot); check(t.ternary_slot)
+		for _, h in ipairs(t.primary_buffer) do check(h) end
+		for _, m in ipairs({ t.displacement_ternary_map, t.displacement_secondary_map }) do
+			for k, v in pairs(m) do check(k); check(v) end
+		end
+		return #bad
+	]])
+	eq({ child.slots(), pathless }, { '⦉-⦊ [a] ⟦-⟧', 0 })
+end
+
+T['T705 [char] (M6 Arrivals, I10) a current slot closed since the arrival falls to the next open one'] = function()
+	child.steps({ ':e c', ':e a', ':enew' })
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "n" })')
+	child.settle()
+	child.cmd('bdelete a.txt')
+	child.settle()
+	eq(child.closed(), 'a')
+	child.cmd('setlocal buftype=nofile')
+	child.settle(300)
+	eq({ child.slots(), child.closed():match('^a,') ~= nil }, { '⦉-⦊ [c] ⟦-⟧', true })
+end
+
 T['T702 [char] (I10, A21) a cleanup pass leaves the closed file in the current slot'] = function()
 	local nofile = untracked_d()
 	child.lua('require("frogman.domains.history").routines.cleanup_system()')

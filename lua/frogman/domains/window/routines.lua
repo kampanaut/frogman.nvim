@@ -237,9 +237,42 @@ function M.undo_arrival(bufnr, text)
 				"primary_enabled", "displacement_ternary_map", "displacement_secondary_map" }) do
 				restored[key] = arrival.before[key] == nil and vim.NIL or arrival.before[key]
 			end
+			-- the copy keeps no file: one let go since leaves its slot, its queue entry and its notes empty
+			local function live(filehash)
+				return filehash ~= vim.NIL and filehash ~= nil and history.handles.of_hash((filehash:gsub("%-swap$", ""))) ~= nil
+			end
+			for _, slot in ipairs({ "current_slot", "secondary_slot", "ternary_slot" }) do
+				if not live(restored[slot]) then
+					restored[slot] = vim.NIL
+				end
+			end
+			if restored.primary_buffer ~= vim.NIL then
+				restored.primary_buffer = vim.tbl_filter(live, restored.primary_buffer)
+			end
+			for _, map in ipairs({ "displacement_ternary_map", "displacement_secondary_map" }) do
+				if restored[map] ~= vim.NIL then
+					for key, value in pairs(restored[map]) do
+						if not live(key) or not live(value) then
+							restored[map][key] = nil
+						end
+					end
+				end
+			end
 			triquetra:update(restored)
-			ledger.slots_moved("undone", winid, before, { words = "its buffer turned into something untracked" })
-			M.enforce_note_maps_policy(triquetra) -- a slot changed under the current buffer.
+			-- a current slot let go or closed since falls to the next open one, as a landing does; a closed
+			-- one stays when there's none, and a window with nothing to come back to loses its triquetra
+			if triquetra.current_slot == nil or history.get_buffer_from_hash(triquetra.current_slot) == nil then
+				if not resolve_next_slot(triquetra, bufnr) and triquetra.current_slot == nil then
+					data.unregister_triquetra(winid)
+				end
+			end
+			if data.crux[winid] then
+				ledger.slots_moved("undone", winid, before, { words = "its buffer turned into something untracked" })
+				M.enforce_note_maps_policy(triquetra) -- a slot changed under the current buffer.
+			else
+				ledger.move("dropped", { subject = tostring(winid), name = ledger.window_name(winid),
+					words = "its buffer turned into something untracked, with nothing to come back to" })
+			end
 		end
 		if arrival and arrival.hash == filehash then
 			data.arrivals[winid] = nil
