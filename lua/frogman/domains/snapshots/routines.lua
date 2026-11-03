@@ -517,6 +517,171 @@ function M.not_held(list)
 	end, type(list) == "table" and list or {})
 end
 
+---Copying between windows ----------------------------------------------------------------
+
+---Get this editor's mark, the ledger's, which a list line's handle numbers are read against.
+---@return string epoch
+local function this_editor()
+	require('frogman.domains.ledger.routines') -- it sets the mark as it loads
+	return require('frogman.domains.ledger.data').epoch
+end
+
+---Get a snapshot as a list line carries it: every file once, by its path and its handle's number, and
+---the slots, the queue, the order and the notes by those files. A No Name text goes by its name alone.
+---
+---@param snapshot Snapshot
+---@return table carried The `{ v, id, time, editor, files, c, s, t, queue, on, order, dtm, dsm }` a line encodes
+function M.carried(snapshot)
+	local files, index = {}, {}
+	local function at(id)
+		local handle = id and M.handle(id)
+		local filepath = handle and history.get_filepath_from_hash(handle.hash)
+		if not filepath then
+			return nil
+		end
+		if index[handle.id] == nil then
+			table.insert(files, { path = filepath, handle = handle.id })
+			index[handle.id] = #files
+		end
+		return index[handle.id]
+	end
+	local function list(ids)
+		local out = {}
+		for _, id in ipairs(ids) do
+			local i = at(id)
+			if i then
+				table.insert(out, i)
+			end
+		end
+		return out
+	end
+	local function notes(each)
+		local out = {}
+		for _, note in ipairs(each) do
+			local k, v = at(note.key), at(note.value)
+			if k and v then
+				table.insert(out, { k, v, note.swap and 1 or 0 })
+			end
+		end
+		return out
+	end
+	return {
+		v = 1, id = snapshot.id, time = snapshot.time, editor = this_editor(),
+		c = at(snapshot.current), s = at(snapshot.secondary), t = at(snapshot.ternary),
+		queue = list(snapshot.queue), on = snapshot.primary_enabled == true, order = list(snapshot.order),
+		dtm = notes(snapshot.dtm), dsm = notes(snapshot.dsm), files = files,
+	}
+end
+
+---Copy a snapshot into a window's own, with an id of its own and no held-over header, the two going
+---their own ways after.
+---
+---@param winid WinId
+---@param snapshot Snapshot
+---@return Snapshot copy
+function M.copy(winid, snapshot)
+	local copy = vim.deepcopy(snapshot)
+	copy.id, copy.held = new_id(), nil
+	hold(copy)
+	data.by_window[winid] = data.by_window[winid] or {}
+	table.insert(data.by_window[winid], copy)
+	return copy
+end
+
+---Get the hash a carried file names in this editor: its handle's while that handle lives here, otherwise
+---its path's, registered when the registry doesn't know it. A No Name text goes by its handle alone, and
+---a name frogman doesn't track, a `://` one or a directory, names none.
+---
+---@param file table
+---@param here boolean Whether this editor drew the line, so its handle numbers are this editor's
+---@param register boolean Whether to register a path the registry doesn't know, or only to tell
+---@return Filehash|nil filehash
+local function carried_hash(file, here, register)
+	if type(file) ~= "table" then
+		return nil
+	end
+	if here and type(file.handle) == "number" then
+		local handle = history.handles.get(history.handles.resolve(file.handle))
+		if handle then
+			return handle.hash
+		end
+	end
+	local path = file.path
+	if type(path) ~= "string" or path == "" or path:match("^NONAME_") or path:find("://", 1, true)
+		or vim.fn.isdirectory(path) == 1 then
+		return nil
+	end
+	local filehash = history.routines.get_filehash(path)
+	if register and not history.handles.of_hash(filehash) then
+		history.routines.register_filepath(path)
+	end
+	return filehash
+end
+
+---Rebuild a snapshot a list line carries, as a window's own.
+---
+---Each file comes back by its handle while that lives in this editor, otherwise by its path. Repeats in
+---its order keep their first place, and a current that's dropped falls to the ternary, then the
+---secondary, then the first of the order. With `dry`, nothing is registered or made: it only tells
+---whether the snapshot would have a current.
+---
+---@param winid WinId
+---@param carried table The line's decoded JSON
+---@param dry boolean|nil
+---@return Snapshot|boolean|nil snapshot The snapshot made, or with `dry` whether one would be
+function M.rebuild(winid, carried, dry)
+	local here = carried.editor == this_editor()
+	local hashes = {}
+	for i, file in ipairs(type(carried.files) == "table" and carried.files or {}) do
+		hashes[i] = carried_hash(file, here, not dry)
+	end
+	local function hash(i)
+		return type(i) == "number" and hashes[i] or nil
+	end
+	local saved = { id = carried.id, time = carried.time, on = carried.on == true,
+		current = hash(carried.c), secondary = hash(carried.s), ternary = hash(carried.t),
+		queue = {}, order = {}, dtm = {}, dsm = {} }
+	for _, i in ipairs(type(carried.queue) == "table" and carried.queue or {}) do
+		if hash(i) then
+			table.insert(saved.queue, hash(i))
+		end
+	end
+	local seen = {}
+	for _, i in ipairs(type(carried.order) == "table" and carried.order or {}) do
+		local filehash = hash(i)
+		if filehash and not seen[filehash] then
+			seen[filehash] = true
+			table.insert(saved.order, filehash)
+		end
+	end
+	for _, key in ipairs({ "dtm", "dsm" }) do
+		for _, note in ipairs(type(carried[key]) == "table" and carried[key] or {}) do
+			local k, v = type(note) == "table" and hash(note[1]), type(note) == "table" and hash(note[2])
+			if k and v then
+				saved[key][k .. (note[3] == 1 and "-swap" or "")] = v
+			end
+		end
+	end
+	if saved.current == nil then
+		if saved.ternary then
+			saved.current, saved.ternary = saved.ternary, nil
+		elseif saved.secondary then
+			saved.current, saved.secondary = saved.secondary, nil
+		else
+			saved.current = saved.order[1]
+		end
+	end
+	if dry then
+		return saved.current ~= nil
+	end
+	local snapshot = from_saved(saved)
+	if snapshot then
+		data.by_window[winid] = data.by_window[winid] or {}
+		table.insert(data.by_window[winid], snapshot)
+	end
+	return snapshot
+end
+
 ---Get the hashes a session file's snapshots name: their slots, queues, orders and notes.
 ---
 ---@param list table[]|nil

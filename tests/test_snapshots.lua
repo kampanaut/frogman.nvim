@@ -68,6 +68,19 @@ local function list()
 	]])
 end
 
+-- The open list's lines, decoded: each line's snapshot id, or false when it doesn't decode.
+local function decoded_ids()
+	return child.lua([[
+		local L = require('frogman.domains.snapshots').list
+		local out = {}
+		for _, line in ipairs(vim.api.nvim_buf_get_lines(vim.fn.bufnr('frogman://snapshots'), 0, -1, false)) do
+			local d = L.decode(line)
+			table.insert(out, d and d.id or false)
+		end
+		return out
+	]])
+end
+
 T['T762 [char] (M16) the capture holds the window\'s setup'] = function()
 	taken()
 	local got = snapshots()
@@ -97,15 +110,18 @@ T['T763 [char] (M16) a snapshot holds its files'] = function()
 	eq(kept, { known = true, places = { 'snap:<id>' } })
 end
 
-T['T764 [char] (M16) the list draws each snapshot over its concealed identity'] = function()
+T['T764 [char] (M16) the list draws each snapshot over its concealed encoding'] = function()
 	taken()
-	child.steps({ ':e e', TAKE, LIST })
+	child.steps({ ':e e', TAKE })
+	local ids = vim.tbl_map(function(x) return x.id end, snapshots()) -- the window's, before the list takes the focus
+	child.steps({ LIST })
 	local l = list()
-	local ok_ids = l ~= vim.NIL and l.lines[1]:match('^snap:%d+$') ~= nil and l.lines[2]:match('^snap:%d+$') ~= nil
+	local ok_ids = l ~= vim.NIL and l.lines[1]:match('^fs1:') ~= nil and l.lines[2]:match('^fs1:') ~= nil
+		and vim.deep_equal(decoded_ids(), { ids[2], ids[1] })
 	local older = l ~= vim.NIL and l.drawn[2] or {}
 	child.lua('vim.cmd("redraw")')
 	local shot = tostring(child.get_screenshot())
-	local screen = { drawn = shot:find('⦉c.txt⦊ [d.txt] ⟦b.txt⟧', 1, true) ~= nil, hidden = shot:find('snap:', 1, true) == nil }
+	local screen = { drawn = shot:find('⦉c.txt⦊ [d.txt] ⟦b.txt⟧', 1, true) ~= nil, hidden = shot:find('fs1:', 1, true) == nil }
 	child.cmd('close')
 	child.settle()
 	child.cmd('FrogmanSnapshots')
@@ -969,6 +985,169 @@ T['T810 [char] (M16, M5) <M-v> on a borrowed No Name text reopens it for real'] 
 	local at = showing()
 	eq({ lines = at.lines, taken = at.taken, on_list = texts_on_list(), holding = S2.holding(child, 'draft'), dumps = #child.dump_files() - dumps },
 		{ lines = { 'draft' }, taken = true, on_list = 0, holding = 1, dumps = 0 })
+end
+
+-- Copying between windows (M16, 5e) ---------------------------------------------------------
+
+-- T762's snapshot in window 1 and a vertical split, back in window 1.
+local function two_windows()
+	taken()
+	local one = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.lua('vim.api.nvim_set_current_win(...)', { one })
+	child.settle()
+	return one, split
+end
+
+-- In a window's list: normal-mode keys, then q, which writes an edited list and leaves.
+local function in_list(win, keys)
+	child.lua('vim.api.nvim_set_current_win(...)', { win })
+	child.settle()
+	child.steps({ LIST })
+	if keys then
+		child.lua('vim.cmd("normal! " .. ...)', { keys })
+	end
+	child.step('q')
+	child.settle(100)
+end
+
+-- In a window's list: a line put in after its lines, then q.
+local function put_line(win, line)
+	child.lua('vim.api.nvim_set_current_win(...)', { win })
+	child.settle()
+	child.steps({ LIST })
+	child.lua('vim.api.nvim_buf_set_lines(0, -1, -1, false, { ... })', { line })
+	child.step('q')
+	child.settle(100)
+end
+
+-- Window 1's line for its snapshot, changed in place by `change`, a function body over `d`, the decoded
+-- table, and wrapped again with its checksum.
+local function changed_line(win, change)
+	child.lua('vim.api.nvim_set_current_win(...)', { win })
+	child.settle()
+	child.steps({ LIST })
+	local line = child.lua([[
+		local L = require('frogman.domains.snapshots').list
+		local d = L.decode(vim.api.nvim_buf_get_lines(0, 0, 1, false)[1])
+		local change = loadstring('local d = ...; ' .. ...)
+		change(d)
+		return L.wrap(d)
+	]], { change })
+	child.step('q')
+	child.settle(100)
+	return line
+end
+
+T['T811 [char] (M16) a yanked line pasted into another window\'s list makes a copy'] = function()
+	local one, split = two_windows()
+	local id = snapshots(one)[1].id
+	in_list(one, 'yy')
+	in_list(split, 'p')
+	local got = snapshots(split)
+	eq({ n = #got, other = got[1] and got[1].id ~= id, slots = got[1] and got[1].slots, kept = #snapshots(one), held = got[1] and child.lua(
+		'return require("frogman.domains.snapshots").routines.find(...).held == nil', { got[1].id }) },
+		{ n = 1, other = true, slots = '⦉c⦊ [d] ⟦b⟧', kept = 1, held = true })
+end
+
+T['T812 [char] (M16) a cut line pasted into another window\'s list moves the snapshot'] = function()
+	local one, split = two_windows()
+	in_list(one, 'dd')
+	local left = #snapshots(one)
+	in_list(split, 'p')
+	local got = snapshots(split)
+	eq({ left = left, n = #got, slots = got[1] and got[1].slots }, { left = 0, n = 1, slots = '⦉c⦊ [d] ⟦b⟧' })
+end
+
+T['T813 [char] (M16, M5) a cut snapshot comes back without a No Name text only it held'] = function()
+	child.steps({ ':e a', ':enew' })
+	local n = child.lua('return vim.api.nvim_get_current_buf()')
+	child.cmd('buffer a.txt')
+	child.settle()
+	child.steps({ TAKE, ':e b' })
+	local one = child.lua('return vim.api.nvim_get_current_win()')
+	local text = child.lua([[
+		local S = require('frogman.domains.snapshots').routines
+		return S.of_window(vim.api.nvim_get_current_win())[1].ternary
+	]])
+	child.cmd('bwipeout ' .. n)
+	child.settle(100)
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	in_list(one, 'dd')
+	child.settle(100) -- the cut's let-go runs once the editor settles
+	in_list(split, 'p')
+	local got = child.lua([[
+		local S = require('frogman.domains.snapshots').routines
+		local s = S.of_window(...)[1]
+		return { n = #S.of_window(...), ternary = s and s.ternary or false }
+	]], { split })
+	eq({ got = got, gone = child.lua('return require("frogman.domains.history").handles.get(...) == nil', { text }) },
+		{ got = { n = 1, ternary = false }, gone = true })
+end
+
+T['T814 [char] (M16) a line another editor drew is rebuilt by its paths'] = function()
+	local one, split = two_windows()
+	local line = changed_line(one, 'd.editor = "another editor"; d.id = "elsewhere"; for i, f in ipairs(d.files) do f.handle = 90000 + i end')
+	put_line(split, line)
+	local got = snapshots(split)
+	eq({ n = #got, slots = got[1] and got[1].slots }, { n = 1, slots = '⦉c⦊ [d] ⟦b⟧' })
+end
+
+T['T815 [char] (M16) a rebuilt snapshot whose current is dropped falls to its ternary'] = function()
+	local one, split = two_windows()
+	local line = changed_line(one, 'table.insert(d.files, { path = "NONAME_1", handle = 99999 }); d.c = #d.files; d.id = "elsewhere"')
+	put_line(split, line)
+	local got = snapshots(split)
+	eq({ n = #got, slots = got[1] and got[1].slots }, { n = 1, slots = '⦉-⦊ [c] ⟦b⟧' })
+end
+
+T['T816 [char] (M16) a line whose checksum fails is asked about'] = function()
+	local one, split = two_windows()
+	local line = changed_line(one, 'd.id = "elsewhere"')
+	line = line:sub(1, -2) .. (line:sub(-1) == '0' and '1' or '0')
+	child.lua('vim.api.nvim_set_current_win(...)', { split })
+	child.settle()
+	child.steps({ LIST })
+	child.lua('vim.api.nvim_buf_set_lines(0, -1, -1, false, { ... })', { line })
+	child.answer('Yes')
+	child.cmd('silent! write')
+	child.settle(100)
+	local asked = child.prompts()
+	child.step('q')
+	child.settle(100)
+	eq({ asked = #asked, names = asked[1] and asked[1]:find('names no snapshot', 1, true) ~= nil, n = #snapshots(split) },
+		{ asked = 1, names = true, n = 0 })
+end
+
+T['T817 [char] (M16) a second line naming a snapshot the list keeps makes a copy'] = function()
+	taken()
+	local id = snapshots()[1].id
+	in_list(child.lua('return vim.api.nvim_get_current_win()'), 'yyp')
+	local got = snapshots()
+	eq({ n = #got, ids = got[1] and got[2] and got[1].id ~= got[2].id, first = got[1] and got[1].id == id, slots = got[2] and got[2].slots },
+		{ n = 2, ids = true, first = true, slots = '⦉c⦊ [d] ⟦b⟧' })
+end
+
+T['T818 [char] (M16) a list whose window is gone isn\'t written'] = function()
+	local one, split = two_windows()
+	child.steps({ LIST })
+	local float = child.lua('return vim.api.nvim_get_current_win()')
+	child.lua('vim.api.nvim_set_current_win(...)', { split })
+	child.lua('vim.api.nvim_win_close(..., true)', { one })
+	child.settle(100)
+	child.lua('vim.api.nvim_set_current_win(...)', { float })
+	child.settle()
+	child.messages()
+	child.lua('vim.cmd("normal! yyp")')
+	child.cmd('silent! write')
+	child.settle(100)
+	local told = #vim.tbl_filter(function(m) return m:find("the window this list was for is gone, so it isn't written", 1, true) ~= nil end, said())
+	eq({ told = told, modified = list().modified, kept = child.lua('return require("frogman.domains.snapshots").data.by_window[...] ~= nil', { one }) },
+		{ told = 1, modified = true, kept = false })
 end
 
 return T
