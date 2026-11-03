@@ -582,9 +582,6 @@ M.set_primary = function()
 	window.set_primary_buffer(winid)
 end
 
--- Each key's export runs once frogman has settled: keys in one batch (a macro, a mapping,
--- frogman's own or a user's) can come before the settle work their events queued. A cycle still
--- running in another window, which no window entry queued a cancel for, ends too.
 ---Switch the editor's marks to a mode: the window's, the tab's or the session's.
 ---
 ---@param mode "window"|"tab"|"session"
@@ -637,6 +634,9 @@ local while_previewing = {
 	cycle_right = function() snapshots.preview.step(2) end,
 	cycle_select = function() snapshots.preview.commit() end,
 }
+-- Each key's export runs once frogman has settled: keys in one batch (a macro, a mapping,
+-- frogman's own or a user's) can come before the settle work their events queued. A cycle still
+-- running in another window, which no window entry queued a cancel for, ends too.
 for _, action in ipairs(keymap_actions) do
 	local export = M[action[2]]
 	local name = action[2]

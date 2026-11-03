@@ -50,20 +50,26 @@ local function place_of(winid, slot)
 	return "win:" .. winid .. ":" .. slot
 end
 
+-- each field a write can change, and the place that holds what it holds
+local PLACE_OF_FIELD = { current_slot = "current", secondary_slot = "secondary", ternary_slot = "ternary", primary_buffer = "primary" }
+
 ---Hold the files a live triquetra's slots and primary queue hold now, each by its place.
 ---
 ---@param triquetra Triquetra
+---@param fields string[]|nil The fields the write changed, so only their places are written (nil = every one)
 ---@return nil
-local function hold_places(triquetra)
+local function hold_places(triquetra, fields)
 	local winid = window_of[triquetra]
 	if winid == nil or M.crux[winid] ~= triquetra then
 		return -- a copy, or one replaced: it holds nothing
 	end
-	local handles = history.handles
-	handles.hold(place_of(winid, "current"), { triquetra.current_slot })
-	handles.hold(place_of(winid, "secondary"), { triquetra.secondary_slot })
-	handles.hold(place_of(winid, "ternary"), { triquetra.ternary_slot })
-	handles.hold(place_of(winid, "primary"), triquetra.primary_buffer or {})
+	for _, field in ipairs(fields or { "current_slot", "secondary_slot", "ternary_slot", "primary_buffer" }) do
+		local slot = PLACE_OF_FIELD[field]
+		if slot then
+			local value = triquetra[field]
+			history.handles.hold(place_of(winid, slot), field == "primary_buffer" and (value or {}) or { value })
+		end
+	end
 end
 
 ---Let go of everything a window's places hold.
@@ -86,7 +92,7 @@ end
 ---@return nil
 function Triquetra:set(slot, filehash)
 	self[slot] = filehash
-	hold_places(self)
+	hold_places(self, { slot })
 end
 
 ---Write several fields at once.
@@ -120,7 +126,7 @@ function Triquetra:update(fields)
 			self[key] = value
 		end
 	end
-	hold_places(self)
+	hold_places(self, vim.tbl_keys(fields))
 end
 
 ---Replace the primary queue.
@@ -129,7 +135,7 @@ end
 ---@return nil
 function Triquetra:set_queue(queue)
 	self.primary_buffer = queue
-	hold_places(self)
+	hold_places(self, { "primary_buffer" })
 end
 
 ---Put a file in the primary queue.
@@ -139,7 +145,7 @@ end
 ---@return nil
 function Triquetra:queue_insert(position, filehash)
 	table.insert(self.primary_buffer, position, filehash)
-	hold_places(self)
+	hold_places(self, { "primary_buffer" })
 end
 
 ---Take an entry out of the primary queue.
@@ -148,7 +154,7 @@ end
 ---@return Filehash|nil filehash The entry taken out
 function Triquetra:queue_remove(index)
 	local filehash = table.remove(self.primary_buffer, index)
-	hold_places(self)
+	hold_places(self, { "primary_buffer" })
 	return filehash
 end
 
@@ -159,7 +165,7 @@ end
 ---@return nil
 function Triquetra:queue_set(index, filehash)
 	self.primary_buffer[index] = filehash
-	hold_places(self)
+	hold_places(self, { "primary_buffer" })
 end
 
 ---Make a window's triquetra from its fields, and hold what it holds.

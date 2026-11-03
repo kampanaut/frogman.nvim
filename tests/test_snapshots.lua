@@ -1422,6 +1422,41 @@ T['T868 [char] (M16) the list reads the marks once a drawing'] = function()
 	eq(asked, 1)
 end
 
+T['T879 [char] (M16) the list seals a line once while it\'s open'] = function()
+	taken()
+	child.steps({ ':e e', TAKE, LIST })
+	local sealed = child.lua([[
+		local S = require('frogman.domains.storage.routines')
+		local sealed_fn, n = S.sealed, 0
+		S.sealed = function(...) n = n + 1; return sealed_fn(...) end
+		vim.bo.modified = true
+		vim.cmd('silent! write')
+		S.sealed = sealed_fn
+		return n
+	]])
+	eq(sealed, 0)
+end
+
+T['T874 [char] (M16) the list\'s write keeps a snapshot it didn\'t draw'] = function()
+	taken()
+	child.steps({ LIST })
+	local second = child.lua([[
+		local origin = require('frogman.domains.snapshots').list.origin()
+		local R = require('frogman.domains.snapshots').routines
+		vim.api.nvim_win_call(origin, function() R.take(origin) end)
+		local own = R.of_window(origin)
+		return own[#own].id
+	]])
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, {})')
+	child.cmd('silent! write')
+	child.settle(100)
+	local left = child.lua([[
+		local origin = require('frogman.domains.snapshots').list.origin()
+		return vim.tbl_map(function(s) return s.id end, require('frogman.domains.snapshots').routines.of_window(origin))
+	]])
+	eq(left, { second })
+end
+
 T['T869 [char] (M16) an answered directory lasts while its list is open'] = function()
 	local one, split = two_windows()
 	local first = written_with(split, { line_from(one, '/elsewhere/project', 'first') }, { '/elsewhere/project' })

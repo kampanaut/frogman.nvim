@@ -62,6 +62,10 @@ local drawn_in = {}
 ---@type table<string, true>
 local answered = {}
 
+---The lines the open list sealed, by the directory and the JSON each carries.
+---@type table<string, string>
+local sealed_lines = {}
+
 ---Wrap a carried snapshot as a line: `fs1:` and the base64 of its JSON sealed as a session's file is,
 ---under a key stretched from the editor's global directory and this editor's salt, the word
 ---`snapshot` under the seal besides.
@@ -177,7 +181,11 @@ end
 ---@param snapshot Snapshot
 ---@return string line
 local function line_of(snapshot)
-	return M.wrap(routines.carried(snapshot))
+	local carried = routines.carried(snapshot)
+	-- sealed once while the list is open: the same snapshot, carrying the same, draws the same line
+	local key = vim.fn.getcwd(-1, -1) .. "\n" .. vim.json.encode(carried)
+	sealed_lines[key] = sealed_lines[key] or M.wrap(carried)
+	return sealed_lines[key]
 end
 
 ---Get the snapshot a line names.
@@ -271,10 +279,11 @@ end
 ---group to a header: the group held over last first, and each group's newest first.
 ---@return nil
 local function redraw()
-	local lines, headers, header_order = {}, {}, {}
+	local lines, headers, header_order, drawn = {}, {}, {}, {}
 	local snapshots = routines.of_window(open.origin)
 	for i = #snapshots, 1, -1 do
 		table.insert(lines, line_of(snapshots[i]))
+		drawn[snapshots[i].id] = true
 	end
 	local groups, order = {}, {}
 	for _, snapshot in ipairs(routines.held_in(session())) do
@@ -291,16 +300,18 @@ local function redraw()
 		table.insert(lines, header)
 		for i = #members, 1, -1 do
 			table.insert(lines, line_of(members[i]))
+			drawn[members[i].id] = true
 		end
 	end
-	open.headers, open.header_order, open.intact = headers, header_order, lines
+	-- what the write may delete: a snapshot taken or held over since stays
+	open.headers, open.header_order, open.intact, open.drawn = headers, header_order, lines, drawn
 	vim.api.nvim_buf_set_lines(open.buf, 0, -1, false, lines)
 	vim.bo[open.buf].modified = false
 	decorate()
 end
 
----Write the list: a snapshot whose line is gone is deleted, and a line carries its snapshot to where it
----sits.
+---Write the list: a snapshot it drew whose line is gone is deleted, and a line carries its snapshot to
+---where it sits. One taken or held over since the list was drawn stays.
 ---
 ---Each line is read by where it sits: above the first header, among the window's own, or under a
 ---held-over header. A line naming a snapshot already where it sits keeps it. One naming a snapshot
@@ -353,7 +364,7 @@ local function write()
 	end
 	for _, list in ipairs({ routines.of_window(open.origin), routines.held_in(session()) }) do
 		for _, snapshot in ipairs(vim.list_slice(list)) do
-			if not kept[snapshot.id] then
+			if open.drawn[snapshot.id] and not kept[snapshot.id] then
 				routines.delete(snapshot.id)
 			end
 		end
@@ -404,6 +415,7 @@ function M.open()
 	end
 	decoded = {} -- what the last list decoded, its lines no longer here
 	answered = {} -- and the directories its answers opened
+	sealed_lines = {} -- and the lines it sealed
 	local _, win = view.open({
 		name = NAME, filetype = "frogman-snapshots", title = "Snapshots", size = require('frogman.configs').snapshots_popup,
 		events = { "TextChanged", "TextChangedI", "TextChangedP" },

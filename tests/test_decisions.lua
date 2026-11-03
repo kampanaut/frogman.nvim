@@ -509,7 +509,7 @@ T['T271 [char] (A19) with no ternary or secondary, it lands on the primary'] = f
 	-- The queue set by hand: [a], switched on.
 	child.lua([[
 		local t = require('frogman.domains.window').data.crux[...]
-		t.primary_buffer = { require('frogman.domains.history').get_hash_from_filepath(_G.FRG_TEST.root .. '/a.txt') }
+		t:set_queue({ require('frogman.domains.history').get_hash_from_filepath(_G.FRG_TEST.root .. '/a.txt') })
 		t.primary_enabled = true
 	]], { w2 })
 	eq(child.primary(), '[a]on')
@@ -547,7 +547,7 @@ T['T271 [char] (A19) under the window view, "most recent" is the window\'s own h
 	child.cmd('only')
 	child.settle()
 	-- Empty the window's slots by hand, so only "most recent" can decide the landing.
-	child.lua('local t = require("frogman.domains.window").data.crux[...]; t.ternary_slot = nil; t.secondary_slot = nil', { w2 })
+	child.lua('local t = require("frogman.domains.window").data.crux[...]; t:update({ ternary_slot = vim.NIL, secondary_slot = vim.NIL })', { w2 })
 	eq({ child.shown(), child.slots(w2) }, { 'c', '⦉-⦊ [c] ⟦-⟧' })
 	child.cmd('bdelete c.txt')
 	child.settle()

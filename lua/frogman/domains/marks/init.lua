@@ -48,15 +48,19 @@ function M.init_autocmds(group)
 		callback = function(args)
 			local winid = tonumber(args.file)
 			local scope = winid and data.scopes.window[winid]
-			if scope and routines.unchanged_copy(winid) then
-				-- a copy no one changed, its window still holding the same: nothing would be lost
-				routines.drop_scope("window", winid)
-			elseif scope then
+			-- the tab's last window takes the tab with it, and the tab's TabClosedPre comes after this
+			local last = scope ~= nil and require('frogman.held').closes_tab(winid)
+			-- a copy no one changed, or one whose copy lives unchanged, loses nothing
+			if scope and not routines.unchanged_copy(winid) then
 				-- held over in its session's scope once the editor settles, unless a load comes first, or its
 				-- tab's own TabClosed, a tab session's tab really closing, drops it (a refused close fires none)
 				local tabpage = vim.api.nvim_win_get_tabpage(winid)
 				routines.queue_hold_over(tabpage, require('frogman.domains.history').data.tab_pools[tabpage] or "", scope.groups,
-					"window on " .. routines.shows(winid))
+					"window on " .. routines.shows(winid), last)
+			end
+			if last then
+				data.with_tab[winid] = true -- so a save at the tab's close still reads them; gone at its TabClosed
+			elseif scope then
 				routines.drop_scope("window", winid)
 			end
 			data.flashes[winid or -1] = nil
@@ -106,6 +110,12 @@ function M.init_autocmds(group)
 			local alive = {}
 			for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
 				alive[tabpage] = true
+			end
+			for winid, _ in pairs(data.with_tab) do
+				if not vim.api.nvim_win_is_valid(winid) then
+					data.with_tab[winid] = nil
+					routines.drop_scope("window", winid)
+				end
 			end
 			for tabpage, began in pairs(data.ending) do
 				if not alive[tabpage] then

@@ -49,6 +49,23 @@ function M.wait_a_tick(queue, entry, run)
 	end)
 end
 
+---Check if a window closing takes its tab with it: the tab's last window but its floats, with another
+---tab left. Its `WinClosed` then fires ahead of the tab's `TabClosedPre`, the window still in the tab.
+---
+---@param winid WinId The window closing
+---@return boolean closes Whether its tab closes with it
+function M.closes_tab(winid)
+	if #vim.api.nvim_list_tabpages() < 2 then
+		return false
+	end
+	for _, other in ipairs(vim.api.nvim_tabpage_list_wins(vim.api.nvim_win_get_tabpage(winid))) do
+		if other ~= winid and vim.api.nvim_win_get_config(other).relative == "" then
+			return false
+		end
+	end
+	return true
+end
+
 ---Get the number of the last wait queued, which a tab's close notes as it begins.
 ---@return integer
 function M.last_wait()
@@ -60,11 +77,11 @@ end
 ---@param queue table[]
 ---@param tabpage integer
 ---@param dropped fun(entry: table)
----@param after integer|nil Only what was queued after this wait (nil = all of it)
+---@param after integer|nil Only what was queued after this wait, and what a window that took the tab with it queued (nil = all of it)
 ---@return nil
 function M.drop_waiting(queue, tabpage, dropped, after)
 	for i = #queue, 1, -1 do
-		if queue[i].tab == tabpage and (after == nil or (queue[i].seq or 0) > after) then
+		if queue[i].tab == tabpage and (after == nil or (queue[i].seq or 0) > after or queue[i].last) then
 			dropped(table.remove(queue, i))
 		end
 	end

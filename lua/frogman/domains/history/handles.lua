@@ -520,7 +520,7 @@ function M.reset()
 	for _, handle in pairs(live) do
 		handle:unregister()
 	end
-	live, by_hash, places, unheld = {}, {}, {}, {}
+	live, by_hash, places, unheld, forwards = {}, {}, {}, {}, {}
 end
 
 return M

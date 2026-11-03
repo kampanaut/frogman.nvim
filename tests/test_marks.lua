@@ -1227,6 +1227,114 @@ T['T760 [char] (M15) a tab session\'s tab closing holds nothing over'] = functio
 	eq(rounds, { { held = 0, jumped = 'c' }, { held = 0, jumped = 'c' } })
 end
 
+T['T870 [char] (M15, M16) a tab session\'s tab closed by its last window holds nothing over'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	local id = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	eq(child.lua('return #vim.api.nvim_tabpage_list_wins(0)'), 1)
+	child.steps({ ':e c', ADD .. 'a>', '<M-;><M-s>', ':e d' })
+	eq(save_t(), { true })
+	local rounds = {}
+	for _ = 1, 2 do
+		child.cmd('q')
+		child.settle(300)
+		eq(S2.load_tab_session(child, 't'), { true })
+		local snapshots = child.lua([[
+			local R = require('frogman.domains.snapshots').routines
+			return { own = #R.of_window(vim.api.nvim_get_current_win()), held = #R.held_in(...) }
+		]], { id })
+		child.steps({ JUMP .. 'a>' })
+		table.insert(rounds, { held = #vim.tbl_filter(function(g) return g.held end, session_groups(id)), snapshots = snapshots, jumped = child.shown() })
+		child.steps({ ':e d' })
+		eq(save_t(), { true })
+	end
+	local once = { held = 0, snapshots = { own = 1, held = 0 }, jumped = 'c' }
+	eq(rounds, { once, once })
+end
+
+T['T871 [char] (M15, M16) a tab session\'s save wired at TabClosedPre keeps what its last window held as `:q` closes it'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	local id = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	child.lua([[
+		vim.api.nvim_create_autocmd('TabClosedPre', { callback = function()
+			require('frogman').save_session('t', { tab = vim.api.nvim_get_current_tabpage() })
+		end })
+	]])
+	child.steps({ ':e c', ADD .. 'a>', '<M-;><M-s>', ':e d' })
+	child.cmd('q')
+	child.settle(300)
+	eq(S2.load_tab_session(child, 't'), { true })
+	local snapshots = child.lua([[
+		local R = require('frogman.domains.snapshots').routines
+		return { own = #R.of_window(vim.api.nvim_get_current_win()), held = #R.held_in(...) }
+	]], { id })
+	child.steps({ JUMP .. 'a>' })
+	eq({ snapshots = snapshots, jumped = child.shown() }, { snapshots = { own = 1, held = 0 }, jumped = 'c' })
+end
+
+T['T872 [char] (M15) the window a copy came from holds nothing over while its copy lives unchanged'] = function()
+	child.lua('_G.FRG_TEST.setup({ marks = { split_copies = true } })')
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e b', ADD .. 'a>' })
+	local first = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('split')
+	child.settle()
+	local copy = child.lua('return vim.api.nvim_get_current_win()')
+	local function held() return #vim.tbl_filter(function(g) return g.held end, session_groups('')) end
+	child.lua('vim.api.nvim_win_close(..., false)', { first })
+	child.settle(300)
+	local origin = held()
+	child.lua('vim.api.nvim_win_close(..., false)', { copy })
+	child.settle(300)
+	eq({ origin = origin, copy = held() }, { origin = 0, copy = 1 })
+end
+
+T['T873 [char] (M15) a closed window\'s mark keeps its file through a move before its tick'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ADD .. 'a>' })
+	child.lua([[
+		local root = _G.FRG_TEST.root
+		vim.cmd('close')
+		os.rename(root .. '/b.txt', root .. '/b2.txt')
+		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/b.txt'), root .. '/b2.txt')
+		require('frogman.settle').drain()
+	]])
+	child.settle(300)
+	local held = vim.tbl_filter(function(g) return g.held end, session_groups(''))
+	eq(vim.tbl_map(function(g) return g.marks end, held), { { a = 'b2' } })
+end
+
+T['T875 [char] (M15) the pop-up\'s write keeps what came in since it was drawn'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.lua([[
+		local origin = require('frogman.domains.marks.popup').origin()
+		vim.api.nvim_win_call(origin, function() require('frogman.domains.marks.routines').add('s') end)
+	]])
+	child.settle()
+	local shown = vim.tbl_contains(popup().lines, 's -> c.txt')
+	child.cmd('close')
+	child.settle()
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e d', ADD .. 'f>' })
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('wincmd p')
+	child.settle()
+	child.steps({ "<M-'><M-3>", OPEN })
+	child.lua('vim.api.nvim_buf_set_lines(vim.fn.bufnr("frogman://marks"), 0, -1, false, { "❖ main", "d -> b.txt" })')
+	child.lua('vim.api.nvim_win_close(..., false)', { split })
+	child.settle(300)
+	child.cmd('silent! write')
+	child.settle(100)
+	local held = vim.tbl_filter(function(g) return g.held end, session_groups(''))
+	eq({ shown = shown, held = vim.tbl_map(function(g) return g.marks end, held) }, { shown = true, held = { { f = 'd' } } })
+end
+
 T['T866 [char] (M15) a pop-up whose drawing fails leaves no buffer behind'] = function()
 	child.steps({ ':e b', ADD .. 'a>' })
 	local got = child.lua([[
@@ -1235,6 +1343,20 @@ T['T866 [char] (M15) a pop-up whose drawing fails leaves no buffer behind'] = fu
 		R.first_group = function() error('drawing fails') end
 		local ok = pcall(require('frogman.domains.marks.popup').open)
 		R.first_group = first_group
+		local left = vim.fn.bufnr('frogman://marks') ~= -1
+		local again = pcall(require('frogman.domains.marks.popup').open)
+		return { failed = not ok, left = left, again = again }
+	]])
+	eq(got, { failed = true, left = false, again = true })
+end
+
+T['T876 [char] (M15) a pop-up whose window can\'t open leaves no buffer behind'] = function()
+	child.steps({ ':e b', ADD .. 'a>' })
+	local got = child.lua([[
+		local open_win = vim.api.nvim_open_win
+		vim.api.nvim_open_win = function() error('no window here') end
+		local ok = pcall(require('frogman.domains.marks.popup').open)
+		vim.api.nvim_open_win = open_win
 		local left = vim.fn.bufnr('frogman://marks') ~= -1
 		local again = pcall(require('frogman.domains.marks.popup').open)
 		return { failed = not ok, left = left, again = again }

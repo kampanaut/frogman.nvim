@@ -212,9 +212,9 @@ end
 ---Get the name of a list's place, as the handles' holders know it.
 ---
 ---@param pool Pool
----@return string place "pool:editor", or "pool:" and the session's name and directory
+---@return string place "pool:editor", or "pool:" and the pool's id, the session's name and directory
 local function pool_place(pool)
-	return "pool:" .. (pool.id == "" and "editor" or (pool.id:gsub("\n", " ")))
+	return "pool:" .. (pool.id == "" and "editor" or pool.id) -- the id as it is, so two never read alike
 end
 M.pool_place = pool_place
 

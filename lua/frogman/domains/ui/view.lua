@@ -9,8 +9,8 @@ local M = {}
 ---Open an editable view.
 ---
 ---The buffer is made and named, `fill` puts its lines in, and only then is its filetype set, so the
----keys its filetype maps find it drawn; a `fill` that raises takes the buffer with it, so its name
----is free for the next open. A write runs `write` when the buffer was edited, and every change runs
+---keys its filetype maps find it drawn; a `fill` that raises, or a window that can't open, takes the
+---buffer with it, so its name is free for the next open. A write runs `write` when the buffer was edited, and every change runs
 ---`changed` with the event's name. The window closing takes the buffer with it, then runs `closed`.
 ---
 ---@param opts {name: string, filetype: string, title: string, size: table, fill: fun(buf: Bufnr), write: fun(), changed: fun(event: string), closed: fun(buf: Bufnr), events: string[]|nil, window: table|nil}
@@ -45,10 +45,15 @@ function M.open(opts)
 		desc = "Write " .. opts.title,
 	})
 	local width, height, col, row = require('frogman.domains.ui').routines.resolve_float_geometry(opts.size)
-	local win = vim.api.nvim_open_win(buf, true, {
+	local opened, win = pcall(vim.api.nvim_open_win, buf, true, {
 		relative = "editor", width = width, height = height, col = col, row = row,
 		style = "minimal", border = "rounded", title = " " .. opts.title .. " ", title_pos = "center",
 	})
+	if not opened then
+		vim.api.nvim_buf_delete(buf, { force = true }) -- shown nowhere, as when fill raises
+		opts.closed(buf)
+		error(win, 0)
+	end
 	vim.api.nvim_create_autocmd("WinClosed", {
 		group = "frogman",
 		pattern = tostring(win),

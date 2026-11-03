@@ -321,6 +321,13 @@ function M.init_autocmds(group)
 			if not winid then
 				return
 			end
+			if require('frogman.held').closes_tab(winid) then
+				-- its tab closes with it, and the tab's TabClosedPre, after this, may save its history
+				vim.api.nvim_create_autocmd("TabClosed", { group = group, once = true, callback = function()
+					data.crux_internals.window[winid] = nil
+				end })
+				return
+			end
 			data.crux_internals.window[winid] = nil
 		end
 	})

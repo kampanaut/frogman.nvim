@@ -273,10 +273,27 @@ end
 local function redraw(conflict)
 	local lines, names, states, held = draw(open.kind, open.id, conflict)
 	open.names, open.states, open.held = names, states, held
+	-- what the write rebuilds from the lines: a group that comes in after stays
+	local scope = data.scopes[open.kind][open.id]
+	open.drawn = {}
+	for _, group in ipairs(scope and scope.groups or {}) do
+		open.drawn[group] = true
+	end
 	vim.api.nvim_buf_set_lines(open.buf, 0, -1, false, lines)
 	vim.bo[open.buf].modified = conflict ~= nil -- a conflict waits to be settled and written
 	decorate()
 	show_mode_line()
+end
+
+---Draw the pop-up again when its scope changed and it has nothing unwritten, so it shows what's there.
+---
+---@param kind "window"|"tab"|"session" The kind of the scope that changed
+---@param id any Its window, tab or session's pool id
+---@return nil
+function M.scope_changed(kind, id)
+	if is_open() and open.kind == kind and open.id == id and not vim.bo[open.buf].modified then
+		redraw(nil)
+	end
 end
 
 ---Write the pop-up's lines into the scope.
@@ -284,7 +301,8 @@ end
 ---A row above the first header, or an alias that holds two files in one group, refuses the write, and
 ---so does a window or a tab the scope was for that's gone.
 ---A line naming nothing, a row naming no file, and a second group of one name are asked about in
----one prompt, and No writes nothing. The lines are the scope's groups from then on, in order.
+---one prompt, and No writes nothing. The lines are the scope's groups from then on, in order, and a
+---group that came in since the pop-up was drawn, held over meanwhile, stays below them.
 ---
 ---@return boolean written
 local function write()
@@ -351,6 +369,7 @@ local function write()
 		history.register_filepath(path) -- a file typed by its path, known from now on
 	end
 	local scope = routines().scope(open.kind, open.id, true)
+	local arrived = vim.tbl_filter(function(group) return group.held and not open.drawn[group] end, scope.groups)
 	scope.groups = {}
 	for g, group in ipairs(groups) do
 		local marks = {}
@@ -363,6 +382,7 @@ local function write()
 		-- a held-over group stays held over, unless you moved it first
 		table.insert(scope.groups, { name = group.name, marks = marks, held = (g > 1 and open.held[group.name]) or nil })
 	end
+	vim.list_extend(scope.groups, arrived)
 	routines().hold_scope(open.kind, open.id)
 	redraw(nil)
 	require('frogman.domains.ui.sm').loop:to(require('frogman.domains.ui.states').LOOP.SELF)
@@ -568,21 +588,11 @@ end
 ---@param done fun(path: string)
 ---@return nil
 local function pick_file(done)
-	local builtin = require("telescope.builtin")
-	builtin.find_files({
-		attach_mappings = function(prompt_bufnr)
-			local actions = require("telescope.actions")
-			local state = require("telescope.actions.state")
-			actions.select_default:replace(function()
-				local entry = state.get_selected_entry()
-				actions.close(prompt_bufnr)
-				if entry then
-					done(entry.path or entry.filename or entry[1])
-				end
-			end)
-			return true
-		end,
-	})
+	require('frogman.domains.ui').routines.pick_files(false, function(paths)
+		if paths[1] then
+			done(paths[1])
+		end
+	end)
 end
 
 ---Add a mark through telescope: an alias, then a file, as a row of the cursor's group.

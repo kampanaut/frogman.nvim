@@ -71,6 +71,36 @@ end
 -- the primary pop-up's decoration: the switch, a closed entry's glyph, a missing file's tag
 local primary_ns = vim.api.nvim_create_namespace("frogman_primary_popup")
 
+---Pick files through telescope's find_files: the selected entries when `multi`, or else the entry
+---under the cursor, as each pop-up picks.
+---
+---@param multi boolean Whether the entries selected are the ones picked
+---@param done fun(paths: string[]) Called with the paths picked, none when nothing was
+---@return nil
+function M.pick_files(multi, done)
+	require("telescope.builtin").find_files({
+		attach_mappings = function(prompt_bufnr)
+			local actions = require("telescope.actions")
+			local state = require("telescope.actions.state")
+			actions.select_default:replace(function()
+				local picked = {}
+				for _, entry in ipairs(multi and state.get_current_picker(prompt_bufnr):get_multi_selection() or {}) do
+					table.insert(picked, entry.path or entry.filename or entry[1])
+				end
+				if #picked == 0 then
+					local entry = state.get_selected_entry()
+					if entry then
+						table.insert(picked, entry.path or entry.filename or entry[1])
+					end
+				end
+				actions.close(prompt_bufnr)
+				done(picked)
+			end)
+			return true
+		end,
+	})
+end
+
 ---Get the picker the primary pop-up adds files through.
 ---
 ---It's telescope's find_files, which picks the selected entries, or the entry under the cursor
@@ -78,32 +108,11 @@ local primary_ns = vim.api.nvim_create_namespace("frogman_primary_popup")
 ---
 ---@return fun(add: fun(paths: string[]))|nil picker The picker, or nil when telescope isn't installed
 local function primary_picker()
-	local ok, builtin = pcall(require, "telescope.builtin")
-	if not ok then
+	if not pcall(require, "telescope.builtin") then
 		return nil
 	end
 	return function(add)
-		builtin.find_files({
-			attach_mappings = function(prompt_bufnr)
-				local actions = require("telescope.actions")
-				local state = require("telescope.actions.state")
-				actions.select_default:replace(function()
-					local picked = {}
-					for _, entry in ipairs(state.get_current_picker(prompt_bufnr):get_multi_selection()) do
-						table.insert(picked, entry.path or entry.filename or entry[1])
-					end
-					if #picked == 0 then
-						local entry = state.get_selected_entry()
-						if entry then
-							table.insert(picked, entry.path or entry.filename or entry[1])
-						end
-					end
-					actions.close(prompt_bufnr)
-					add(picked)
-				end)
-				return true
-			end,
-		})
+		M.pick_files(true, add)
 	end
 end
 

@@ -127,6 +127,10 @@ function M.hold_scope(kind, id)
 		end
 	end
 	data.places[key] = next(now) and now or nil
+	local popup = package.loaded['frogman.domains.marks.popup']
+	if popup then
+		popup.scope_changed(kind, id) -- an open pop-up with nothing unwritten shows the change
+	end
 end
 
 ---Let a scope go, and everything its marks held.
@@ -154,20 +158,30 @@ function M.teardown()
 	data.pending = {} -- what was queued to be held over goes with the rest
 	data.tab_shows = {}
 	data.copies = {}
+	data.with_tab = {}
 end
 
----Check if a window's marks are still the copy it was given, and the window it came from is alive
----holding the same: its close, or a load into it, would lose nothing.
+---Check if a window's marks are a copy another window still holds alike: the copy it was given, the
+---window it came from alive holding the same, or the copy it gave, alive and unchanged. Its close, or
+---a load into it, would lose nothing.
 ---
 ---@param winid WinId
 ---@return boolean unchanged
 function M.unchanged_copy(winid)
-	local copy = data.copies[winid]
-	if copy == nil or not vim.api.nvim_win_is_valid(copy.from) then
-		return false
+	local function alike(other, given)
+		return other ~= winid and vim.api.nvim_win_is_valid(other) and vim.deep_equal(M.serialise("window", other), given)
+			and vim.deep_equal(M.serialise("window", winid), given)
 	end
-	return vim.deep_equal(M.serialise("window", winid), copy.given)
-		and vim.deep_equal(M.serialise("window", copy.from), copy.given)
+	local copy = data.copies[winid]
+	if copy and alike(copy.from, copy.given) then
+		return true
+	end
+	for other, given in pairs(data.copies) do
+		if given.from == winid and alike(other, given.given) then
+			return true
+		end
+	end
+	return false
 end
 
 ---Move a session scope's held-over groups into another's, as a detached list that goes leaves them to
@@ -617,15 +631,18 @@ end
 ---@param session_id string The session's pool id ("" for the whole editor's)
 ---@param groups MarksGroup[] The groups, live
 ---@param what string What they were
+---@param last boolean|nil Whether a window that takes its tab with it queued them, so they wait as the tab's
 ---@return nil
-function M.queue_hold_over(tabpage, session_id, groups, what)
-	local copy = {}
+function M.queue_hold_over(tabpage, session_id, groups, what, last)
+	-- each mark by its file's handle, so a file moved before the tick keeps its mark
+	local copy, hashes = {}, {}
 	for _, group in ipairs(groups) do
 		local marks = {}
 		for alias, _ in pairs(group.marks) do
 			local handle = M.handle_of(group, alias)
 			if handle then
-				marks[alias] = handle.hash
+				marks[alias] = handle.id
+				table.insert(hashes, handle.hash)
 			end
 		end
 		if next(marks) then
@@ -638,17 +655,12 @@ function M.queue_hold_over(tabpage, session_id, groups, what)
 	-- its files stay held while it waits, by a place of its own, so none is let go in between
 	data.waited = data.waited + 1
 	local place = "mark:waiting:" .. data.waited
-	local hashes = {}
-	for _, group in ipairs(copy) do
-		for _, filehash in pairs(group.marks) do
-			table.insert(hashes, filehash)
-		end
-	end
 	history.handles.hold(place, hashes)
 	data.places["waiting:" .. data.waited] = { [place] = true }
-	local entry = { tab = tabpage, session = session_id, groups = copy, what = what, place = place, key = "waiting:" .. data.waited }
+	local entry = { tab = tabpage, session = session_id, groups = copy, what = what, place = place, key = "waiting:" .. data.waited,
+		last = last or nil }
 	require('frogman.held').wait_a_tick(function() return data.pending end, entry, function()
-		M.hold_over(entry.session, entry.groups, entry.what, true)
+		M.hold_over(entry.session, entry.groups, entry.what)
 		repaint()
 		history.handles.drop_place(entry.place)
 		data.places[entry.key] = nil
@@ -673,7 +685,7 @@ end
 ---@return nil
 function M.hold_over_gone()
 	for winid, scope in pairs(data.scopes.window) do
-		if not vim.api.nvim_win_is_valid(winid) then
+		if not vim.api.nvim_win_is_valid(winid) and not data.with_tab[winid] then
 			M.hold_over("", scope.groups, "window")
 			M.drop_scope("window", winid)
 		end

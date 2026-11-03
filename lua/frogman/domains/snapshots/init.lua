@@ -53,7 +53,19 @@ function M.init_autocmds(group)
 			if winid and data.by_window[winid] then
 				-- held over in its session's scope once the editor settles, unless a load comes first, or its
 				-- tab's own TabClosed, a tab session's tab really closing, drops it (a refused close fires none)
-				routines.queue_hold_over(winid)
+				routines.queue_hold_over(winid, require('frogman.held').closes_tab(winid))
+			end
+		end,
+	})
+	-- a window that took its tab with it keeps its snapshots until the tab has closed
+	vim.api.nvim_create_autocmd("TabClosed", {
+		group = group,
+		callback = function()
+			for winid, _ in pairs(data.with_tab) do
+				if not vim.api.nvim_win_is_valid(winid) then
+					data.with_tab[winid] = nil
+					data.by_window[winid] = nil
+				end
 			end
 		end,
 	})

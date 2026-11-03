@@ -262,15 +262,20 @@ end
 ---loads into. While they wait, the snapshots keep holding their files.
 ---
 ---@param winid WinId The window closing
+---@param last boolean|nil Whether it takes its tab with it: its snapshots stay on it until the tab has closed, for a save at the tab's close, and wait as the tab's
 ---@return nil
-function M.queue_hold_over(winid)
+function M.queue_hold_over(winid, last)
 	local snapshots = data.by_window[winid]
-	data.by_window[winid] = nil
+	if last then
+		data.with_tab[winid] = true
+	else
+		data.by_window[winid] = nil
+	end
 	if snapshots == nil or #snapshots == 0 then
 		return
 	end
 	local tabpage = vim.api.nvim_win_get_tabpage(winid)
-	local entry = { tab = tabpage, session = M.session_of(winid), snapshots = snapshots,
+	local entry = { tab = tabpage, session = M.session_of(winid), snapshots = snapshots, last = last or nil,
 		what = "window on " .. require('frogman.domains.marks').routines.shows(winid) }
 	require('frogman.held').wait_a_tick(function() return data.pending end, entry, function()
 		M.hold_over(entry.session, entry.snapshots, entry.what)
@@ -283,7 +288,7 @@ end
 ---@return nil
 function M.hold_over_gone()
 	for winid, snapshots in pairs(data.by_window) do
-		if not vim.api.nvim_win_is_valid(winid) then
+		if not vim.api.nvim_win_is_valid(winid) and not data.with_tab[winid] then
 			data.by_window[winid] = nil
 			M.hold_over("", snapshots, "window")
 		end
@@ -338,7 +343,7 @@ function M.teardown()
 	for _, entry in ipairs(data.pending) do
 		drop(entry.snapshots)
 	end
-	data.by_window, data.held, data.pending = {}, {}, {}
+	data.by_window, data.held, data.pending, data.with_tab = {}, {}, {}, {}
 	local preview = package.loaded['frogman.domains.snapshots.preview']
 	if preview then
 		preview.teardown()

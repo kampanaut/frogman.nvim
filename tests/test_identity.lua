@@ -413,6 +413,57 @@ T['T698 [char] (M2 Holders, P10) a file no holder holds is forgotten once the ed
 	eq({ got = got, notes = child.notes() }, { got = { path = false, live = false, forgotten = '<C-s>' }, notes = 'dtm{c>b} dsm{}' })
 end
 
+T['T877 [char] (M2 Holders) two lists whose ids read alike with the newline a space hold apart'] = function()
+	child.steps({ ':e a', ':e b', ':e c' })
+	local held = child.lua([[
+		local H = require('frogman.domains.history')
+		local root = _G.FRG_TEST.root
+		local a, b = H.routines.get_filehash(root .. '/a.txt'), H.routines.get_filehash(root .. '/b.txt')
+		H.routines.hold_pool({ id = 'x /a\n/b', closed = { a } })
+		H.routines.hold_pool({ id = 'x\n/a /b', closed = { b } })
+		local function lists(hash)
+			local n = 0
+			for _, place in ipairs(H.handles.holders(hash)) do if place:match('^pool:x') then n = n + 1 end end
+			return n
+		end
+		return { a = lists(a), b = lists(b) }
+	]])
+	eq(held, { a = 1, b = 1 })
+end
+
+T['T878 [char] (M2 Handles) a teardown forgets the moves'] = function()
+	child.steps({ ':e a', ':e b' })
+	local a, b = handle('a'), handle('b')
+	child.cmd('bwipeout ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/a.txt")'))
+	child.settle(300)
+	child.lua([[
+		local root = _G.FRG_TEST.root
+		os.rename(root .. '/b.txt', root .. '/a.txt')
+		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/b.txt'), root .. '/a.txt')
+	]])
+	child.settle(300)
+	local function resolved() return child.lua('return require("frogman.domains.history").handles.resolve(...)', { a.id }) end
+	local before = resolved()
+	child.lua('pcall(require("frogman").load_session, "nothing")')
+	child.settle(300)
+	eq({ before = before, after = resolved() }, { before = b.id, after = a.id })
+end
+
+T['T880 [char] (M6 Triquetra) a slot\'s write holds its own place alone'] = function()
+	child.steps({ ':e c', ':e a', ':e b' })
+	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
+	local writes = child.lua([[
+		local H = require('frogman.domains.history')
+		local hold, places = H.handles.hold, {}
+		H.handles.hold = function(place, ...) table.insert(places, place); return hold(place, ...) end
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		t:set('ternary_slot', H.routines.get_filehash(_G.FRG_TEST.root .. '/c.txt'))
+		H.handles.hold = hold
+		return #places
+	]])
+	eq(writes, 1)
+end
+
 T['T699 [char] (M2 Holders) a file let go and held again in one batch is kept'] = function()
 	child.steps({ ':e a' })
 	local got = child.lua([[
