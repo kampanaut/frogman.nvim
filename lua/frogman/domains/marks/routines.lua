@@ -590,6 +590,25 @@ function M.drop_pending(tabpage)
 	end
 end
 
+---Hold over the marks of the windows and tabs that closed without their events, by noautocmd or while
+---frogman was off: in the whole editor's scope, the session they were in no longer known.
+---
+---@return nil
+function M.hold_over_gone()
+	for winid, scope in pairs(data.scopes.window) do
+		if not vim.api.nvim_win_is_valid(winid) then
+			M.hold_over("", scope.groups, "window")
+			M.drop_scope("window", winid)
+		end
+	end
+	for tabpage, scope in pairs(data.scopes.tab) do
+		if not vim.api.nvim_tabpage_is_valid(tabpage) then
+			M.hold_over("", scope.groups, "tab")
+			M.drop_scope("tab", tabpage)
+		end
+	end
+end
+
 ---Get the hashes of the files a session's marks hold.
 ---
 ---With no pool, every mark's. With a pool, its own marks, and those of the windows and tabs in its

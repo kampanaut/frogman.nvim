@@ -293,6 +293,9 @@ local function plant_snapshot(snapshot, plant)
 			end
 		end
 	end
+	if editor then
+		history.routines.hold_pool(editor) -- the planted closed files are held by their list, as a close holds them
+	end
 	for _, w in ipairs(snapshot.windows or {}) do
 		local winid = windows[w.window]
 		plant.row(winid, w)
@@ -300,8 +303,27 @@ local function plant_snapshot(snapshot, plant)
 			history.data.crux_internals.window[winid] = vim.deepcopy(w.history or {})
 		end
 	end
+	-- every file the snapshot names was held when it was taken, its history and notes following along; one
+	-- on no list and in no slot was open then, so it's opened, and nothing planted is let go as unheld
+	local named = {}
 	for hash, _ in pairs(snapshot.global or {}) do
+		named[hash] = true
+	end
+	for _, w in ipairs(snapshot.windows or {}) do
+		for hash, _ in pairs(w.history or {}) do
+			named[hash] = true
+		end
+		for _, map in ipairs({ w.dtm or {}, w.dsm or {} }) do
+			for key, value in pairs(map) do
+				named[(key:gsub("%-swap$", ""))], named[value] = true, true
+			end
+		end
+	end
+	for hash, _ in pairs(named) do
 		plant.known(hash)
+		if not history.get_buffer_from_hash(hash) and not plant.closed(hash) then
+			plant.open(hash)
+		end
 	end
 	history.data.crux_internals.global = vim.deepcopy(snapshot.global or {})
 	history.data.history_index = snapshot.history_index or history.data.history_index

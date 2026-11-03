@@ -1150,4 +1150,66 @@ T['T818 [char] (M16) a list whose window is gone isn\'t written'] = function()
 		{ told = 1, modified = true, kept = false })
 end
 
+-- The holders, one question asked one way (M2 Holders, review round 5's #2, #11, #16) ----------
+
+T['T819 [char] (M16, S2 Closed-stack picker) the closed lists keep a text a snapshot holds'] = function()
+	child.steps({ ':e a' })
+	local n = S2.noname(child, { 'kept' })
+	child.steps({ TAKE, ':e b' })
+	child.cmd('bdelete! ' .. n)
+	child.settle()
+	child.answer('Keep')
+	local p = S2.picker(child)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, S2.line_of(lines, '[No Name]'))
+	S2.write_picker(child, p, lines)
+	child.cmd('close')
+	child.settle(100)
+	local asked, on_list = #child.prompts(), texts_on_list()
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	eq({ asked = asked, on_list = on_list, shown = showing().lines }, { asked = 0, on_list = 0, shown = { 'kept' } })
+end
+
+T['T820 [char] (M2 Holders, M16) a path no holder takes is forgotten once the editor settles'] = function()
+	local one, split = two_windows()
+	local line = changed_line(one, [[d.editor = "another editor"; d.id = "elsewhere"
+		for i, f in ipairs(d.files) do f.handle = 90000 + i end
+		table.insert(d.files, { path = _G.FRG_TEST.root .. "/q.txt", handle = 99998 })
+		table.insert(d.dtm, { d.c, #d.files, 0 })]])
+	put_line(split, line)
+	child.settle(100)
+	eq({ n = #snapshots(split), q = child.lua([[
+		local H = require('frogman.domains.history')
+		return H.data.hash_filepath_registry.filepaths[H.routines.get_filehash(_G.FRG_TEST.root .. '/q.txt')] ~= nil
+	]]) }, { n = 1, q = false })
+end
+
+T['T821 [char] (M15, M16) a window closed without its WinClosed has its marks and snapshots held over at the next cleanup pass'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e c', "<M-'><M-'><M-a>", TAKE })
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('noautocmd close')
+	child.settle()
+	child.lua('require("frogman.domains.history").routines.cleanup_system()')
+	child.settle(100)
+	eq(child.lua([[
+		local split = ...
+		local Mk, Sn = require('frogman.domains.marks'), require('frogman.domains.snapshots')
+		local groups = (Mk.data.scopes.session[''] or { groups = {} }).groups
+		local held_group = false
+		for _, g in ipairs(groups) do
+			if g.held and g.name:match('^held over · window · ') then held_group = true end
+		end
+		local held_snap = false
+		for _, s in ipairs(Sn.routines.held_in('')) do
+			if s.held:match('^held over · window · ') then held_snap = true end
+		end
+		return { marks = Mk.data.scopes.window[split] ~= nil, snaps = Sn.data.by_window[split] ~= nil, held_group = held_group, held_snap = held_snap }
+	]], { split }), { marks = false, snaps = false, held_group = true, held_snap = true })
+end
+
 return T

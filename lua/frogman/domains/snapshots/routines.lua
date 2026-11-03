@@ -303,6 +303,19 @@ function M.queue_hold_over(winid)
 	end)
 end
 
+---Hold over the snapshots of the windows that closed without their WinClosed, by noautocmd or while
+---frogman was off: in the whole editor's scope, the session they were in no longer known.
+---
+---@return nil
+function M.hold_over_gone()
+	for winid, snapshots in pairs(data.by_window) do
+		if not vim.api.nvim_win_is_valid(winid) then
+			data.by_window[winid] = nil
+			M.hold_over("", snapshots, "window")
+		end
+	end
+end
+
 ---Drop the snapshots still queued to be held over from a tab, as a tab session's load into it starts.
 ---
 ---@param tabpage integer

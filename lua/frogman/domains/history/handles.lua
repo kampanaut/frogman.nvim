@@ -333,7 +333,13 @@ end
 ---@param hash Filehash
 ---@return FileHandle handle The file's handle
 function M.known(hash)
-	return by_hash[hash] or mint(hash, states.CLOSED)
+	if by_hash[hash] then
+		return by_hash[hash]
+	end
+	local handle = mint(hash, states.CLOSED)
+	-- a path no holder takes is forgotten once the editor settles, as one that loses its last holder is
+	let_go_when_settled(handle)
+	return handle
 end
 
 ---Mark a file's handle open, its hash now registered to a buffer.
@@ -416,9 +422,24 @@ end
 ---@param hash Filehash|nil
 ---@return boolean held
 function M.held_beyond_windows(hash)
+	return M.held_beyond(hash, { win = true })
+end
+
+---The kinds of place a file is held by for the windows, the lists and the open buffers, the rest being
+---what keeps a file for itself: a mark, a snapshot, a group waiting to be held over
+---@type table<string, true>
+M.WINDOWS_AND_LISTS = { win = true, pool = true, buffer = true }
+
+---Check if a file is held by a place of a kind not given: a place's kind is its name's part before the
+---first colon, `win`, `pool`, `mark`, `snap`, or `buffer` for the open buffer.
+---
+---@param hash Filehash|nil
+---@param kinds table<string, true> The kinds that don't count
+---@return boolean held
+function M.held_beyond(hash, kinds)
 	local handle = M.of_hash(hash)
 	for place, _ in pairs(handle and handle.holders or {}) do
-		if not place:match("^win:") then
+		if not kinds[place:match("^[^:]+")] then
 			return true
 		end
 	end

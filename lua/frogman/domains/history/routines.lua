@@ -1470,10 +1470,7 @@ function M.track_closing_filehash(filehash, quiet, text)
 		local lines = text and text.lines or vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 
 		-- Check if buffer is empty (no lines or single empty line)
-		local marked = false
-		for place, _ in pairs((handles.of_hash(filehash) or { holders = {} }).holders) do
-			marked = marked or place:match("^mark:") ~= nil or place:match("^snap:") ~= nil
-		end
+		local marked = handles.held_beyond(filehash, handles.WINDOWS_AND_LISTS)
 		if (#lines == 0 or (#lines == 1 and lines[1] == "")) and marked then
 			-- a marked one keeps its empty text, for its mark alone, and so does one a snapshot holds,
 			-- as it holds texts as marks do: closed, and on no list
@@ -1897,6 +1894,11 @@ function M.cleanup_system(on_tick)
 		M.update_buffer_history_ordered()
 		M.update_buffer_history_ordered_nonharpooned()
 	end
+
+	-- a window or a tab closed without its events, by noautocmd or while frogman was off: what it marked
+	-- and its snapshots are held over, as a close holds them over
+	require('frogman.domains.marks').routines.hold_over_gone()
+	require('frogman.domains.snapshots').routines.hold_over_gone()
 
 	return report
 end

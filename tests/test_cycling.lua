@@ -1574,4 +1574,32 @@ T['T788 [char] (A12) a cycle\'s cancel ahead of typed keys keeps their slots'] =
 	eq(child.slots(split), '⦉c⦊ [x] ⟦-⟧')
 end
 
+-- A dump starts from the older of its last two snapshots, one every 50 kept steps, so 110 toggles after the
+-- close put both after it, and the replay plants b on its list.
+T['T822 [char] (A26, M2 Holders) a replay\'s planted closed files are held by their list'] = function()
+	local root = Misc.make_project()
+	Misc.start(child, { root = root })
+	child.steps({ ':e a', ':e b', ':e c' })
+	child.cmd('bdelete b.txt')
+	child.settle()
+	local keys = {}
+	for _ = 1, 110 do table.insert(keys, '<M-;><M-x>') end
+	child.steps(keys)
+	local before = child.dumps()
+	child.lua([[pcall(require('frogman.domains.ledger').never, 'planted for T822')]])
+	child.settle(200)
+	local path = the_dump(before)
+	Misc.start(child, { root = root })
+	replay(path)
+	child.lua('require("frogman.domains.history").routines.cleanup_system()')
+	child.settle(100)
+	eq(child.lua([[
+		local H = require('frogman.domains.history')
+		local b = H.routines.get_filehash(_G.FRG_TEST.root .. '/b.txt')
+		local held = false
+		for _, place in ipairs(H.handles.holders(b)) do held = held or place:match('^pool:') ~= nil end
+		return { listed = vim.tbl_contains(H.data.closed_buffers, b), held = held, known = H.data.hash_filepath_registry.filepaths[b] ~= nil }
+	]]), { listed = true, held = true, known = true })
+end
+
 return T
