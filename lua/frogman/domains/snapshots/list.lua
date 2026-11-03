@@ -52,6 +52,11 @@ local decoded = {}
 ---@type string|nil
 local salt = nil
 
+---The directories a line is tried under besides the cwd: every one this editor drew lines under, and
+---every one an answer opened a line under since, so a line a plugin's change of cwd left behind opens.
+---@type table<string, true>
+local drawn_in = {}
+
 ---Wrap a carried snapshot as a line: `fs1:` and the base64 of its JSON sealed as a session's file is,
 ---under a key stretched from the editor's global directory and this editor's salt, the word
 ---`snapshot` under the seal besides.
@@ -62,12 +67,38 @@ function M.wrap(carried)
 	local crypto = require('frogman.domains.storage.crypto')
 	local storage = require('frogman.domains.storage.routines')
 	salt = salt or crypto.random_bytes(crypto.salt_length)
-	local key = storage.key_for(vim.fn.getcwd(-1, -1), salt)
-	return "fs1:" .. vim.base64.encode(storage.sealed(key, salt, vim.json.encode(carried), "snapshot"))
+	local cwd = vim.fn.getcwd(-1, -1)
+	drawn_in[cwd] = true
+	return "fs1:" .. vim.base64.encode(storage.sealed(storage.key_for(cwd, salt), salt, vim.json.encode(carried), "snapshot"))
 end
 
----Decode a line: the snapshot it carries, when it's one of frogman's and its seal opens in this
----directory, its bytes as they are.
+---Open a line's seal under one directory: what it carries, or nil.
+---
+---@param bytes string The line's sealed bytes
+---@param directory string
+---@return table|nil carried
+local function open_under(bytes, directory)
+	local opened, json = pcall(require('frogman.domains.storage.routines').open_sealed, bytes, directory, "snapshot")
+	if not (opened and type(json) == "string") then
+		return nil
+	end
+	local parsed, carried = pcall(vim.json.decode, json)
+	if parsed and type(carried) == "table" and carried.v == 1 and type(carried.id) == "string"
+		and type(carried.files) == "table" then
+		return carried
+	end
+	return nil
+end
+
+---Check if a line is a snapshot's line by its shape, opening or not.
+---@param line string
+---@return boolean
+local function is_sealed_line(line)
+	return vim.trim(line or ""):match("^fs1:[%w%+/=]+$") ~= nil
+end
+
+---Decode a line: the snapshot it carries, when it's one of frogman's and its seal opens, its bytes as
+---they are, under the cwd or a directory this editor drew lines or opened one under.
 ---
 ---@param line string
 ---@return table|nil carried A copy of what it carries
@@ -78,18 +109,58 @@ function M.decode(line)
 		local base64 = line:match("^fs1:([%w%+/=]+)$")
 		local ok, bytes = pcall(vim.base64.decode, base64 or "")
 		if base64 and ok and type(bytes) == "string" then
-			local opened, json = pcall(require('frogman.domains.storage.routines').open_sealed, bytes,
-				vim.fn.getcwd(-1, -1), "snapshot")
-			if opened and type(json) == "string" then
-				local parsed, carried = pcall(vim.json.decode, json)
-				if parsed and type(carried) == "table" and carried.v == 1 and type(carried.id) == "string"
-					and type(carried.files) == "table" then
-					decoded[line] = carried
+			local cwd = vim.fn.getcwd(-1, -1)
+			decoded[line] = open_under(bytes, cwd) or false
+			for directory, _ in pairs(drawn_in) do
+				if decoded[line] then
+					break
+				end
+				if directory ~= cwd then
+					decoded[line] = open_under(bytes, directory) or false
 				end
 			end
 		end
 	end
 	return decoded[line] and vim.deepcopy(decoded[line]) or nil
+end
+
+---Ask for the directory the lines that don't open were drawn in, until each opens or the answer is
+---empty: once for all of them, and again while any is still shut. A directory that opened one is
+---tried from then on.
+---
+---@param lines string[] The list's lines
+---@return nil
+local function open_shut(lines)
+	local function shut()
+		return vim.tbl_filter(function(line) return is_sealed_line(line) and not M.decode(line) end, lines)
+	end
+	local left = shut()
+	while #left > 0 do
+		local answer = vim.fn.input({
+			prompt = "frogman: " .. #left .. " snapshot line" .. (#left == 1 and " doesn't" or "s don't") ..
+				" open here; the directory " .. (#left == 1 and "it was" or "they were") .. " drawn in: ",
+			completion = "dir", cancelreturn = "",
+		})
+		if vim.trim(answer or "") == "" then
+			return
+		end
+		local directory = vim.fs.normalize(vim.fn.fnamemodify(vim.fn.expand(vim.trim(answer)), ":p"))
+		if directory ~= "/" then
+			directory = directory:gsub("/+$", "")
+		end
+		local was = drawn_in[directory]
+		drawn_in[directory] = true
+		for line, carried in pairs(decoded) do
+			if carried == false then
+				decoded[line] = nil -- tried again, with the new directory among the rest
+			end
+		end
+		local now = shut()
+		if #now == #left and not was then
+			drawn_in[directory] = nil -- it opened nothing: not one to try again
+		end
+		left = now
+	end
 end
 
 ---Get a snapshot's line: its whole encoding.
@@ -234,6 +305,7 @@ local function write()
 		vim.notify("frogman: the window this list was for is gone, so it isn't written.", vim.log.levels.WARN)
 		return false
 	end
+	open_shut(vim.api.nvim_buf_get_lines(open.buf, 0, -1, false))
 	local kept, copies, rebuilt, items, first = {}, {}, {}, {}, nil
 	local into = { winid = open.origin } -- above the first header, the window's own
 	for row, line in ipairs(vim.api.nvim_buf_get_lines(open.buf, 0, -1, false)) do

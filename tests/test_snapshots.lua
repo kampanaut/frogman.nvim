@@ -1215,6 +1215,36 @@ T['T834 [char] (M16) a held-over line moved up among the window\'s own makes it 
 		{ n = 1, slots = '⦉b⦊ [x] ⟦-⟧', other = true, held = 0 })
 end
 
+-- The same snapshot as window `win`'s first line, sealed as an editor started in `dir` draws it, under a
+-- salt of its own: a line from another project.
+local function line_from(win, dir, id)
+	local line = changed_line(win, 'd.id = "' .. id .. '"')
+	return child.lua([[
+		local line, dir = ...
+		local d = require('frogman.domains.snapshots').list.decode(line)
+		local crypto = require('frogman.domains.storage.crypto')
+		local storage = require('frogman.domains.storage.routines')
+		local salt = crypto.random_bytes(crypto.salt_length)
+		return 'fs1:' .. vim.base64.encode(storage.sealed(storage.key_for(dir, salt), salt, vim.json.encode(d), 'snapshot'))
+	]], { line, dir })
+end
+
+-- Lines put in a window's list and written, the directory questions answered from `replies`; what was asked.
+local function written_with(win, lines, replies)
+	child.lua('vim.api.nvim_set_current_win(...)', { win })
+	child.settle()
+	child.steps({ LIST })
+	child.lua('_G.FRG_REPLIES, _G.FRG_ASKED = ..., {}', { replies })
+	child.lua('vim.api.nvim_buf_set_lines(0, -1, -1, false, ...)', { lines })
+	child.answer('Yes')
+	child.cmd('silent! write')
+	child.settle(100)
+	local asked = { input = child.lua('return _G.FRG_ASKED'), confirm = child.prompts() }
+	child.step('q')
+	child.settle(100)
+	return asked
+end
+
 T['T835 [char] (M16, P22) a line is sealed'] = function()
 	local one, split = two_windows()
 	child.steps({ LIST })
@@ -1227,20 +1257,31 @@ T['T835 [char] (M16, P22) a line is sealed'] = function()
 	for _, f in ipairs({ 'a.txt', 'b.txt', 'c.txt', 'd.txt' }) do
 		named = named + (plain:find(f, 1, true) and 1 or 0)
 	end
+	local asked = written_with(split, { line_from(one, '/elsewhere/project', 'elsewhere') }, {})
+	eq({ named = named, input = #asked.input, confirm = #asked.confirm, n = #snapshots(split) }, { named = 0, input = 1, confirm = 1, n = 0 })
+end
+
+T['T855 [char] (M16) a line a change of cwd left behind still opens'] = function()
+	local one, split = two_windows()
+	child.steps({ LIST })
+	local line = child.lua('return vim.api.nvim_get_current_line()')
+	child.step('q')
+	child.settle(100)
 	child.lua('vim.fn.mkdir("sub", "p")')
 	child.cmd('cd sub')
 	child.settle()
-	child.lua('vim.api.nvim_set_current_win(...)', { split })
-	child.settle()
-	child.steps({ LIST })
-	child.lua('vim.api.nvim_buf_set_lines(0, -1, -1, false, { ... })', { line })
-	child.answer('Yes')
-	child.cmd('silent! write')
-	child.settle(100)
-	local asked = #child.prompts()
-	child.step('q')
-	child.settle(100)
-	eq({ named = named, asked = asked, n = #snapshots(split) }, { named = 0, asked = 1, n = 0 })
+	local asked = written_with(split, { line }, {})
+	local got = snapshots(split)
+	eq({ input = #asked.input, confirm = #asked.confirm, n = #got, slots = got[1] and got[1].slots },
+		{ input = 0, confirm = 0, n = 1, slots = '⦉c⦊ [d] ⟦b⟧' })
+end
+
+T['T856 [char] (M16) the write asks for the directory again while lines are still shut'] = function()
+	local one, split = two_windows()
+	local first, second = line_from(one, '/elsewhere/first', 'first'), line_from(one, '/elsewhere/second', 'second')
+	local asked = written_with(split, { first, second }, { '/elsewhere/first', '/elsewhere/second' })
+	eq({ input = #asked.input, again = asked.input[2] ~= nil and asked.input[2]:find('1 snapshot line', 1, true) ~= nil,
+		confirm = #asked.confirm, n = #snapshots(split) }, { input = 2, again = true, confirm = 0, n = 2 })
 end
 
 -- T818's route to window 1's list with window 1 gone, the list focused again.

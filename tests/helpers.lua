@@ -42,6 +42,13 @@ end
 
 _G.FRG_NOTES = {}
 vim.notify = function(msg, level) table.insert(_G.FRG_NOTES, { msg = tostring(msg), level = level }) end
+-- input(): answered from _G.FRG_REPLIES, empty once they run out, each prompt kept in _G.FRG_ASKED: an
+-- unanswered one blocks a headless child
+_G.FRG_REPLIES, _G.FRG_ASKED = {}, {}
+vim.fn.input = function(opts)
+	table.insert(_G.FRG_ASKED, type(opts) == 'table' and opts.prompt or opts)
+	return table.remove(_G.FRG_REPLIES, 1) or ''
+end
 
 -- what this child is set up with; every setup() starts from the defaults, so a case that sets up
 -- again layers its own options over these (_G.FRG_TEST.setup)
