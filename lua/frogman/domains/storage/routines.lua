@@ -2088,7 +2088,6 @@ function M.after_restore()
 		window.data.current_window = winid
 		history.routines.construct_crux(winid)
 		history.routines.update_buffer_history_ordered()
-		history.routines.update_buffer_history_ordered_nonharpooned()
 	end
 end
 

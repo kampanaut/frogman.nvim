@@ -248,7 +248,7 @@ The primary buffer is the window's "mark."
 So if you have a buffer of interest that you don't want to lose your hands on, then simply make it a primary buffer, so that no matter how much you kept jumping, you can bring it back to your reach with `<m-;><m-f>`
 
 You can backtrack your previous primary buffers. Every time you set a new buffer as a primary, it is put in the first of a queue (primary_buffer). The first one is always the primary, the others are the "previous".
-- You can manage it with a window pop-up, it is editable like that in harpoon window.
+- You can manage it with a window pop-up, it is editable like any other buffer.
     - Delete-yank and then paste it in another place to reorder...
     - Or just delete, to really remove it.
     - Type up a filereadable filepath and just save.

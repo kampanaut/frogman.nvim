@@ -45,7 +45,6 @@
 
 ---@class OrderedHistory
 ---@field crux BufferHistoryItem[] Buffers ordered by recency (most recent first)
----@field nonharpooned BufferHistoryItem[] Non-harpooned buffers ordered by recency
 
 ---@class BuffersRegistry
 ---@field buffers table<Filehash, Bufnr> File hash → buffer number lookup
@@ -74,8 +73,7 @@ local corpus = {
 	},
 	-- Ordered buffer lists for recency-based operations
 	ordered = {
-		crux = {},        -- All buffers ordered by recency
-		nonharpooned = {} -- Non-harpooned buffers ordered by recency
+		crux = {}, -- All buffers ordered by recency
 	},
 	-- Monotonic timestamp counter for buffer access ordering
 	history_index = 1,

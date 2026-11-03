@@ -313,18 +313,17 @@ T['T448 [char] (M12) the winbar\'s skip list is configurable, and replaces the d
 	eq({ default = default, skipped = skipped, replaced = replaced }, { default = true, skipped = '', replaced = true })
 end
 
-T['T527 [char] (M4, M15) the unmarked list\'s rebuild reads the marks once'] = function()
-	child.steps({ ':e a', ':e b', ':e c', ':e d', ':e e' })
-	local tries = child.lua([[
-		-- each read of the marks counted
-		local marks = require('frogman.domains.marks')
-		local real, n = marks.marked_paths, 0
-		marks.marked_paths = function(...) n = n + 1; return real(...) end
-		require('frogman.domains.history').routines.update_buffer_history_ordered_nonharpooned()
-		marks.marked_paths = real
-		return { n = n, ordered = #require('frogman.domains.history').data.ordered.crux }
+T['T527 [char] (M4, M15) there\'s no unmarked list, and no harpoon name left'] = function()
+	child.steps({ ':e a', ':e b', ':e c' })
+	local got = child.lua([[
+		local H = require('frogman.domains.history')
+		local bl = require('frogman').bufferline
+		return { keys = vim.tbl_keys(H.data.ordered), params = debug.getinfo(H.get_ordered_buffers, 'u').nparams,
+			routine = H.routines.update_buffer_history_ordered_nonharpooned == nil,
+			old = bl.is_harpooned == nil and bl.get_harpoon_index == nil,
+			new = type(bl.is_marked) == 'function' and type(bl.get_mark_labels) == 'function' }
 	]])
-	eq(tries, { n = 1, ordered = 5 })
+	eq(got, { keys = { 'crux' }, params = 0, routine = true, old = true, new = true })
 end
 
 T['T450 [char] (M12, M15) marked buffers are frogman\'s own marks'] = function()
@@ -332,7 +331,7 @@ T['T450 [char] (M12, M15) marked buffers are frogman\'s own marks'] = function()
 	local warned = child.messages()
 	child.steps({ ':e a', ':e b', "<M-'><M-'><M-a>", ':e c' })
 	child.settle(300)
-	local bl = 'local bl = require("frogman").bufferline; local b = ...; return { bl.is_harpooned(b), bl.get_harpoon_index(b) }'
+	local bl = 'local bl = require("frogman").bufferline; local b = ...; return { bl.is_marked(b), bl.get_mark_labels(b) }'
 	local marked = { a = child.lua(bl, { bufnr('a.txt') })[1], b = child.lua(bl, { bufnr('b.txt') }), c = child.lua(bl, { bufnr('c.txt') })[1] }
 	local said = 0
 	for _, m in ipairs(warned) do

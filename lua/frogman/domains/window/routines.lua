@@ -282,7 +282,6 @@ function M.undo_arrival(bufnr, text)
 	if history.routines.track_closing_filehash(filehash, nil, text) then
 		history.routines.unregister_buffer(bufnr)
 		history.routines.update_buffer_history_ordered()
-		history.routines.update_buffer_history_ordered_nonharpooned()
 	end
 	loop_sm:to(loop_states.SELF)
 end
@@ -700,7 +699,6 @@ function M.enforce_editor_policy(bufnr_ondelete)
 
 					if resolved then -- I know this is fucking stupid, but I don't want to change the structure of this function.
 						history.routines.update_buffer_history_ordered()
-						history.routines.update_buffer_history_ordered_nonharpooned()
 						-- print("#4")
 						goto continue -- the window keeps showing what it shows: cleanup never touches a window.
 					end

@@ -165,7 +165,7 @@ T['T719 [char] (M15) the bufferline shows a file\'s aliases in the mode\'s scope
 	child.steps({ ':e a', ':e b', ADD .. 'a>', ADD .. 's>', ':e c' })
 	child.settle(300)
 	local b = child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/b.txt")')
-	local lookup = 'local bl = require("frogman").bufferline; return { bl.is_harpooned(...), bl.get_harpoon_index(...) }'
+	local lookup = 'local bl = require("frogman").bufferline; return { bl.is_marked(...), bl.get_mark_labels(...) }'
 	local window = child.lua(lookup, { b })
 	child.steps({ "<M-'><M-2>" })
 	child.settle(300)

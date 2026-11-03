@@ -88,14 +88,9 @@ end
 
 ---Get ordered buffer list by recency.
 ---
----@param include_harpooned boolean|nil Whether to include harpooned buffers
 ---@return BufferHistoryItem[] ordered Buffers ordered by recency
-function M.get_ordered_buffers(include_harpooned)
-	if include_harpooned == false then
-		return data.ordered.nonharpooned
-	else
-		return data.ordered.crux
-	end
+function M.get_ordered_buffers()
+	return data.ordered.crux
 end
 
 M.get_buffer_from_hash = routines.get_buffer_from_hash

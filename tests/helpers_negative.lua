@@ -3,13 +3,8 @@
 
 local Neg = {}
 
--- The shared child setup, with one more option: no_harpoon = true leaves the
--- harpoon stub out, so require('harpoon') fails as it would with harpoon not
--- installed. Otherwise it's child.setup(opts).
+-- The shared child setup, as child.setup(opts) runs it.
 local SETUP = table.concat(vim.fn.readfile('tests/helpers.lua'), '\n'):match('local CHILD_SETUP = %[==%[\n(.-)%]==%]')
-local n
-SETUP, n = SETUP:gsub("(package%.preload%['harpoon'%] = function%(%)\n.-\nend\n)", 'if not opts.no_harpoon then\n%1end\n', 1)
-assert(n == 1, 'tests/helpers.lua changed: the harpoon stub no longer matches')
 
 Neg.start = function(child, opts)
 	child.restart({ '-u', 'scripts/minimal_init.lua' })

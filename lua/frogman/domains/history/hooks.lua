@@ -18,12 +18,10 @@ historySM:on("*", states.ATTACHED, "attach_history_update", function(context, _,
 
 	if context.mode == states.mode.DELETE then
 		routines.update_buffer_history_ordered()
-		routines.update_buffer_history_ordered_nonharpooned()
 	elseif context.mode == states.mode.UPDATE then
 		local history_modified = routines.update_buffer_history(context.buf) -- the buffer where you currently at.
 		if history_modified then
 			routines.update_buffer_history_ordered()
-			routines.update_buffer_history_ordered_nonharpooned()
 		end
 		context.history_modified = history_modified
 	end
@@ -65,7 +63,6 @@ historySM:on("*", "*", "handle_deletion", function(context, _, from, to)
 			-- closed, it's still known, so its history stays; it leaves the bufferline.
 			routines.unregister_buffer(context.buf)
 			routines.update_buffer_history_ordered()
-			routines.update_buffer_history_ordered_nonharpooned()
 		end
 		-- not closed, an empty No Name buffer: its close untracked and forgot it already
 	end

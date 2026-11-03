@@ -8,9 +8,6 @@ local child = MiniTest.new_child_neovim()
 local function bare()
 	child.restart({ '-u', 'scripts/minimal_init.lua' })
 	child.lua([[
-		package.preload['harpoon'] = function()
-			return { list = function() return { display = function() return {} end } end }
-		end
 		local root = vim.fn.tempname()
 		vim.fn.mkdir(root, 'p')
 		vim.cmd('cd ' .. vim.fn.fnameescape(root))

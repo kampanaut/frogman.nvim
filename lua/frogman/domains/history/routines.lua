@@ -1063,7 +1063,6 @@ function M.untrack_buffer(bufnr)
 	end
 
 	M.update_buffer_history_ordered()
-	M.update_buffer_history_ordered_nonharpooned()
 end
 
 ---Update buffer history with the current access time for regular file buffers.
@@ -1135,56 +1134,6 @@ function M.update_buffer_history_ordered()
 		return a.time > b.time
 	end)
 	return data.ordered.crux
-end
-
----Get the marked files, in their order, as full paths.
----
----They're frogman's own marks: the first group of the current mode's scope, in its aliases' order.
----
----@return string[] paths Full paths of the marked files
-function M.marked_paths()
-	return require('frogman.domains.marks').marked_paths()
-end
-
----Check if a bufnr is harpooned mark.
----
----@param bufnr Bufnr
----@param marked string[] The marked files' full paths, read once for every buffer checked
----@return boolean
-local function is_harpooned(bufnr, marked)
-	if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
-		return vim.tbl_contains(
-			marked,
-			vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":p")
-		)
-	else
-		return false
-	end
-end
-
----Update ordered non-harpooned buffer history list.
----
----Rebuilds the non-harpooned buffer list by filtering out harpooned buffers
----from the main ordered list. Updates the harpooned buffer count.
----
----@return BufferHistoryItem[] ordered Non-harpooned buffers ordered by recency
-function M.update_buffer_history_ordered_nonharpooned()
-	data.ordered.nonharpooned = {}
-	local marked = M.marked_paths() -- once, not for each buffer: a provider or a require can be slow
-	for _, item in pairs(data.ordered.crux) do
-		-- print_table(item)
-		-- Only consider buffers that are valid and loaded
-		if not is_harpooned(item.buf, marked) then
-			table.insert(
-				data.ordered.nonharpooned,
-				{ buf = item.buf, time = item.time }
-			)
-		end
-	end
-	table.sort(data.ordered.nonharpooned, function(a, b)
-		return a.time > b.time
-	end)
-	return data.ordered.nonharpooned
 end
 
 ---Mark the window's triquetra as the cycle's checkpoint. The checkpoint is the window's own triquetra,
@@ -1318,7 +1267,6 @@ function M.reopen_filehash(filehash)
 	if bufnr then
 		M.update_buffer_history(bufnr) -- its visit, once, and it leaves the closed lists
 		M.update_buffer_history_ordered()
-		M.update_buffer_history_ordered_nonharpooned()
 		return bufnr
 	else
 		return nil
@@ -1892,7 +1840,6 @@ function M.cleanup_system(on_tick)
 	if report.orphaned_history > 0 or report.stale_hash_entries > 0 then
 		require('frogman.domains.window.routines').enforce_editor_policy()
 		M.update_buffer_history_ordered()
-		M.update_buffer_history_ordered_nonharpooned()
 	end
 
 	-- a window or a tab closed without its events, by noautocmd or while frogman was off: what it marked
@@ -1912,7 +1859,7 @@ end
 function M.teardown()
 	data.crux = {}
 	data.crux_internals = { window = {}, global = {} }
-	data.ordered = { crux = {}, nonharpooned = {} }
+	data.ordered = { crux = {} }
 	data.history_index = 1
 	data.hash_buffer_registry = { buffers = {}, hashes = {} }
 	data.hash_filepath_registry = { filepaths = {}, hashes = {} }
@@ -1949,7 +1896,6 @@ function M.repopulate_history()
 		end
 	end
 	M.update_buffer_history_ordered()
-	M.update_buffer_history_ordered_nonharpooned()
 end
 
 return M

@@ -290,18 +290,18 @@ function M.bufferline.get_buffer_relationships(bufnr)
 	}
 end
 
----Check if buffer is harpooned
+---Check if a buffer's file is marked in the first group of the current mode's scope.
 ---@param bufnr Bufnr
----@return boolean is_harpooned
-function M.bufferline.is_harpooned(bufnr)
-	return bufferline_state.harpooned_buffers[bufnr] or false
+---@return boolean is_marked
+function M.bufferline.is_marked(bufnr)
+	return bufferline_state.marked_buffers[bufnr] or false
 end
 
----Get harpoon index for buffer
+---Get the aliases a buffer's file has in the first group of the current mode's scope.
 ---@param bufnr Bufnr
----@return number|nil index Harpoon index if harpooned
-function M.bufferline.get_harpoon_index(bufnr)
-	return bufferline_state.harpooned_lookup[bufnr]
+---@return string|nil labels Like "a,s", or nil when it isn't marked
+function M.bufferline.get_mark_labels(bufnr)
+	return bufferline_state.mark_labels[bufnr]
 end
 
 ---Get buffer foreground theme color.
@@ -323,7 +323,7 @@ function M.bufferline.get_theme_fg_color(bufnr, is_focused)
 		return configs.colors.ternary.focused.bufnr
 	elseif is_focused then
 		return configs.colors.cokeline.fg.focused
-	elseif bufferline_state.harpooned_buffers[bufnr] then
+	elseif bufferline_state.marked_buffers[bufnr] then
 		return configs.colors.marked.unfocused.fg
 	else
 		return configs.colors.cokeline.fg.unfocused
@@ -365,7 +365,7 @@ local function get_theme_fg_by_slot(bufnr)
 		return configs.colors.current.focused.bufnr
 	elseif bufnr == ctriquetra.ternary_bufnr then
 		return configs.colors.ternary.focused.bufnr
-	elseif bufferline_state.harpooned_buffers[bufnr] then
+	elseif bufferline_state.marked_buffers[bufnr] then
 		return configs.colors.marked.unfocused.fg
 	else
 		return configs.colors.cokeline.fg.unfocused
@@ -461,9 +461,9 @@ function M.bufferline.cokeline.create_buffer_components()
 				local ctriquetra = bufferline_state.current_window_triquetra
 				if not ctriquetra then return ' ' end -- Graceful fallback
 				local string
-				local harpooned = bufferline_state.harpooned_buffers[buffer.number] and not M.is_hidden("indicators", "marks")
+				local marked = bufferline_state.marked_buffers[buffer.number] and not M.is_hidden("indicators", "marks")
 				if M.is_hidden("indicators", "roles") then -- the role marks, switched off: a marked buffer keeps its mark
-					return harpooned and "󰛢  " or ' '
+					return marked and "󰛢  " or ' '
 				end
 				local bufnr = buffer.number
 				if bufnr == ctriquetra.primary_bufnr or bufnr == ctriquetra.ternary_bufnr then
@@ -473,7 +473,7 @@ function M.bufferline.cokeline.create_buffer_components()
 				elseif bufnr == ctriquetra.current_bufnr then
 					string = "[" .. bufnr .. "]"
 				else
-					if harpooned then
+					if marked then
 						return "󰛢  "
 
 					else
@@ -481,7 +481,7 @@ function M.bufferline.cokeline.create_buffer_components()
 					end
 				end
 
-				if harpooned then
+				if marked then
 					string = string .. " 󰛢"
 				end
 
@@ -527,8 +527,8 @@ function M.bufferline.cokeline.create_buffer_components()
 				-- a % drawn full-width: cokeline measures and cuts the text before the tabline reads it, so a
 				-- doubled one would count two columns and could be cut apart
 				local filename = buffer.filename:gsub("%%", "％")
-				if bufferline_state.harpooned_buffers[buffer.number] and not M.is_hidden("indicators", "marks") then
-					return filename .. " ⟨" .. bufferline_state.harpooned_lookup[buffer.number] .. "⟩"
+				if bufferline_state.marked_buffers[buffer.number] and not M.is_hidden("indicators", "marks") then
+					return filename .. " ⟨" .. bufferline_state.mark_labels[buffer.number] .. "⟩"
 				else
 					return filename
 				end

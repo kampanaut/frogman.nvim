@@ -1381,13 +1381,13 @@ function M.refresh_ui(cwin)
 	-- the marked buffers: frogman's own marks, the first group of the current mode's scope, each with
 	-- the aliases it has there
 	local marks = require('frogman.domains.marks')
-	cache.harpooned_lookup, cache.harpooned_buffers = {}, {}
+	cache.mark_labels, cache.marked_buffers = {}, {}
 	local labels = marks.labels(cwin) -- one walk of the marks for the whole refresh
 	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
 		local filehash = vim.api.nvim_buf_is_valid(bufnr) and history.get_hash_from_buffer(bufnr)
 		local label = filehash and labels[filehash] or nil
-		cache.harpooned_buffers[bufnr] = label ~= nil
-		cache.harpooned_lookup[bufnr] = label
+		cache.marked_buffers[bufnr] = label ~= nil
+		cache.mark_labels[bufnr] = label
 	end
 	-- Pre-compute buffer rankings using history domain data
 	cache.buffer_ranking = {}

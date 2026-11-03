@@ -22,10 +22,6 @@ for _, f in ipairs({ 'a', 'b', 'c', 'd', 'e', 'f', 't', 'x' }) do
 end
 vim.cmd('cd ' .. vim.fn.fnameescape(root))
 
--- harpoon: no marks.
-package.preload['harpoon'] = function()
-	return { list = function() return { display = function() return {} end } end }
-end
 -- cokeline: by_step("focus", step) walks frogman's ordered history
 -- (index 1 = most recent), the order the bufferline shows.
 if not opts.no_cokeline then

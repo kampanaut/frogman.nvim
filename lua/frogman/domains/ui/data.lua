@@ -6,8 +6,8 @@
 ---@field bufferline_state BufferlineCache Pre-computed data for bufferline performance
 
 ---@class BufferlineCache Pre-computed buffer state for performance optimization
----@field harpooned_buffers table<number, boolean> Buffer number to harpoon status mapping
----@field harpooned_lookup table<string|number, number> Path/buffer to harpoon position mapping  
+---@field marked_buffers table<number, boolean> Buffer number to whether the current mode's first group marks its file
+---@field mark_labels table<number, string> Buffer number to its file's aliases there, like "a,s"  
 ---@field recent_buffers table<number, boolean> Buffer number to recent status mapping
 ---@field buffer_ranking table<number, number> Buffer number to ranking/access time mapping
 ---@field current_buf number|nil Currently active buffer number
@@ -53,8 +53,8 @@ local M = {}
 -- Pre-computed bufferline state for performance (migrated from buffers.lua)
 ---@type BufferlineCache
 local bufferline_state = {
-    harpooned_buffers = {},
-    harpooned_lookup = {},
+    marked_buffers = {},
+    mark_labels = {},
     recent_buffers = {},
     buffer_ranking = {},
     current_buf = nil,
@@ -114,7 +114,7 @@ local display_name_cache = {}
 ---
 ---@return nil
 function M.clear_bufferline_cache()
-    bufferline_state.harpooned_buffers, bufferline_state.harpooned_lookup = {}, {}
+    bufferline_state.marked_buffers, bufferline_state.mark_labels = {}, {}
     bufferline_state.recent_buffers, bufferline_state.buffer_ranking = {}, {}
     bufferline_state.current_buf, bufferline_state.current_window_triquetra = nil, nil
     bufferline_state.initialized, bufferline_state.history_detached = false, false

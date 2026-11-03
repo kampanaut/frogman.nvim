@@ -115,7 +115,11 @@ end }
 -- known, and each place holds what its own writes say; the one copy of the check, which child.settle
 -- runs too under FRG_CHECK_HOLDERS (tests/holders_check.lua).
 checks.HOLDERS = { post = function()
-	return dofile(vim.api.nvim_get_runtime_file('tests/holders_check.lua', false)[1])(name)
+	local file = vim.api.nvim_get_runtime_file('tests/holders_check.lua', false)[1]
+	if not file then
+		error('tests/holders_check.lua is not on the runtimepath, so the holders go unchecked')
+	end
+	return dofile(file)(name)
 end }
 
 -- I9: every triquetra belongs to a valid, non-floating window.
@@ -235,9 +239,6 @@ end
 Dec.bare = function(child)
 	child.restart({ '-u', 'scripts/minimal_init.lua' })
 	child.lua([[
-		package.preload['harpoon'] = function()
-			return { list = function() return { display = function() return {} end } end }
-		end
 		local root = vim.fn.tempname()
 		vim.fn.mkdir(root, 'p')
 		vim.cmd('cd ' .. vim.fn.fnameescape(root))

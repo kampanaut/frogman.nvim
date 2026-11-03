@@ -215,7 +215,7 @@ T['T214 [char] (P24) a save leaves the closed stack as it was, a closed file gon
 end
 
 T['T215 [char] (P26) with harpoon not installed, navigation, the slot keys and the UI raise nothing'] = function()
-	Neg.start(child, { no_harpoon = true })
+	Neg.start(child)
 	eq(child.lua('return (pcall(require, "harpoon"))'), false)
 	child.messages()
 	local raised = {}
