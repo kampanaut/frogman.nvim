@@ -211,16 +211,6 @@ function M.delete(id)
 	history.handles.drop_place(place_of(snapshot))
 end
 
----Let a window's snapshots go with it.
----
----@param winid WinId
----@return nil
-function M.drop_window(winid)
-	for _, snapshot in ipairs(vim.deepcopy(data.by_window[winid] or {})) do
-		M.delete(snapshot.id)
-	end
-end
-
 ---Let the snapshots held over in a session's scope go, as its list goes once they're in its file.
 ---
 ---@param session_id string The session's pool id
@@ -242,7 +232,7 @@ local function held_name(session_id, what)
 	for _, snapshot in ipairs(M.held_in(session_id)) do
 		taken[snapshot.held] = true
 	end
-	return require('frogman.domains.marks.routines').held_header(what, taken)
+	return require('frogman.held').held_header(what, taken)
 end
 
 ---Hold snapshots over in a session's scope, under one header, after the ones held there already.
@@ -282,7 +272,7 @@ function M.queue_hold_over(winid)
 	local tabpage = vim.api.nvim_win_get_tabpage(winid)
 	local entry = { tab = tabpage, session = M.session_of(winid), snapshots = snapshots,
 		what = "window on " .. require('frogman.domains.marks').routines.shows(winid) }
-	require('frogman.domains.marks.routines').wait_a_tick(function() return data.pending end, entry, function()
+	require('frogman.held').wait_a_tick(function() return data.pending end, entry, function()
 		M.hold_over(entry.session, entry.snapshots, entry.what)
 	end)
 end
@@ -303,13 +293,29 @@ end
 ---Drop the snapshots still queued to be held over from a tab, as a tab session's load into it starts.
 ---
 ---@param tabpage integer
+---@param after integer|nil Only what was queued after this wait (nil = all of it)
 ---@return nil
-function M.drop_pending(tabpage)
-	require('frogman.domains.marks.routines').drop_waiting(data.pending, tabpage, function(entry)
+function M.drop_pending(tabpage, after)
+	require('frogman.held').drop_waiting(data.pending, tabpage, function(entry)
 		for _, snapshot in ipairs(entry.snapshots) do
 			history.handles.drop_place(place_of(snapshot))
 		end
-	end)
+	end, after)
+end
+
+---Move the snapshots held over in one session's scope into another's, each keeping its header, as a
+---detached list that goes leaves them to the whole editor's.
+---
+---@param from_id string
+---@param to_id string
+---@return nil
+function M.move_held(from_id, to_id)
+	if data.held[from_id] == nil then
+		return
+	end
+	data.held[to_id] = data.held[to_id] or {}
+	vim.list_extend(data.held[to_id], data.held[from_id])
+	data.held[from_id] = nil
 end
 
 ---Let every snapshot go, as a whole-editor load from idle starts from nothing.
@@ -626,12 +632,8 @@ end
 ---@param to_id string The pool id they're copied into
 ---@return nil
 function M.copy_held(session_id, to_id)
-	for _, snapshot in ipairs(M.held_in(session_id)) do
-		local copy = vim.deepcopy(snapshot)
-		copy.id = new_id()
-		hold(copy)
-		data.held[to_id] = data.held[to_id] or {}
-		table.insert(data.held[to_id], copy)
+	for _, snapshot in ipairs(vim.list_slice(M.held_in(session_id))) do
+		M.copy({ session = to_id, held = snapshot.held }, snapshot)
 	end
 end
 

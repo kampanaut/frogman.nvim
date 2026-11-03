@@ -1393,6 +1393,61 @@ T['T854 [char] (M15, M16) a tab that outlived a refused close isn\'t taken for a
 	]]), 1)
 end
 
+T['T865 [char] (M16) a window that keeps its buffer can\'t show a snapshot'] = function()
+	taken()
+	child.steps({ ':e a' })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.lua('vim.wo.winfixbuf = true')
+	child.steps({ LIST })
+	child.messages()
+	child.step('<CR>')
+	child.settle(100)
+	local told = #vim.tbl_filter(function(m) return m:find("keeps its buffer ('winfixbuf')", 1, true) ~= nil end, said())
+	eq({ told = told, showing = child.lua('return require("frogman.domains.snapshots.preview").active()'), open = list() ~= vim.NIL,
+		shows = child.lua('return vim.fn.fnamemodify(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(...)), ":t")', { win }) },
+		{ told = 1, showing = false, open = true, shows = 'a.txt' })
+end
+
+T['T868 [char] (M16) the list reads the marks once a drawing'] = function()
+	taken()
+	child.steps({ ':e e', TAKE, LIST })
+	local asked = child.lua([[
+		local R = require('frogman.domains.marks.routines')
+		local scope_key, n = R.scope_key, 0
+		R.scope_key = function(...) n = n + 1; return scope_key(...) end
+		vim.api.nvim_exec_autocmds('TextChanged', { buffer = vim.api.nvim_get_current_buf() })
+		R.scope_key = scope_key
+		return n
+	]])
+	eq(asked, 1)
+end
+
+T['T869 [char] (M16) an answered directory lasts while its list is open'] = function()
+	local one, split = two_windows()
+	local first = written_with(split, { line_from(one, '/elsewhere/project', 'first') }, { '/elsewhere/project' })
+	local again = written_with(split, { line_from(one, '/elsewhere/project', 'second') }, {})
+	eq({ first = #first.input, again = #again.input }, { first = 1, again = 1 })
+end
+
+T['T859 [char] (M16, S1 Load) an entry\'s snapshot held over at a load isn\'t held over again at the next'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e c', TAKE })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e d', TAKE })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x' })
+	eq(S2.load_tab_session(child, 't'), { true }) -- a tab on d: the d entry taken, the c entry's held over
+	local id = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	local first = #held(id)
+	eq(S2.load_tab_session(child, 't'), { true }) -- again, t open now
+	eq({ first = first, again = #held(id) }, { first = 1, again = 1 })
+end
+
 T['T838 [char] (M16, M5) a detached list\'s tab closing writes the snapshots its closed windows held over'] = function()
 	local s = S2.shared()
 	tab_session(s)

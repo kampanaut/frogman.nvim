@@ -440,7 +440,11 @@ T['T730 [char] (M15) a mark whose alias is gone is kept, out of reach'] = functi
 	child.settle(300)
 	local held = child.lua([[
 		local H = require('frogman.domains.history')
-		return require('frogman.domains.marks').routines.holds(H.routines.get_filehash(_G.FRG_TEST.root .. '/b.txt'))
+		local h = H.handles.of_hash(H.routines.get_filehash(_G.FRG_TEST.root .. '/b.txt'))
+		for place, _ in pairs(h and h.holders or {}) do
+			if place:match('^mark:') then return true end
+		end
+		return false
 	]])
 	local labels = { b = label('b'), c = label('c') }
 	child.steps({ JUMP .. 'a>' })
@@ -804,7 +808,11 @@ T['T746 [char] (M15) an unassigned mark shows as unassigned and keeps its file t
 	local after = popup().lines
 	local held = child.lua([[
 		local H = require('frogman.domains.history')
-		return require('frogman.domains.marks').routines.holds(H.routines.get_filehash(_G.FRG_TEST.root .. '/b.txt'))
+		local h = H.handles.of_hash(H.routines.get_filehash(_G.FRG_TEST.root .. '/b.txt'))
+		for place, _ in pairs(h and h.holders or {}) do
+			if place:match('^mark:') then return true end
+		end
+		return false
 	]])
 	eq({ last = p.lines[#p.lines], deco = deco[#p.lines], kept = after[#after], held = held },
 		{ last = 'q -> b.txt', deco = '  unassigned', kept = 'q -> b.txt', held = true })
@@ -1217,6 +1225,107 @@ T['T760 [char] (M15) a tab session\'s tab closing holds nothing over'] = functio
 		eq(save_t(), { true })
 	end
 	eq(rounds, { { held = 0, jumped = 'c' }, { held = 0, jumped = 'c' } })
+end
+
+T['T866 [char] (M15) a pop-up whose drawing fails leaves no buffer behind'] = function()
+	child.steps({ ':e b', ADD .. 'a>' })
+	local got = child.lua([[
+		local R = require('frogman.domains.marks.routines')
+		local first_group = R.first_group
+		R.first_group = function() error('drawing fails') end
+		local ok = pcall(require('frogman.domains.marks.popup').open)
+		R.first_group = first_group
+		local left = vim.fn.bufnr('frogman://marks') ~= -1
+		local again = pcall(require('frogman.domains.marks.popup').open)
+		return { failed = not ok, left = left, again = again }
+	]])
+	eq(got, { failed = true, left = false, again = true })
+end
+
+T['T867 [char] (M15) two of the marks\' keys that come out the same are said'] = function()
+	child.messages()
+	local function told(key)
+		return #vim.tbl_filter(function(m) return m.msg:find(key, 1, true) ~= nil end, child.messages())
+	end
+	child.lua([[_G.FRG_TEST.setup({ keymaps = { mark_popup = "<M-'><M-a>" } })]])
+	local first = told("<M-'><M-'><M-a>")
+	child.lua([[_G.FRG_TEST.setup({ keymaps = { mark_modes = { window = "<M-e>" } } })]])
+	local second = told("<M-'><M-e>")
+	eq({ first = first, second = second }, { first = 1, second = 1 })
+end
+
+T['T858 [char] (M15) a copy no one changed holds nothing over'] = function()
+	child.lua('_G.FRG_TEST.setup({ marks = { split_copies = true } })')
+	child.steps({ ':e b', ADD .. 'a>' })
+	child.cmd('help')
+	child.settle()
+	child.cmd('quit')
+	child.settle(300)
+	local help = #vim.tbl_filter(function(g) return g.held end, session_groups(''))
+	child.cmd('split')
+	child.settle()
+	child.steps({ ADD .. 's>' })
+	child.cmd('close')
+	child.settle(300)
+	eq({ help = help, changed = #vim.tbl_filter(function(g) return g.held end, session_groups('')) }, { help = 0, changed = 1 })
+end
+
+T['T862 [char] (M15, M16) a window closed ahead of its tab session\'s close is held over'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e c', ADD .. 'a>', '<M-;><M-s>' })
+	child.cmd('wincmd p')
+	child.settle()
+	child.cmd('only | tabclose')
+	child.settle(500)
+	eq(child.lua([[
+		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), 't')
+		local n = 0
+		for _, g in ipairs(saved and saved.marks or {}) do if g.held then n = n + 1 end end
+		return { groups = n, snapshots = #(saved and saved.snapshots or {}) }
+	]]), { groups = 1, snapshots = 1 })
+end
+
+T['T863 [char] (M15, S1 Load) two groups of one entry with the same marks are both held over'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e b', OPEN })
+	write_lines({ '❖ main', 'a -> b.txt', '❖ backup', 'a -> b.txt' })
+	child.cmd('close')
+	child.settle()
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a' }, 'a')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	eq(#vim.tbl_filter(function(g) return g.held end, session_groups('')), 2)
+end
+
+T['T864 [char] (M15, S1 Records) an entry a list in the file alone names keeps its marks through the records'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	eq(S2.save(child), { true })
+	child.steps({ ':e c', ADD .. 'a>', ':e d' }) -- a window mark in t's tab
+	eq(S2.load_tab_session(child, 't'), { true }) -- that tab keeps t_DETACHED
+	eq(S2.save(child), { true }) -- the whole editor's file, the list's window entry with its marks
+	S2.start(child, s)
+	S2.restore_tabs(child, { { files = { 'x', 't' }, shown = 't' } })
+	eq(S2.load(child), { true })
+	child.settle(300)
+	S2.start(child, s) -- the quit writes the records
+	S2.restore_tabs(child, { { files = { 'x', 't' }, shown = 't' }, { files = { 'c', 'd' }, shown = 'd' },
+		{ files = { 'c', 'd' }, shown = 'd' } })
+	eq(S2.load(child), { true })
+	child.settle(300)
+	child.cmd('tabnext 2')
+	child.settle()
+	child.steps({ JUMP .. 'a>' })
+	eq(child.shown(), 'c')
 end
 
 T['T761 [char] (M15) a tab session\'s load drops what its own tab\'s closes queued and keeps the rest'] = function()

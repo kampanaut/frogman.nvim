@@ -3331,6 +3331,92 @@ T['T390 [char] (S2) an edit to a list in the file alone survives <CR> on another
 end
 
 -- The session directory is made read-only after the picker draws.
+-- In a tab, a split with a window mark on d and a snapshot of it, closed: held over in the tab's list's scope.
+local function held_in_split(win)
+	child.lua('vim.api.nvim_set_current_win(...)', { win })
+	child.settle()
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e d', "<M-'><M-'><M-a>", '<M-;><M-s>' })
+	child.cmd('close')
+	child.settle(300)
+end
+
+-- The whole editor's held-over groups and snapshots, in memory and in its file.
+local WHOLE_HELD = [[
+	local scope = require('frogman.domains.marks').data.scopes.session['']
+	local n = 0
+	for _, g in ipairs(scope and scope.groups or {}) do if g.held then n = n + 1 end end
+	local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+	local f = 0
+	for _, g in ipairs(saved and saved.marks or {}) do if g.held then f = f + 1 end end
+	return { groups = n, snapshots = #require('frogman.domains.snapshots').routines.held_in(''),
+		file_groups = f, file_snapshots = #(saved and saved.snapshots or {}) }
+]]
+
+T['T860 [char] (S2, M15, M16) a detached list merged away gives its held-over groups and snapshots to the whole editor\'s scope'] = function()
+	local s = S2.shared()
+	local _, w2 = tab_session(s)
+	eq(S2.save(child), { true })
+	child.steps({ ':e x', ':e c', ':e d' })
+	child.cmd('bdelete x.txt')
+	child.cmd('bdelete c.txt')
+	child.settle()
+	child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		require('frogman').load_session('t')
+	]])
+	child.settle(300)
+	held_in_split(w2) -- in the second tab, now t_DETACHED's
+	child.lua([[
+		vim.api.nvim_set_current_win(...)
+		vim.cmd('noautocmd edit d.txt')
+		require('frogman').load_session('t')
+	]], { w2 })
+	child.settle(300)
+	local p = child.lua(OPEN_LISTS)
+	local lines, moved, under, section = {}, {}, nil, nil
+	for _, l in ipairs(p.lines) do
+		if l:sub(1, 3) == '≡' then section = l end
+		if section == '≡t_DETACHED' and l ~= '≡t_DETACHED' then table.insert(moved, l) else table.insert(lines, l) end
+	end
+	for i, l in ipairs(lines) do
+		if l == '≡t' then under = i end
+	end
+	for k, l in ipairs(moved) do
+		table.insert(lines, under + k, l)
+	end
+	S2.write_picker(child, p, lines)
+	type_into(p.win, 'q')
+	child.settle(300)
+	local got = child.lua(WHOLE_HELD)
+	eq({ gone = child.lua(IN_MEMORY, { 't_DETACHED' }), groups = got.groups, snapshots = got.snapshots },
+		{ gone = false, groups = 1, snapshots = 1 })
+end
+
+T['T861 [char] (S2, M15, M16) a list in the file alone emptied gives its held-over groups and snapshots to the whole editor\'s scope'] = function()
+	local s = S2.shared()
+	local w1, w2 = tab_session(s)
+	eq(S2.save(child), { true })
+	child.steps({ ':e e', ':e d' })
+	child.cmd('bdelete e.txt')
+	child.settle()
+	eq(S2.load_tab_session(child, 't'), { true })
+	held_in_split(w2)
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('tabclose')
+	child.settle(300)
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	local p = S2.picker(child)
+	local _, e = under_detached(p.lines)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, e)
+	S2.write_picker(child, p, lines)
+	child.settle(300)
+	eq(child.lua(WHOLE_HELD), { groups = 1, snapshots = 1, file_groups = 1, file_snapshots = 1 })
+end
+
 T['T391 [char] (S2) an edit to a list in the file alone that can\'t be written says so and stays on screen'] = function()
 	local s = S2.shared()
 	local w1 = file_only_state(s)

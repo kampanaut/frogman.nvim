@@ -9,9 +9,9 @@ local M = {}
 ---Open an editable view.
 ---
 ---The buffer is made and named, `fill` puts its lines in, and only then is its filetype set, so the
----keys its filetype maps find it drawn. A write runs `write` when the buffer was edited, and every
----change runs `changed` with the event's name. The window closing takes the buffer with it, then
----runs `closed`.
+---keys its filetype maps find it drawn; a `fill` that raises takes the buffer with it, so its name
+---is free for the next open. A write runs `write` when the buffer was edited, and every change runs
+---`changed` with the event's name. The window closing takes the buffer with it, then runs `closed`.
 ---
 ---@param opts {name: string, filetype: string, title: string, size: table, fill: fun(buf: Bufnr), write: fun(), changed: fun(event: string), closed: fun(buf: Bufnr), events: string[]|nil, window: table|nil}
 ---@return Bufnr buf
@@ -22,7 +22,11 @@ function M.open(opts)
 	vim.bo[buf].swapfile = false
 	vim.bo[buf].bufhidden = "wipe"
 	vim.api.nvim_buf_set_name(buf, opts.name)
-	opts.fill(buf)
+	local filled, problem = pcall(opts.fill, buf)
+	if not filled then
+		vim.api.nvim_buf_delete(buf, { force = true }) -- shown nowhere yet, so no wipe would take it
+		error(problem, 0)
+	end
 	vim.bo[buf].filetype = opts.filetype
 	vim.api.nvim_create_autocmd(opts.events or { "TextChanged", "TextChangedI" }, {
 		buffer = buf,

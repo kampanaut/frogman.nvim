@@ -928,7 +928,8 @@ local function restore_snapshots(saved_data, taken, session_id, own, what)
 			if winid and vim.api.nvim_win_is_valid(winid) then
 				snapshots().restore_window(winid, list, session_id, what)
 			else
-				vim.list_extend(unclaimed, list) -- a window the load didn't bring back
+				-- a window the load didn't bring back, but for a snapshot an earlier load of the file held over
+				vim.list_extend(unclaimed, snapshots().not_held(list))
 				gone[i] = true
 			end
 		end
@@ -984,16 +985,10 @@ local function restore_marks(saved_data, taken, session_id, own, key, scratch_di
 			if winid and vim.api.nvim_win_is_valid(winid) then
 				-- what the window had is held over under the load's header, but for what the entry brings back
 				local had = marks().scope("window", winid)
-				if had then
+				if had and not marks().unchanged_copy(winid) then -- a copy no one changed loses nothing
 					local keep = {}
 					for _, group in ipairs(had.groups) do
-						local by_hash = {}
-						for alias, _ in pairs(group.marks) do
-							local handle = marks().handle_of(group, alias)
-							if handle then
-								by_hash[alias] = handle.hash
-							end
-						end
+						local by_hash = marks().hashes_of(group)
 						local brought = false
 						for _, saved in ipairs(entry[10]) do
 							brought = brought or (type(saved) == "table" and vim.deep_equal(saved.marks, by_hash))
@@ -1043,9 +1038,18 @@ end
 ---@param tabs table<integer, true> The tab entries no tab took
 ---@return nil
 local function remember_unclaimed(file_path, saved_data, snapped, marked, tabs)
-	local windows, kept_tabs = {}, {}
+	local windows, kept_tabs, listed = {}, {}, {}
+	-- an entry a detached list names among its windows is the list's: its tab takes it back when it comes
+	-- back, so the records never take its marks or snapshots off
+	for _, list in ipairs(type(saved_data.detached) == "table" and saved_data.detached or {}) do
+		for _, i in ipairs(type(list.windows) == "table" and list.windows or {}) do
+			listed[i] = true
+		end
+	end
 	for i, _ in pairs(vim.tbl_extend("force", snapped, marked)) do
-		windows[i] = vim.deepcopy(saved_data.windows[i])
+		if not listed[i] then
+			windows[i] = vim.deepcopy(saved_data.windows[i])
+		end
 	end
 	for i, _ in pairs(tabs) do
 		kept_tabs[i] = vim.deepcopy(saved_data.tabs[i])
@@ -2537,7 +2541,7 @@ local function write_records(session, changes)
 			-- the detached lists ride with the whole editor's records
 			local lists, live = detached_lists(saved, nil)
 			if changes then
-				local kept = {}
+				local kept, adopted = {}, false
 				for _, list in ipairs(lists) do
 					local change = changes[list.label]
 					if live[list.label] or change == nil then
@@ -2545,9 +2549,25 @@ local function write_records(session, changes)
 					elseif change and #change.closed > 0 then
 						list.closed, list.closed_times = change.closed, change.times
 						table.insert(kept, list)
+					else
+						-- emptied: what windows closed in its tab left held over goes to the whole editor's scope
+						marks().adopt_held("", list.marks, saved.paths)
+						for _, held in ipairs(type(list.snapshots) == "table" and list.snapshots or {}) do
+							for filehash, _ in pairs(snapshots().named_by({ held })) do
+								if not history.handles.of_hash(filehash) and saved.paths[filehash] then
+									history.register_filepath(saved.paths[filehash])
+								end
+							end
+						end
+						snapshots().restore_held("", snapshots().not_held(list.snapshots)) -- not again, once memory has them
+						adopted = true
 					end
 				end
 				lists = kept
+				if adopted then
+					saved.marks = marks().serialise("session", "")
+					saved.snapshots = snapshots().serialise_held("")
+				end
 			end
 			carry_detached(lists, live, saved, texts, saved.paths, key, file_path .. ".d/")
 			saved.detached = #lists > 0 and lists or nil
@@ -2770,6 +2790,9 @@ function M.settle_merging()
 			if #pool.closed == 0 then
 				history.data.pools[id] = nil
 				history.routines.drop_pool(pool)
+				-- what windows closed in its tab left held over isn't a copy: it goes to the whole editor's scope
+				marks().move_held(id, "")
+				snapshots().move_held(id, "")
 				marks().drop_scope("session", id)
 				snapshots().drop_held(id)
 				require('frogman.domains.ledger').move("detached_left", { subject = id, name = pool.name, words = "merged, and gone" })

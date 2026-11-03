@@ -57,7 +57,8 @@ local salt = nil
 ---@type table<string, true>
 local drawn_in = {}
 
----The directories an answer opened a line under, where every line is tried besides the cwd.
+---The directories an answer opened a line under while the list is open, where every line is tried
+---besides the cwd.
 ---@type table<string, true>
 local answered = {}
 
@@ -208,11 +209,11 @@ end
 ---Draw a snapshot's line as it shows: the time, the triquetra, then the stored order.
 ---
 ---@param snapshot Snapshot
+---@param labels table<Filehash, string> The marks' aliases, as `marks.labels` gives them
 ---@return table chunks The `{text, highlight}` chunks
-local function drawing(snapshot)
+local function drawing(snapshot, labels)
 	local ui = require('frogman.domains.ui').routines
 	local glyphs = ui.glyphs()
-	local marks = require('frogman.domains.marks')
 	local function name(id)
 		local handle = routines.handle(id)
 		return handle and ui.get_smart_basename(handle.hash) or "?"
@@ -226,7 +227,7 @@ local function drawing(snapshot)
 		local handle = routines.handle(id)
 		if handle then
 			local bufnr = history.get_buffer_from_hash(handle.hash)
-			local label = marks.label_of(handle.hash, M.origin())
+			local label = labels[handle.hash]
 			local text = name(id) .. (label and (" ⟨" .. label .. "⟩") or "")
 			if history.data.missing[handle.hash] then
 				table.insert(chunks, { "  ✗ ", "DiagnosticError" })
@@ -249,6 +250,7 @@ local function decorate()
 		return
 	end
 	vim.api.nvim_buf_clear_namespace(open.buf, ns, 0, -1)
+	local labels = require('frogman.domains.marks').labels(M.origin())
 	for i, line in ipairs(vim.api.nvim_buf_get_lines(open.buf, 0, -1, false)) do
 		if open.headers[vim.trim(line)] then
 			vim.api.nvim_buf_set_extmark(open.buf, ns, i - 1, 0, { end_col = #line, hl_group = "FrogmanTrailDim" })
@@ -259,7 +261,7 @@ local function decorate()
 				-- the encoding hidden, and the drawing after it, so the cursor at the line's start stays there
 				vim.api.nvim_buf_set_extmark(open.buf, ns, i - 1, 0, { end_col = #line, conceal = "" })
 				vim.api.nvim_buf_set_extmark(open.buf, ns, i - 1, #line,
-					{ virt_text = snapshot and drawing(snapshot) or drawing_of_carried(carried), virt_text_pos = "inline" })
+					{ virt_text = snapshot and drawing(snapshot, labels) or drawing_of_carried(carried), virt_text_pos = "inline" })
 			end
 		end
 	end
@@ -401,6 +403,7 @@ function M.open()
 		origin = require('frogman.domains.navigation.routines').find_most_recent_tracked_window() or origin
 	end
 	decoded = {} -- what the last list decoded, its lines no longer here
+	answered = {} -- and the directories its answers opened
 	local _, win = view.open({
 		name = NAME, filetype = "frogman-snapshots", title = "Snapshots", size = require('frogman.configs').snapshots_popup,
 		events = { "TextChanged", "TextChangedI", "TextChangedP" },
@@ -469,6 +472,11 @@ function M.show()
 			return
 		end
 		origin = picked
+	end
+	if vim.wo[origin].winfixbuf then
+		vim.notify("frogman: window " .. vim.api.nvim_win_get_number(origin) ..
+			" keeps its buffer ('winfixbuf'), so a snapshot can't show there.", vim.log.levels.WARN)
+		return
 	end
 	if open.win and vim.api.nvim_win_is_valid(open.win) then
 		vim.api.nvim_win_close(open.win, true)

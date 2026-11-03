@@ -282,6 +282,11 @@ function M.start(snapshot, winid)
 		vim.notify("frogman: pick or cancel the cycle first.", vim.log.levels.WARN)
 		return false
 	end
+	if vim.wo[winid].winfixbuf then
+		vim.notify("frogman: window " .. vim.api.nvim_win_get_number(winid) ..
+			" keeps its buffer ('winfixbuf'), so a snapshot can't show there.", vim.log.levels.WARN)
+		return false
+	end
 	if showing then
 		M.cancel()
 	end

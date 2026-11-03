@@ -113,8 +113,19 @@ local function setup_keymaps(keymaps)
 				vim.notify("frogman: marks.aliases' " .. alias .. " takes " .. jump .. ", " .. taken .. "; move one of them in the config.",
 					vim.log.levels.WARN)
 			end
-			table.insert(marks_keys, { jump, function() M.mark_jump(alias) end, "Jump to mark " .. alias })
+			table.insert(marks_keys, { jump, function() M.mark_jump(alias) end, "Jump to mark " .. alias, true })
 			table.insert(marks_keys, { prefix .. prefix .. "<M-" .. alias .. ">", function() M.mark_add(alias) end, "Mark the buffer as " .. alias })
+		end
+		-- any other two of the marks' keys that come out the same, a mode key or the pop-up's on an add or
+		-- on each other: the later one wins, as an alias's does, and it's said once
+		local seen = {}
+		for _, key in ipairs(marks_keys) do
+			local code = vim.keycode(key[1])
+			if seen[code] and not key[4] then
+				vim.notify("frogman: " .. key[1] .. " is both " .. seen[code]:lower() .. " and " .. key[3]:lower() ..
+					"; move one of them in the config.", vim.log.levels.WARN)
+			end
+			seen[code] = seen[code] or key[3]
 		end
 		for _, key in ipairs(marks_keys) do
 			local lhs, run, desc = key[1], key[2], key[3]
