@@ -32,6 +32,7 @@ You can also see that the two windows have their own history. That's `bufferline
 - nvim-cokeline
 - openssl 3 or 4 (system installed, its libcrypto is used for encrypting the session files. Hashing is done with neovim's built-in `vim.fn.sha256`. When frogman can't find it, set `libcrypto_path` to its file. Windows is untested: there, set `libcrypto_path` to the DLL, such as `libcrypto-3-x64.dll`)
 - telescope.nvim (used for adding files in the primary buffer pop-up)
+- nvim-window-picker (used for picking a window to show a snapshot in when its list's window is gone)
 - a session manager (optional, resession.nvim is used in the examples below)
 
 ## Installation
@@ -48,6 +49,7 @@ This works for all plugin managers.
     dependencies = {
         "willothy/nvim-cokeline",
         "nvim-telescope/telescope.nvim",
+        "s1n7ax/nvim-window-picker",
     },
 }
 ```

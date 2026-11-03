@@ -1239,7 +1239,19 @@ M.key_for = key_for
 ---@param purpose string|nil The word the seal covers besides (nil for a session's file)
 ---@return nil
 function M.seal_file(path, key, salt, text, purpose)
-	write_atomic(path, HEADER .. salt .. crypto.seal(key, text, HEADER .. salt .. (purpose and "\n" .. purpose or "")))
+	write_atomic(path, M.sealed(key, salt, text, purpose))
+end
+
+---Get text sealed as a sealed file holds it: the header, the salt, then the text sealed under the key,
+---the seal covering the header, the salt and the purpose word besides. `open_sealed` opens it.
+---
+---@param key string The key the text is sealed under
+---@param salt string The salt the key was stretched with
+---@param text string The text
+---@param purpose string|nil The word the seal covers besides (nil for a session's file)
+---@return string bytes
+function M.sealed(key, salt, text, purpose)
+	return HEADER .. salt .. crypto.seal(key, text, HEADER .. salt .. (purpose and "\n" .. purpose or ""))
 end
 
 ---Open a sealed file's bytes.

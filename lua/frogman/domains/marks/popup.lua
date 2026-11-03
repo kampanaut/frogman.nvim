@@ -263,11 +263,7 @@ end
 ---Show the mode line above the first line: a window shows a line above its top one only when told to.
 ---@return nil
 local function show_mode_line()
-	if open and open.win and vim.api.nvim_win_is_valid(open.win) then
-		vim.api.nvim_win_call(open.win, function()
-			vim.fn.winrestview({ topline = 1, topfill = 1 })
-		end)
-	end
+	require('frogman.domains.ui.view').show_top(open and open.win)
 end
 
 ---Put the scope's marks in the pop-up's lines, as they are now.
@@ -398,12 +394,9 @@ end
 ---@return nil
 function M.open(opts)
 	opts = opts or {}
+	local view = require('frogman.domains.ui.view')
 	if is_open() then
-		if vim.bo[open.buf].modified then
-			if open.win and vim.api.nvim_win_is_valid(open.win) then
-				vim.api.nvim_set_current_win(open.win)
-			end
-			vim.notify(DIRTY, vim.log.levels.WARN)
+		if view.keep_if_dirty(open.buf, open.win, DIRTY) then
 			return
 		end
 		close()
@@ -413,50 +406,21 @@ function M.open(opts)
 		origin = require('frogman.domains.navigation.routines').find_most_recent_tracked_window() or origin
 	end
 	local kind, id = routines().scope_key(data.mode, origin)
-	local buf = vim.api.nvim_create_buf(false, false)
-	vim.bo[buf].buftype = "acwrite"
-	vim.bo[buf].swapfile = false
-	vim.bo[buf].bufhidden = "wipe"
-	vim.api.nvim_buf_set_name(buf, NAME)
-	open = { buf = buf, origin = origin, kind = kind, id = id, names = {}, states = {} }
-	redraw(opts.conflict)
-	vim.bo[buf].filetype = "frogman-marks"
-	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
-		buffer = buf,
-		callback = decorate,
-		desc = "Draw the marks' decoration again",
-	})
-	vim.api.nvim_create_autocmd("BufWriteCmd", {
-		buffer = buf,
-		callback = function()
-			if vim.bo[buf].modified then
-				write()
-			end
+	local buf, win = view.open({
+		name = NAME, filetype = "frogman-marks", title = "Marks", size = require('frogman.configs').marks_popup,
+		fill = function(buf)
+			open = { buf = buf, origin = origin, kind = kind, id = id, names = {}, states = {} }
+			redraw(opts.conflict)
 		end,
-		desc = "Write the marks",
-	})
-	local width, height, col, row = require('frogman.domains.ui').routines.resolve_float_geometry(
-		require('frogman.configs').marks_popup)
-	local win = vim.api.nvim_open_win(buf, true, {
-		relative = "editor", width = width, height = height, col = col, row = row,
-		style = "minimal", border = "rounded", title = " Marks ", title_pos = "center",
-	})
-	open.win = win
-	vim.api.nvim_create_autocmd("WinClosed", {
-		group = "frogman",
-		pattern = tostring(win),
-		once = true,
-		callback = function()
-			if vim.api.nvim_buf_is_valid(buf) then
-				vim.api.nvim_buf_delete(buf, { force = true })
-			end
+		write = write,
+		changed = decorate,
+		closed = function(buf)
 			if open and open.buf == buf then
 				open = nil
 			end
 		end,
 	})
-	vim.wo[win].wrap = false
-	vim.wo[win].cursorline = true
+	open.win = win
 	show_mode_line()
 	if opts.conflict then
 		for i, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
@@ -478,10 +442,7 @@ function M.leave()
 	if not is_open() then
 		return
 	end
-	if vim.bo[open.buf].modified and not write() then
-		return
-	end
-	close()
+	require('frogman.domains.ui.view').leave(open.buf, open.win, write)
 end
 
 ---Get the file the row under the cursor names.

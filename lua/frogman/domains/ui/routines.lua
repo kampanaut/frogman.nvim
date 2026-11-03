@@ -646,19 +646,19 @@ local function draw_closed_lists(dbuf)
 	decorate_closed_lists(dbuf)
 end
 
----Take back a change that leaves the closed lists' headers broken.
+---Take back a change that leaves a view's headers broken: the closed lists' or the snapshot list's.
 ---
----The headers are intact when each list's header stands, trimmed, on a line of its own, once, in
----the order they were drawn, which is how the write reads a header. Outside insert mode the
+---The headers are intact when each header stands, trimmed, on a line of its own, once, in the
+---order they were drawn, which is how the write reads a header. Outside insert mode the
 ---change is undone, so redo can't bring it back either. In insert mode an undo can't run, so the
 ---lines go back to how they last stood with their headers intact. A change that keeps them intact
 ---is what the next one is taken back to.
 ---
----@param dbuf Bufnr The closed-lists buffer
+---@param dbuf Bufnr The view's buffer
 ---@param insert boolean Whether the change was made in insert mode
+---@param picker {headers: table<string, any>, header_order: string[], intact: string[]}|nil The headers as drawn, and the lines last intact
 ---@return nil
-local function guard_headers(dbuf, insert)
-	local picker = closed_pickers[dbuf]
+function M.guard_headers(dbuf, insert, picker)
 	if not picker or not picker.header_order then
 		return
 	end
@@ -1071,7 +1071,7 @@ function M.show_closed_lists(opts)
 	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP" }, {
 		buffer = dbuf,
 		callback = function(ev)
-			guard_headers(dbuf, ev.event ~= "TextChanged")
+			M.guard_headers(dbuf, ev.event ~= "TextChanged", closed_pickers[dbuf])
 			decorate_closed_lists(dbuf)
 		end,
 	})

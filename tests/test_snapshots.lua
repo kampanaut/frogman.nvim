@@ -81,6 +81,11 @@ local function decoded_ids()
 	]])
 end
 
+-- How many of the open list's lines decode to a snapshot, its header lines left out.
+local function snapshot_lines()
+	return #vim.tbl_filter(function(id) return id ~= false end, decoded_ids())
+end
+
 T['T762 [char] (M16) the capture holds the window\'s setup'] = function()
 	taken()
 	local got = snapshots()
@@ -543,11 +548,13 @@ T['T771 [char] (M16) a window closed while you work leaves its snapshots held ov
 	local own = child.lua('return require("frogman.domains.snapshots").data.by_window[...] ~= nil', { split })
 	local h = held('')
 	child.steps({ LIST })
-	local l, drawn = list(), headers()
+	local l = list()
+	local ids = decoded_ids()
 	eq({ own = own, n = #h, slots = h[1] and h[1].slots, x = x,
 		name = h[1] and h[1].held:match('^held over · window on b%.txt' .. STAMP .. '$') ~= nil,
-		lines = l ~= vim.NIL and #l.lines or 0, header = drawn[1] ~= nil and h[1] ~= nil and drawn[1]:find(h[1].held, 1, true) ~= nil },
-		{ own = false, n = 1, slots = '⦉b⦊ [x] ⟦-⟧', x = true, name = true, lines = 1, header = true })
+		lines = l ~= vim.NIL and #l.lines or 0, header = l ~= vim.NIL and h[1] ~= nil and l.lines[1] == h[1].held,
+		under = h[1] ~= nil and ids[2] == h[1].id },
+		{ own = false, n = 1, slots = '⦉b⦊ [x] ⟦-⟧', x = true, name = true, lines = 2, header = true, under = true })
 end
 
 T['T796 [char] (M16) committing a held-over snapshot leaves it held over'] = function()
@@ -716,7 +723,7 @@ T['T798 [char] (M16, M5) a window closed in a detached list\'s tab is held over 
 	child.cmd('close')
 	child.settle(300)
 	child.steps({ LIST })
-	eq({ detached = id:match('DETACHED') ~= nil, there = #held(id), whole = #held(''), listed = #list().lines },
+	eq({ detached = id:match('DETACHED') ~= nil, there = #held(id), whole = #held(''), listed = snapshot_lines() },
 		{ detached = true, there = 1, whole = 0, listed = 1 })
 end
 
@@ -1105,10 +1112,10 @@ T['T815 [char] (M16) a rebuilt snapshot whose current is dropped falls to its te
 	eq({ n = #got, slots = got[1] and got[1].slots }, { n = 1, slots = '⦉-⦊ [c] ⟦b⟧' })
 end
 
-T['T816 [char] (M16) a line whose checksum fails is asked about'] = function()
+T['T816 [char] (M16) a line that doesn\'t open is asked about'] = function()
 	local one, split = two_windows()
 	local line = changed_line(one, 'd.id = "elsewhere"')
-	line = line:sub(1, -2) .. (line:sub(-1) == '0' and '1' or '0')
+	line = line:sub(1, 20) .. (line:sub(21, 21) == 'A' and 'B' or 'A') .. line:sub(22) -- a byte of the seal
 	child.lua('vim.api.nvim_set_current_win(...)', { split })
 	child.settle()
 	child.steps({ LIST })
@@ -1148,6 +1155,146 @@ T['T818 [char] (M16) a list whose window is gone isn\'t written'] = function()
 	local told = #vim.tbl_filter(function(m) return m:find("the window this list was for is gone, so it isn't written", 1, true) ~= nil end, said())
 	eq({ told = told, modified = list().modified, kept = child.lua('return require("frogman.domains.snapshots").data.by_window[...] ~= nil', { one }) },
 		{ told = 1, modified = true, kept = false })
+end
+
+-- The pile and review round 5: real headers, sealed lines, the window picker (M16, 2026-11-03) ------
+
+-- Keys typed one group at a time, the editor settling between, as typing does.
+local function keys(...)
+	for _, k in ipairs({ ... }) do
+		child.type_keys(k)
+		child.settle()
+	end
+end
+
+-- The open list's lines.
+local function list_lines()
+	return child.lua('return vim.api.nvim_buf_get_lines(vim.fn.bufnr("frogman://snapshots"), 0, -1, false)')
+end
+
+T['T833 [char] (M16) a held-over header is a line the list keeps'] = function()
+	split_held_over()
+	child.steps({ LIST })
+	local drawn = list_lines()
+	local h = held('')
+	local got = { header = h[1] ~= nil and drawn[1] == h[1].held, under = decoded_ids()[2] == (h[1] and h[1].id) }
+	for name, seq in pairs({ delete = { 'gg', 'dd' }, clear = { 'gg', 'S', '<Esc>' }, paste = { 'gg', 'yy', 'p' } }) do
+		keys(unpack(seq))
+		got[name] = vim.deep_equal(list_lines(), drawn)
+	end
+	eq(got, { header = true, under = true, delete = true, clear = true, paste = true })
+end
+
+T['T834 [char] (M16) a held-over line moved up among the window\'s own makes it the window\'s'] = function()
+	split_held_over()
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	local id = held('')[1].id
+	child.steps({ LIST })
+	keys('G', 'dd', 'gg', 'P')
+	child.step('q')
+	child.settle(100)
+	local got = snapshots(win)
+	eq({ n = #got, slots = got[1] and got[1].slots, other = got[1] and got[1].id ~= id, held = #held('') },
+		{ n = 1, slots = '⦉b⦊ [x] ⟦-⟧', other = true, held = 0 })
+end
+
+T['T835 [char] (M16, P22) a line is sealed'] = function()
+	local one, split = two_windows()
+	child.steps({ LIST })
+	local line = child.lua('return vim.api.nvim_get_current_line()')
+	child.step('q')
+	child.settle(100)
+	local body = line:match('^fs1:([%w%+/=]+)') or ''
+	local plain = child.lua('local ok, b = pcall(vim.base64.decode, ...); return ok and b or ""', { body })
+	local named = 0
+	for _, f in ipairs({ 'a.txt', 'b.txt', 'c.txt', 'd.txt' }) do
+		named = named + (plain:find(f, 1, true) and 1 or 0)
+	end
+	child.lua('vim.fn.mkdir("sub", "p")')
+	child.cmd('cd sub')
+	child.settle()
+	child.lua('vim.api.nvim_set_current_win(...)', { split })
+	child.settle()
+	child.steps({ LIST })
+	child.lua('vim.api.nvim_buf_set_lines(0, -1, -1, false, { ... })', { line })
+	child.answer('Yes')
+	child.cmd('silent! write')
+	child.settle(100)
+	local asked = #child.prompts()
+	child.step('q')
+	child.settle(100)
+	eq({ named = named, asked = asked, n = #snapshots(split) }, { named = 0, asked = 1, n = 0 })
+end
+
+-- T818's route to window 1's list with window 1 gone, the list focused again.
+local function list_without_its_window()
+	local one, split = two_windows()
+	child.steps({ LIST })
+	local float = child.lua('return vim.api.nvim_get_current_win()')
+	child.lua('vim.api.nvim_set_current_win(...)', { split })
+	child.lua('vim.api.nvim_win_close(..., true)', { one })
+	child.settle(100)
+	child.lua('vim.api.nvim_set_current_win(...)', { float })
+	child.settle()
+	child.messages()
+	return split, float
+end
+
+T['T836 [char] (M16) <CR> with the list\'s window gone opens the window picker'] = function()
+	local split = list_without_its_window()
+	child.lua([[
+		package.loaded['window-picker'] = nil
+		package.preload['window-picker'] = function()
+			return { pick_window = function() _G.FRG_PICKED = (_G.FRG_PICKED or 0) + 1; return _G.FRG_PICK end }
+		end
+	]])
+	child.step('<CR>')
+	child.settle(100)
+	local nothing = { asked = child.lua('return _G.FRG_PICKED or 0'), open = list() ~= vim.NIL }
+	child.lua('_G.FRG_PICK = ...', { split })
+	child.step('<CR>')
+	child.settle(100)
+	local told = #vim.tbl_filter(function(m)
+		return m:find('the window this list was for is gone; pick a window to show the snapshot in.', 1, true) ~= nil
+	end, said())
+	eq({ nothing = nothing, told = told, shows = child.lua('return vim.fn.fnamemodify(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(...)), ":t")', { split }),
+		open = list() ~= vim.NIL }, { nothing = { asked = 1, open = true }, told = 2, shows = 'd.txt', open = false })
+end
+
+T['T837 [char] (M16) with nvim-window-picker not installed, <CR> with the list\'s window gone says so'] = function()
+	list_without_its_window()
+	child.lua("package.loaded['window-picker'] = nil; package.preload['window-picker'] = nil")
+	child.step('<CR>')
+	child.settle(100)
+	local told = #vim.tbl_filter(function(m) return m:find('nvim-window-picker', 1, true) ~= nil end, said())
+	eq({ told = told, open = list() ~= vim.NIL }, { told = 1, open = true })
+end
+
+T['T838 [char] (M16, M5) a detached list\'s tab closing writes the snapshots its closed windows held over'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	eq(S2.save(child), { true }) -- the whole editor's file, before t moves
+	eq(S2.load_tab_session(child, 't'), { true }) -- the second tab keeps t_DETACHED
+	child.cmd('tabnext 2')
+	child.settle()
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e c', TAKE, ':e d' })
+	child.cmd('tabclose')
+	child.settle(500)
+	local got = child.lua([[
+		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+		local on_entry = -1
+		for _, l in ipairs(saved.detached or {}) do
+			if l.label == 't_DETACHED' then on_entry = #(l.snapshots or {}) end
+		end
+		local D = require('frogman.domains.snapshots').data
+		local held, own = 0, 0
+		for _, list in pairs(D.held) do held = held + #list end
+		for _, list in pairs(D.by_window) do own = own + #list end
+		return { on_entry = on_entry, held = held, own = own, pending = #D.pending }
+	]])
+	eq(got, { on_entry = 1, held = 0, own = 0, pending = 0 })
 end
 
 -- The holders, one question asked one way (M2 Holders, review round 5's #2, #11, #16) ----------
@@ -1226,7 +1373,10 @@ T['T831 [char] (M16, S1 Records) a held-over snapshot you delete stays deleted']
 	child.settle(300)
 	local before = #held('')
 	child.steps({ LIST })
-	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, {})')
+	child.lua([[
+		local lines = vim.tbl_filter(function(l) return not l:match('^fs1:') end, vim.api.nvim_buf_get_lines(0, 0, -1, false))
+		vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
+	]])
 	child.step('q')
 	child.settle(100)
 	S2.start(child, s) -- the quit writes the records
@@ -1307,7 +1457,7 @@ T['T828 [char] (M16, M5) a detached list takes a copy of its session\'s held-ove
 	local detached = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
 	local copy = held(detached)
 	child.steps({ LIST })
-	local listed = #list().lines
+	local listed = snapshot_lines()
 	eq({ detached = detached:match('DETACHED') ~= nil, copies = #copy, other = copy[1] and copy[1].id ~= first, t = #held(t),
 		kept = held(t)[1] and held(t)[1].id == first, listed = listed },
 		{ detached = true, copies = 1, other = true, t = 1, kept = true, listed = 1 })

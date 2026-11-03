@@ -1,11 +1,11 @@
 ---The snapshot list.
 ---
 ---One editable floating window on a window's snapshots, newest first, then those held over in its
----session's scope, each group under its held-over header. Each line's text is its snapshot's whole
----encoding, concealed, and what shows is drawn over it in the trail's language: the time, the triquetra
----in the winbar's colours, and the order its bufferline drew. Deleting a line and writing deletes its
----snapshot, and a line yanked or cut from one window's list and put in another's carries its snapshot
----there.
+---session's scope, a group to a header, each header a line of its own that the list keeps in place.
+---Each snapshot's line is its whole encoding, sealed and concealed, and what shows is drawn over it in
+---the trail's language: the time, the triquetra in the winbar's colours, and the order its bufferline
+---drew. Deleting a line and writing deletes its snapshot, and a line moved under another header, or
+---yanked or cut from one window's list and put in another's, carries its snapshot to where it sits.
 
 local routines = require('frogman.domains.snapshots.routines')
 local history = require('frogman.domains.history')
@@ -13,10 +13,12 @@ local history = require('frogman.domains.history')
 local M = {}
 
 local NAME = "frogman://snapshots"
+local DIRTY = "frogman: the snapshot list has edits not written yet: write them with :w, or leave them, first."
 local ns = vim.api.nvim_create_namespace("frogman_snapshots")
 
----The list that's open: its buffer, its window and the window it was opened from.
----@type {buf: Bufnr, win: WinId, origin: WinId}|nil
+---The list that's open: its buffer, its window, the window it was opened from, the session whose
+---held-over snapshots it shows, and its headers as drawn, with the lines last intact.
+---@type {buf: Bufnr, win: WinId, origin: WinId, session: string, headers: table<string, true>, header_order: string[], intact: string[]}|nil
 local open = nil
 
 ---Check if the list is open, its buffer still there.
@@ -45,18 +47,27 @@ end
 ---@type table<string, table|false>
 local decoded = {}
 
----Wrap a carried snapshot as a line: `fs1:`, the base64 of its JSON, a dot and a checksum, the first 8
----hex characters of the JSON's sha256.
+---This editor's salt for the lines it draws, made with its first line. A line carries it, so any
+---editor started in the same directory stretches the same key from it.
+---@type string|nil
+local salt = nil
+
+---Wrap a carried snapshot as a line: `fs1:` and the base64 of its JSON sealed as a session's file is,
+---under a key stretched from the editor's global directory and this editor's salt, the word
+---`snapshot` under the seal besides.
 ---
 ---@param carried table As `routines.carried` gives it
 ---@return string line
 function M.wrap(carried)
-	local json = vim.json.encode(carried)
-	return "fs1:" .. vim.base64.encode(json) .. "." .. vim.fn.sha256(json):sub(1, 8)
+	local crypto = require('frogman.domains.storage.crypto')
+	local storage = require('frogman.domains.storage.routines')
+	salt = salt or crypto.random_bytes(crypto.salt_length)
+	local key = storage.key_for(vim.fn.getcwd(-1, -1), salt)
+	return "fs1:" .. vim.base64.encode(storage.sealed(key, salt, vim.json.encode(carried), "snapshot"))
 end
 
----Decode a line: the snapshot it carries, when it's one of frogman's and its checksum holds against
----the JSON's bytes as they are.
+---Decode a line: the snapshot it carries, when it's one of frogman's and its seal opens in this
+---directory, its bytes as they are.
 ---
 ---@param line string
 ---@return table|nil carried A copy of what it carries
@@ -64,13 +75,17 @@ function M.decode(line)
 	line = vim.trim(line or "")
 	if decoded[line] == nil then
 		decoded[line] = false
-		local base64, sum = line:match("^fs1:([%w%+/=]+)%.(%x+)$")
-		local ok, json = pcall(vim.base64.decode, base64 or "")
-		if base64 and ok and type(json) == "string" and vim.fn.sha256(json):sub(1, 8) == sum then
-			local parsed, carried = pcall(vim.json.decode, json)
-			if parsed and type(carried) == "table" and carried.v == 1 and type(carried.id) == "string"
-				and type(carried.files) == "table" then
-				decoded[line] = carried
+		local base64 = line:match("^fs1:([%w%+/=]+)$")
+		local ok, bytes = pcall(vim.base64.decode, base64 or "")
+		if base64 and ok and type(bytes) == "string" then
+			local opened, json = pcall(require('frogman.domains.storage.routines').open_sealed, bytes,
+				vim.fn.getcwd(-1, -1), "snapshot")
+			if opened and type(json) == "string" then
+				local parsed, carried = pcall(vim.json.decode, json)
+				if parsed and type(carried) == "table" and carried.v == 1 and type(carried.id) == "string"
+					and type(carried.files) == "table" then
+					decoded[line] = carried
+				end
 			end
 		end
 	end
@@ -146,75 +161,72 @@ local function drawing(snapshot)
 	return chunks
 end
 
----Draw the list's lines again: each known snapshot's line concealed, and its drawing over it, and
----above the first line of each held-over group, its header.
+---Draw the list's lines again: each header dimmed, and each known snapshot's line concealed, with its
+---drawing over it.
 ---@return nil
 local function decorate()
 	if not is_open() then
 		return
 	end
 	vim.api.nvim_buf_clear_namespace(open.buf, ns, 0, -1)
-	local header = nil
 	for i, line in ipairs(vim.api.nvim_buf_get_lines(open.buf, 0, -1, false)) do
-		local carried = M.decode(line)
-		local snapshot, _, held_in = nil, nil, nil
-		if carried then
-			snapshot, _, held_in = routines.find(carried.id)
-		end
-		if carried then
-			-- the encoding hidden, and the drawing after it, so the cursor at the line's start stays there
-			vim.api.nvim_buf_set_extmark(open.buf, ns, i - 1, 0, { end_col = #line, conceal = "" })
-			vim.api.nvim_buf_set_extmark(open.buf, ns, i - 1, #line,
-				{ virt_text = snapshot and drawing(snapshot) or drawing_of_carried(carried), virt_text_pos = "inline" })
-		end
-		if snapshot then
-			if snapshot.held and held_in == session() and snapshot.held ~= header then
-				vim.api.nvim_buf_set_extmark(open.buf, ns, i - 1, 0, {
-					virt_lines = { { { snapshot.held, "FrogmanTrailDim" } } }, virt_lines_above = true,
-				})
+		if open.headers[vim.trim(line)] then
+			vim.api.nvim_buf_set_extmark(open.buf, ns, i - 1, 0, { end_col = #line, hl_group = "FrogmanTrailDim" })
+		else
+			local carried = M.decode(line)
+			if carried then
+				local snapshot = routines.find(carried.id)
+				-- the encoding hidden, and the drawing after it, so the cursor at the line's start stays there
+				vim.api.nvim_buf_set_extmark(open.buf, ns, i - 1, 0, { end_col = #line, conceal = "" })
+				vim.api.nvim_buf_set_extmark(open.buf, ns, i - 1, #line,
+					{ virt_text = snapshot and drawing(snapshot) or drawing_of_carried(carried), virt_text_pos = "inline" })
 			end
 		end
-		header = snapshot and held_in == session() and snapshot.held or nil
 	end
 end
 
----Show a header above the first line: a window shows a line above its top one only when told to.
----@return nil
-local function show_header_above()
-	if open and open.win and vim.api.nvim_win_is_valid(open.win) then
-		vim.api.nvim_win_call(open.win, function()
-			vim.fn.winrestview({ topline = 1, topfill = 1 })
-		end)
-	end
-end
-
----Put the window's snapshots in the list's lines, newest first, then its session's held-over ones,
----newest first.
+---Put the window's snapshots in the list's lines, newest first, then its session's held-over ones, a
+---group to a header: the group held over last first, and each group's newest first.
 ---@return nil
 local function redraw()
-	local lines = {}
+	local lines, headers, header_order = {}, {}, {}
 	local snapshots = routines.of_window(open.origin)
 	for i = #snapshots, 1, -1 do
 		table.insert(lines, line_of(snapshots[i]))
 	end
-	local held = routines.held_in(session())
-	for i = #held, 1, -1 do
-		table.insert(lines, line_of(held[i]))
+	local groups, order = {}, {}
+	for _, snapshot in ipairs(routines.held_in(session())) do
+		if groups[snapshot.held] == nil then
+			groups[snapshot.held] = {}
+			table.insert(order, snapshot.held)
+		end
+		table.insert(groups[snapshot.held], snapshot)
 	end
+	for g = #order, 1, -1 do
+		local header, members = order[g], groups[order[g]]
+		headers[header] = true
+		table.insert(header_order, header)
+		table.insert(lines, header)
+		for i = #members, 1, -1 do
+			table.insert(lines, line_of(members[i]))
+		end
+	end
+	open.headers, open.header_order, open.intact = headers, header_order, lines
 	vim.api.nvim_buf_set_lines(open.buf, 0, -1, false, lines)
 	vim.bo[open.buf].modified = false
 	decorate()
-	show_header_above()
 end
 
----Write the list: a snapshot whose line is gone is deleted, and a line put in carries its snapshot in.
+---Write the list: a snapshot whose line is gone is deleted, and a line carries its snapshot to where it
+---sits.
 ---
----A line naming one of the list's own, the window's or one held over in its session's scope, keeps it.
----One naming a snapshot alive elsewhere, or a second line naming one kept here, makes a copy of it the
----window's own. Any other is rebuilt from what it carries. A line that doesn't decode, or that carries a
----snapshot with nothing left to come back, is asked about first, and No writes nothing, the cursor on
----the first such line. With the window the list was opened from gone, nothing is written, the edits
----kept, as the marks pop-up keeps them.
+---Each line is read by where it sits: above the first header, among the window's own, or under a
+---held-over header. A line naming a snapshot already where it sits keeps it. One naming a snapshot
+---alive elsewhere, another window's, held over elsewhere or under another header, or a second line
+---naming one kept here, makes a copy of it where it sits. Any other is rebuilt from what it carries,
+---where it sits. A line that doesn't open, or that carries a snapshot with nothing left to come back,
+---is asked about first, and No writes nothing, the cursor on the first such line. With the window the
+---list was opened from gone, nothing is written, the edits kept, as the marks pop-up keeps them.
 ---
 ---@return boolean written
 local function write()
@@ -223,20 +235,25 @@ local function write()
 		return false
 	end
 	local kept, copies, rebuilt, items, first = {}, {}, {}, {}, nil
+	local into = { winid = open.origin } -- above the first header, the window's own
 	for row, line in ipairs(vim.api.nvim_buf_get_lines(open.buf, 0, -1, false)) do
 		line = vim.trim(line)
-		if line ~= "" then
+		if open.headers[line] then
+			into = { session = session(), held = line }
+		elseif line ~= "" then
 			local carried = M.decode(line)
 			local snapshot, winid, held_in = nil, nil, nil
 			if carried then
 				snapshot, winid, held_in = routines.find(carried.id)
 			end
-			if snapshot and not kept[carried.id] and (winid == open.origin or (held_in ~= nil and held_in == session())) then
+			local here = snapshot ~= nil and (into.held == nil and winid == open.origin
+				or (into.held ~= nil and held_in == session() and snapshot.held == into.held))
+			if here and not kept[carried.id] then
 				kept[carried.id] = true
 			elseif snapshot then
-				table.insert(copies, snapshot)
-			elseif carried and routines.rebuild(open.origin, carried, true) then
-				table.insert(rebuilt, carried)
+				table.insert(copies, { into = into, snapshot = snapshot })
+			elseif carried and routines.rebuild(into, carried, true) then
+				table.insert(rebuilt, { into = into, carried = carried })
 			else
 				-- a line of a few thousand characters is named by its start
 				table.insert(items, (#line > 40 and (line:sub(1, 40) .. "…") or line) .. "  names no snapshot of this window")
@@ -252,17 +269,17 @@ local function write()
 		return false
 	end
 	for _, list in ipairs({ routines.of_window(open.origin), routines.held_in(session()) }) do
-		for _, snapshot in ipairs(vim.deepcopy(list)) do
+		for _, snapshot in ipairs(vim.list_slice(list)) do
 			if not kept[snapshot.id] then
 				routines.delete(snapshot.id)
 			end
 		end
 	end
-	for _, snapshot in ipairs(copies) do
-		routines.copy(open.origin, snapshot)
+	for _, copy in ipairs(copies) do
+		routines.copy(copy.into, copy.snapshot)
 	end
-	for _, carried in ipairs(rebuilt) do
-		routines.rebuild(open.origin, carried)
+	for _, line in ipairs(rebuilt) do
+		routines.rebuild(line.into, line.carried)
 	end
 	redraw()
 	return true
@@ -274,89 +291,70 @@ function M.leave()
 	if not is_open() then
 		return
 	end
-	if vim.bo[open.buf].modified and not write() then
-		return
-	end
-	if open.win and vim.api.nvim_win_is_valid(open.win) then
-		vim.api.nvim_win_close(open.win, true)
-	end
+	require('frogman.domains.ui.view').leave(open.buf, open.win, write)
 end
 
----Open the snapshot list on the window you're in.
+---Open the snapshot list on the window you're in, the cursor on its first snapshot's line.
 ---
----With edits not written yet, the list stays as it is, focused, and says so.
+---With edits not written yet, the list stays as it is, focused, and says so. The lines are sealed, so
+---with no way to seal them, libcrypto missing, it says so and opens nothing.
 ---
 ---@return nil
 function M.open()
+	local view = require('frogman.domains.ui.view')
 	if is_open() then
-		if vim.bo[open.buf].modified then
-			if open.win and vim.api.nvim_win_is_valid(open.win) then
-				vim.api.nvim_set_current_win(open.win)
-			end
-			vim.notify("frogman: the snapshot list has edits not written yet: write them with :w, or leave them, first.", vim.log.levels.WARN)
+		if view.keep_if_dirty(open.buf, open.win, DIRTY) then
 			return
 		end
 		if open.win and vim.api.nvim_win_is_valid(open.win) then
 			vim.api.nvim_win_close(open.win, true)
 		end
 	end
+	local sealing, problem = pcall(M.wrap, { v = 1 })
+	if not sealing then
+		vim.notify("frogman: the snapshot list's lines are sealed, and sealing failed: " .. tostring(problem), vim.log.levels.WARN)
+		return
+	end
 	local origin = vim.api.nvim_get_current_win()
 	if vim.api.nvim_win_get_config(origin).relative ~= "" then
 		origin = require('frogman.domains.navigation.routines').find_most_recent_tracked_window() or origin
 	end
-	local buf = vim.api.nvim_create_buf(false, false)
-	vim.bo[buf].buftype = "acwrite"
-	vim.bo[buf].swapfile = false
-	vim.bo[buf].bufhidden = "wipe"
-	vim.api.nvim_buf_set_name(buf, NAME)
 	decoded = {} -- what the last list decoded, its lines no longer here
-	open = { buf = buf, origin = origin, session = routines.session_of(origin) }
-	redraw()
-	vim.bo[buf].filetype = "frogman-snapshots"
-	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
-		buffer = buf,
-		callback = decorate,
-		desc = "Draw the snapshots again",
-	})
-	vim.api.nvim_create_autocmd("BufWriteCmd", {
-		buffer = buf,
-		callback = function()
-			if vim.bo[buf].modified then
-				write()
+	local _, win = view.open({
+		name = NAME, filetype = "frogman-snapshots", title = "Snapshots", size = require('frogman.configs').snapshots_popup,
+		events = { "TextChanged", "TextChangedI", "TextChangedP" },
+		fill = function(buf)
+			open = { buf = buf, origin = origin, session = routines.session_of(origin) }
+			redraw()
+		end,
+		write = write,
+		changed = function(event)
+			if is_open() then
+				require('frogman.domains.ui').routines.guard_headers(open.buf, event ~= "TextChanged", open)
+				decorate()
 			end
 		end,
-		desc = "Write the snapshot list",
-	})
-	local width, height, col, row = require('frogman.domains.ui').routines.resolve_float_geometry(
-		require('frogman.configs').snapshots_popup)
-	local win = vim.api.nvim_open_win(buf, true, {
-		relative = "editor", width = width, height = height, col = col, row = row,
-		style = "minimal", border = "rounded", title = " Snapshots ", title_pos = "center",
-	})
-	open.win = win
-	vim.api.nvim_create_autocmd("WinClosed", {
-		group = "frogman",
-		pattern = tostring(win),
-		once = true,
-		callback = function()
-			if vim.api.nvim_buf_is_valid(buf) then
-				vim.api.nvim_buf_delete(buf, { force = true })
-			end
+		closed = function(buf)
 			if open and open.buf == buf then
 				open = nil
 			end
 		end,
+		window = { conceallevel = 2, concealcursor = "nvic" },
 	})
-	vim.wo[win].wrap = false
-	vim.wo[win].cursorline = true
-	vim.wo[win].conceallevel = 2
-	vim.wo[win].concealcursor = "nvic"
-	show_header_above()
+	open.win = win
+	for i, line in ipairs(open.intact) do
+		if not open.headers[line] then
+			vim.api.nvim_win_set_cursor(win, { i, 0 }) -- the first snapshot's line (mine)
+			break
+		end
+	end
 end
 
 ---Show the snapshot on the cursor's line in the window the list was opened from, leaving the list.
 ---
----While the list has edits not written yet, it refuses and says so.
+---While the list has edits not written yet, it refuses and says so. With that window gone, it says so
+---and opens nvim-window-picker's picker; the snapshot shows in the window picked, and picking none, or
+---a float, leaves the list open.
 ---
 ---@return nil
 function M.show()
@@ -364,7 +362,7 @@ function M.show()
 		return
 	end
 	if vim.bo[open.buf].modified then
-		vim.notify("frogman: the snapshot list has edits not written yet: write them with :w, or leave them, first.", vim.log.levels.WARN)
+		vim.notify(DIRTY, vim.log.levels.WARN)
 		return
 	end
 	local id = id_in(vim.api.nvim_get_current_line())
@@ -374,8 +372,17 @@ function M.show()
 		return
 	end
 	if not origin then
-		vim.notify("frogman: the window this list was for is gone.", vim.log.levels.WARN)
-		return
+		local ok, picker = pcall(require, 'window-picker')
+		if not ok or type(picker) ~= "table" or type(picker.pick_window) ~= "function" then
+			vim.notify("frogman: the snapshot list's window picker is nvim-window-picker's, and it isn't installed.", vim.log.levels.WARN)
+			return
+		end
+		vim.notify("frogman: the window this list was for is gone; pick a window to show the snapshot in.", vim.log.levels.WARN)
+		local picked = picker.pick_window()
+		if not (picked and vim.api.nvim_win_is_valid(picked) and vim.api.nvim_win_get_config(picked).relative == "") then
+			return
+		end
+		origin = picked
 	end
 	if open.win and vim.api.nvim_win_is_valid(open.win) then
 		vim.api.nvim_win_close(open.win, true)

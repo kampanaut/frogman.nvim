@@ -603,18 +603,37 @@ function M.carried(snapshot)
 	}
 end
 
----Copy a snapshot into a window's own, with an id of its own and no held-over header, the two going
----their own ways after.
+---Where a list line puts the snapshot it makes: a window's own, or held over in a session's scope under
+---a header.
+---@alias SnapshotPlace {winid: WinId}|{session: string, held: string}
+
+---Put a snapshot where a list line sits: a window's own, with no header, or held over under the header.
 ---
----@param winid WinId
+---@param into SnapshotPlace
+---@param snapshot Snapshot
+---@return nil
+local function put(into, snapshot)
+	if into.held then
+		snapshot.held = into.held
+		data.held[into.session] = data.held[into.session] or {}
+		table.insert(data.held[into.session], snapshot)
+	else
+		snapshot.held = nil
+		data.by_window[into.winid] = data.by_window[into.winid] or {}
+		table.insert(data.by_window[into.winid], snapshot)
+	end
+end
+
+---Copy a snapshot to where a list line sits, with an id of its own, the two going their own ways after.
+---
+---@param into SnapshotPlace
 ---@param snapshot Snapshot
 ---@return Snapshot copy
-function M.copy(winid, snapshot)
+function M.copy(into, snapshot)
 	local copy = vim.deepcopy(snapshot)
-	copy.id, copy.held = new_id(), nil
+	copy.id = new_id()
 	hold(copy)
-	data.by_window[winid] = data.by_window[winid] or {}
-	table.insert(data.by_window[winid], copy)
+	put(into, copy)
 	return copy
 end
 
@@ -664,18 +683,18 @@ local function carried_hash(file, here, register)
 	return filehash
 end
 
----Rebuild a snapshot a list line carries, as a window's own.
+---Rebuild a snapshot a list line carries, where the line sits.
 ---
 ---Each file comes back by its handle while that lives in this editor, otherwise by its path. Repeats in
 ---its order keep their first place, and a current that's dropped falls to the ternary, then the
 ---secondary, then the first of the order. With `dry`, nothing is registered or made: it only tells
 ---whether the snapshot would have a current.
 ---
----@param winid WinId
+---@param into SnapshotPlace
 ---@param carried table The line's decoded JSON
 ---@param dry boolean|nil
 ---@return Snapshot|boolean|nil snapshot The snapshot made, or with `dry` whether one would be
-function M.rebuild(winid, carried, dry)
+function M.rebuild(into, carried, dry)
 	local here = carried.editor == this_editor()
 	local hashes = {}
 	for i, file in ipairs(type(carried.files) == "table" and carried.files or {}) do
@@ -722,8 +741,7 @@ function M.rebuild(winid, carried, dry)
 	end
 	local snapshot = from_saved(saved)
 	if snapshot then
-		data.by_window[winid] = data.by_window[winid] or {}
-		table.insert(data.by_window[winid], snapshot)
+		put(into, snapshot)
 	end
 	return snapshot
 end
