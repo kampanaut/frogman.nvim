@@ -356,21 +356,6 @@ T['T780 [char] (M16) <CR> refuses while the list has unsaved edits'] = function(
 		{ said = { 'frogman: the snapshot list has edits not written yet: write them with :w, or leave them, first.' }, open = true })
 end
 
-T['T781 [char] (M16) a snapshot whose current is closed isn\'t shown yet'] = function()
-	taken()
-	child.steps({ ':e a' })
-	child.cmd('bdelete d.txt')
-	child.settle()
-	local win = child.lua('return vim.api.nvim_get_current_win()')
-	child.steps({ LIST })
-	child.messages()
-	child.step('<CR>')
-	child.settle()
-	eq({ said = vim.tbl_map(function(m) return m.msg end, child.messages()), shown = child.shown(win),
-		detached = child.lua('return require("frogman.domains.history").is_detached()') },
-		{ said = { 'frogman: d.txt is closed; showing a closed file comes with borrowing.' }, shown = 'a', detached = false })
-end
-
 T['T782 [char] (M16) in the window view the commit lays the stored order into the window\'s history'] = function()
 	child.lua('_G.FRG_TEST.setup({ bufferline = { history_view = "window" } })')
 	local win = previewing()
@@ -717,6 +702,273 @@ T['T798 [char] (M16, M5) a window closed in a detached list\'s tab is held over 
 	child.steps({ LIST })
 	eq({ detached = id:match('DETACHED') ~= nil, there = #held(id), whole = #held(''), listed = #list().lines },
 		{ detached = true, there = 0, whole = 1, listed = 1 })
+end
+
+-- Borrowed files, the placeholder and untracked windows (M16, 5c) ---------------------------
+
+-- The current window's buffer: its name's last part and whole, whether it's listed and taken in, and its lines.
+local function showing()
+	return child.lua([[
+		local b = vim.api.nvim_get_current_buf()
+		local name = vim.api.nvim_buf_get_name(b)
+		return { name = name ~= '' and vim.fn.fnamemodify(name, ':t') or '', full = name, listed = vim.bo[b].buflisted,
+			taken = require('frogman.domains.history').get_hash_from_buffer(b) ~= nil,
+			lines = vim.api.nvim_buf_get_lines(b, 0, -1, false) }
+	]])
+end
+
+-- A file's state by its stem: whether a buffer of it is taken in, and whether it's on the editor's list.
+local function state(stem)
+	return child.lua([[
+		local H = require('frogman.domains.history')
+		local h = H.routines.get_filehash(_G.FRG_TEST.root .. '/' .. ... .. '.txt')
+		return { taken = H.get_buffer_from_hash(h) ~= nil, listed = vim.tbl_contains(H.data.closed_buffers, h) }
+	]], { stem })
+end
+
+-- How many No Name texts the editor's closed list holds.
+local function texts_on_list()
+	return child.lua([[
+		local H = require('frogman.domains.history')
+		local n = 0
+		for _, h in ipairs(H.data.closed_buffers) do
+			if (H.get_filepath_from_hash(h) or ''):match('^NONAME_') then n = n + 1 end
+		end
+		return n
+	]])
+end
+
+-- Step the preview until it shows `name` (a file name, or the first line for a text), at most six steps.
+local function step_to(name)
+	for _ = 1, 6 do
+		local at = showing()
+		if at.name == name or at.lines[1] == name then
+			return
+		end
+		child.steps({ '<M-m>' })
+		child.settle(50)
+	end
+end
+
+-- T762's snapshot, then :e a and :e e, a file closed, and the list's <CR>.
+local function shown_with_closed(stem)
+	taken()
+	child.steps({ ':e a', ':e e' })
+	child.cmd('bdelete ' .. stem .. '.txt')
+	child.settle()
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	return win
+end
+
+T['T781 [char] (M16) a snapshot whose current is closed shows it borrowed'] = function()
+	local before = #child.dump_files() -- the run's other cases dump into the same folder
+	local win = shown_with_closed('d')
+	child.messages()
+	child.settle(300) -- the UI's ticks draw it
+	local quiet = { errors = #vim.tbl_filter(function(m) return m.level == 4 end, child.messages()), dumps = #child.dump_files() - before }
+	local at = showing()
+	local drawn = child.lua([[
+		local c = require('frogman.domains.ui').data.window_display_cache[...] or {}
+		return { current = c.current_bufnr == vim.api.nvim_get_current_buf(), visiting = c.visiting ~= nil }
+	]], { win })
+	eq({ name = at.name, listed = at.listed, taken = at.taken, d = state('d'), drawn = drawn, quiet = quiet },
+		{ name = 'd.txt', listed = false, taken = false, d = { taken = false, listed = true }, drawn = { current = true, visiting = false },
+			quiet = { errors = 0, dumps = 0 } })
+end
+
+T['T799 [char] (M16) a step onto a closed file of the order borrows it, and a cancel puts it back'] = function()
+	local win = shown_with_closed('b')
+	step_to('b.txt')
+	local at, b = showing(), state('b')
+	local bufnr = child.lua('return vim.api.nvim_get_current_buf()')
+	child.steps({ LIST })
+	child.settle(100)
+	local after = child.lua('local b = ...; return { valid = vim.api.nvim_buf_is_valid(b), loaded = vim.api.nvim_buf_is_loaded(b), listed = vim.bo[b].buflisted }', { bufnr })
+	eq({ name = at.name, listed = at.listed, taken = at.taken, b = b, back = child.shown(win), after = after },
+		{ name = 'b.txt', listed = false, taken = false, b = { taken = false, listed = true }, back = 'e',
+			after = { valid = true, loaded = false, listed = false } })
+end
+
+T['T800 [char] (M16) a borrowed file you edit stays open'] = function()
+	shown_with_closed('b')
+	step_to('b.txt')
+	local bufnr = child.lua('vim.api.nvim_buf_set_lines(0, -1, -1, false, { "added" }); return vim.api.nvim_get_current_buf()')
+	child.messages()
+	child.steps({ LIST })
+	child.settle(100)
+	local b = child.lua('local b = ...; return { listed = vim.bo[b].buflisted, kept = vim.tbl_contains(vim.api.nvim_buf_get_lines(b, 0, -1, false), "added") }', { bufnr })
+	local told = #vim.tbl_filter(function(m) return m:find('b.txt was edited while the snapshot showed it', 1, true) ~= nil end, said())
+	eq({ b = state('b'), buffer = b, told = told }, { b = { taken = true, listed = false }, buffer = { listed = true, kept = true }, told = 1 })
+end
+
+T['T801 [char] (M16) <M-v> on a borrowed file reopens it for real'] = function()
+	local win = shown_with_closed('b')
+	step_to('b.txt')
+	child.steps({ '<M-v>' })
+	child.settle(100)
+	eq({ b = state('b'), current = child.slots(win):match('%[(%a)%]') }, { b = { taken = true, listed = false }, current = 'b' })
+end
+
+-- :e a, a No Name text holding draft, a snapshot of it, :e b, and the text wiped onto the list.
+local function text_closed()
+	child.steps({ ':e a' })
+	local n = S2.noname(child, { 'draft' })
+	child.steps({ TAKE, ':e b' })
+	child.cmd('bwipeout! ' .. n)
+	child.settle(100)
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+end
+
+T['T802 [char] (M16, M5) a closed No Name text is borrowed from its text'] = function()
+	text_closed()
+	local at = showing()
+	eq({ lines = at.lines, listed = at.listed, taken = at.taken, on_list = texts_on_list() },
+		{ lines = { 'draft' }, listed = false, taken = false, on_list = 1 })
+end
+
+T['T803 [char] (M16, M5) a borrowed No Name text you edit comes back holding what you typed'] = function()
+	text_closed()
+	child.lua('vim.api.nvim_buf_set_lines(0, -1, -1, false, { "added" })')
+	child.steps({ LIST })
+	child.settle(100)
+	local back = child.lua([[
+		local H = require('frogman.domains.history')
+		for b, _ in pairs(H.data.hash_buffer_registry.hashes) do
+			if vim.api.nvim_buf_is_valid(b) and vim.api.nvim_buf_get_name(b) == '' then
+				return vim.api.nvim_buf_get_lines(b, 0, -1, false)
+			end
+		end
+		return vim.NIL
+	]])
+	eq({ back = back, on_list = texts_on_list(), holding = S2.holding(child, 'draft') }, { back = { 'draft', 'added' }, on_list = 0, holding = 1 })
+end
+
+T['T804 [char] (M16, M5, S1 Load) a No Name text a load left unread is read when the preview steps onto it'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	local n = S2.noname(child, { 'draft' })
+	child.cmd('buffer a.txt')
+	child.settle()
+	child.steps({ TAKE })
+	child.cmd('bwipeout! ' .. n)
+	child.settle(100)
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a' }, 'a')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	child.messages()
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	step_to('draft')
+	local at = showing()
+	local lost = #vim.tbl_filter(function(m) return m:find('lost', 1, true) ~= nil end, said())
+	eq({ lines = at.lines, listed = at.listed, lost = lost }, { lines = { 'draft' }, listed = false, lost = 0 })
+end
+
+T['T805 [char] (M16) a file gone from disk shows as a placeholder, and <M-v> refuses there'] = function()
+	local before = #child.dump_files() -- the run's other cases dump into the same folder
+	taken()
+	child.steps({ ':e a', ':e e' })
+	child.cmd('bdelete d.txt')
+	child.settle()
+	child.lua('os.remove(_G.FRG_TEST.root .. "/d.txt")')
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.messages()
+	child.settle(300) -- the UI's ticks draw it
+	local quiet = { errors = #vim.tbl_filter(function(m) return m.level == 4 end, child.messages()), dumps = #child.dump_files() - before }
+	local at = showing()
+	child.steps({ '<M-v>' })
+	child.settle()
+	local refused = #vim.tbl_filter(function(m) return m:find("d.txt isn't on disk; step onto another file", 1, true) ~= nil end, said())
+	local still = child.lua('return require("frogman.domains.snapshots").preview.active()')
+	child.steps({ LIST })
+	child.settle(100)
+	eq({ full = at.full, lines = at.lines, refused = refused, still = still, left = child.lua('return vim.fn.bufnr("frogman://gone/d.txt")'), quiet = quiet },
+		{ full = 'frogman://gone/d.txt', lines = { '[This file has been deleted off the disk]' }, refused = 1, still = true, left = -1,
+			quiet = { errors = 0, dumps = 0 } })
+end
+
+T['T806 [char] (M16, I10) a file whose name an untracked buffer has isn\'t borrowed'] = function()
+	taken()
+	child.steps({ ':e a', ':e e', ':e d' })
+	local nofile = child.lua('return vim.api.nvim_get_current_buf()')
+	child.cmd('setlocal buftype=nofile')
+	child.settle(100)
+	child.steps({ ':e e' })
+	child.messages()
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	local told = #vim.tbl_filter(function(m) return m:find("d.txt can't be shown while another buffer has its name", 1, true) ~= nil end, said())
+	eq({ told = told, active = child.lua('return require("frogman.domains.snapshots").preview.active()'),
+		nofile = child.lua('local b = ...; return vim.api.nvim_buf_is_loaded(b) and vim.bo[b].buftype', { nofile }) },
+		{ told = 1, active = false, nofile = 'nofile' })
+end
+
+T['T807 [char] (M16, A2) a window showing something untracked is taken off it and put back'] = function()
+	taken()
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	local oil = child.lua([[
+		local b = vim.api.nvim_create_buf(true, false)
+		vim.bo[b].buftype = 'acwrite'
+		vim.api.nvim_buf_set_name(b, 'oil://' .. _G.FRG_TEST.root .. '/')
+		vim.bo[b].filetype = 'oil'
+		vim.api.nvim_win_set_buf(0, b)
+		return b
+	]])
+	child.settle()
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	local during = child.shown(win)
+	child.steps({ LIST })
+	child.settle(100)
+	eq({ during = during, back = child.lua('return vim.api.nvim_win_get_buf(...)', { win }) == oil }, { during = 'd', back = true })
+end
+
+T['T808 [char] (M16, A2) a window frogman never took in gets its triquetra at a commit'] = function()
+	split_held_over()
+	child.cmd('help')
+	child.settle()
+	local help = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	child.steps({ '<M-v>' })
+	child.settle(100)
+	eq(child.slots(help), '⦉b⦊ [x] ⟦-⟧')
+end
+
+T['T809 [char] (M16) a borrowed file you edit and write stays open'] = function()
+	shown_with_closed('b')
+	step_to('b.txt')
+	child.lua('vim.api.nvim_buf_set_lines(0, -1, -1, false, { "added" })')
+	child.cmd('write')
+	child.settle(100)
+	child.messages()
+	child.steps({ LIST })
+	child.settle(100)
+	local told = #vim.tbl_filter(function(m) return m:find('b.txt was edited while the snapshot showed it', 1, true) ~= nil end, said())
+	eq({ b = state('b'), told = told }, { b = { taken = true, listed = false }, told = 1 })
+end
+
+T['T810 [char] (M16, M5) <M-v> on a borrowed No Name text reopens it for real'] = function()
+	text_closed()
+	local dumps = #child.dump_files()
+	child.steps({ '<M-v>' })
+	child.settle(300)
+	local at = showing()
+	eq({ lines = at.lines, taken = at.taken, on_list = texts_on_list(), holding = S2.holding(child, 'draft'), dumps = #child.dump_files() - dumps },
+		{ lines = { 'draft' }, taken = true, on_list = 0, holding = 1, dumps = 0 })
 end
 
 return T

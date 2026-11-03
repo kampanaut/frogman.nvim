@@ -1265,6 +1265,12 @@ local function derive_cache_from_window_triquetra(winid, again)
 		end
 	end
 	local ui_triquetra = data.get_or_create_window_display_cache(winid)
+	-- the closed files a snapshot showing here borrowed, and its placeholders, draw as its slots' buffers
+	local borrowed = preview and preview.buffers(winid) or {}
+	local own = {}
+	for _, bufnr in pairs(borrowed) do
+		own[bufnr] = true
+	end
 
 	-- Helper function to resolve slot data from filehash
 	local function resolve_slot(filehash)
@@ -1273,7 +1279,7 @@ local function derive_cache_from_window_triquetra(winid, again)
 			return nil, nil, false, false, false, false
 		end
 
-		local bufnr = history.get_buffer_from_hash(filehash)
+		local bufnr = history.get_buffer_from_hash(filehash) or borrowed[filehash]
 		local display_name = M.get_smart_basename(filehash) or nil
 
 		if bufnr ~= nil then
@@ -1317,7 +1323,7 @@ local function derive_cache_from_window_triquetra(winid, again)
 	-- a window showing something we don't track is visiting it. it shows the buftype, or the filetype for a
 	-- buffer that looks like a file (oil's acwrite).
 	local shown = vim.api.nvim_win_get_buf(winid)
-	if history.get_hash_from_buffer(shown) == nil then
+	if history.get_hash_from_buffer(shown) == nil and not own[shown] then
 		ui_triquetra.visiting = visit_label(shown)
 	else
 		ui_triquetra.visiting = nil

@@ -401,6 +401,7 @@ end
 local function is_missing(filehash)
 	return is_off_disk(filehash) and history.get_buffer_from_hash(filehash) == nil
 end
+M.is_missing = is_missing -- the snapshots' preview asks the slot keys' rule
 
 ---Check if a slot's file is one cleanup lets go of.
 ---
