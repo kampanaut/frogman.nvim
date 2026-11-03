@@ -1212,4 +1212,28 @@ T['T821 [char] (M15, M16) a window closed without its WinClosed has its marks an
 	]], { split }), { marks = false, snaps = false, held_group = true, held_snap = true })
 end
 
+T['T831 [char] (M16, S1 Records) a held-over snapshot you delete stays deleted'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e d', ':e c', TAKE })
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local before = #held('')
+	child.steps({ LIST })
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, {})')
+	child.step('q')
+	child.settle(100)
+	S2.start(child, s) -- the quit writes the records
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	eq({ before = before, after = #held('') }, { before = 1, after = 0 })
+end
+
 return T

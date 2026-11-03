@@ -29,4 +29,10 @@ M.editor_session = nil
 ---@type {name: string|nil, directory: string}|nil
 M.unnamed = nil
 
+---Each session file's entries no window or tab took at its last load, by their indices: their marks
+---and snapshots were held over, so the next records write takes them off the file, and a save, which
+---writes the windows and tabs anew, forgets them
+---@type table<string, {windows: table<integer, true>, tabs: table<integer, true>}>
+M.unclaimed = {}
+
 return M

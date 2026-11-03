@@ -1200,4 +1200,75 @@ T['T826 [char] (M15, S1 Load) a window entry no window takes is held over once, 
 	eq(#held, 1)
 end
 
+T['T830 [char] (M15, S1 Records) a held-over group you clear stays cleared'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e d', ADD .. 'a>', ':e c' })
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local before = #vim.tbl_filter(function(g) return g.held end, session_groups(''))
+	-- cleared, as the marks pop-up's write clears it once its rows are deleted
+	child.lua([[
+		local M = require('frogman.domains.marks').routines
+		local scope = M.scope('session', '')
+		scope.groups = vim.tbl_filter(function(g) return not g.held end, scope.groups)
+		M.hold_scope('session', '')
+	]])
+	S2.start(child, s) -- the quit writes the records
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	eq({ before = before, after = #vim.tbl_filter(function(g) return g.held end, session_groups('')) }, { before = 1, after = 0 })
+end
+
+-- The stranger stands in for another editor's save: a window on b, with its own mark s on e, put
+-- where the split's unclaimed entry was.
+T['T832 [char] (M15, S1 Records) the records write takes off only the entry the load left'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e d', ADD .. 'a>', ':e c' })
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	child.lua([[
+		local crypto = require('frogman.domains.storage.crypto')
+		local H = require('frogman.domains.history')
+		local dir = vim.fn.getcwd(-1, -1)
+		local path = require('frogman.configs').session_dir .. vim.fn.sha256(dir)
+		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
+		local salt = bytes:sub(5, 4 + crypto.salt_length)
+		local data = require('frogman.domains.storage.routines').read_session(dir, nil)
+		local e = H.routines.get_filehash(_G.FRG_TEST.root .. '/e.txt')
+		data.paths[e] = _G.FRG_TEST.root .. '/e.txt'
+		local stranger = vim.deepcopy(data.windows[2])
+		stranger[10] = { { name = 'main', marks = { s = e } } }
+		table.insert(data.windows, 1, stranger)
+		local header = "CDV1" .. salt
+		local out = header .. crypto.seal(crypto.derive_key(dir, salt), vim.json.encode(data), header)
+		fh = assert(io.open(path, 'wb')); fh:write(out); fh:close()
+	]])
+	S2.start(child, s) -- the quit writes the records
+	local kept = child.lua([[
+		local data = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+		local entry = data.windows[1]
+		return type(entry[10]) == 'table' and entry[10][1] ~= nil
+	]])
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local held = vim.tbl_filter(function(g) return g.held and vim.deep_equal(g.marks, { a = 'd' }) end, session_groups(''))
+	eq({ kept = kept, held = #held }, { kept = true, held = 1 })
+end
+
 return T
