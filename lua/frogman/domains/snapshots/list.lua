@@ -354,7 +354,7 @@ end
 ---
 ---While the list has edits not written yet, it refuses and says so. With that window gone, it says so
 ---and opens nvim-window-picker's picker; the snapshot shows in the window picked, and picking none, or
----a float, leaves the list open.
+---a float, leaves the list open, and so does a picker that raises, which says so.
 ---
 ---@return nil
 function M.show()
@@ -378,7 +378,12 @@ function M.show()
 			return
 		end
 		vim.notify("frogman: the window this list was for is gone; pick a window to show the snapshot in.", vim.log.levels.WARN)
-		local picked = picker.pick_window()
+		-- the picker is another plugin's: its error is the world's, said and not dumped
+		local picking, picked = pcall(picker.pick_window)
+		if not picking then
+			vim.notify("frogman: nvim-window-picker's picker failed: " .. tostring(picked), vim.log.levels.WARN)
+			return
+		end
 		if not (picked and vim.api.nvim_win_is_valid(picked) and vim.api.nvim_win_get_config(picked).relative == "") then
 			return
 		end

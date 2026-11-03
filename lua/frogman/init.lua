@@ -89,14 +89,31 @@ local function setup_keymaps(keymaps)
 	-- to its mark, and the prefix twice and an alias marks the buffer there
 	local prefix = keymaps.mark_prefix
 	if type(prefix) == "string" then
-		local marks_keys = {
-			{ prefix .. "<M-1>", function() M.mark_mode("window") end, "Use the window's marks" },
-			{ prefix .. "<M-2>", function() M.mark_mode("tab") end, "Use the tab's marks" },
-			{ prefix .. "<M-3>", function() M.mark_mode("session") end, "Use the session's marks" },
-			{ prefix .. "<M-e>", function() M.mark_popup() end, "Open the marks pop-up" },
-		}
-		for alias, _ in pairs(settings.marks.aliases or {}) do
-			table.insert(marks_keys, { prefix .. "<M-" .. alias .. ">", function() M.mark_jump(alias) end, "Jump to mark " .. alias })
+		local modes = type(keymaps.mark_modes) == "table" and keymaps.mark_modes or {}
+		local marks_keys, fixed = {}, {}
+		for _, key in ipairs({
+			{ modes.window, function() M.mark_mode("window") end, "Use the window's marks", "the window's marks' key" },
+			{ modes.tab, function() M.mark_mode("tab") end, "Use the tab's marks", "the tab's marks' key" },
+			{ modes.session, function() M.mark_mode("session") end, "Use the session's marks", "the session's marks' key" },
+			{ keymaps.mark_popup, function() M.mark_popup() end, "Open the marks pop-up", "the marks pop-up's key" },
+		}) do
+			if type(key[1]) == "string" then
+				table.insert(marks_keys, { prefix .. key[1], key[2], key[3] })
+				fixed[vim.keycode(prefix .. key[1])] = key[4]
+			end
+		end
+		fixed[vim.keycode(prefix .. prefix)] = fixed[vim.keycode(prefix .. prefix)] or "the start of every add"
+		local aliases = vim.tbl_keys(settings.marks.aliases or {})
+		table.sort(aliases)
+		for _, alias in ipairs(aliases) do
+			local jump = prefix .. "<M-" .. alias .. ">"
+			-- an alias that takes one of the marks' own keys keeps it, as it always has, and is said once
+			local taken = fixed[vim.keycode(jump)]
+			if taken then
+				vim.notify("frogman: marks.aliases' " .. alias .. " takes " .. jump .. ", " .. taken .. "; move one of them in the config.",
+					vim.log.levels.WARN)
+			end
+			table.insert(marks_keys, { jump, function() M.mark_jump(alias) end, "Jump to mark " .. alias })
 			table.insert(marks_keys, { prefix .. prefix .. "<M-" .. alias .. ">", function() M.mark_add(alias) end, "Mark the buffer as " .. alias })
 		end
 		for _, key in ipairs(marks_keys) do
@@ -109,7 +126,7 @@ local function setup_keymaps(keymaps)
 	end
 
 	for action, lhs in pairs(keymaps) do
-		if type(lhs) == "string" and type(defaults.keymaps[action]) == "string" and action ~= "mark_prefix" then
+		if type(lhs) == "string" and type(defaults.keymaps[action]) == "string" and action ~= "mark_prefix" and action ~= "mark_popup" then
 			mapped[lhs] = vim.fn.maparg(lhs, 'n', false, true).callback
 		end
 	end

@@ -1270,6 +1270,19 @@ T['T837 [char] (M16) with nvim-window-picker not installed, <CR> with the list\'
 	eq({ told = told, open = list() ~= vim.NIL }, { told = 1, open = true })
 end
 
+T['T847 [char] (M16, A26) a window picker that raises leaves the list open'] = function()
+	list_without_its_window()
+	child.lua([[
+		package.loaded['window-picker'] = nil
+		package.preload['window-picker'] = function() return { pick_window = function() error('boom') end } end
+	]])
+	local before = child.dump_files()
+	child.step('<CR>')
+	child.settle(100)
+	local told = #vim.tbl_filter(function(m) return m:find("nvim-window-picker's picker failed", 1, true) ~= nil end, said())
+	eq({ told = told, dumped = child.dumped_since(before), open = list() ~= vim.NIL }, { told = 1, open = true })
+end
+
 T['T838 [char] (M16, M5) a detached list\'s tab closing writes the snapshots its closed windows held over'] = function()
 	local s = S2.shared()
 	tab_session(s)

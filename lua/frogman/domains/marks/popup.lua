@@ -184,9 +184,14 @@ local function read_line(line)
 	if text == "" then
 		return "blank"
 	end
-	local name = text:match("^❖%s+(.-)%s*$") or text:match("^%*%s+(.-)%s*$")
-	if name and name ~= "" then
-		return "header", name
+	-- a header opens with the glyph the set in use draws, one of one's own too, or with either set's
+	for _, glyph in ipairs({ group_glyph(), "❖", "*" }) do
+		if glyph ~= "" and text:sub(1, #glyph) == glyph then
+			local name = text:sub(#glyph + 1):match("^%s+(.-)%s*$")
+			if name and name ~= "" then
+				return "header", name
+			end
+		end
 	end
 	local alias, file = text:match("^(%S+)%s*%->%s*(.-)%s*$")
 	if alias then
@@ -455,6 +460,25 @@ local function row_file()
 	return (resolve(file))
 end
 
+---Get the row under the cursor, its alias and its file, writing the pop-up first when it was edited.
+---
+---The row is read before the write, which draws the lines again in the aliases' order, so what's acted
+---on is the row you were on, and a path typed there is registered by the write.
+---
+---@return string|nil alias
+---@return Filehash|nil filehash Nil when the write was refused or answered No, or the row names no file
+local function written_row()
+	local kind, alias, file = read_line(vim.api.nvim_get_current_line())
+	local filehash = (kind == "row" and file ~= "") and (resolve(file)) or nil
+	if vim.bo[open.buf].modified and not write() then
+		return nil, nil
+	end
+	if filehash and not history.get_filepath_from_hash(filehash) then
+		return alias, nil -- a row the write left out
+	end
+	return alias, filehash
+end
+
 ---Jump to the row's file in the window the pop-up was opened from, as a mark's jump goes.
 ---
 ---The pop-up is written first when it was edited, and stays when that's refused. With `stay`, the
@@ -466,11 +490,8 @@ function M.act(stay)
 	if not is_open() then
 		return
 	end
-	if vim.bo[open.buf].modified and not write() then
-		return
-	end
-	local _, alias = read_line(vim.api.nvim_get_current_line())
-	local filehash, origin = row_file(), M.origin()
+	local alias, filehash = written_row()
+	local origin = M.origin()
 	if filehash == nil or origin == nil then
 		return
 	end
@@ -486,9 +507,16 @@ end
 
 ---Make the row's file the primary of the window the pop-up was opened from, at the front of its
 ---queue, and switch the primary on.
+---
+---The pop-up is written first when it was edited, and stays when that's refused.
+---
 ---@return nil
 function M.make_primary()
-	local filehash, origin = row_file(), M.origin()
+	if not is_open() then
+		return
+	end
+	local _, filehash = written_row()
+	local origin = M.origin()
 	local triquetra = origin and require('frogman.domains.window').data.get_window_triquetra(origin)
 	if filehash == nil or triquetra == nil then
 		return
@@ -623,11 +651,15 @@ end
 ---Switch the mode from inside the pop-up, and show the new mode's scope.
 ---
 ---Edits not written yet are written first, and a write that's refused or answered No keeps the mode
----and the pop-up as they are.
+---and the pop-up as they are. With the window it was opened from gone, it refuses and says so.
 ---
 ---@param mode "window"|"tab"|"session"
 ---@return boolean switched
 function M.switch_mode(mode)
+	if not M.origin() then
+		vim.notify("frogman: the window these marks are for is gone.", vim.log.levels.WARN)
+		return false
+	end
 	if vim.bo[open.buf].modified and not write() then
 		return false
 	end

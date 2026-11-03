@@ -29,11 +29,6 @@ function M.execute_transition(from_state, to_state, mode, context, statemachine,
 	-- Add transition to history
 	local transition_name = from_state .. "->" .. to_state
 	table.insert(instance.history, entry)
-	local of = ""
-	if statemachine.labeler then
-		local ok, label = pcall(statemachine.labeler, instance)
-		of = ok and label and (" of " .. tostring(label)) or ""
-	end
 	
 	-- print("Executing transition: " .. transition_name)
 	-- for index, hook in ipairs(pipeline) do
@@ -48,6 +43,8 @@ function M.execute_transition(from_state, to_state, mode, context, statemachine,
 			local success, error_msg = xpcall(hook.func, debug.traceback, context, instance, from_state, to_state)
 
 			if not success then
+				-- the instance is named only when a message needs it, its model's labeler asked then
+				local of = statemachine.labeler and (" of " .. M.label_of(statemachine, instance)) or ""
 				local message = "Hook '" .. hook.name .. "' failed during transition " .. transition_name .. of .. ": " .. tostring(error_msg)
 				if hook.critical then
 					-- the transition is abandoned, so the machine stays where it was and the caller sees it.
@@ -60,6 +57,20 @@ function M.execute_transition(from_state, to_state, mode, context, statemachine,
 			end
 		end
 	end
+end
+
+---Name an instance for a message: its model's labeler's answer, or the model's name.
+---@param model StateMachine|mStateMachine
+---@param instance iStateMachine|StateMachine
+---@return string label
+function M.label_of(model, instance)
+	if model.labeler then
+		local ok, label = pcall(model.labeler, instance)
+		if ok and label then
+			return tostring(label)
+		end
+	end
+	return model.name
 end
 
 -- Create and return the pipeline queue for the desired transaction.
@@ -92,7 +103,7 @@ function M.compute_transition_pipeline(from_state, to_state, mode, statemachine,
 	
 	-- Add general hooks that run before normal hooks
 	for _, hook in ipairs(statemachine.general_hooks) do
-		if hook.enabled and hook.type == "before" then
+		if hook.enabled and own[hook.name] ~= false and hook.type == "before" then
 			table.insert(pipeline, 1, hook) -- Insert at beginning
 		end
 	end
@@ -104,7 +115,7 @@ function M.compute_transition_pipeline(from_state, to_state, mode, statemachine,
 	
 	-- Add general hooks that run after normal hooks
 	for _, hook in ipairs(statemachine.general_hooks) do
-		if hook.enabled and hook.type == "after" then
+		if hook.enabled and own[hook.name] ~= false and hook.type == "after" then
 			table.insert(pipeline, hook) -- Insert at end
 		end
 	end

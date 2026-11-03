@@ -152,19 +152,7 @@ local function weak_set()
 	return setmetatable({}, { __mode = "k" })
 end
 
----Name an instance for a message: its model's labeler's answer, or the model's name.
----@param model StateMachine|mStateMachine
----@param instance iStateMachine|StateMachine
----@return string label
-local function label_of(model, instance)
-	if model.labeler then
-		local ok, label = pcall(model.labeler, instance)
-		if ok and label then
-			return tostring(label)
-		end
-	end
-	return model.name
-end
+local label_of = helper.label_of
 
 ---Move an instance to a state, keeping its model's sets of who's in each state.
 ---@param model StateMachine|mStateMachine
@@ -243,6 +231,11 @@ local function transition(model, instance, next_state, context_arg, mode, parent
 	if not ok then
 		instance.pending = {}
 		error(err, 0)
+	end
+	if instance.unregistered then
+		-- unregistered inside its own hooks: it stays out of its model's sets, and what it asked for goes
+		instance.pending = {}
+		return
 	end
 	place(model, instance, next_state)
 

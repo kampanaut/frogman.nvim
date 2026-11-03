@@ -884,6 +884,76 @@ T['T750 [char] (M15) the pop-up doesn\'t write the marks of a window that\'s gon
 		{ said = { "frogman: the window these marks are for is gone, so they aren't written." }, scope = false, modified = true })
 end
 
+-- Review round 5's #3, #4, #6, #7 and #8 (M15, 2026-11-03) ----------------------------------
+
+T['T839 [char] (M15) a group glyph of one\'s own is read back'] = function()
+	child.lua('_G.FRG_TEST.setup({ glyphs = { group = "▸" } })')
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	local first = popup().lines[1]
+	child.lua('vim.api.nvim_buf_set_lines(0, 2, 3, false, { "s -> c.txt" })')
+	child.cmd('silent! write')
+	child.settle(100)
+	eq({ first = first, modified = popup().modified, c = label('c') }, { first = '▸ main', modified = false, c = 's' })
+end
+
+T['T840 [char] (M15) the primary key on a typed path writes first'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e a' })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ OPEN })
+	child.lua('vim.api.nvim_buf_set_lines(0, 2, 3, false, { "s -> x.txt" })')
+	child.lua('vim.api.nvim_win_set_cursor(0, { 3, 0 })')
+	child.step('<M-c>')
+	child.settle(100)
+	local got = child.lua([[
+		local t = require('frogman.domains.window').data.crux[...]
+		local H = require('frogman.domains.history')
+		return { queue = vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_hash(h) or '?', ':t:r') end, t.primary_buffer),
+			on = t.primary_enabled, x = H.get_hash_from_filepath(_G.FRG_TEST.root .. '/x.txt') ~= nil }
+	]], { win })
+	eq({ modified = popup().modified, got = got }, { modified = false, got = { queue = { 'x' }, on = true, x = true } })
+end
+
+T['T841 [char] (M15) <CR> after an edit acts on the row it was on'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', ADD .. 'd>', ':e e' })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ OPEN })
+	child.lua('vim.api.nvim_buf_set_lines(0, 2, 3, false, {})') -- the empty s row
+	child.lua('vim.api.nvim_win_set_cursor(0, { 3, 0 })') -- d -> c.txt, now the third line
+	child.step('<CR>')
+	child.settle(100)
+	eq(child.shown(win), 'c')
+end
+
+T['T842 [char] (M15) a mode key in the pop-up with its window gone refuses'] = function()
+	child.steps({ ':e b' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ADD .. 'a>' })
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ OPEN })
+	child.lua('vim.api.nvim_win_close(..., true)', { split })
+	child.settle()
+	child.messages()
+	child.steps({ "<M-'><M-2>" })
+	child.settle(100)
+	local said = vim.tbl_map(function(m) return m.msg end, child.messages())
+	eq({ said = said, mode = child.lua('return require("frogman.domains.marks").data.mode'), open = popup() ~= vim.NIL },
+		{ said = { 'frogman: the window these marks are for is gone.' }, mode = 'window', open = true })
+end
+
+T['T843 [char] (M15) an alias that takes a fixed key is said once'] = function()
+	child.messages()
+	child.lua('_G.FRG_TEST.setup({ marks = { aliases = { e = 1, s = 2 } } })')
+	local said = vim.tbl_filter(function(m) return m:find('marks.aliases', 1, true) ~= nil end,
+		vim.tbl_map(function(m) return m.msg end, child.messages()))
+	child.lua('_G.FRG_TEST.setup({ marks = { aliases = { e = 1, s = 2 } }, keymaps = { mark_popup = "<M-m>" } })')
+	local quiet = vim.tbl_filter(function(m) return m:find('marks.aliases', 1, true) ~= nil end,
+		vim.tbl_map(function(m) return m.msg end, child.messages()))
+	child.steps({ ':e b', "<M-'><M-m>" })
+	eq({ n = #said, names = said[1] ~= nil and said[1]:find("e", 1, true) ~= nil and said[1]:find("<M-'><M-e>", 1, true) ~= nil,
+		quiet = #quiet, open = popup() ~= vim.NIL }, { n = 1, names = true, quiet = 0, open = true })
+end
+
 -- Held-over groups (M15, 4d) --------------------------------------------------------------
 
 -- A session scope's groups: each one's name, whether it's held over, and its marks by file name.

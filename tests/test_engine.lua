@@ -309,6 +309,50 @@ T['T669 [char] an unregistered instance refuses transitions'] = function()
 	eq(got, { ok = false, label = true, free = true })
 end
 
+T['T844 [char] an instance unregistered inside its own transition stays unregistered'] = function()
+	local got = child.lua(model_with('t844') .. [[
+		m:on('a', 'b', 'leave', function(_, inst) inst:to('c'); inst:unregister() end, 1, true)
+		m:on('b', 'c', 'noop', function() end, 1, true)
+		local one = m:instantiate('a')
+		local ok = pcall(one.to, one, 'b')
+		local member = false
+		for _, set in pairs(m.members) do member = member or set[one] == true end
+		return { ok = ok, member = member, freed = pcall(m.unregister_state, m, 'b') }
+	]])
+	eq(got, { ok = true, member = false, freed = true })
+end
+
+T['T845 [char] an instance\'s switch reaches a general hook'] = function()
+	local got = child.lua(model_with('t845') .. [[
+		local ran = 0
+		m:on('a', 'b', 'noop', function() end, 1, true)
+		table.insert(m.general_hooks, { name = 'audit', func = function() ran = ran + 1 end, enabled = true, type = 'before', class = 0 })
+		local one = m:instantiate('a')
+		one:disable_hook('audit')
+		one:to('b')
+		local after_one = ran
+		m:instantiate('a'):to('b')
+		return { after_one, ran }
+	]])
+	eq(got, { 0, 1 })
+end
+
+T['T846 [char] the labeler is called only for a message'] = function()
+	child.messages()
+	local got = child.lua(model_with('t846') .. [[
+		local calls = 0
+		m:set_labeler(function() calls = calls + 1; return 'x.txt' end)
+		m:on('a', 'b', 'noop', function() end, 1, true)
+		m:on('b', 'c', 'breaks', function() error('boom') end, 1, true)
+		local one = m:instantiate('a')
+		one:to('b')
+		local through = calls
+		one:to('c')
+		return { through, calls }
+	]])
+	eq(got, { 0, 1 })
+end
+
 T['T670 [char] no state is written directly outside the engine'] = function()
 	local found = {}
 	for _, path in ipairs(vim.fn.globpath('lua/frogman/domains', '**/*.lua', false, true)) do

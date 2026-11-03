@@ -567,6 +567,8 @@ local defaults = {
         -- Marks: the prefix, then <M-1>, <M-2> or <M-3> for the window's, the tab's or the session's
         -- marks; then an alias, <M-a>, to jump to its mark; twice, <M-'><M-'><M-a>, to mark the buffer there
         mark_prefix = "<M-'>",
+        mark_popup = "<M-e>", -- after the prefix: the marks pop-up
+        mark_modes = { window = "<M-1>", tab = "<M-2>", session = "<M-3>" }, -- after the prefix: the marks' modes
 
         -- Inside frogman's own views
         views = {
