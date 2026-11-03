@@ -766,36 +766,34 @@ local function noname_already_back(filehash)
 	return nil
 end
 
----Get what a tab's windows show, sorted, and how many windows it has, floats left out.
+---Get what a tab's windows show, sorted, floats left out.
 ---
 ---@param tabpage integer
 ---@return string[] shows What each window shows, its hash, or "" for an untracked buffer with no name
----@return integer wins How many windows it has
 local function tab_shows(tabpage)
-	local shows, wins = {}, 0
+	local shows = {}
 	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
 		if vim.api.nvim_win_get_config(winid).relative == "" then
-			wins = wins + 1
 			table.insert(shows, shown_by(winid) or "")
 		end
 	end
 	table.sort(shows)
-	return shows, wins
+	return shows
 end
 
 ---Serialize the plain tabs' marks for a whole-editor save.
 ---
----Each plain tab with marks keeps what its windows show, how many windows it has and its number, so
----a load can find it again. A tab session's tab has none: its tab mode is its session's.
+---Each plain tab with marks keeps what its windows show and its number, so a load can find it again;
+---tabs whose windows show the same have as many windows, so the count tells nothing more. A tab
+---session's tab has none: its tab mode is its session's.
 ---
----@return table[]|nil tabs Each tab's `{ shows, wins, position, groups }`, or nil with none
+---@return table[]|nil tabs Each tab's `{ shows, position, groups }`, or nil with none
 local function serialise_tabs()
 	local tabs = {}
 	for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
 		local groups = marks().serialise("tab", tabpage)
 		if groups and history.data.tab_pools[tabpage] == nil then
-			local shows, wins = tab_shows(tabpage)
-			table.insert(tabs, { shows = shows, wins = wins, position = vim.api.nvim_tabpage_get_number(tabpage), groups = groups })
+			table.insert(tabs, { shows = tab_shows(tabpage), position = vim.api.nvim_tabpage_get_number(tabpage), groups = groups })
 		end
 	end
 	return #tabs > 0 and tabs or nil
@@ -830,7 +828,7 @@ local function restore_tabs(saved_tabs, what)
 			taken[best.tabpage] = true
 			marks().restore("tab", best.tabpage, saved.groups)
 		else
-			marks().hold_over("", type(saved.groups) == "table" and saved.groups or {}, what, true)
+			marks().hold_over("", type(saved.groups) == "table" and saved.groups or {}, what, true, true)
 		end
 	end
 end
@@ -968,7 +966,7 @@ local function restore_marks(saved_data, taken, session_id, own, key, scratch_di
 				end
 			end
 			if next(left) then
-				marks().hold_over(session_id, { { name = saved.name, marks = left } }, what, true)
+				marks().hold_over(session_id, { { name = saved.name, marks = left } }, what, true, true)
 			end
 		end
 	end
@@ -978,7 +976,7 @@ local function restore_marks(saved_data, taken, session_id, own, key, scratch_di
 			if winid and vim.api.nvim_win_is_valid(winid) then
 				marks().restore("window", winid, entry[10])
 			else
-				marks().hold_over(session_id, entry[10], what, true) -- a window the load didn't bring back
+				marks().hold_over(session_id, entry[10], what, true, true) -- a window the load didn't bring back
 			end
 		end
 	end
@@ -1636,6 +1634,12 @@ local function carry_detached(lists, live, old, texts, paths, key, scratch_dir)
 				elseif texts[filehash] == nil and history.data.noname_content[filehash] then
 					texts[filehash] = history.data.noname_content[filehash] -- moved in from a list in memory
 				end
+				if paths[filehash] == nil then
+					paths[filehash] = old and old.paths and old.paths[filehash] or history.get_filepath_from_hash(filehash)
+				end
+			end
+			-- and the files its marks name, which nothing in memory may hold any more, from the old file first
+			for filehash, _ in pairs(marks().named_by(list.marks)) do
 				if paths[filehash] == nil then
 					paths[filehash] = old and old.paths and old.paths[filehash] or history.get_filepath_from_hash(filehash)
 				end

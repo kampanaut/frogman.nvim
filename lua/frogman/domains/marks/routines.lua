@@ -489,10 +489,19 @@ end
 ---@param groups MarksGroup[]|{name: string, marks: table<string, Filehash>}[] The groups, live (handle ids) or saved (hashes)
 ---@param what string What they were, like "window on api.lua"
 ---@param saved boolean|nil Whether the groups are saved ones, their marks by hash
+---@param once boolean|nil Whether to skip a group a held-over group of the scope has already, alias for alias, as a load's are: a records write keeps the windows as the last save wrote them, so the same entry comes back at every load
 ---@return nil
-function M.hold_over(session_id, groups, what, saved)
+function M.hold_over(session_id, groups, what, saved, once)
 	local scope = M.scope("session", session_id, true)
 	local several = #groups > 1
+	local function held_already(marks)
+		for _, other in ipairs(scope.groups) do
+			if other.held and vim.deep_equal(other.marks, marks) then
+				return true
+			end
+		end
+		return false
+	end
 	for _, group in ipairs(groups) do
 		local marks = {}
 		for alias, value in pairs(group.marks or {}) do
@@ -506,7 +515,7 @@ function M.hold_over(session_id, groups, what, saved)
 				marks[alias] = handle.id
 			end
 		end
-		if next(marks) then
+		if next(marks) and not (once and held_already(marks)) then
 			if not M.first_group(scope) then
 				M.first_group(scope, true) -- the keys keep a group of their own, ahead of what's held over
 			end

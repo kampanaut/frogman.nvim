@@ -1108,4 +1108,96 @@ T['T761 [char] (M15) a tab session\'s load drops what its own tab\'s closes queu
 	eq({ n = #held, marks = held[1] and held[1].marks }, { n = 1, marks = { a = 'b' } })
 end
 
+-- Review round 5's storage findings, and the tab rule's count (M15, S1) ---------------------------
+
+-- T369's state with a whole-editor save first: t in a third tab, the second keeping t_DETACHED, and
+-- the second tab current.
+local function detached(s)
+	tab_session(s)
+	eq(S2.save(child), { true }) -- the whole editor's file, for the detached list to go into
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.cmd('tabnext 2')
+	child.settle()
+end
+
+-- t_DETACHED's marks in the whole editor's saved file, alias -> file stem, or false when it isn't there.
+local function detached_marks()
+	return child.lua([[
+		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+		for _, l in ipairs(saved.detached or {}) do
+			if l.label == 't_DETACHED' then
+				local out = {}
+				for _, g in ipairs(l.marks or {}) do
+					for alias, h in pairs(g.marks or {}) do out[alias] = vim.fn.fnamemodify(saved.paths[h] or '?', ':t:r') end
+				end
+				return out
+			end
+		end
+		return false
+	]])
+end
+
+-- T823's route: in t_DETACHED's tab, e marked in session mode and held by the mark alone; the tab closed.
+local function detached_into_file(s)
+	detached(s)
+	child.steps({ "<M-'><M-3>", ':e e', ADD .. 'a>', ':e d' })
+	child.cmd('bdelete e.txt')
+	child.settle()
+	local p = S2.picker(child)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, S2.line_of(lines, 'e.txt'))
+	S2.write_picker(child, p, lines)
+	child.cmd('close')
+	child.settle(100)
+	child.cmd('tabclose') -- t_DETACHED goes into the whole editor's file, its marks with it
+	child.settle(300)
+end
+
+T['T823 [char] (M15, M5) a detached list that goes into the whole editor\'s file keeps its marks through the next save'] = function()
+	local s = S2.shared()
+	detached_into_file(s)
+	local written = detached_marks()
+	eq(S2.save(child), { true })
+	eq({ written = written, saved = detached_marks() }, { written = { a = 'e' }, saved = { a = 'e' } })
+end
+
+T['T824 [char] (M15, M5, S1 Load) a list in the whole editor\'s file alone keeps its marks across a load and a save'] = function()
+	local s = S2.shared()
+	detached_into_file(s)
+	S2.start(child, s)
+	eq(S2.load(child), { true })
+	child.settle(300)
+	eq(S2.save(child), { true })
+	eq(detached_marks(), { a = 'e' })
+end
+
+T['T825 [char] (M15, S1 Save) the tabs key carries no window count'] = function()
+	child.steps({ "<M-'><M-2>", ':e b', ADD .. 'a>', ':e a' })
+	eq(S2.save(child), { true })
+	eq(child.lua([[
+		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+		local keys = vim.tbl_keys((saved.tabs or {})[1] or {})
+		table.sort(keys)
+		return keys
+	]]), { 'groups', 'position', 'shows' })
+end
+
+T['T826 [char] (M15, S1 Load) a window entry no window takes is held over once, however often it\'s loaded'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e d', ADD .. 'a>', ':e c' })
+	eq(S2.save(child), { true })
+	for _ = 1, 3 do
+		S2.start(child, s) -- the child before quits, writing its records
+		Misc.restore(child, { 'a', 'b' }, 'b')
+		eq(S2.load(child), { true })
+		child.settle(300)
+	end
+	local held = vim.tbl_filter(function(g) return g.held and vim.deep_equal(g.marks, { a = 'd' }) end, session_groups(''))
+	eq(#held, 1)
+end
+
 return T
