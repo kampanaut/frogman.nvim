@@ -861,6 +861,7 @@ local function carry_marked_texts(texts, saved, key, scratch_dir, references)
 	end
 	for _, list in ipairs(saved.detached or {}) do
 		marks().named_by(list.marks, named)
+		snapshots().named_by(list.snapshots, named)
 	end
 	for filehash, _ in pairs(named) do
 		local entry = type(saved.noname_content) == "table" and saved.noname_content[filehash]
@@ -893,8 +894,8 @@ end
 
 ---Give the windows and a session's scope a session file's snapshots.
 ---
----Each matched window takes its entry's, and the snapshots of an entry no window took are held over
----under the load's header. The held-over ones come from `snapshots`, each under its own header, unless
+---Each matched window takes its entry's, the ones it had held over under the load's header, and the
+---snapshots of an entry no window took are held over under it too. The held-over ones come from `snapshots`, each under its own header, unless
 ---the session is open already, when memory's win: the file's whose id memory holds are skipped, and
 ---the rest come in under the load's header. An entry's snapshot the file's `snapshots` holds too was
 ---held over after the save that wrote the entry, by the records written since, so the held-over one,
@@ -925,7 +926,7 @@ local function restore_snapshots(saved_data, taken, session_id, own, what)
 				return type(saved) == "table" and not held_over[saved.id]
 			end, entry[11])
 			if winid and vim.api.nvim_win_is_valid(winid) then
-				snapshots().restore_window(winid, list)
+				snapshots().restore_window(winid, list, session_id, what)
 			else
 				vim.list_extend(unclaimed, list) -- a window the load didn't bring back
 				gone[i] = true
@@ -939,7 +940,8 @@ end
 ---Give the scopes a session file's marks.
 ---
 ---The session's own come from its `marks`, unless it's open already, when memory's stay, each
----matched window's from the entry it took, and each plain tab's from the saved tab it is. What no
+---matched window's from the entry it took, the groups it had held over but for those the entry
+---brings back, and each plain tab's from the saved tab it is. What no
 ---window or tab takes is held over, and so, when memory's marks win, are the file's it doesn't hold. A No Name text a mark names that no list holds and that
 ---isn't reopened is held unread, as a closed one is, on no list.
 ---
@@ -980,6 +982,28 @@ local function restore_marks(saved_data, taken, session_id, own, key, scratch_di
 		local winid = (taken or {})[i]
 		if type(entry) == "table" and type(entry[10]) == "table" then
 			if winid and vim.api.nvim_win_is_valid(winid) then
+				-- what the window had is held over under the load's header, but for what the entry brings back
+				local had = marks().scope("window", winid)
+				if had then
+					local keep = {}
+					for _, group in ipairs(had.groups) do
+						local by_hash = {}
+						for alias, _ in pairs(group.marks) do
+							local handle = marks().handle_of(group, alias)
+							if handle then
+								by_hash[alias] = handle.hash
+							end
+						end
+						local brought = false
+						for _, saved in ipairs(entry[10]) do
+							brought = brought or (type(saved) == "table" and vim.deep_equal(saved.marks, by_hash))
+						end
+						if not brought then
+							table.insert(keep, group)
+						end
+					end
+					marks().hold_over(session_id, keep, what, nil, true)
+				end
 				marks().restore("window", winid, entry[10])
 			else
 				marks().hold_over(session_id, entry[10], what, true, true) -- a window the load didn't bring back
@@ -1363,6 +1387,7 @@ local function enforce_session_file_policy(storage)
 	end
 	for _, list in ipairs(storage.detached or {}) do
 		list.closed = vim.tbl_filter(keeps, list.closed or {})
+		list.snapshots = clean_snapshots(list.snapshots)
 	end
 	if storage.outsiders then
 		local held = {}
@@ -1586,6 +1611,7 @@ local function push_out(pool, tabpage)
 			history.routines.hold_pool(detached)
 			join_detached(other, detached)
 			marks().copy_scope("session", pool.id, detached.id) -- the session's marks, the two going their own ways after
+			snapshots().copy_held(pool.id, detached.id) -- and its held-over snapshots, the same way
 			history.routines.pool_changed(detached)
 			require('frogman.domains.ledger').move("detached", { subject = detached.id, name = detached.name,
 				words = "tab " .. vim.api.nvim_tabpage_get_number(other) .. " keeps " .. history.routines.list_name(pool) .. "'s list" })
@@ -1622,6 +1648,7 @@ local function detached_lists(old, windows_of)
 			label = pool.name, of = pool.of, closed = closed, closed_times = times,
 			windows = windows_of and windows_of(pool) or old_windows[pool.name] or {},
 			marks = marks().serialise("session", pool.id), -- its copy of its session's marks
+			snapshots = snapshots().serialise_held(pool.id), -- and the snapshots held over in its scope
 		})
 	end
 	for _, list in ipairs(old and old.detached or {}) do
@@ -1674,8 +1701,8 @@ local function carry_detached(lists, live, old, texts, paths, key, scratch_dir)
 					paths[filehash] = old and old.paths and old.paths[filehash] or history.get_filepath_from_hash(filehash)
 				end
 			end
-			-- and the files its marks name, which nothing in memory may hold any more, from the old file first
-			for filehash, _ in pairs(marks().named_by(list.marks)) do
+			-- and the files its marks and snapshots name, which nothing in memory may hold any more, from the old file first
+			for filehash, _ in pairs(snapshots().named_by(list.snapshots, marks().named_by(list.marks))) do
 				if paths[filehash] == nil then
 					paths[filehash] = old and old.paths and old.paths[filehash] or history.get_filepath_from_hash(filehash)
 				end
@@ -1979,6 +2006,7 @@ function M.load_history(cwd, name)
 					words = "back with tab " .. vim.api.nvim_tabpage_get_number(tabpage) })
 				load_closed_buffers(list.closed or {}, saved_data.noname_content or {}, key, scratch_dir, list.closed_times, true)
 				marks().restore("session", load_pool.id, list.marks)
+				snapshots().restore_held(load_pool.id, list.snapshots)
 			end
 		end
 		load_pool = history.routines.pools()[""]
@@ -2505,7 +2533,7 @@ local function write_records(session, changes)
 				for _, filehash in ipairs(list.closed or {}) do
 					saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
 				end
-				for filehash, _ in pairs(marks().named_by(list.marks)) do
+				for filehash, _ in pairs(snapshots().named_by(list.snapshots, marks().named_by(list.marks))) do
 					saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
 				end
 			end
@@ -2721,6 +2749,7 @@ function M.settle_merging()
 				history.data.pools[id] = nil
 				history.routines.drop_pool(pool)
 				marks().drop_scope("session", id)
+				snapshots().drop_held(id)
 				require('frogman.domains.ledger').move("detached_left", { subject = id, name = pool.name, words = "merged, and gone" })
 				local session = whole_editor_session()
 				if session then
@@ -2894,6 +2923,7 @@ local function close_now(pool)
 			history.data.pools[pool.id] = nil
 			history.routines.drop_pool(pool)
 			marks().drop_scope("session", pool.id) -- its marks are on its entry in the file now
+			snapshots().drop_held(pool.id) -- and its held-over snapshots
 			ledger.move("detached_left", { subject = pool.id, name = pool.name, words = data.replayed and "let go" or "into the whole editor's file" })
 			return
 		end

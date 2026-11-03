@@ -145,16 +145,14 @@ function M.of_window(winid)
 	return data.by_window[winid] or {}
 end
 
----Get the session whose scope a window's snapshots are held over in: its tab session's, or the whole
----editor's. A detached list has no file of its own, so its tab's are the whole editor's.
+---Get the session whose scope a window's snapshots are held over in: its tab's list's, a tab
+---session's or a detached list's, as its marks are, or else the whole editor's.
 ---
 ---@param winid WinId
 ---@return string session_id The session's pool id ("" for the whole editor's)
 function M.session_of(winid)
 	local tabpage = vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_tabpage(winid)
-	local id = tabpage and history.data.tab_pools[tabpage]
-	local pool = id and history.data.pools[id]
-	return (pool and not pool.detached) and id or ""
+	return tabpage and history.data.tab_pools[tabpage] or ""
 end
 
 ---Get the snapshots held over in a session's scope, oldest first.
@@ -481,13 +479,32 @@ local function from_list(list)
 	return snapshots
 end
 
----Give a window the snapshots its session file entry holds, in place of any it had.
+---Give a window the snapshots its session file entry holds.
+---
+---The ones it had are held over under the load's header, but for one the entry brings back by its id,
+---the same snapshot, which the entry's takes the place of.
 ---
 ---@param winid WinId
 ---@param list table[]|nil The entry's snapshots
+---@param session_id string The session's pool id ("" for the whole editor's)
+---@param what string The load, like "proj, loaded into tab 2"
 ---@return nil
-function M.restore_window(winid, list)
-	M.drop_window(winid)
+function M.restore_window(winid, list, session_id, what)
+	local incoming, kept = {}, {}
+	for _, saved in ipairs(type(list) == "table" and list or {}) do
+		if type(saved) == "table" and type(saved.id) == "string" then
+			incoming[saved.id] = true
+		end
+	end
+	for _, snapshot in ipairs(vim.list_slice(data.by_window[winid] or {})) do
+		if incoming[snapshot.id] then
+			M.delete(snapshot.id)
+		else
+			table.insert(kept, snapshot)
+		end
+	end
+	data.by_window[winid] = nil
+	M.hold_over(session_id, kept, what)
 	local snapshots = from_list(list)
 	data.by_window[winid] = #snapshots > 0 and snapshots or nil
 end
@@ -599,6 +616,22 @@ function M.copy(winid, snapshot)
 	data.by_window[winid] = data.by_window[winid] or {}
 	table.insert(data.by_window[winid], copy)
 	return copy
+end
+
+---Copy the snapshots held over in one session's scope into another's, each with an id of its own and
+---its header, the two going their own ways after, as a detached list takes its session's.
+---
+---@param session_id string The session's pool id
+---@param to_id string The pool id they're copied into
+---@return nil
+function M.copy_held(session_id, to_id)
+	for _, snapshot in ipairs(M.held_in(session_id)) do
+		local copy = vim.deepcopy(snapshot)
+		copy.id = new_id()
+		hold(copy)
+		data.held[to_id] = data.held[to_id] or {}
+		table.insert(data.held[to_id], copy)
+	end
 end
 
 ---Get the hash a carried file names in this editor: its handle's while that handle lives here, otherwise
@@ -731,7 +764,7 @@ end
 ---Get the hashes of the files a session's snapshots hold.
 ---
 ---With no pool, every snapshot's. With a pool, those of the windows in its tabs and those held over
----in its scope.
+---in its scope; the editor's pool takes the detached lists' too.
 ---
 ---@param owner Pool|nil
 ---@return table<Filehash, boolean> held
@@ -762,7 +795,8 @@ function M.held_by(owner)
 		end
 	end
 	for session_id, snapshots in pairs(data.held) do
-		if owner == nil or session_id == owner.id then
+		local pool = history.data.pools[session_id]
+		if owner == nil or session_id == owner.id or (owner.id == "" and pool and pool.detached) then
 			for _, snapshot in ipairs(snapshots) do
 				take(snapshot)
 			end

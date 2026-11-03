@@ -703,7 +703,7 @@ T['T797 [char] (M16, S1 Load) a snapshot held over after its save comes back onc
 end
 
 -- A detached list has no file of its own: the whole editor's holds what its tab's windows leave.
-T['T798 [char] (M16, M5) a window closed in a detached list\'s tab is held over in the whole editor\'s scope'] = function()
+T['T798 [char] (M16, M5) a window closed in a detached list\'s tab is held over in the list\'s own scope'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	eq(S2.load_tab_session(child, 't'), { true }) -- the second tab keeps t_DETACHED
@@ -717,7 +717,7 @@ T['T798 [char] (M16, M5) a window closed in a detached list\'s tab is held over 
 	child.settle(300)
 	child.steps({ LIST })
 	eq({ detached = id:match('DETACHED') ~= nil, there = #held(id), whole = #held(''), listed = #list().lines },
-		{ detached = true, there = 0, whole = 1, listed = 1 })
+		{ detached = true, there = 1, whole = 0, listed = 1 })
 end
 
 -- Borrowed files, the placeholder and untracked windows (M16, 5c) ---------------------------
@@ -1234,6 +1234,106 @@ T['T831 [char] (M16, S1 Records) a held-over snapshot you delete stays deleted']
 	eq(S2.load(child), { true })
 	child.settle(300)
 	eq({ before = before, after = #held('') }, { before = 1, after = 0 })
+end
+
+-- Pile rounds 2 and 3: a tab session's load, and a detached list's copies (M16, 2026-11-03) ----------
+
+-- A window's marks in its first group, alias -> file stem.
+local function window_marks(win)
+	return child.lua([[
+		local M = require('frogman.domains.marks')
+		local H = require('frogman.domains.history')
+		local scope = M.data.scopes.window[...]
+		local out = {}
+		for alias, hid in pairs(scope and scope.groups[1] and scope.groups[1].marks or {}) do
+			local h = H.handles.get(H.handles.resolve(hid))
+			out[alias] = h and vim.fn.fnamemodify(H.get_filepath_from_hash(h.hash), ':t:r') or false
+		end
+		return out
+	]], { win })
+end
+
+T['T827 [char] (M15, M16, S1 Load) a tab session\'s load holds a matched window\'s own marks and snapshots over'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', "<M-'><M-'><M-s>", ':e a', TAKE })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e b', "<M-'><M-'><M-a>", ':e a', TAKE })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local id = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	local groups = child.lua([[
+		local d = require('frogman.domains.marks').data
+		local H = require('frogman.domains.history')
+		local out = {}
+		for _, g in ipairs((d.scopes.session[...] or { groups = {} }).groups) do
+			if g.held then
+				local marks = {}
+				for alias, hid in pairs(g.marks) do
+					local h = H.handles.get(H.handles.resolve(hid))
+					marks[alias] = h and vim.fn.fnamemodify(H.get_filepath_from_hash(h.hash), ':t:r') or false
+				end
+				table.insert(out, { marks = marks, load = g.name:find('t, loaded into tab 1', 1, true) ~= nil })
+			end
+		end
+		return out
+	]], { id })
+	local h = held(id)
+	eq({ marks = window_marks(win), own = #snapshots(win), groups = groups, held = #h,
+		snap_load = h[1] and h[1].held:find('t, loaded into tab 1', 1, true) ~= nil },
+		{ marks = { s = 'c' }, own = 1, groups = { { marks = { a = 'b' }, load = true } }, held = 1, snap_load = true })
+end
+
+-- T318's state, then in t's tab a split's snapshot held over as the split closes.
+local function held_in_t(s)
+	tab_session(s)
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e c', TAKE, ':e d' })
+	child.cmd('close')
+	child.settle(300)
+	return child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+end
+
+T['T828 [char] (M16, M5) a detached list takes a copy of its session\'s held-over snapshots'] = function()
+	local s = S2.shared()
+	local t = held_in_t(s)
+	local first = held(t)[1].id
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.cmd('tabnext 2')
+	child.settle()
+	local detached = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	local copy = held(detached)
+	child.steps({ LIST })
+	local listed = #list().lines
+	eq({ detached = detached:match('DETACHED') ~= nil, copies = #copy, other = copy[1] and copy[1].id ~= first, t = #held(t),
+		kept = held(t)[1] and held(t)[1].id == first, listed = listed },
+		{ detached = true, copies = 1, other = true, t = 1, kept = true, listed = 1 })
+end
+
+T['T829 [char] (M16, S1) the detached list\'s held-over snapshots ride its entry'] = function()
+	local s = S2.shared()
+	held_in_t(s)
+	eq(S2.save(child), { true }) -- the whole editor's file, before t moves
+	eq(S2.load_tab_session(child, 't'), { true })
+	eq(S2.save(child), { true })
+	local on_entry = child.lua([[
+		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+		for _, l in ipairs(saved.detached or {}) do
+			if l.label == 't_DETACHED' then return #(l.snapshots or {}) end
+		end
+		return -1
+	]])
+	S2.start(child, s)
+	S2.restore_tabs(child, { { files = { 'x', 't' }, shown = 't' }, { files = { 'c', 'd' }, shown = 'd' }, { files = { 'c', 'd' }, shown = 'd' } })
+	eq(S2.load(child), { true })
+	child.settle(300)
+	child.cmd('tabnext 2')
+	child.settle()
+	local detached = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()] or ""')
+	eq({ on_entry = on_entry, detached = detached:match('DETACHED') ~= nil, back = #held(detached) }, { on_entry = 1, detached = true, back = 1 })
 end
 
 return T
