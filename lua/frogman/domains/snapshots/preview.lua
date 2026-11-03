@@ -286,7 +286,8 @@ function M.start(snapshot, winid)
 		M.cancel()
 	end
 	local c = slots_of(snapshot)
-	showing = { window = winid, snapshot = snapshot, before = vim.api.nvim_win_get_buf(winid), made = {} }
+	showing = { window = winid, snapshot = snapshot, before = vim.api.nvim_win_get_buf(winid), made = {},
+		tracked = require('frogman.domains.window').data.crux[winid] ~= nil }
 	local bufnr, why = nil, nil
 	if c then
 		bufnr, why = buffer_for(c)
@@ -356,6 +357,11 @@ function M.cancel()
 	end
 	require('frogman.domains.navigation.routines').attach_on_landing()
 	release(was, nil)
+	-- a window frogman never took in got a triquetra from what the preview showed it; the cancel takes it back
+	local window = require('frogman.domains.window')
+	if not was.tracked and vim.api.nvim_win_is_valid(was.window) and window.data.crux[was.window] then
+		window.data.unregister_triquetra(was.window)
+	end
 	repaint()
 end
 

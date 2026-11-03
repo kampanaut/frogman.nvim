@@ -954,6 +954,71 @@ T['T843 [char] (M15) an alias that takes a fixed key is said once'] = function()
 		quiet = #quiet, open = popup() ~= vim.NIL }, { n = 1, names = true, quiet = 0, open = true })
 end
 
+T['T849 [char] (M15) marks.split_copies copies a split\'s marks'] = function()
+	child.lua('_G.FRG_TEST.setup({ marks = { split_copies = true } })')
+	child.steps({ ':e b', ADD .. 'a>' })
+	local first = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('split')
+	child.settle()
+	local copied = label('b')
+	child.steps({ ':e c', ADD .. 's>' })
+	child.lua('vim.api.nvim_set_current_win(...)', { first })
+	child.settle()
+	local first_c = label('c')
+	child.lua('_G.FRG_TEST.setup({})')
+	child.cmd('split')
+	child.settle()
+	local plain = child.lua('return require("frogman.domains.marks").data.scopes.window[vim.api.nvim_get_current_win()] == nil')
+	eq({ copied = copied, first_c = first_c, plain = plain }, { copied = 'a', first_c = false, plain = true })
+end
+
+T['T850 [char] (M15) a mark\'s word in the winbar goes after its moment'] = function()
+	child.steps({ ':e b', ADD .. 'a>' })
+	local during = (child.lua('return vim.wo.winbar') or ''):find('marked', 1, true) ~= nil
+	child.lua('vim.wait(2600)')
+	child.settle(100)
+	local after = (child.lua('return vim.wo.winbar') or ''):find('marked', 1, true) ~= nil
+	eq({ during = during, after = after }, { during = true, after = false })
+end
+
+T['T851 [char] (M15) indices order numbers first, then the rest by text'] = function()
+	child.lua([[_G.FRG_TEST.setup({ marks = { aliases = { a = 10, b = 9, c = '05' } } })]])
+	child.steps({ ':e b', ADD .. 'a>', ADD .. 'b>', ADD .. 'c>' })
+	local labelled = label('b')
+	child.steps({ OPEN })
+	local rows = vim.tbl_map(function(l) return l:match('^(%S+) %->') or false end, popup().lines)
+	child.cmd('close')
+	child.settle()
+	eq({ label = labelled, rows = rows }, { label = 'b,a,c', rows = { false, 'b', 'a', 'c' } })
+end
+
+T['T853 [char] (M15, M16) a tab close Neovim refuses leaves the tab\'s windows held over as any'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	local id = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	child.lua('vim.o.hidden = false')
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e c', ADD .. 'a>', '<M-;><M-s>' })
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('wincmd p')
+	child.settle()
+	child.cmd('enew')
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "unsaved" })')
+	child.settle()
+	local refused = not child.lua('return pcall(vim.cmd, "tabclose")') -- it closes the split, then refuses
+	child.settle(300)
+	local held = child.lua([[
+		local id = ...
+		local scope = require('frogman.domains.marks').data.scopes.session[id]
+		local n = 0
+		for _, g in ipairs(scope and scope.groups or {}) do if g.held then n = n + 1 end end
+		return { groups = n, snapshots = #require('frogman.domains.snapshots').routines.held_in(id) }
+	]], { id })
+	local split_gone = not child.lua('return vim.api.nvim_win_is_valid(...)', { split })
+	eq({ refused = refused, split_gone = split_gone, held = held }, { refused = true, split_gone = true, held = { groups = 1, snapshots = 1 } })
+end
+
 -- Held-over groups (M15, 4d) --------------------------------------------------------------
 
 -- A session scope's groups: each one's name, whether it's held over, and its marks by file name.

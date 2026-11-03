@@ -51,14 +51,9 @@ function M.init_autocmds(group)
 		callback = function(args)
 			local winid = tonumber(args.file)
 			if winid and data.by_window[winid] then
-				if require('frogman.domains.marks').data.ending[vim.api.nvim_win_get_tabpage(winid)] then
-					-- a tab session's tab closing ends the session there, as a switch does: its windows'
-					-- snapshots live on their entries, and come back with them
-					routines.drop_window(winid)
-				else
-					-- held over in its session's scope once the editor settles, unless a load comes first
-					routines.queue_hold_over(winid)
-				end
+				-- held over in its session's scope once the editor settles, unless a load comes first, or its
+				-- tab's own TabClosed, a tab session's tab really closing, drops it (a refused close fires none)
+				routines.queue_hold_over(winid)
 			end
 		end,
 	})

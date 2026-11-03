@@ -368,6 +368,7 @@ local defaults = {
 	marks = {
 		aliases = { a = 1, s = 2, d = 3, f = 4, u = 5, i = 6, o = 7, p = 8 },
 		default_group = "main",
+		split_copies = false, -- whether a split starts with a copy of its window's marks
 	},
 	-- the winbar: `own`, whether frogman writes it (otherwise `require('frogman').winbar_segment()`
 	-- gives its segment to place yourself); `skip_filetypes`, windows of these filetypes get none

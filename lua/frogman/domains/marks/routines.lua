@@ -172,7 +172,8 @@ local function assigned(alias)
 	return alias_index()[alias] ~= nil
 end
 
----Check if one alias comes before another, by their indices: numbers by value, anything else by text.
+---Check if one alias comes before another, by their indices: numbers first, by value, then anything
+---else by its text, so any mix of indices sorts one way.
 ---
 ---@param index table<string, any> Alias → index
 ---@param a string
@@ -180,11 +181,16 @@ end
 ---@return boolean before
 local function before(index, a, b)
 	local x, y = index[a] or a, index[b] or b
-	if type(x) == "number" and type(y) == "number" then
+	local x_number, y_number = type(x) == "number", type(y) == "number"
+	if x_number and y_number then
 		return x < y
+	end
+	if x_number ~= y_number then
+		return x_number
 	end
 	return tostring(x) < tostring(y)
 end
+M.alias_before = before
 
 ---Say something in a window's winbar for a moment.
 ---

@@ -971,6 +971,23 @@ T['T808 [char] (M16, A2) a window frogman never took in gets its triquetra at a 
 	eq(child.slots(help), '⦉b⦊ [x] ⟦-⟧')
 end
 
+T['T848 [char] (M16, A2) a preview cancelled in a window never taken in puts its buffer back'] = function()
+	split_held_over()
+	child.cmd('help')
+	child.settle()
+	local help = child.lua('return vim.api.nvim_get_current_win()')
+	local buf = child.lua('return vim.api.nvim_get_current_buf()')
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	child.steps({ LIST })
+	child.settle(100)
+	eq(child.lua([[
+		local w, b = ...
+		return { back = vim.api.nvim_win_get_buf(w) == b, crux = require('frogman.domains.window').data.crux[w] == nil }
+	]], { help, buf }), { back = true, crux = true })
+end
+
 T['T809 [char] (M16) a borrowed file you edit and write stays open'] = function()
 	shown_with_closed('b')
 	step_to('b.txt')

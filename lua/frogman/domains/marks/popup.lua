@@ -37,11 +37,7 @@ local function aliases()
 	local index = require('frogman.configs').marks.aliases or {}
 	local out = vim.tbl_keys(index)
 	table.sort(out, function(a, b)
-		local x, y = index[a], index[b]
-		if type(x) == "number" and type(y) == "number" then
-			return x < y
-		end
-		return tostring(x) < tostring(y)
+		return routines().alias_before(index, a, b)
 	end)
 	return out
 end

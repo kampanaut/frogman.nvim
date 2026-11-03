@@ -48,18 +48,33 @@ function M.init_autocmds(group)
 		callback = function(args)
 			local winid = tonumber(args.file)
 			local scope = winid and data.scopes.window[winid]
-			-- a tab session's tab closing ends the session there, as a switch does: its windows' marks live
-			-- on their entries, and come back with them
-			if scope and data.ending[vim.api.nvim_win_get_tabpage(winid)] then
-				routines.drop_scope("window", winid)
-			elseif scope then
-				-- held over in its session's scope once the editor settles, unless a load comes first
+			if scope then
+				-- held over in its session's scope once the editor settles, unless a load comes first, or its
+				-- tab's own TabClosed, a tab session's tab really closing, drops it (a refused close fires none)
 				local tabpage = vim.api.nvim_win_get_tabpage(winid)
 				routines.queue_hold_over(tabpage, require('frogman.domains.history').data.tab_pools[tabpage] or "", scope.groups,
 					"window on " .. routines.shows(winid))
 				routines.drop_scope("window", winid)
 			end
 			data.flashes[winid or -1] = nil
+		end,
+	})
+	-- a split starts with a copy of its window's marks, when the config says so
+	vim.api.nvim_create_autocmd("WinNew", {
+		group = group,
+		callback = function()
+			if not require('frogman.configs').marks.split_copies then
+				return
+			end
+			-- a split is the newest window and the current one, and the window it was split from the one before
+			local new = vim.api.nvim_get_current_win()
+			if new ~= math.max(unpack(vim.api.nvim_list_wins())) or vim.api.nvim_win_get_config(new).relative ~= "" then
+				return
+			end
+			local from = vim.fn.win_getid(vim.fn.winnr('#'))
+			if from ~= new and data.scopes.window[from] and data.scopes.window[new] == nil then
+				routines.copy_scope("window", from, new)
+			end
 		end,
 	})
 	-- what each tab showed and its session, read before it closes
@@ -90,6 +105,10 @@ function M.init_autocmds(group)
 			for tabpage, _ in pairs(data.ending) do
 				if not alive[tabpage] then
 					data.ending[tabpage] = nil
+					-- a tab session's tab closing ends the session there, as a switch does: its windows' marks
+					-- and snapshots live on their entries, and come back with them
+					routines.drop_pending(tabpage)
+					require('frogman.domains.snapshots').routines.drop_pending(tabpage)
 				end
 			end
 			for tabpage, scope in pairs(data.scopes.tab) do
