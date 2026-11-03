@@ -1276,6 +1276,29 @@ T['T855 [char] (M16) a line a change of cwd left behind still opens'] = function
 		{ input = 0, confirm = 0, n = 1, slots = '⦉c⦊ [d] ⟦b⟧' })
 end
 
+T['T857 [char] (M16) another editor\'s line is tried under the cwd alone'] = function()
+	local one = two_windows()
+	local foreign = line_from(one, '/elsewhere/project', 'elsewhere')
+	for _, dir in ipairs({ 'sub1', 'sub2' }) do
+		child.lua('vim.fn.mkdir(..., "p")', { dir })
+		child.cmd('cd ' .. dir)
+		child.settle()
+		child.lua('vim.api.nvim_set_current_win(...)', { one })
+		child.steps({ LIST }) -- draws its lines under this directory
+		child.step('q')
+		child.settle(100)
+	end
+	local stretched = child.lua([[
+		local crypto = require('frogman.domains.storage.crypto')
+		local derive, n = crypto.derive_key, 0
+		crypto.derive_key = function(...) n = n + 1; return derive(...) end
+		require('frogman.domains.snapshots').list.decode(...)
+		crypto.derive_key = derive
+		return n
+	]], { foreign })
+	eq(stretched, 1)
+end
+
 T['T856 [char] (M16) the write asks for the directory again while lines are still shut'] = function()
 	local one, split = two_windows()
 	local first, second = line_from(one, '/elsewhere/first', 'first'), line_from(one, '/elsewhere/second', 'second')

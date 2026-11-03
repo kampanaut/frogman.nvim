@@ -1242,6 +1242,17 @@ function M.seal_file(path, key, salt, text, purpose)
 	write_atomic(path, M.sealed(key, salt, text, purpose))
 end
 
+---Get the salt sealed bytes carry, the key's other half besides the directory.
+---
+---@param bytes string
+---@return string|nil salt Nil when the bytes aren't sealed this way
+function M.salt_of(bytes)
+	if type(bytes) ~= "string" or bytes:sub(1, #HEADER) ~= HEADER or #bytes <= #HEADER + crypto.salt_length then
+		return nil
+	end
+	return bytes:sub(#HEADER + 1, #HEADER + crypto.salt_length)
+end
+
 ---Get text sealed as a sealed file holds it: the header, the salt, then the text sealed under the key,
 ---the seal covering the header, the salt and the purpose word besides. `open_sealed` opens it.
 ---

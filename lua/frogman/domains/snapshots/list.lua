@@ -52,10 +52,14 @@ local decoded = {}
 ---@type string|nil
 local salt = nil
 
----The directories a line is tried under besides the cwd: every one this editor drew lines under, and
----every one an answer opened a line under since, so a line a plugin's change of cwd left behind opens.
+---The directories this editor drew lines under, where a line carrying its own salt is tried besides the
+---cwd, so one a plugin's change of cwd left behind opens; another editor's line can't be one of those.
 ---@type table<string, true>
 local drawn_in = {}
+
+---The directories an answer opened a line under, where every line is tried besides the cwd.
+---@type table<string, true>
+local answered = {}
 
 ---Wrap a carried snapshot as a line: `fs1:` and the base64 of its JSON sealed as a session's file is,
 ---under a key stretched from the editor's global directory and this editor's salt, the word
@@ -98,7 +102,8 @@ local function is_sealed_line(line)
 end
 
 ---Decode a line: the snapshot it carries, when it's one of frogman's and its seal opens, its bytes as
----they are, under the cwd or a directory this editor drew lines or opened one under.
+---they are, under the cwd, a directory an answer opened a line under, or, for a line carrying this
+---editor's own salt, a directory this editor drew lines under.
 ---
 ---@param line string
 ---@return table|nil carried A copy of what it carries
@@ -111,12 +116,16 @@ function M.decode(line)
 		if base64 and ok and type(bytes) == "string" then
 			local cwd = vim.fn.getcwd(-1, -1)
 			decoded[line] = open_under(bytes, cwd) or false
-			for directory, _ in pairs(drawn_in) do
-				if decoded[line] then
-					break
-				end
-				if directory ~= cwd then
-					decoded[line] = open_under(bytes, directory) or false
+			-- the answered directories for any line; the ones drawn in for this editor's own lines alone,
+			-- so another editor's line stretches no key for each
+			local tried = { [cwd] = true }
+			local own = salt ~= nil and require('frogman.domains.storage.routines').salt_of(bytes) == salt
+			for _, directories in ipairs({ answered, own and drawn_in or {} }) do
+				for directory, _ in pairs(directories) do
+					if not decoded[line] and not tried[directory] then
+						tried[directory] = true
+						decoded[line] = open_under(bytes, directory) or false
+					end
 				end
 			end
 		end
@@ -148,8 +157,8 @@ local function open_shut(lines)
 		if directory ~= "/" then
 			directory = directory:gsub("/+$", "")
 		end
-		local was = drawn_in[directory]
-		drawn_in[directory] = true
+		local was = answered[directory]
+		answered[directory] = true
 		for line, carried in pairs(decoded) do
 			if carried == false then
 				decoded[line] = nil -- tried again, with the new directory among the rest
@@ -157,7 +166,7 @@ local function open_shut(lines)
 		end
 		local now = shut()
 		if #now == #left and not was then
-			drawn_in[directory] = nil -- it opened nothing: not one to try again
+			answered[directory] = nil -- it opened nothing: not one to try again
 		end
 		left = now
 	end
