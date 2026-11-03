@@ -1,9 +1,10 @@
 ---The snapshot list.
 ---
----One editable floating window on a window's snapshots, newest first. Each line's text is its
----snapshot's identity, concealed, and what shows is drawn over it in the trail's language: the time,
----the triquetra in the winbar's colours, and the order its bufferline drew. Deleting a line and
----writing deletes its snapshot.
+---One editable floating window on a window's snapshots, newest first, then those held over in its
+---session's scope, each group under its held-over header. Each line's text is its snapshot's identity,
+---concealed, and what shows is drawn over it in the trail's language: the time, the triquetra in the
+---winbar's colours, and the order its bufferline drew. Deleting a line and writing deletes its
+---snapshot.
 
 local routines = require('frogman.domains.snapshots.routines')
 local history = require('frogman.domains.history')
@@ -82,13 +83,15 @@ local function drawing(snapshot)
 	return chunks
 end
 
----Draw the list's lines again: each known snapshot's line concealed, and its drawing over it.
+---Draw the list's lines again: each known snapshot's line concealed, and its drawing over it, and
+---above the first line of each held-over group, its header.
 ---@return nil
 local function decorate()
 	if not is_open() then
 		return
 	end
 	vim.api.nvim_buf_clear_namespace(open.buf, ns, 0, -1)
+	local header = nil
 	for i, line in ipairs(vim.api.nvim_buf_get_lines(open.buf, 0, -1, false)) do
 		local id = id_in(line)
 		local snapshot = id and routines.find(id)
@@ -96,11 +99,35 @@ local function decorate()
 			-- the identity hidden, and the drawing after it, so the cursor at the line's start stays there
 			vim.api.nvim_buf_set_extmark(open.buf, ns, i - 1, 0, { end_col = #line, conceal = "" })
 			vim.api.nvim_buf_set_extmark(open.buf, ns, i - 1, #line, { virt_text = drawing(snapshot), virt_text_pos = "inline" })
+			if snapshot.held and snapshot.held ~= header then
+				vim.api.nvim_buf_set_extmark(open.buf, ns, i - 1, 0, {
+					virt_lines = { { { snapshot.held, "FrogmanTrailDim" } } }, virt_lines_above = true,
+				})
+			end
 		end
+		header = snapshot and snapshot.held or nil
 	end
 end
 
----Put the window's snapshots in the list's lines, newest first.
+---Show a header above the first line: a window shows a line above its top one only when told to.
+---@return nil
+local function show_header_above()
+	if open and open.win and vim.api.nvim_win_is_valid(open.win) then
+		vim.api.nvim_win_call(open.win, function()
+			vim.fn.winrestview({ topline = 1, topfill = 1 })
+		end)
+	end
+end
+
+---Get the session whose held-over snapshots the list shows: the one the window it was opened from
+---is in, read as the list opened.
+---@return string session_id
+local function session()
+	return open.session
+end
+
+---Put the window's snapshots in the list's lines, newest first, then its session's held-over ones,
+---newest first.
 ---@return nil
 local function redraw()
 	local lines = {}
@@ -108,15 +135,20 @@ local function redraw()
 	for i = #snapshots, 1, -1 do
 		table.insert(lines, line_of(snapshots[i]))
 	end
+	local held = routines.held_in(session())
+	for i = #held, 1, -1 do
+		table.insert(lines, line_of(held[i]))
+	end
 	vim.api.nvim_buf_set_lines(open.buf, 0, -1, false, lines)
 	vim.bo[open.buf].modified = false
 	decorate()
+	show_header_above()
 end
 
 ---Write the list: a snapshot whose line is gone is deleted.
 ---
----A line naming no snapshot of the window is asked about first, and No writes nothing, the cursor on
----the first such line.
+---A line naming no snapshot of the window, or of the ones held over in its session's scope, is asked
+---about first, and No writes nothing, the cursor on the first such line.
 ---
 ---@return boolean written
 local function write()
@@ -124,11 +156,11 @@ local function write()
 	for row, line in ipairs(vim.api.nvim_buf_get_lines(open.buf, 0, -1, false)) do
 		if vim.trim(line) ~= "" then
 			local id = id_in(line)
-			local snapshot, winid = nil, nil
+			local snapshot, winid, held_in = nil, nil, nil
 			if id then
-				snapshot, winid = routines.find(id)
+				snapshot, winid, held_in = routines.find(id)
 			end
-			if snapshot and winid == open.origin then
+			if snapshot and (winid == open.origin or (held_in ~= nil and held_in == session())) then
 				kept[id] = true
 			else
 				table.insert(items, vim.trim(line) .. "  names no snapshot of this window")
@@ -143,9 +175,11 @@ local function write()
 		end
 		return false
 	end
-	for _, snapshot in ipairs(vim.deepcopy(routines.of_window(open.origin))) do
-		if not kept[snapshot.id] then
-			routines.delete(snapshot.id)
+	for _, list in ipairs({ routines.of_window(open.origin), routines.held_in(session()) }) do
+		for _, snapshot in ipairs(vim.deepcopy(list)) do
+			if not kept[snapshot.id] then
+				routines.delete(snapshot.id)
+			end
 		end
 	end
 	redraw()
@@ -193,7 +227,7 @@ function M.open()
 	vim.bo[buf].swapfile = false
 	vim.bo[buf].bufhidden = "wipe"
 	vim.api.nvim_buf_set_name(buf, NAME)
-	open = { buf = buf, origin = origin }
+	open = { buf = buf, origin = origin, session = routines.session_of(origin) }
 	redraw()
 	vim.bo[buf].filetype = "frogman-snapshots"
 	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
@@ -234,6 +268,7 @@ function M.open()
 	vim.wo[win].cursorline = true
 	vim.wo[win].conceallevel = 2
 	vim.wo[win].concealcursor = "nvic"
+	show_header_above()
 end
 
 ---Show the snapshot on the cursor's line in the window the list was opened from, leaving the list.

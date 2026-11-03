@@ -1,8 +1,8 @@
 ---Snapshots domain initialization and API layer.
 ---
 ---The snapshots domain keeps each window's snapshots: its setup as it was, taken on purpose, its files
----held by the snapshot's place. This module provides the API layer and the autocmds that let a
----window's snapshots go with it.
+---held by the snapshot's place. This module provides the API layer and the autocmds that hold a
+---closed window's snapshots over.
 
 local data = require('frogman.domains.snapshots.data')
 local routines = require('frogman.domains.snapshots.routines')
@@ -40,8 +40,8 @@ end, 2.6, true)
 
 ---Create the snapshots domain's autocmds in frogman's augroup.
 ---
----Called by setup(), so nothing runs at require. A window's snapshots go with the window, and the
----list's keys are mapped on its buffer.
+---Called by setup(), so nothing runs at require. A closed window's snapshots are held over in its
+---session's scope once the editor settles, and the list's keys are mapped on its buffer.
 ---
 ---@param group integer The frogman augroup
 ---@return nil
@@ -51,7 +51,14 @@ function M.init_autocmds(group)
 		callback = function(args)
 			local winid = tonumber(args.file)
 			if winid and data.by_window[winid] then
-				routines.drop_window(winid)
+				if require('frogman.domains.marks').data.ending[vim.api.nvim_win_get_tabpage(winid)] then
+					-- a tab session's tab closing ends the session there, as a switch does: its windows'
+					-- snapshots live on their entries, and come back with them
+					routines.drop_window(winid)
+				else
+					-- held over in its session's scope once the editor settles, unless a load comes first
+					routines.queue_hold_over(winid)
+				end
 			end
 		end,
 	})

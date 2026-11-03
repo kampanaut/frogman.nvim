@@ -1,6 +1,7 @@
 -- Snapshots (M16). IDs are the spec's (what-is-frogman.md, section 7).
 local Helpers = dofile('tests/helpers.lua')
 local S2 = dofile('tests/helpers_s2.lua')
+local Misc = dofile('tests/helpers_misc.lua')
 local eq = Helpers.eq
 local child = Helpers.new_child()
 
@@ -172,12 +173,14 @@ T['T767 [char] (M16) the capture refuses where there\'s nothing to take'] = func
 		{ help = { 'Window with unregistered buffer.' }, cycling = { 'frogman: pick or cancel the cycle first.' }, n = 0 })
 end
 
-T['T768 [char] (M16, S1) a whole-editor load from idle starts with no snapshot'] = function()
+T['T768 [char] (M16, S1) a whole-editor load from idle starts with the file\'s snapshots alone'] = function()
 	taken()
+	local first = snapshots()[1].id
 	eq(S2.save(child), { true })
+	child.steps({ ':e e', TAKE, ':e d' }) -- back on d, so the window takes its entry
 	eq(S2.load(child), { true })
 	child.settle(300)
-	eq(child.lua('return next(require("frogman.domains.snapshots").data.by_window) == nil'), true)
+	eq(vim.tbl_map(function(x) return x.id end, snapshots()), { first })
 end
 
 T['T769 [char] (M16, S1 Load) a fresh start from bare drops the snapshots before their handles go'] = function()
@@ -215,26 +218,6 @@ T['T770 [char] (M16) q writes and leaves the list, :q refuses, and :q! discards'
 	child.settle(100)
 	eq({ e37 = (ok[2] or ''):find('E37', 1, true) ~= nil, still = still, discarded = discarded, gone = list() == vim.NIL, n = #snapshots() },
 		{ e37 = true, still = true, discarded = 2, gone = true, n = 1 })
-end
-
-T['T771 [char] (M16) a window\'s snapshots go with it'] = function()
-	child.steps({ ':e a', ':e b' })
-	child.cmd('split')
-	child.settle()
-	child.steps({ ':e x', TAKE, ':e b' })
-	local split = child.lua('return vim.api.nvim_get_current_win()')
-	child.cmd('close')
-	child.settle(300)
-	local left = child.lua([[
-		local H = require('frogman.domains.history')
-		local h = H.handles.of_hash(H.routines.get_filehash(_G.FRG_TEST.root .. '/x.txt'))
-		local snap = false
-		for place, _ in pairs(h and h.holders or {}) do
-			if place:match('^snap:') then snap = true end
-		end
-		return { snapshots = require('frogman.domains.snapshots').data.by_window[...] ~= nil, x = snap }
-	]], { split })
-	eq(left, { snapshots = false, x = false })
 end
 
 -- The preview, its cancel and its commit (M16, 5b) ---------------------------------------
@@ -493,6 +476,247 @@ T['T787 [char] (M16, S1 Load) a tab session\'s load ends a preview'] = function(
 		table.insert(got, { attached = attached, active = active, refused = refused })
 	end
 	eq(got, { { attached = true, active = false, refused = 0 }, { attached = true, active = false, refused = 0 } })
+end
+
+-- Held over, saved and loaded (M16, 5d) --------------------------------------------------
+
+local STAMP = ' · %d%d%-%d%d %d%d:%d%d'
+
+-- A session scope's held-over snapshots, each as its header and its slots by file name.
+local function held(id)
+	return child.lua([[
+		local S = require('frogman.domains.snapshots').routines
+		local H = require('frogman.domains.history')
+		local function name(i)
+			local h = S.handle(i)
+			return h and vim.fn.fnamemodify(H.get_filepath_from_hash(h.hash), ':t:r') or '-'
+		end
+		local out = {}
+		for _, s in ipairs(S.held_in(...)) do
+			table.insert(out, { held = s.held, id = s.id,
+				slots = '⦉' .. (s.ternary and name(s.ternary) or '-') .. '⦊ [' .. name(s.current) .. '] ⟦' .. (s.secondary and name(s.secondary) or '-') .. '⟧' })
+		end
+		return out
+	]], { id or '' })
+end
+
+-- The route T771 takes: a split's snapshot holding x (⦉b⦊ [x] ⟦-⟧), the split back on b and closed.
+local function split_held_over()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e x', TAKE, ':e b' })
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('close')
+	child.settle(300)
+	return split
+end
+
+-- The lines the open list draws above its lines, joined.
+local function headers()
+	return child.lua([[
+		local buf = vim.fn.bufnr('frogman://snapshots')
+		local ns = vim.api.nvim_get_namespaces()['frogman_snapshots']
+		local out = {}
+		for _, m in ipairs(buf ~= -1 and vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true }) or {}) do
+			for _, vl in ipairs(m[4].virt_lines or {}) do
+				local text = {}
+				for _, chunk in ipairs(vl) do table.insert(text, chunk[1]) end
+				table.insert(out, table.concat(text))
+			end
+		end
+		return out
+	]])
+end
+
+T['T771 [char] (M16) a window closed while you work leaves its snapshots held over'] = function()
+	local split = split_held_over()
+	local x = child.lua([[
+		local H = require('frogman.domains.history')
+		local h = H.handles.of_hash(H.routines.get_filehash(_G.FRG_TEST.root .. '/x.txt'))
+		for place, _ in pairs(h and h.holders or {}) do
+			if place:match('^snap:') then return true end
+		end
+		return false
+	]])
+	local own = child.lua('return require("frogman.domains.snapshots").data.by_window[...] ~= nil', { split })
+	local h = held('')
+	child.steps({ LIST })
+	local l, drawn = list(), headers()
+	eq({ own = own, n = #h, slots = h[1] and h[1].slots, x = x,
+		name = h[1] and h[1].held:match('^held over · window on b%.txt' .. STAMP .. '$') ~= nil,
+		lines = l ~= vim.NIL and #l.lines or 0, header = drawn[1] ~= nil and h[1] ~= nil and drawn[1]:find(h[1].held, 1, true) ~= nil },
+		{ own = false, n = 1, slots = '⦉b⦊ [x] ⟦-⟧', x = true, name = true, lines = 1, header = true })
+end
+
+T['T796 [char] (M16) committing a held-over snapshot leaves it held over'] = function()
+	split_held_over()
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	child.steps({ '<M-v>' })
+	child.settle(100)
+	eq({ slots = child.slots(), held = #held(''), own = #snapshots(win) }, { slots = '⦉b⦊ [x] ⟦-⟧', held = 1, own = 0 })
+end
+
+T['T789 [char] (M16, S1) a window\'s snapshots ride on its entry'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e d', ':e b', TAKE })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e a', ':e c', TAKE })
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b', 'c', 'd' }, 'c')
+	child.cmd('noautocmd vsplit')
+	child.cmd('noautocmd edit b.txt')
+	local wins = child.lua('return vim.api.nvim_tabpage_list_wins(0)')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local got = {}
+	for _, win in ipairs(wins) do
+		table.insert(got, { shows = child.shown(win), slots = vim.tbl_map(function(x) return x.slots end, snapshots(win)) })
+	end
+	eq(got, { { shows = 'b', slots = { '⦉d⦊ [b] ⟦-⟧' } }, { shows = 'c', slots = { '⦉a⦊ [c] ⟦-⟧' } } })
+end
+
+T['T790 [char] (M16, S1 Load) an entry no window takes leaves its snapshots held over'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e d', ':e c', TAKE })
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local project = vim.fn.fnamemodify(s.root, ':t')
+	local h = held('')
+	eq({ n = #h, slots = h[1] and h[1].slots,
+		name = h[1] and h[1].held:match('^held over · ' .. vim.pesc(project) .. ', loaded' .. STAMP .. '$') ~= nil },
+		{ n = 1, slots = '⦉d⦊ [c] ⟦-⟧', name = true })
+end
+
+-- The save comes first, so the held-over snapshot reaches the file by the records the quit writes.
+T['T792 [char] (M16, S1 Records) held-over snapshots are saved and loaded'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child), { true })
+	split_held_over()
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local h = held('')
+	eq({ n = #h, slots = h[1] and h[1].slots, name = h[1] and h[1].held:match('^held over · window on b%.txt' .. STAMP .. '$') ~= nil },
+		{ n = 1, slots = '⦉b⦊ [x] ⟦-⟧', name = true })
+end
+
+-- t in a second tab, loaded as resession loads a tab session.
+local function tab_session(s)
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(S2.load_tab_session(child, 't'), { true })
+end
+
+T['T793 [char] (M16, S1 Load) a tab session loaded while it\'s open skips the file\'s held-over snapshots memory holds'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e c', TAKE, ':e d' })
+	child.cmd('close')
+	child.settle(300)
+	local id = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	local before = #held(id)
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	eq(S2.load_tab_session(child, 't'), { true })
+	eq({ before = before, after = #held(id) }, { before = 1, after = 1 })
+end
+
+T['T794 [char] (M16, M5) the No Name texts snapshots hold are written'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':enew' })
+	local n = child.lua('return vim.api.nvim_get_current_buf()')
+	child.cmd('buffer a.txt')
+	child.settle()
+	child.steps({ TAKE })
+	child.cmd('bwipeout ' .. n)
+	child.settle(100)
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a' }, 'a')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	eq(child.lua([[
+		local S = require('frogman.domains.snapshots').routines
+		local H = require('frogman.domains.history')
+		local s = S.of_window(vim.api.nvim_get_current_win())[1]
+		local h = s and s.ternary and S.handle(s.ternary)
+		local path = h and H.get_filepath_from_hash(h.hash) or ''
+		return { noname = path:match('^NONAME_') ~= nil, text = h ~= nil and H.data.noname_content[h.hash] ~= nil,
+			listed = h ~= nil and vim.tbl_contains(H.data.closed_buffers, h.hash) }
+	]]), { noname = true, text = true, listed = false })
+end
+
+-- The split shows b at the save, as the window left does, so its entry is the first that window takes.
+T['T795 [char] (M16) a switch holds no snapshot over'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e x', TAKE, ':e b' })
+	eq(S2.save(child), { true })
+	child.lua('vim.cmd("close"); require("frogman").load_session()')
+	child.settle(300)
+	eq({ held = #held(''), own = #snapshots() }, { held = 0, own = 1 })
+end
+
+-- Saved on its window, then held over before the quit's records: one snapshot comes back, held over,
+-- whether the window left takes the split's entry (the split back on b) or not (on x).
+T['T797 [char] (M16, S1 Load) a snapshot held over after its save comes back once'] = function()
+	local got = {}
+	for _, last in ipairs({ ':e b', ':e x' }) do
+		local s = S2.shared()
+		S2.start(child, s)
+		child.steps({ ':e a', ':e b' })
+		child.cmd('split')
+		child.settle()
+		child.steps({ ':e x', TAKE, last })
+		eq(S2.save(child), { true })
+		child.cmd('close')
+		child.settle(300)
+		S2.start(child, s) -- the quit writes the records, the held-over snapshot among them
+		Misc.restore(child, { 'a', 'b' }, 'b')
+		eq(S2.load(child), { true })
+		child.settle(300)
+		table.insert(got, { held = #held(''), own = #snapshots() })
+	end
+	eq(got, { { held = 1, own = 0 }, { held = 1, own = 0 } })
+end
+
+-- A detached list has no file of its own: the whole editor's holds what its tab's windows leave.
+T['T798 [char] (M16, M5) a window closed in a detached list\'s tab is held over in the whole editor\'s scope'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	eq(S2.load_tab_session(child, 't'), { true }) -- the second tab keeps t_DETACHED
+	child.cmd('tabnext 2')
+	child.settle()
+	local id = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e c', TAKE, ':e d' })
+	child.cmd('close')
+	child.settle(300)
+	child.steps({ LIST })
+	eq({ detached = id:match('DETACHED') ~= nil, there = #held(id), whole = #held(''), listed = #list().lines },
+		{ detached = true, there = 0, whole = 1, listed = 1 })
 end
 
 return T

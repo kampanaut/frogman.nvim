@@ -16,14 +16,19 @@
 ---@field dtm SnapshotNote[] The ternary notes
 ---@field dsm SnapshotNote[] The secondary notes
 ---@field order integer[] The order the bufferline drew, its handles, the first drawn first
+---@field held string|nil Its held-over header, once its window is gone: what that window was and when
 ---
 ---@class SnapshotsState
 ---@field by_window table<WinId, Snapshot[]> Window → its snapshots, oldest first
+---@field held table<string, Snapshot[]> Session's pool id ("" for the whole editor's) → the snapshots held over in its scope, oldest first
+---@field pending table[] The closed windows' snapshots waiting a tick to be held over
 ---@field taken integer Counts the snapshots taken in this editor, for their ids
 
 ---@type SnapshotsState
 local corpus = {
 	by_window = {},
+	held = {},
+	pending = {},
 	taken = 0,
 }
 

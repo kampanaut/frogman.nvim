@@ -169,9 +169,15 @@ checks.HOLDERS = { post = function()
 			end
 		end
 	end
-	-- each snapshot's place holds its slots', its queue's and its order's files (M16)
+	-- each snapshot's place holds its slots', its queue's and its order's files, a window's, a held-over
+	-- one's or one waiting to be held over (M16)
 	local Sn = package.loaded['frogman.domains.snapshots']
-	for _, snaps in pairs(Sn and Sn.data.by_window or {}) do
+	local lists = {}
+	for _, field in ipairs({ 'by_window', 'held' }) do
+		for _, snaps in pairs(Sn and Sn.data[field] or {}) do table.insert(lists, snaps) end
+	end
+	for _, entry in ipairs(Sn and Sn.data.pending or {}) do table.insert(lists, entry.snapshots) end
+	for _, snaps in ipairs(lists) do
 		for _, sn in ipairs(snaps) do
 			local hashes = {}
 			for _, id in ipairs(vim.list_extend({ sn.current, sn.secondary or false, sn.ternary or false }, vim.list_extend(vim.deepcopy(sn.queue), sn.order))) do

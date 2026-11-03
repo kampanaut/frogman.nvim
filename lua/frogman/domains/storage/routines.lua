@@ -20,6 +20,7 @@
 ---@field [8] boolean Whether the primary is on
 ---@field [9] table<Filehash, number> The window's own access history
 ---@field [10] {name: string, marks: table<string, Filehash>}[]|nil The window's marks, when it has some
+---@field [11] table[]|nil The window's snapshots, when it has some, each its files by hash
 ---
 ---Window buffer relationships data structure
 ---Holds one entry per window with a triquetra, in window order (tab by tab)
@@ -50,6 +51,12 @@ local M = {}
 ---@return table routines
 local function marks()
 	return require('frogman.domains.marks').routines
+end
+
+---Get the snapshots domain's routines, required when first used, as the marks' are.
+---@return table routines
+local function snapshots()
+	return require('frogman.domains.snapshots').routines
 end
 
 
@@ -531,6 +538,7 @@ local function serialise_window_relationships(outsiders, tabpage)
 				[9] = history.data.crux_internals.window[winid] or {}
 			}
 			compressed[compressed_index][10] = marks().serialise("window", winid) -- its marks, when it has some
+			compressed[compressed_index][11] = snapshots().serialise_window(winid) -- its snapshots, when it has some
 			entry_wins[compressed_index] = winid
 			compressed_index = compressed_index + 1
 		end
@@ -653,7 +661,11 @@ end
 ---@return table<Filehash, NoNameBufferContent> texts Each text, by its buffer's hash
 local function serialise_noname_content(owner)
 	local texts = {}
-	local marked = marks().held_by(owner) -- the texts its marks hold go too, open or closed, an empty one included
+	-- the texts its marks and its snapshots hold go too, open or closed, an empty one included
+	local marked = marks().held_by(owner)
+	for filehash, _ in pairs(snapshots().held_by(owner)) do
+		marked[filehash] = true
+	end
 	for identifier, content in pairs(history.data.noname_content) do
 		if is_known(identifier) and (owner == nil or vim.tbl_contains(owner.closed, identifier) or marked[identifier]) then
 			texts[identifier] = content
@@ -823,12 +835,12 @@ local function restore_tabs(saved_tabs, what)
 	end
 end
 
----Carry into a write the No Name texts the file's marks name.
+---Carry into a write the No Name texts the file's marks and its windows' snapshots name.
 ---
----A records write leaves the windows and the tabs as the last save wrote them, their marks included,
----and a list in the file alone keeps its marks, so the texts those marks name stay: from memory when
----it holds them, and otherwise carried from the file, unread. A save writes the windows and tabs anew,
----so it carries only the lists' in the file alone.
+---A records write leaves the windows and the tabs as the last save wrote them, their marks and
+---snapshots included, and a list in the file alone keeps its marks, so the texts those name stay: from
+---memory when it holds them, and otherwise carried from the file, unread. A save writes the windows
+---and tabs anew, so it carries only the lists' in the file alone.
 ---
 ---@param texts table<Filehash, table> The texts the write takes, added to in place
 ---@param saved table The file's data
@@ -841,6 +853,7 @@ local function carry_marked_texts(texts, saved, key, scratch_dir, references)
 	if references then
 		for _, entry in ipairs(saved.windows or {}) do
 			marks().named_by(entry[10], named)
+			snapshots().named_by(entry[11], named)
 		end
 		for _, tab in ipairs(saved.tabs or {}) do
 			marks().named_by(tab.groups, named)
@@ -876,6 +889,49 @@ local function tab_marks_held_over(tabpage, session_id)
 		marks().hold_over(session_id, scope.groups, "tab on " .. marks().shows(vim.api.nvim_tabpage_get_win(tabpage)))
 		marks().drop_scope("tab", tabpage)
 	end
+end
+
+---Give the windows and a session's scope a session file's snapshots.
+---
+---Each matched window takes its entry's, and the snapshots of an entry no window took are held over
+---under the load's header. The held-over ones come from `snapshots`, each under its own header, unless
+---the session is open already, when memory's win: the file's whose id memory holds are skipped, and
+---the rest come in under the load's header. An entry's snapshot the file's `snapshots` holds too was
+---held over after the save that wrote the entry, by the records written since, so the held-over one,
+---the newer, is the one that comes back.
+---
+---@param saved_data table The file's data
+---@param taken table<integer, WinId> The window each saved entry went to, by the entry's index
+---@param session_id string The session's pool id ("" for the whole editor's)
+---@param own boolean Whether the session's own held-over snapshots come from the file
+---@param what string The load, as a held-over header names it
+---@return nil
+local function restore_snapshots(saved_data, taken, session_id, own, what)
+	local unclaimed, held_over = {}, {}
+	for _, saved in ipairs(type(saved_data.snapshots) == "table" and saved_data.snapshots or {}) do
+		if type(saved) == "table" and saved.id ~= nil then
+			held_over[saved.id] = true
+		end
+	end
+	if own then
+		snapshots().restore_held(session_id, saved_data.snapshots)
+	else
+		unclaimed = snapshots().not_held(saved_data.snapshots)
+	end
+	for i, entry in ipairs(saved_data.windows or {}) do
+		local winid = (taken or {})[i]
+		if type(entry) == "table" and type(entry[11]) == "table" then
+			local list = vim.tbl_filter(function(saved)
+				return type(saved) == "table" and not held_over[saved.id]
+			end, entry[11])
+			if winid and vim.api.nvim_win_is_valid(winid) then
+				snapshots().restore_window(winid, list)
+			else
+				vim.list_extend(unclaimed, list) -- a window the load didn't bring back
+			end
+		end
+	end
+	snapshots().hold_saved(session_id, unclaimed, what)
 end
 
 ---Give the scopes a session file's marks.
@@ -927,7 +983,11 @@ local function restore_marks(saved_data, taken, session_id, own, key, scratch_di
 		end
 	end
 	restore_tabs(saved_data.tabs, what) -- a tab session's file has none
-	for filehash, _ in pairs(marks().held_by(nil)) do
+	local held = marks().held_by(nil) -- the snapshots' texts too, which `restore_snapshots` gave before
+	for filehash, _ in pairs(snapshots().held_by(nil)) do
+		held[filehash] = true
+	end
+	for filehash, _ in pairs(held) do
 		local entry = type(saved_data.noname_content) == "table" and saved_data.noname_content[filehash]
 		local filepath = history.get_filepath_from_hash(filehash)
 		if type(entry) == "table" and not entry.reopen and type(entry.scratch) == "string" and filepath
@@ -1215,6 +1275,57 @@ local function enforce_session_file_policy(storage)
 	end
 	for _, list in ipairs(storage.detached or {}) do
 		clean(list.marks)
+	end
+	-- a snapshot keeps its files as a mark does: one whose current file no path names, or that's a No
+	-- Name text with no text, is left out, and so is any other file of it like that; its notes are weak
+	local function usable(filehash)
+		local filepath = type(filehash) == "string" and paths[filehash]
+		return filepath and not (filepath:match("^NONAME_") and (storage.noname_content or {})[filehash] == nil) or false
+	end
+	local function clean_snapshots(list)
+		if type(list) ~= "table" then
+			return nil
+		end
+		local kept = {}
+		for _, saved in ipairs(list) do
+			if type(saved) == "table" and usable(saved.current) then
+				for _, slot in ipairs({ "secondary", "ternary" }) do
+					if saved[slot] ~= nil and not usable(saved[slot]) then
+						broke("a snapshot's file no path names, or a No Name one with no text, was left out")
+						saved[slot] = nil
+					end
+				end
+				for _, key in ipairs({ "queue", "order" }) do
+					local files = vim.tbl_filter(usable, type(saved[key]) == "table" and saved[key] or {})
+					if #files < #(type(saved[key]) == "table" and saved[key] or {}) then
+						broke("a snapshot's file no path names, or a No Name one with no text, was left out")
+					end
+					saved[key] = files
+				end
+				for _, key in ipairs({ "dtm", "dsm" }) do
+					local map = {}
+					for k, v in pairs(type(saved[key]) == "table" and saved[key] or {}) do
+						if usable((tostring(k):gsub("%-swap$", ""))) and usable(v) then
+							map[k] = v
+						end
+					end
+					saved[key] = map
+				end
+				for filehash, _ in pairs(snapshots().named_by({ saved })) do
+					marked[filehash] = true
+				end
+				table.insert(kept, saved)
+			else
+				broke("a snapshot whose current file no path names, or a No Name one with no text, was left out")
+			end
+		end
+		return #kept > 0 and kept or nil
+	end
+	storage.snapshots = clean_snapshots(storage.snapshots)
+	for _, entry in ipairs(storage.windows or {}) do
+		if type(entry) == "table" then
+			entry[11] = clean_snapshots(entry[11])
+		end
 	end
 	for _, list in ipairs(storage.detached or {}) do
 		list.closed = vim.tbl_filter(keeps, list.closed or {})
@@ -1580,6 +1691,7 @@ local function start_tab_fresh(directory, name, tabpage)
 		data.unnamed = vim.deepcopy(data.editor_session) -- the whole editor's session, as tab sessions start
 	end
 	marks().drop_pending(tabpage)
+	snapshots().drop_pending(tabpage)
 	load_pool = join_for_load(tabpage, name, directory)
 	push_out(load_pool, tabpage)
 	tab_marks_held_over(tabpage, load_pool.id)
@@ -1621,6 +1733,7 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 	-- a session already open in a tab, or whose list was kept: what's in memory is newer than the file
 	local open = history.data.pools[history.routines.pool_id(name, directory)] ~= nil
 	marks().drop_pending(tabpage) -- what its closes queued to hold over goes, as the load replaces it
+	snapshots().drop_pending(tabpage)
 	load_pool = join_for_load(tabpage, name, directory)
 	push_out(load_pool, tabpage)
 	local scratch_dir = file_path .. ".d/"
@@ -1641,8 +1754,9 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 	for winid, window_crux in pairs(window_histories) do
 		history.data.crux_internals.window[winid] = window_crux
 	end
-	restore_marks(saved_data, taken, load_pool.id, not open, key, scratch_dir,
-		vim.fn.fnamemodify(name or directory, ":t") .. ", loaded into tab " .. vim.api.nvim_tabpage_get_number(tabpage)) -- before the texts reopen under new hashes
+	local what = vim.fn.fnamemodify(name or directory, ":t") .. ", loaded into tab " .. vim.api.nvim_tabpage_get_number(tabpage)
+	restore_snapshots(saved_data, taken, load_pool.id, not open, what)
+	restore_marks(saved_data, taken, load_pool.id, not open, key, scratch_dir, what) -- before the texts reopen under new hashes
 	tab_marks_held_over(tabpage, load_pool.id)
 	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
 		if window.data.crux[winid] then
@@ -1828,7 +1942,9 @@ function M.load_history(cwd, name)
 			end
 		end
 		load_pool = history.routines.pools()[""]
-		restore_marks(saved_data, taken, "", true, key, scratch_dir, vim.fn.fnamemodify(name or cwd, ":t") .. ", loaded") -- before the texts reopen under new hashes
+		local what = vim.fn.fnamemodify(name or cwd, ":t") .. ", loaded"
+		restore_snapshots(saved_data, taken, "", true, what)
+		restore_marks(saved_data, taken, "", true, key, scratch_dir, what) -- before the texts reopen under new hashes
 		reopen_noname_buffers(saved_data.noname_content or {}, key, scratch_dir)
 		for filehash, tag in pairs(saved_data.missing or {}) do
 			history.data.missing[filehash] = tag
@@ -2027,6 +2143,11 @@ local function narrow(storage)
 	local named = marks().named_by(storage.marks)
 	for _, entry in ipairs(storage.windows) do
 		marks().named_by(entry[10], named)
+	end
+	-- and the files the snapshots name, the held-over ones' and the windows'
+	snapshots().named_by(storage.snapshots, named)
+	for _, entry in ipairs(storage.windows) do
+		snapshots().named_by(entry[11], named)
 	end
 	for filehash, _ in pairs(named) do
 		add(filehash)
@@ -2289,10 +2410,14 @@ local function write_records(session, changes)
 		-- the session's own marks are records too; its windows' marks stay as the last save wrote them,
 		-- and so do the texts they name
 		saved.marks = marks().serialise("session", session.scope == "tab" and session.owner.id or "")
+		-- and so are the snapshots held over in its scope
+		saved.snapshots = snapshots().serialise_held(session.scope == "tab" and session.owner.id or "")
 		carry_marked_texts(texts, saved, key, file_path .. ".d/", true)
 		local named = marks().named_by(saved.marks)
+		snapshots().named_by(saved.snapshots, named)
 		for _, entry in ipairs(saved.windows or {}) do
 			marks().named_by(entry[10], named)
+			snapshots().named_by(entry[11], named)
 		end
 		for _, tab in ipairs(saved.tabs or {}) do
 			marks().named_by(tab.groups, named)
@@ -2725,6 +2850,7 @@ local function close_now(pool)
 		history.data.pools[pool.id] = nil
 		history.routines.drop_pool(pool)
 		marks().drop_scope("session", pool.id) -- its marks are in its file now, and go with its list
+		snapshots().drop_held(pool.id) -- and so are the snapshots held over in its scope
 		forget_closed_keys()
 		ledger.move("tab_closed", { subject = pool.id, name = history.routines.list_name(pool),
 			words = data.replayed and "its list let go" or "its records written; its list let go" })
@@ -2972,6 +3098,7 @@ function M.save_history(cwd, name, tab)
 		label = history.data.last_label, -- where you were at this save: the label being left at the next load
 		unwritten = next(history.data.unwritten) and vim.tbl_keys(history.data.unwritten) or nil, -- files never written
 		marks = marks().serialise("session", pool and pool.id or ""), -- the session's own marks, when it has some
+		snapshots = snapshots().serialise_held(pool and pool.id or ""), -- the snapshots held over in its scope, when there are some
 		tabs = not pool and serialise_tabs() or nil, -- the plain tabs' marks, when there are some
 	}
 

@@ -1472,10 +1472,11 @@ function M.track_closing_filehash(filehash, quiet, text)
 		-- Check if buffer is empty (no lines or single empty line)
 		local marked = false
 		for place, _ in pairs((handles.of_hash(filehash) or { holders = {} }).holders) do
-			marked = marked or place:match("^mark:") ~= nil
+			marked = marked or place:match("^mark:") ~= nil or place:match("^snap:") ~= nil
 		end
 		if (#lines == 0 or (#lines == 1 and lines[1] == "")) and marked then
-			-- a marked one keeps its empty text, for its mark alone: closed, and on no list
+			-- a marked one keeps its empty text, for its mark alone, and so does one a snapshot holds,
+			-- as it holds texts as marks do: closed, and on no list
 			local winid = vim.fn.bufwinid(bufnr)
 			data.noname_content[filehash] = text or { lines = { "" }, filetype = vim.bo[bufnr].filetype,
 				cursor = winid ~= -1 and vim.api.nvim_win_get_cursor(winid) or { 1, 0 } }
