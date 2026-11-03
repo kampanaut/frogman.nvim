@@ -16,6 +16,7 @@ M.add = routines.add
 M.jump = routines.jump
 M.set_mode = routines.set_mode
 M.label_of = routines.label_of
+M.labels = routines.labels
 M.marked_paths = routines.marked_paths
 M.flash_of = routines.flash_of
 M.popup = require('frogman.domains.marks.popup')
@@ -84,9 +85,8 @@ function M.init_autocmds(group)
 			-- the tab closing is the current one; a tab session's, but a detached list's, ends there
 			local closing = vim.api.nvim_get_current_tabpage()
 			local pool = require('frogman.domains.history').data.pools[require('frogman.domains.history').data.tab_pools[closing] or ""]
-			if pool and pool.id ~= "" and not pool.detached then
-				data.ending[closing] = true
-			end
+			-- read anew at each close's start: a tab that outlived a refused close may be a detached list's now
+			data.ending[closing] = (pool and pool.id ~= "" and not pool.detached) or nil
 			for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
 				if data.scopes.tab[tabpage] then
 					data.tab_shows[tabpage] = { session = require('frogman.domains.history').data.tab_pools[tabpage] or "",

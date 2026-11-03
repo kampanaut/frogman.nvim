@@ -349,6 +349,19 @@ local comps = require('frogman').bufferline.cokeline.create_buffer_components()
 return comps[7].text({ number = ..., filename = 'b.txt', index = 1, is_focused = true })
 ]==]
 
+T['T852 [char] (M12, M15) a refresh reads the marks once'] = function()
+	child.steps({ ':e a', ':e b', "<M-'><M-'><M-a>", ':e c', "<M-'><M-'><M-s>", ':e d', "<M-'><M-'><M-d>", ':e e' })
+	local asked = child.lua([[
+		local R = require('frogman.domains.marks.routines')
+		local scope_key, n = R.scope_key, 0
+		R.scope_key = function(...) n = n + 1; return scope_key(...) end
+		local ok = pcall(require('frogman.domains.ui.routines').refresh_ui, vim.api.nvim_get_current_win())
+		R.scope_key = scope_key
+		return { ok = ok, n = n }
+	]])
+	eq(asked, { ok = true, n = 1 })
+end
+
 T['T456 [char] (M12, M15) the indicators by kind'] = function()
 	child.steps({ ':e a', ':e b', "<M-'><M-'><M-a>" })
 	child.settle(300)

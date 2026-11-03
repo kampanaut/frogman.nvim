@@ -1382,8 +1382,10 @@ function M.refresh_ui(cwin)
 	-- the aliases it has there
 	local marks = require('frogman.domains.marks')
 	cache.harpooned_lookup, cache.harpooned_buffers = {}, {}
+	local labels = marks.labels(cwin) -- one walk of the marks for the whole refresh
 	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-		local label = vim.api.nvim_buf_is_valid(bufnr) and marks.label_of(history.get_hash_from_buffer(bufnr), cwin) or nil
+		local filehash = vim.api.nvim_buf_is_valid(bufnr) and history.get_hash_from_buffer(bufnr)
+		local label = filehash and labels[filehash] or nil
 		cache.harpooned_buffers[bufnr] = label ~= nil
 		cache.harpooned_lookup[bufnr] = label
 	end

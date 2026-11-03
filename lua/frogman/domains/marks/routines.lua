@@ -322,22 +322,33 @@ function M.label_of(filehash, winid)
 	if filehash == nil then
 		return nil
 	end
+	return M.labels(winid)[filehash]
+end
+
+---Get every marked file's aliases in the first group of the current mode's scope, at once: what a
+---refresh draws, read from one walk of the group rather than one for each buffer.
+---
+---@param winid WinId|nil The window whose scope it reads (nil = the current one)
+---@return table<Filehash, string> labels File → its aliases, like "a,s"
+function M.labels(winid)
 	local group = M.first_group(M.scope(M.scope_key(data.mode, winid)))
 	if group == nil then
-		return nil
+		return {}
 	end
 	local index, found = alias_index(), {}
 	for alias, _ in pairs(group.marks) do
 		local handle = assigned(alias) and M.handle_of(group, alias)
-		if handle and handle.hash == filehash then
-			table.insert(found, alias)
+		if handle then
+			found[handle.hash] = found[handle.hash] or {}
+			table.insert(found[handle.hash], alias)
 		end
 	end
-	if #found == 0 then
-		return nil
+	local labels = {}
+	for filehash, aliases in pairs(found) do
+		table.sort(aliases, function(a, b) return before(index, a, b) end)
+		labels[filehash] = table.concat(aliases, ",")
 	end
-	table.sort(found, function(a, b) return before(index, a, b) end)
-	return table.concat(found, ",")
+	return labels
 end
 
 ---Get the paths of the files the first group of the current mode's scope marks, in their aliases' order.
@@ -473,17 +484,63 @@ end
 ---@param what string What it was, like "window on api.lua" or "proj, loaded into tab 2"
 ---@return string name Like "held over · window on api.lua · 10-31 13:05"
 local function held_name(scope, what)
-	local base = "held over · " .. what .. " · " .. os.date("%m-%d %H:%M")
 	local taken = {}
 	for _, group in ipairs(scope and scope.groups or {}) do
 		taken[group.name] = true
 	end
+	return M.held_header(what, taken)
+end
+
+---Get a held-over header, a group's or a snapshot's: what it was and when, numbered on when the
+---names where it goes have it already.
+---
+---@param what string What it was, like "window on api.lua" or "proj, loaded into tab 2"
+---@param taken table<string, true> The names where it goes
+---@return string header Like "held over · window on api.lua · 10-31 13:05"
+function M.held_header(what, taken)
+	local base = "held over · " .. what .. " · " .. os.date("%m-%d %H:%M")
 	local name, n = base, 1
 	while taken[name] do
 		n = n + 1
 		name = base .. " #" .. n
 	end
 	return name
+end
+
+---Wait a tick before doing what a close left, in a queue a load or a tab's close can drop from.
+---
+---The entry runs once the editor settles, unless it's off the queue by then.
+---
+---@param queue fun(): table[] The queue as it is when the tick comes, each entry with the `tab` it came from
+---@param entry table
+---@param run fun(entry: table)
+---@return nil
+function M.wait_a_tick(queue, entry, run)
+	table.insert(queue(), entry)
+	vim.schedule(function()
+		-- one a teardown or a load dropped meanwhile isn't there any more
+		for i, waiting in ipairs(queue()) do
+			if waiting == entry then
+				table.remove(queue(), i)
+				run(entry)
+				return
+			end
+		end
+	end)
+end
+
+---Drop what a queue holds from a tab, each entry handed to `dropped` as it goes.
+---
+---@param queue table[]
+---@param tabpage integer
+---@param dropped fun(entry: table)
+---@return nil
+function M.drop_waiting(queue, tabpage, dropped)
+	for i = #queue, 1, -1 do
+		if queue[i].tab == tabpage then
+			dropped(table.remove(queue, i))
+		end
+	end
 end
 
 ---Hold groups over in a session's scope, below its groups.
@@ -574,19 +631,11 @@ function M.queue_hold_over(tabpage, session_id, groups, what)
 	history.handles.hold(place, hashes)
 	data.places["waiting:" .. data.waited] = { [place] = true }
 	local entry = { tab = tabpage, session = session_id, groups = copy, what = what, place = place, key = "waiting:" .. data.waited }
-	table.insert(data.pending, entry)
-	vim.schedule(function()
-		-- one a teardown or a load dropped meanwhile isn't there any more
-		for i, waiting in ipairs(data.pending) do
-			if waiting == entry then
-				table.remove(data.pending, i)
-				M.hold_over(entry.session, entry.groups, entry.what, true)
-				repaint()
-				history.handles.drop_place(entry.place)
-				data.places[entry.key] = nil
-				return
-			end
-		end
+	M.wait_a_tick(function() return data.pending end, entry, function()
+		M.hold_over(entry.session, entry.groups, entry.what, true)
+		repaint()
+		history.handles.drop_place(entry.place)
+		data.places[entry.key] = nil
 	end)
 end
 
@@ -595,14 +644,10 @@ end
 ---@param tabpage integer
 ---@return nil
 function M.drop_pending(tabpage)
-	for i = #data.pending, 1, -1 do
-		local entry = data.pending[i]
-		if entry.tab == tabpage then
-			table.remove(data.pending, i)
-			history.handles.drop_place(entry.place)
-			data.places[entry.key] = nil
-		end
-	end
+	M.drop_waiting(data.pending, tabpage, function(entry)
+		history.handles.drop_place(entry.place)
+		data.places[entry.key] = nil
+	end)
 end
 
 ---Hold over the marks of the windows and tabs that closed without their events, by noautocmd or while

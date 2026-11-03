@@ -238,17 +238,11 @@ end
 ---@param what string What it was, like "window on api.lua" or "proj, loaded into tab 2"
 ---@return string header Like "held over · window on api.lua · 11-03 07:50"
 local function held_name(session_id, what)
-	local base = "held over · " .. what .. " · " .. os.date("%m-%d %H:%M")
 	local taken = {}
 	for _, snapshot in ipairs(M.held_in(session_id)) do
 		taken[snapshot.held] = true
 	end
-	local name, n = base, 1
-	while taken[name] do
-		n = n + 1
-		name = base .. " #" .. n
-	end
-	return name
+	return require('frogman.domains.marks.routines').held_header(what, taken)
 end
 
 ---Hold snapshots over in a session's scope, under one header, after the ones held there already.
@@ -288,16 +282,8 @@ function M.queue_hold_over(winid)
 	local tabpage = vim.api.nvim_win_get_tabpage(winid)
 	local entry = { tab = tabpage, session = M.session_of(winid), snapshots = snapshots,
 		what = "window on " .. require('frogman.domains.marks').routines.shows(winid) }
-	table.insert(data.pending, entry)
-	vim.schedule(function()
-		-- one a teardown or a load dropped meanwhile isn't there any more
-		for i, waiting in ipairs(data.pending) do
-			if waiting == entry then
-				table.remove(data.pending, i)
-				M.hold_over(entry.session, entry.snapshots, entry.what)
-				return
-			end
-		end
+	require('frogman.domains.marks.routines').wait_a_tick(function() return data.pending end, entry, function()
+		M.hold_over(entry.session, entry.snapshots, entry.what)
 	end)
 end
 
@@ -319,15 +305,11 @@ end
 ---@param tabpage integer
 ---@return nil
 function M.drop_pending(tabpage)
-	for i = #data.pending, 1, -1 do
-		local entry = data.pending[i]
-		if entry.tab == tabpage then
-			table.remove(data.pending, i)
-			for _, snapshot in ipairs(entry.snapshots) do
-				history.handles.drop_place(place_of(snapshot))
-			end
+	require('frogman.domains.marks.routines').drop_waiting(data.pending, tabpage, function(entry)
+		for _, snapshot in ipairs(entry.snapshots) do
+			history.handles.drop_place(place_of(snapshot))
 		end
-	end
+	end)
 end
 
 ---Let every snapshot go, as a whole-editor load from idle starts from nothing.

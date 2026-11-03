@@ -1300,6 +1300,35 @@ T['T847 [char] (M16, A26) a window picker that raises leaves the list open'] = f
 	eq({ told = told, dumped = child.dumped_since(before), open = list() ~= vim.NIL }, { told = 1, open = true })
 end
 
+T['T854 [char] (M15, M16) a tab that outlived a refused close isn\'t taken for a tab session\'s at its next'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	eq(S2.save(child), { true }) -- the whole editor's file, before t moves
+	child.lua('vim.o.hidden = false')
+	child.cmd('enew')
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "unsaved" })')
+	eq(child.lua('return (pcall(vim.cmd, "tabclose"))'), false)
+	child.settle()
+	-- the edit let go without wiping its buffer, which would close the tab's only window and the tab with it
+	child.lua('vim.bo.modified = false; vim.cmd("edit d.txt"); vim.o.hidden = true')
+	child.settle()
+	eq(S2.load_tab_session(child, 't'), { true }) -- the second tab keeps t_DETACHED
+	child.cmd('tabnext 2')
+	child.settle()
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e c', TAKE, ':e d' })
+	child.cmd('tabclose')
+	child.settle(500)
+	eq(child.lua([[
+		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+		for _, l in ipairs(saved.detached or {}) do
+			if l.label == 't_DETACHED' then return #(l.snapshots or {}) end
+		end
+		return -1
+	]]), 1)
+end
+
 T['T838 [char] (M16, M5) a detached list\'s tab closing writes the snapshots its closed windows held over'] = function()
 	local s = S2.shared()
 	tab_session(s)
