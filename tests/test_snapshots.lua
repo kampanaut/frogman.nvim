@@ -920,6 +920,45 @@ T['T805 [char] (M16) a file gone from disk shows as a placeholder, and <M-v> ref
 			quiet = { errors = 0, dumps = 0 } })
 end
 
+T['T888 [char] (M16) a snapshot that can\'t show leaves the list open'] = function()
+	taken()
+	child.steps({ ':e a', ':e e', ':e d' })
+	child.cmd('setlocal buftype=nofile')
+	child.settle(100)
+	child.steps({ ':e e' })
+	child.messages()
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	local told = #vim.tbl_filter(function(m) return m:find("d.txt can't be shown while another buffer has its name", 1, true) ~= nil end, said())
+	eq({ told = told, open = list() ~= vim.NIL }, { told = 1, open = true })
+end
+
+T['T889 [char] (M16) a preview whose file can\'t load leaves nothing showing'] = function()
+	local before = #child.dump_files()
+	taken()
+	child.steps({ ':e a', ':e e' })
+	child.cmd('bdelete d.txt')
+	child.settle()
+	child.steps({ LIST })
+	child.lua([[
+		local bufload = vim.fn.bufload
+		_G.FRG_BUFLOAD = bufload
+		vim.fn.bufload = function(buf)
+			if vim.api.nvim_buf_get_name(buf):match('d%.txt$') then error('E325: ATTENTION, aborted') end
+			return bufload(buf)
+		end
+	]])
+	child.step('<CR>')
+	child.settle(100)
+	child.lua('vim.fn.bufload = _G.FRG_BUFLOAD')
+	local active = child.lua('return require("frogman.domains.snapshots").preview.active()')
+	child.messages()
+	child.steps({ '<M-f>' })
+	local refused = #vim.tbl_filter(function(m) return m:find('a snapshot is showing', 1, true) ~= nil end, said())
+	eq({ active = active, refused = refused, dumps = #child.dump_files() - before }, { active = false, refused = 0, dumps = 0 })
+end
+
 T['T806 [char] (M16, I10) a file whose name an untracked buffer has isn\'t borrowed'] = function()
 	taken()
 	child.steps({ ':e a', ':e e', ':e d' })
@@ -1546,6 +1585,35 @@ T['T820 [char] (M2 Holders, M16) a path no holder takes is forgotten once the ed
 	]]) }, { n = 1, q = false })
 end
 
+T['T884 [char] (M15, M16) a window gone without its WinClosed in a tab session\'s tab is held over in that session\'s scope'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(S2.load_tab_session(child, 't'), { true })
+	local id = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e c', "<M-'><M-'><M-a>", TAKE })
+	child.cmd('noautocmd close')
+	child.settle()
+	child.lua('require("frogman.domains.history").routines.cleanup_system()')
+	child.settle(100)
+	eq(child.lua([[
+		local id = ...
+		local Mk, Sn = require('frogman.domains.marks'), require('frogman.domains.snapshots')
+		local function groups(of)
+			local n = 0
+			for _, g in ipairs((Mk.data.scopes.session[of] or { groups = {} }).groups) do
+				if g.held and g.name:match('^held over · window · ') then n = n + 1 end
+			end
+			return n
+		end
+		return { t = { groups = groups(id), snapshots = #Sn.routines.held_in(id) },
+			editor = { groups = groups(''), snapshots = #Sn.routines.held_in('') } }
+	]], { id }), { t = { groups = 1, snapshots = 1 }, editor = { groups = 0, snapshots = 0 } })
+end
+
 T['T821 [char] (M15, M16) a window closed without its WinClosed has its marks and snapshots held over at the next cleanup pass'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.cmd('split')
@@ -1614,6 +1682,49 @@ local function window_marks(win)
 		end
 		return out
 	]], { win })
+end
+
+
+-- A window's groups: each one's name, whether it's held over, and its marks by file name.
+local function window_groups(win)
+	return child.lua([[
+		local d = require('frogman.domains.marks').data
+		local H = require('frogman.domains.history')
+		local s = d.scopes.window[...]
+		local out = {}
+		for _, g in ipairs(s and s.groups or {}) do
+			local marks = {}
+			for alias, hid in pairs(g.marks) do
+				local h = H.handles.get(H.handles.resolve(hid))
+				marks[alias] = h and vim.fn.fnamemodify(H.get_filepath_from_hash(h.hash), ':t:r') or false
+			end
+			table.insert(out, { name = g.name, held = g.held == true, marks = marks })
+		end
+		return out
+	]], { win })
+end
+
+T['T881 [char] (M15, S1 Load) a load under the pop-up\'s edits keeps both'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', "<M-'><M-'><M-s>", ':e a', TAKE })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e b', "<M-'><M-'><M-a>", ':e a' })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ "<M-'><M-e>" })
+	child.lua('vim.api.nvim_buf_set_lines(vim.fn.bufnr("frogman://marks"), 0, -1, false, { "❖ main", "a -> b.txt", "d -> d.txt" })')
+	child.lua('vim.api.nvim_set_current_win(...)', { win })
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	child.lua('vim.api.nvim_set_current_win(vim.fn.bufwinid("frogman://marks"))')
+	child.cmd('silent! write')
+	child.settle(100)
+	local groups = window_groups(win)
+	eq({ n = #groups, first = groups[1] and groups[1].marks, held = groups[2] and groups[2].held, marks = groups[2] and groups[2].marks,
+		load = groups[2] and groups[2].name:find('t, loaded into tab 1', 1, true) ~= nil },
+		{ n = 2, first = { a = 'b', d = 'd' }, held = true, marks = { s = 'c' }, load = true })
 end
 
 T['T827 [char] (M15, M16, S1 Load) a tab session\'s load holds a matched window\'s own marks and snapshots over'] = function()

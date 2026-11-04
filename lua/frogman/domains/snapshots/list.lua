@@ -490,11 +490,18 @@ function M.show()
 			" keeps its buffer ('winfixbuf'), so a snapshot can't show there.", vim.log.levels.WARN)
 		return
 	end
+	local row = open.win and vim.api.nvim_win_is_valid(open.win) and vim.api.nvim_win_get_cursor(open.win)[1]
 	if open.win and vim.api.nvim_win_is_valid(open.win) then
 		vim.api.nvim_win_close(open.win, true)
 	end
 	vim.api.nvim_set_current_win(origin)
-	require('frogman.domains.snapshots.preview').start(snapshot, origin)
+	if not require('frogman.domains.snapshots.preview').start(snapshot, origin) then
+		-- it said why: the list again, on the line it was on
+		M.open()
+		if is_open() and row and row <= vim.api.nvim_buf_line_count(open.buf) then
+			vim.api.nvim_win_set_cursor(open.win, { row, 0 })
+		end
+	end
 end
 
 ---Map the list's keys on its buffer, from `keymaps.views`.

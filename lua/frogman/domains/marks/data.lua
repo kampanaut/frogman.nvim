@@ -4,6 +4,7 @@
 ---@field name string The group's name
 ---@field marks table<string, integer> Alias → the handle number of the file it marks
 ---@field held boolean|nil Whether it's held over: a closed window's or tab's, or a load's, until you move it first
+---@field loaded string|nil The load that gave it, as a held-over group would name it, for a marks pop-up with edits not written
 ---
 ---@class MarksScope A window's, a tab's or a session's marks
 ---@field groups MarksGroup[] Its groups, in order; the first that isn't held over drives the keys
@@ -18,7 +19,6 @@
 ---@field tab_shows table<integer, { session: string, what: string }> Each tab's session and what it showed, read as tabs close
 ---@field ending table<integer, integer> The tab sessions' tabs closing now, each with the last wait queued before its close began: what its windows queue after is dropped at its TabClosed
 ---@field copies table<WinId, { from: WinId, given: table|nil }> The splits that started with a copy of a window's marks: the window, and the marks given, serialised
----@field with_tab table<WinId, true> The windows that took their tab with them as they closed: their marks stay until the tab has closed, for its TabClosedPre, which comes after their WinClosed
 
 ---@type MarksState
 local corpus = {
@@ -31,7 +31,6 @@ local corpus = {
 	tab_shows = {},
 	ending = {},
 	copies = {},
-	with_tab = {},
 }
 
 return corpus

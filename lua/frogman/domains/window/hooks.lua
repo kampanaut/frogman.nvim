@@ -172,14 +172,11 @@ function M.init_autocmds(group)
 		group = group,
 		callback = function(args)
 			local winid = tonumber(args.file)
-			if winid and require('frogman.held').closes_tab(winid) then
-				-- its tab closes with it, and the tab's TabClosedPre, after this, may save it whole
-				vim.api.nvim_create_autocmd("TabClosed", { group = group, once = true, callback = function()
-					data.unregister_triquetra(winid)
-				end })
+			if not winid then
 				return
 			end
-			data.unregister_triquetra(winid)
+			-- kept until the close is over, so the TabClosedPre of a tab it takes with it may save it whole
+			require('frogman.held').after_close(winid, function() data.unregister_triquetra(winid) end)
 		end,
 	})
 

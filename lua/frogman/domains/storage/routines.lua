@@ -662,10 +662,7 @@ end
 local function serialise_noname_content(owner)
 	local texts = {}
 	-- the texts its marks and its snapshots hold go too, open or closed, an empty one included
-	local marked = marks().held_by(owner)
-	for filehash, _ in pairs(snapshots().held_by(owner)) do
-		marked[filehash] = true
-	end
+	local marked = require('frogman.held').files_held(owner)
 	for identifier, content in pairs(history.data.noname_content) do
 		if is_known(identifier) and (owner == nil or vim.tbl_contains(owner.closed, identifier) or marked[identifier]) then
 			texts[identifier] = content
@@ -807,7 +804,7 @@ end
 ---
 ---@param saved_tabs table[]|nil The file's `tabs`
 ---@param what string The load, as a held-over group names it
----@return nil
+---@return table<integer, true> unclaimed The saved tabs no tab took, by index, for the records to take off
 local function restore_tabs(saved_tabs, what)
 	local taken, unclaimed = {}, {}
 	for i, saved in ipairs(type(saved_tabs) == "table" and saved_tabs or {}) do
@@ -835,6 +832,38 @@ local function restore_tabs(saved_tabs, what)
 	return unclaimed
 end
 
+---Get the hashes a session file's marks and snapshots name, in the parts of it asked for: its own,
+---its windows', its tabs' and its detached lists'.
+---
+---@param storage table The file's data
+---@param parts {session: boolean|nil, windows: boolean|nil, tabs: boolean|nil, detached: boolean|nil}
+---@return table<Filehash, true> named
+local function named_in(storage, parts)
+	local named = {}
+	if parts.session then
+		marks().named_by(storage.marks, named)
+		snapshots().named_by(storage.snapshots, named)
+	end
+	if parts.windows then
+		for _, entry in ipairs(storage.windows or {}) do
+			marks().named_by(entry[10], named)
+			snapshots().named_by(entry[11], named)
+		end
+	end
+	if parts.tabs then
+		for _, tab in ipairs(storage.tabs or {}) do
+			marks().named_by(tab.groups, named)
+		end
+	end
+	if parts.detached then
+		for _, list in ipairs(storage.detached or {}) do
+			marks().named_by(list.marks, named)
+			snapshots().named_by(list.snapshots, named)
+		end
+	end
+	return named
+end
+
 ---Carry into a write the No Name texts the file's marks and its windows' snapshots name.
 ---
 ---A records write leaves the windows and the tabs as the last save wrote them, their marks and
@@ -849,20 +878,7 @@ end
 ---@param references boolean Whether the file's windows and tabs are kept, as a records write keeps them
 ---@return nil
 local function carry_marked_texts(texts, saved, key, scratch_dir, references)
-	local named = {}
-	if references then
-		for _, entry in ipairs(saved.windows or {}) do
-			marks().named_by(entry[10], named)
-			snapshots().named_by(entry[11], named)
-		end
-		for _, tab in ipairs(saved.tabs or {}) do
-			marks().named_by(tab.groups, named)
-		end
-	end
-	for _, list in ipairs(saved.detached or {}) do
-		marks().named_by(list.marks, named)
-		snapshots().named_by(list.snapshots, named)
-	end
+	local named = named_in(saved, { windows = references, tabs = references, detached = true })
 	for filehash, _ in pairs(named) do
 		local entry = type(saved.noname_content) == "table" and saved.noname_content[filehash]
 		if texts[filehash] == nil then
@@ -892,6 +908,21 @@ local function tab_marks_held_over(tabpage, session_id)
 	end
 end
 
+---Get the window entries a detached list waits on, its tab taking them back when it comes back: those
+---its `windows` name, by index.
+---
+---@param saved_data table A whole editor's file, as read
+---@return table<integer, true> waited
+local function waited_on(saved_data)
+	local waited = {}
+	for _, list in ipairs(type(saved_data.detached) == "table" and saved_data.detached or {}) do
+		for _, i in ipairs(type(list.windows) == "table" and list.windows or {}) do
+			waited[i] = true
+		end
+	end
+	return waited
+end
+
 ---Give the windows and a session's scope a session file's snapshots.
 ---
 ---Each matched window takes its entry's, the ones it had held over under the load's header, and the
@@ -908,7 +939,7 @@ end
 ---@param what string The load, as a held-over header names it
 ---@return table<integer, true> gone The entries no window took that carried snapshots, by index
 local function restore_snapshots(saved_data, taken, session_id, own, what)
-	local unclaimed, held_over, gone = {}, {}, {}
+	local unclaimed, held_over, gone, waited = {}, {}, {}, waited_on(saved_data)
 	for _, saved in ipairs(type(saved_data.snapshots) == "table" and saved_data.snapshots or {}) do
 		if type(saved) == "table" and saved.id ~= nil then
 			held_over[saved.id] = true
@@ -922,8 +953,11 @@ local function restore_snapshots(saved_data, taken, session_id, own, what)
 	for i, entry in ipairs(saved_data.windows or {}) do
 		local winid = (taken or {})[i]
 		if type(entry) == "table" and type(entry[11]) == "table" then
+			local back = waited[i] and winid and vim.api.nvim_win_is_valid(winid)
 			local list = vim.tbl_filter(function(saved)
-				return type(saved) == "table" and not held_over[saved.id]
+				-- a detached list's tab come back takes its window's snapshot from an unchanged copy a load held over
+				return type(saved) == "table" and (not held_over[saved.id]
+					or (back and snapshots().drop_load_copy(session_id, saved.id)))
 			end, entry[11])
 			if winid and vim.api.nvim_win_is_valid(winid) then
 				snapshots().restore_window(winid, list, session_id, what)
@@ -956,7 +990,7 @@ end
 ---@return table<integer, true> gone The window entries no window took that carried marks, by index
 ---@return table<integer, true> gone_tabs The tab entries no tab took, by index
 local function restore_marks(saved_data, taken, session_id, own, key, scratch_dir, what)
-	local gone = {}
+	local gone, waited = {}, waited_on(saved_data)
 	if own then
 		marks().restore("session", session_id, saved_data.marks)
 	else
@@ -999,7 +1033,11 @@ local function restore_marks(saved_data, taken, session_id, own, key, scratch_di
 					end
 					marks().hold_over(session_id, keep, what, nil, true)
 				end
-				marks().restore("window", winid, entry[10])
+				marks().restore("window", winid, entry[10], what)
+				if waited[i] then
+					-- a detached list's tab came back with this window: the copy a load held over goes, unchanged
+					marks().drop_load_copies(session_id, entry[10])
+				end
 			else
 				marks().hold_over(session_id, entry[10], what, true, true) -- a window the load didn't bring back
 				gone[i] = true
@@ -1007,10 +1045,7 @@ local function restore_marks(saved_data, taken, session_id, own, key, scratch_di
 		end
 	end
 	local gone_tabs = restore_tabs(saved_data.tabs, what) -- a tab session's file has none
-	local held = marks().held_by(nil) -- the snapshots' texts too, which `restore_snapshots` gave before
-	for filehash, _ in pairs(snapshots().held_by(nil)) do
-		held[filehash] = true
-	end
+	local held = require('frogman.held').files_held(nil) -- the snapshots' texts too, which `restore_snapshots` gave before
 	for filehash, _ in pairs(held) do
 		local entry = type(saved_data.noname_content) == "table" and saved_data.noname_content[filehash]
 		local filepath = history.get_filepath_from_hash(filehash)
@@ -1038,14 +1073,10 @@ end
 ---@param tabs table<integer, true> The tab entries no tab took
 ---@return nil
 local function remember_unclaimed(file_path, saved_data, snapped, marked, tabs)
-	local windows, kept_tabs, listed = {}, {}, {}
+	local windows, kept_tabs = {}, {}
 	-- an entry a detached list names among its windows is the list's: its tab takes it back when it comes
 	-- back, so the records never take its marks or snapshots off
-	for _, list in ipairs(type(saved_data.detached) == "table" and saved_data.detached or {}) do
-		for _, i in ipairs(type(list.windows) == "table" and list.windows or {}) do
-			listed[i] = true
-		end
-	end
+	local listed = waited_on(saved_data)
 	for i, _ in pairs(vim.tbl_extend("force", snapped, marked)) do
 		if not listed[i] then
 			windows[i] = vim.deepcopy(saved_data.windows[i])
@@ -2233,16 +2264,9 @@ local function narrow(storage)
 	for _, filehash in ipairs(storage.closed) do
 		add(filehash)
 	end
-	-- the files the marks name, one only a mark holds among them
-	local named = marks().named_by(storage.marks)
-	for _, entry in ipairs(storage.windows) do
-		marks().named_by(entry[10], named)
-	end
-	-- and the files the snapshots name, the held-over ones' and the windows'
-	snapshots().named_by(storage.snapshots, named)
-	for _, entry in ipairs(storage.windows) do
-		snapshots().named_by(entry[11], named)
-	end
+	-- the files the marks and the snapshots name, one only a mark or a snapshot holds among them (a tab
+	-- session's file has no tabs, and no detached lists)
+	local named = named_in(storage, { session = true, windows = true })
 	for filehash, _ in pairs(named) do
 		add(filehash)
 	end
@@ -2525,15 +2549,7 @@ local function write_records(session, changes)
 		-- and so are the snapshots held over in its scope
 		saved.snapshots = snapshots().serialise_held(session.scope == "tab" and session.owner.id or "")
 		carry_marked_texts(texts, saved, key, file_path .. ".d/", true)
-		local named = marks().named_by(saved.marks)
-		snapshots().named_by(saved.snapshots, named)
-		for _, entry in ipairs(saved.windows or {}) do
-			marks().named_by(entry[10], named)
-			snapshots().named_by(entry[11], named)
-		end
-		for _, tab in ipairs(saved.tabs or {}) do
-			marks().named_by(tab.groups, named)
-		end
+		local named = named_in(saved, { session = true, windows = true, tabs = true })
 		for filehash, _ in pairs(named) do
 			saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
 		end

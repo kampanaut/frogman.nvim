@@ -417,6 +417,14 @@ function M.resolve(id)
 	return id
 end
 
+---Get the live handle a handle number leads to, following its moves.
+---
+---@param id integer The handle's number, as a mark or a snapshot keeps it
+---@return FileHandle|nil handle The live handle, or nil when none is
+function M.follow(id)
+	return M.get(M.resolve(id))
+end
+
 ---Check if a file is held by anything besides the windows' slots: an open buffer, a list or a mark.
 ---
 ---@param hash Filehash|nil

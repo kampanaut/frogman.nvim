@@ -127,6 +127,11 @@ function M.hold_scope(kind, id)
 		end
 	end
 	data.places[key] = next(now) and now or nil
+	if kind == "session" then
+		require('frogman.held').records_changed(id) -- a session's own marks are records
+	elseif kind == "window" then
+		require('frogman.held').note_session(id)
+	end
 	local popup = package.loaded['frogman.domains.marks.popup']
 	if popup then
 		popup.scope_changed(kind, id) -- an open pop-up with nothing unwritten shows the change
@@ -158,7 +163,6 @@ function M.teardown()
 	data.pending = {} -- what was queued to be held over goes with the rest
 	data.tab_shows = {}
 	data.copies = {}
-	data.with_tab = {}
 end
 
 ---Check if a window's marks are a copy another window still holds alike: the copy it was given, the
@@ -510,11 +514,13 @@ end
 ---@param kind "window"|"tab"|"session"
 ---@param id any
 ---@param groups {name: string, marks: table<string, Filehash>}[]|nil The file's groups
+---@param what string|nil The load, as a held-over group names it: kept on each group, for a marks pop-up
+---with edits not written, whose write holds them over under it
 ---@return nil
-function M.restore(kind, id, groups)
+function M.restore(kind, id, groups, what)
 	local scope = { groups = {} }
 	for _, saved in ipairs(type(groups) == "table" and groups or {}) do
-		local group = { name = saved.name, marks = {}, held = saved.held == true or nil }
+		local group = { name = saved.name, marks = {}, held = saved.held == true or nil, loaded = what }
 		for alias, filehash in pairs(type(saved.marks) == "table" and saved.marks or {}) do
 			local handle = history.handles.of_hash(filehash)
 			if handle then
@@ -569,6 +575,33 @@ local function held_name(scope, what)
 		taken[group.name] = true
 	end
 	return require('frogman.held').held_header(what, taken)
+end
+
+---Let go of the copies a load held over of these groups, as the window they came from takes them back:
+---each held-over group under a load's header still holding one of them, alias for alias.
+---
+---@param session_id string The session's pool id ("" for the whole editor's)
+---@param groups {name: string, marks: table<string, Filehash>}[] The groups the window took back, saved
+---@return nil
+function M.drop_load_copies(session_id, groups)
+	local scope = data.scopes.session[session_id]
+	if scope == nil then
+		return
+	end
+	local held = require('frogman.held')
+	for i = #scope.groups, 1, -1 do
+		local group = scope.groups[i]
+		if group.held and held.from_load(group.name) then
+			local marks = M.hashes_of(group)
+			for _, saved in ipairs(groups) do
+				if type(saved) == "table" and vim.deep_equal(saved.marks, marks) then
+					table.remove(scope.groups, i)
+					break
+				end
+			end
+		end
+	end
+	M.hold_scope("session", session_id)
 end
 
 ---Hold groups over in a session's scope, below its groups.
@@ -631,9 +664,9 @@ end
 ---@param session_id string The session's pool id ("" for the whole editor's)
 ---@param groups MarksGroup[] The groups, live
 ---@param what string What they were
----@param last boolean|nil Whether a window that takes its tab with it queued them, so they wait as the tab's
+---@param ends boolean|nil Whether a tab session's last window queued them: they wait past its tab's close, held over only when another window keeps the tab open
 ---@return nil
-function M.queue_hold_over(tabpage, session_id, groups, what, last)
+function M.queue_hold_over(tabpage, session_id, groups, what, ends)
 	-- each mark by its file's handle, so a file moved before the tick keeps its mark
 	local copy, hashes = {}, {}
 	for _, group in ipairs(groups) do
@@ -657,14 +690,16 @@ function M.queue_hold_over(tabpage, session_id, groups, what, last)
 	local place = "mark:waiting:" .. data.waited
 	history.handles.hold(place, hashes)
 	data.places["waiting:" .. data.waited] = { [place] = true }
-	local entry = { tab = tabpage, session = session_id, groups = copy, what = what, place = place, key = "waiting:" .. data.waited,
-		last = last or nil }
+	local entry = { tab = tabpage, session = session_id, groups = copy, what = what, place = place, key = "waiting:" .. data.waited }
+	local function let_go()
+		history.handles.drop_place(entry.place)
+		data.places[entry.key] = nil
+	end
 	require('frogman.held').wait_a_tick(function() return data.pending end, entry, function()
 		M.hold_over(entry.session, entry.groups, entry.what)
 		repaint()
-		history.handles.drop_place(entry.place)
-		data.places[entry.key] = nil
-	end)
+		let_go()
+	end, ends and let_go or nil)
 end
 
 ---Drop the held-over groups still queued from a tab, as a tab session's load into it starts.
@@ -680,13 +715,14 @@ function M.drop_pending(tabpage, after)
 end
 
 ---Hold over the marks of the windows and tabs that closed without their events, by noautocmd or while
----frogman was off: in the whole editor's scope, the session they were in no longer known.
+---frogman was off: in the scope of the session a window was last seen in, or the whole editor's.
 ---
 ---@return nil
 function M.hold_over_gone()
+	local held = require('frogman.held')
 	for winid, scope in pairs(data.scopes.window) do
-		if not vim.api.nvim_win_is_valid(winid) and not data.with_tab[winid] then
-			M.hold_over("", scope.groups, "window")
+		if not vim.api.nvim_win_is_valid(winid) and not held.closing(winid) then
+			M.hold_over(held.last_session(winid) or "", scope.groups, "window") -- where it was last seen
 			M.drop_scope("window", winid)
 		end
 	end
@@ -718,22 +754,10 @@ function M.held_by(owner)
 			end
 		end
 	end
-	local function its_tab(tabpage)
-		return owner == nil or (vim.api.nvim_tabpage_is_valid(tabpage) and history.routines.pool_of_tab(tabpage) == owner)
-	end
+	local owns = require('frogman.held').owns
 	for kind, scopes in pairs(data.scopes) do
 		for id, _ in pairs(scopes) do
-			if owner == nil then
-				take(kind, id)
-			elseif kind == "window" then
-				if vim.api.nvim_win_is_valid(id) and its_tab(vim.api.nvim_win_get_tabpage(id)) then
-					take(kind, id)
-				end
-			elseif kind == "tab" then
-				if its_tab(id) then
-					take(kind, id)
-				end
-			elseif id == owner.id or (owner.id == "" and history.data.pools[id] and history.data.pools[id].detached) then
+			if owns(owner, kind, id) then
 				take(kind, id)
 			end
 		end

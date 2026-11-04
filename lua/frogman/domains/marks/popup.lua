@@ -202,6 +202,12 @@ end
 ---@return Filehash|nil filehash
 ---@return string|nil path A path to register as the write goes through, when the registry has none
 local function resolve(file)
+	-- a row it drew follows its file, by the file's handle, through a move since
+	local drawn = open.handles and open.handles[file]
+	local handle = drawn and history.handles.follow(drawn)
+	if handle then
+		return handle.hash, nil
+	end
 	if open.names[file] then
 		return open.names[file], nil
 	end
@@ -237,9 +243,10 @@ local function decorate()
 		local kind, alias, file = read_line(line)
 		if kind == "row" and file ~= "" then
 			local filehash = resolve(file)
-			local col = line:find("->", 1, true)
+			local arrow = line:find("->", 1, true)
+			local col = arrow and line:find("%S", arrow + 2) -- the name's first character, however it's spaced
 			if filehash and history.handles.kept_closed(filehash) and col then
-				vim.api.nvim_buf_set_extmark(buf, ns, i - 1, col + 2, {
+				vim.api.nvim_buf_set_extmark(buf, ns, i - 1, col - 1, {
 					virt_text = { { glyphs.closed .. " ", "FrogmanTrailClosed" } }, virt_text_pos = "inline",
 				})
 			end
@@ -279,6 +286,12 @@ local function redraw(conflict)
 	for _, group in ipairs(scope and scope.groups or {}) do
 		open.drawn[group] = true
 	end
+	-- each name drawn by its file's handle, so a row follows its file through a move
+	open.handles = {}
+	for name, filehash in pairs(names) do
+		local handle = history.handles.of_hash(filehash)
+		open.handles[name] = handle and handle.id or nil
+	end
 	vim.api.nvim_buf_set_lines(open.buf, 0, -1, false, lines)
 	vim.bo[open.buf].modified = conflict ~= nil -- a conflict waits to be settled and written
 	decorate()
@@ -301,8 +314,9 @@ end
 ---A row above the first header, or an alias that holds two files in one group, refuses the write, and
 ---so does a window or a tab the scope was for that's gone.
 ---A line naming nothing, a row naming no file, and a second group of one name are asked about in
----one prompt, and No writes nothing. The lines are the scope's groups from then on, in order, and a
----group that came in since the pop-up was drawn, held over meanwhile, stays below them.
+---one prompt, and No writes nothing. The lines are the scope's groups from then on, in order, and
+---what came in since the pop-up was drawn stays below them: a group held over meanwhile, and a load's
+---marks, held over under its header. A row it drew follows its file through a move.
 ---
 ---@return boolean written
 local function write()
@@ -369,7 +383,10 @@ local function write()
 		history.register_filepath(path) -- a file typed by its path, known from now on
 	end
 	local scope = routines().scope(open.kind, open.id, true)
-	local arrived = vim.tbl_filter(function(group) return group.held and not open.drawn[group] end, scope.groups)
+	-- what came in since the draw: a group held over, or a load's, with marks
+	local arrived = vim.tbl_filter(function(group)
+		return not open.drawn[group] and next(group.marks) ~= nil and (group.held or group.loaded ~= nil)
+	end, scope.groups)
 	scope.groups = {}
 	for g, group in ipairs(groups) do
 		local marks = {}
@@ -382,7 +399,20 @@ local function write()
 		-- a held-over group stays held over, unless you moved it first
 		table.insert(scope.groups, { name = group.name, marks = marks, held = (g > 1 and open.held[group.name]) or nil })
 	end
-	vim.list_extend(scope.groups, arrived)
+	-- what came in since the draw stays below: a load's marks held over under its header, as a load
+	-- holds over what it replaces
+	for _, group in ipairs(arrived) do
+		if not group.held then
+			local taken = {}
+			for _, other in ipairs(scope.groups) do
+				taken[other.name] = true
+			end
+			group.name = require('frogman.held').held_header(group.loaded or "loaded", taken)
+			group.held = true
+		end
+		group.loaded = nil
+		table.insert(scope.groups, group)
+	end
 	routines().hold_scope(open.kind, open.id)
 	redraw(nil)
 	require('frogman.domains.ui.sm').loop:to(require('frogman.domains.ui.states').LOOP.SELF)

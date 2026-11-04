@@ -293,9 +293,18 @@ function M.start(snapshot, winid)
 	local c = slots_of(snapshot)
 	showing = { window = winid, snapshot = snapshot, before = vim.api.nvim_win_get_buf(winid), made = {},
 		tracked = require('frogman.domains.window').data.crux[winid] ~= nil }
-	local bufnr, why = nil, nil
+	local found, bufnr, why = true, nil, nil
 	if c then
-		bufnr, why = buffer_for(c)
+		found, bufnr, why = pcall(buffer_for, c)
+	end
+	if not found then
+		-- the world's: a swap file's prompt answered Abort, an autocmd of the user's raising
+		local problem = bufnr
+		release(showing, nil)
+		showing = nil
+		vim.notify("frogman: " .. require('frogman.domains.ui').routines.get_smart_basename(c) ..
+			" couldn't be loaded to show it: " .. tostring(problem), vim.log.levels.WARN)
+		return false
 	end
 	if not bufnr then
 		showing = nil

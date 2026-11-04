@@ -22,7 +22,6 @@
 ---@field by_window table<WinId, Snapshot[]> Window → its snapshots, oldest first
 ---@field held table<string, Snapshot[]> Session's pool id ("" for the whole editor's) → the snapshots held over in its scope, oldest first
 ---@field pending table[] The closed windows' snapshots waiting a tick to be held over
----@field with_tab table<WinId, true> The windows that took their tab with them as they closed: their snapshots stay until the tab has closed, for its TabClosedPre, which comes after their WinClosed
 ---@field taken integer Counts the snapshots taken in this editor, for their ids
 
 ---@type SnapshotsState
@@ -30,7 +29,6 @@ local corpus = {
 	by_window = {},
 	held = {},
 	pending = {},
-	with_tab = {},
 	taken = 0,
 }
 

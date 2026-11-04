@@ -3395,6 +3395,56 @@ T['T860 [char] (S2, M15, M16) a detached list merged away gives its held-over gr
 		{ gone = false, groups = 1, snapshots = 1 })
 end
 
+T['T890 [char] (S2, M16) a merged list\'s held-over snapshots keep headers of their own'] = function()
+	local s = S2.shared()
+	local _, w2 = tab_session(s)
+	eq(S2.save(child), { true })
+	child.steps({ ':e x', ':e c', ':e d' })
+	child.cmd('bdelete x.txt')
+	child.cmd('bdelete c.txt')
+	child.settle()
+	child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		require('frogman').load_session('t')
+	]])
+	child.settle(300)
+	held_in_split(w2) -- in the second tab, now t_DETACHED's
+	-- the whole editor's scope holds one under the same header
+	child.lua([[
+		local Sn = require('frogman.domains.snapshots').routines
+		local list = require('frogman.domains.history').data.tab_pools[vim.api.nvim_win_get_tabpage(...)]
+		local snap = Sn.held_in(list)[1]
+		Sn.copy({ session = '', held = snap.held }, snap)
+	]], { w2 })
+	child.lua([[
+		vim.api.nvim_set_current_win(...)
+		vim.cmd('noautocmd edit d.txt')
+		require('frogman').load_session('t')
+	]], { w2 })
+	child.settle(300)
+	local p = child.lua(OPEN_LISTS)
+	local lines, moved, under, section = {}, {}, nil, nil
+	for _, l in ipairs(p.lines) do
+		if l:sub(1, 3) == '≡' then section = l end
+		if section == '≡t_DETACHED' and l ~= '≡t_DETACHED' then table.insert(moved, l) else table.insert(lines, l) end
+	end
+	for i, l in ipairs(lines) do
+		if l == '≡t' then under = i end
+	end
+	for k, l in ipairs(moved) do
+		table.insert(lines, under + k, l)
+	end
+	S2.write_picker(child, p, lines)
+	type_into(p.win, 'q')
+	child.settle(300)
+	eq(child.lua([[
+		local headers = {}
+		for _, sn in ipairs(require('frogman.domains.snapshots').routines.held_in('')) do headers[sn.held] = true end
+		return { n = #require('frogman.domains.snapshots').routines.held_in(''), headers = #vim.tbl_keys(headers) }
+	]]), { n = 2, headers = 2 })
+end
+
 T['T861 [char] (S2, M15, M16) a list in the file alone emptied gives its held-over groups and snapshots to the whole editor\'s scope'] = function()
 	local s = S2.shared()
 	local w1, w2 = tab_session(s)
