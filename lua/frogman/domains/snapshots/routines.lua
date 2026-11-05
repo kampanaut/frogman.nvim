@@ -34,14 +34,14 @@ end
 ---
 ---Its notes are weak, as a window's are, and hold nothing.
 ---
----@param snapshot Snapshot
+---@param snapshot Snapshot The snapshot whose files are held
 ---@return nil
 local function hold(snapshot)
-	local hashes = {}
+	local ids = {}
 	local function add(id)
 		local handle = M.handle(id)
 		if handle then
-			table.insert(hashes, handle.hash)
+			table.insert(ids, handle.id)
 		end
 	end
 	add(snapshot.current)
@@ -53,7 +53,7 @@ local function hold(snapshot)
 	for _, id in ipairs(snapshot.order) do
 		add(id)
 	end
-	history.handles.hold(place_of(snapshot), hashes)
+	history.handles.hold(place_of(snapshot), ids)
 end
 
 ---Get a file's handle id from its hash.
@@ -64,17 +64,19 @@ local function id_of(filehash)
 	return handle and handle.id or nil
 end
 
----Get a note map as a snapshot keeps it, each note by its two handles.
+---Get a window's note map as a snapshot keeps it, each note by its two handles.
 ---
----@param map table<string, Filehash>|nil
+---A note naming a handle let go since is left out.
+---
+---@param map table<HandleId|string, HandleId>|nil The note map, as the window holds it
 ---@return SnapshotNote[] notes
 local function notes_of(map)
+	local window_data = require('frogman.domains.window').data
 	local notes = {}
 	for key, value in pairs(map or {}) do
-		local swap = key:match("%-swap$") ~= nil
-		local k, v = id_of((key:gsub("%-swap$", ""))), id_of(value)
-		if k and v then
-			table.insert(notes, { key = k, swap = swap, value = v })
+		local k = window_data.note_owner(key)
+		if history.handles.get(k) and history.handles.get(value) then
+			table.insert(notes, { key = k, swap = window_data.is_swap_note(key), value = value })
 		end
 	end
 	return notes
@@ -108,22 +110,18 @@ function M.take(winid)
 	end
 	local order = {}
 	for _, item in ipairs(history.get_ordered_buffers()) do
-		local id = id_of(history.get_hash_from_buffer(item.buf))
+		local id = history.get_handle_from_buffer(item.buf)
 		if id then
 			table.insert(order, id)
 		end
 	end
-	local queue = {}
-	for _, filehash in ipairs(triquetra.primary_buffer or {}) do
-		table.insert(queue, id_of(filehash))
-	end
 	local snapshot = {
 		id = new_id(),
 		time = os.time(),
-		current = id_of(triquetra.current_slot),
-		secondary = id_of(triquetra.secondary_slot),
-		ternary = id_of(triquetra.ternary_slot),
-		queue = queue,
+		current = triquetra.current_slot,
+		secondary = triquetra.secondary_slot,
+		ternary = triquetra.ternary_slot,
+		queue = vim.deepcopy(triquetra.primary_buffer or {}),
 		primary_enabled = triquetra.primary_enabled == true,
 		dtm = notes_of(triquetra.displacement_ternary_map),
 		dsm = notes_of(triquetra.displacement_secondary_map),

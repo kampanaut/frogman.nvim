@@ -20,7 +20,7 @@ local function buffer_state(file)
 		local H = require('frogman.domains.history')
 		local b = vim.fn.bufnr(_G.FRG_TEST.root .. '/' .. ...)
 		if b == -1 or not vim.api.nvim_buf_is_valid(b) then return { valid = false } end
-		local h = H.get_hash_from_buffer(b)
+		local h = H.get_handle_from_buffer(b)
 		return {
 			valid = true,
 			lines = vim.api.nvim_buf_get_lines(b, 0, -1, false),
@@ -192,7 +192,7 @@ T['T554 [char] (A20, I18) a move onto a file the primary queue holds keeps it th
 	child.lua([[
 		local H = require('frogman.domains.history')
 		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
-		t.displacement_ternary_map[t.current_slot] = H.get_hash_from_filepath(_G.FRG_TEST.root .. '/b.txt')
+		t.displacement_ternary_map[t.current_slot] = H.get_handle_from_filepath(_G.FRG_TEST.root .. '/b.txt')
 		os.rename(_G.FRG_TEST.root .. '/a.txt', _G.FRG_TEST.root .. '/b.txt')
 		vim.cmd('file ' .. vim.fn.fnameescape(_G.FRG_TEST.root .. '/b.txt'))
 	]])
@@ -202,7 +202,7 @@ T['T554 [char] (A20, I18) a move onto a file the primary queue holds keeps it th
 		local n = 0
 		for _, map in ipairs({ t.displacement_ternary_map, t.displacement_secondary_map }) do
 			for key, value in pairs(map) do
-				if key:gsub('%-swap$', '') == value then n = n + 1 end
+				if require('frogman.domains.window').data.note_owner(key) == value then n = n + 1 end
 			end
 		end
 		return n
@@ -220,8 +220,9 @@ T['T484 [char] (A20, I2) a rename to the same name renames nothing'] = function(
 	child.settle(300)
 	local kept = child.lua([[
 		local H = require('frogman.domains.history')
-		local h = H.get_hash_from_buffer(vim.fn.bufnr(_G.FRG_TEST.root .. '/new.txt'))
-		return { history = h ~= nil and H.data.crux_internals.global[h] ~= nil, path = h ~= nil and H.get_filepath_from_hash(h) ~= nil }
+		local b = vim.fn.bufnr(_G.FRG_TEST.root .. '/new.txt')
+		local h, id = H.get_hash_from_buffer(b), H.get_handle_from_buffer(b)
+		return { history = id ~= nil and H.data.crux_internals.global[id] ~= nil, path = h ~= nil and H.get_filepath_from_hash(h) ~= nil }
 	]])
 	eq(kept, { history = true, path = true })
 	child.messages()
@@ -248,7 +249,7 @@ T['T485 [char] (A20, I2) :0file on a file never written moves it to a No Name bu
 		local out = {}
 		for _, t in pairs(require('frogman.domains.window').data.crux) do
 			for _, h in ipairs({ t.current_slot, t.secondary_slot, t.ternary_slot }) do
-				if h and not H.get_filepath_from_hash(h) then table.insert(out, h) end
+				if h and not H.get_filepath_from_handle(h) then table.insert(out, h) end
 			end
 		end
 		return out
@@ -484,7 +485,7 @@ T['T636 [char] (A20) a copy\'s arrival lands in the window that shows it, in ano
 	-- an arrival records the visit in the window's own history, as a heal doesn't (T558)
 	local visited = child.lua([[
 		local H = require('frogman.domains.history')
-		local g = H.get_hash_from_buffer(vim.fn.bufnr(_G.FRG_TEST.root .. '/g.txt'))
+		local g = H.get_handle_from_buffer(vim.fn.bufnr(_G.FRG_TEST.root .. '/g.txt'))
 		return H.data.crux_internals.window[...][g] ~= nil
 	]], { w1 })
 	eq({ current = child.slots(w1):match('%[(.-)%]'), visited = visited }, { current = 'g', visited = true })
@@ -499,7 +500,7 @@ T['T637 [char] (A20) a move onto a closed name takes it off the lists and keeps 
 	eq(vim.tbl_contains(vim.split(child.closed(), ','), 'b'), true)
 	local c_visits = child.lua([[
 		local H = require('frogman.domains.history')
-		local c = H.get_hash_from_buffer(vim.fn.bufnr(_G.FRG_TEST.root .. '/c.txt'))
+		local c = H.get_handle_from_buffer(vim.fn.bufnr(_G.FRG_TEST.root .. '/c.txt'))
 		return { global = H.data.crux_internals.global[c], window = H.data.crux_internals.window[vim.api.nvim_get_current_win()][c] }
 	]])
 	child.lua([[
@@ -510,7 +511,7 @@ T['T637 [char] (A20) a move onto a closed name takes it off the lists and keeps 
 	child.settle(300)
 	local b_visits = child.lua([[
 		local H = require('frogman.domains.history')
-		local b = H.get_hash_from_buffer(vim.fn.bufnr(_G.FRG_TEST.root .. '/b.txt'))
+		local b = H.get_handle_from_buffer(vim.fn.bufnr(_G.FRG_TEST.root .. '/b.txt'))
 		return { global = H.data.crux_internals.global[b], window = H.data.crux_internals.window[vim.api.nvim_get_current_win()][b] }
 	]])
 	eq({ closed = vim.tbl_contains(vim.split(child.closed(), ','), 'b'), visits = b_visits }, { closed = false, visits = c_visits })
@@ -626,7 +627,7 @@ T['T704 [char] (M6 Arrivals, I2) an arrival\'s copy keeps no file'] = function()
 		local H = require('frogman.domains.history')
 		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
 		local bad = {}
-		local function check(h) if h and not H.get_filepath_from_hash((h:gsub('%-swap$', ''))) then table.insert(bad, h) end end
+		local function check(h) if h and not H.get_filepath_from_handle(require('frogman.domains.window').data.note_owner(h)) then table.insert(bad, h) end end
 		check(t.current_slot); check(t.secondary_slot); check(t.ternary_slot)
 		for _, h in ipairs(t.primary_buffer) do check(h) end
 		for _, m in ipairs({ t.displacement_ternary_map, t.displacement_secondary_map }) do
@@ -647,6 +648,44 @@ T['T705 [char] (M6 Arrivals, I10) a current slot closed since the arrival falls 
 	child.cmd('setlocal buftype=nofile')
 	child.settle(300)
 	eq({ child.slots(), child.closed():match('^a,') ~= nil }, { '⦉-⦊ [c] ⟦-⟧', true })
+end
+
+T['T893 [char] (M6 Arrivals, DESK.md:609, repro R1) a move since an arrival doesn\'t stop its undo'] = function()
+	child.steps({ ':e c', ':e a' })
+	eq(child.slots(), '⦉c⦊ [a] ⟦-⟧')
+	child.steps({ ':e x' })
+	child.lua([[
+		local root = _G.FRG_TEST.root
+		os.rename(root .. '/c.txt', root .. '/g.txt')
+		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/c.txt'), root .. '/g.txt')
+	]])
+	child.settle(300)
+	child.cmd('setlocal buftype=nofile')
+	child.settle(300)
+	eq({ child.slots(), child.lua('return vim.bo.buftype') }, { '⦉g⦊ [a] ⟦-⟧', 'nofile' })
+end
+
+T['T894 [char] (M6 Arrivals, DESK.md:609, repro R2) a file let go and known again doesn\'t come back into an undone arrival'] = function()
+	local S2 = dofile('tests/helpers_s2.lua')
+	child.steps({ ':e c', ':e a', ':e x' })
+	child.cmd('bdelete c.txt')
+	child.settle()
+	local w = child.lua('return vim.api.nvim_get_current_win()')
+	local p = S2.picker(child)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, S2.line_of(lines, 'c.txt'))
+	S2.write_picker(child, p, lines)
+	child.cmd('close')
+	child.lua('vim.api.nvim_set_current_win(...)', { w })
+	child.settle(100)
+	eq(child.lua('return require("frogman.domains.history").get_hash_from_filepath(_G.FRG_TEST.root .. "/c.txt")'), vim.NIL)
+	child.cmd('vsplit')
+	child.steps({ ':e c' })
+	child.lua('vim.api.nvim_set_current_win(...)', { w })
+	child.settle()
+	child.cmd('setlocal buftype=nofile')
+	child.settle(300)
+	eq(child.slots(w), '⦉-⦊ [a] ⟦-⟧')
 end
 
 T['T702 [char] (I10, A21) a cleanup pass leaves the closed file in the current slot'] = function()

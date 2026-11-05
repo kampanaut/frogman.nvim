@@ -61,12 +61,12 @@ require('frogman').setup(_G.FRG_BASE)
 local H = require('frogman.domains.history')
 local W = require('frogman.domains.window')
 
-local function name(hash)
-	if hash == nil then return '-' end
-	local base = hash:gsub('%-swap$', '')
-	local path = H.get_filepath_from_hash(base)
-	local n = path and vim.fn.fnamemodify(path, ':t:r') or ('?' .. base:sub(1, 6))
-	if hash:match('%-swap$') then n = n .. '-swap' end
+-- a slot's file, or a note's key, by its handle (a note's key the handle, or the handle and -swap)
+local function name(id)
+	if id == nil then return '-' end
+	local path = H.get_filepath_from_handle(W.data.note_owner(id))
+	local n = path and vim.fn.fnamemodify(path, ':t:r') or ('?' .. tostring(W.data.note_owner(id)))
+	if W.data.is_swap_note(id) then n = n .. '-swap' end
 	return n
 end
 

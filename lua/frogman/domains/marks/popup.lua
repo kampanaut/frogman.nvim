@@ -22,7 +22,7 @@ end
 
 ---The pop-up that's open: its buffer, its window, the window it was opened from, the scope it
 ---shows, what each drawn name stands for, and the rows drawn as incoming or already set.
----@type {buf: Bufnr, win: WinId, origin: WinId, kind: string, id: any, names: table<string, Filehash>, states: table<string, string>}|nil
+---@type {buf: Bufnr, win: WinId, origin: WinId, kind: string, id: any, names: table<string, HandleId>, states: table<string, string>}|nil
 local open = nil
 
 ---Get the glyph a group's header opens with, in the glyph set in use.
@@ -78,30 +78,32 @@ end
 ---A file goes by its shortest unique name, and by its path from here when another drawn file goes
 ---by that name already; a No Name text by `[No Name]` and its first line.
 ---
----@param filehash Filehash
----@param names table<string, Filehash> Drawn name → hash, added to in place
+---@param id HandleId The file's handle
+---@param names table<string, HandleId> Drawn name → the file's handle, added to in place
 ---@return string name
-local function name_of(filehash, names)
-	local filepath = history.get_filepath_from_hash(filehash) or filehash
+local function name_of(id, names)
+	local handle = history.handles.get(id)
+	local filepath = history.get_filepath_from_handle(id) or tostring(id)
 	local name
 	if filepath:match("^NONAME_") then
-		local bufnr = history.get_buffer_from_hash(filehash)
+		local bufnr = history.get_buffer_from_handle(id)
 		local lines = bufnr and vim.api.nvim_buf_get_lines(bufnr, 0, 1, false)
-			or (history.data.noname_content[filehash] or {}).lines or {}
+			or (handle and handle.text or {}).lines or {}
 		local first = vim.trim(lines[1] or "")
 		name = first ~= "" and ('[No Name] "' .. first:sub(1, 24) .. '"') or "[No Name]"
 		local n = 1
-		while names[name] and names[name] ~= filehash do
+		while names[name] and names[name] ~= id do
 			n = n + 1
 			name = name:gsub(" #%d+$", "") .. " #" .. n
 		end
 	else
-		name = require('frogman.domains.ui').routines.get_smart_basename(filehash)
-		if names[name] and names[name] ~= filehash then
+		name = require('frogman.domains.ui').routines.get_smart_basename(id)
+		if names[name] and names[name] ~= id then
 			name = vim.fn.fnamemodify(filepath, ":.")
 		end
 	end
-	names[name] = filehash
+	-- each name drawn by its file's handle, so a row follows its file through a move
+	names[name] = id
 	return name
 end
 
@@ -110,12 +112,12 @@ end
 ---A scope with no group yet is drawn with its default one. With a conflict, the alias the add was
 ---for holds two rows in the first group: the incoming file and the one already set.
 ---
----@param kind string
----@param id any
----@param conflict {alias: string, hash: Filehash}|nil
+---@param kind string The scope's kind: "window", "tab" or "session"
+---@param id any Its window, tab or session's pool id
+---@param conflict {alias: string, id: HandleId}|nil
 ---@return string[] lines
----@return table<string, Filehash> names
----@return table<string, string> states Row (alias and hash) → "incoming" or "already set"
+---@return table<string, HandleId> names
+---@return table<string, string> states Row (alias and the file's handle) → "incoming" or "already set"
 ---@return table<string, boolean> held The names of the groups held over
 local function draw(kind, id, conflict)
 	local scope = data.scopes[kind][id]
@@ -136,20 +138,20 @@ local function draw(kind, id, conflict)
 		if group.held then
 			held[group.name] = true
 		end
-		local function row(alias, filehash)
-			table.insert(lines, alias .. " -> " .. (filehash and name_of(filehash, names) or ""))
+		local function row(alias, id)
+			table.insert(lines, alias .. " -> " .. (id and name_of(id, names) or ""))
 		end
 		for _, alias in ipairs(aliases()) do
 			local handle = routines().handle_of(group, alias)
-			if group == keys_group and conflict and conflict.alias == alias and (handle == nil or handle.hash ~= conflict.hash) then
-				row(alias, conflict.hash)
-				states[alias .. "\0" .. conflict.hash] = "incoming"
+			if group == keys_group and conflict and conflict.alias == alias and (handle == nil or handle.id ~= conflict.id) then
+				row(alias, conflict.id)
+				states[alias .. "\0" .. conflict.id] = "incoming"
 				if handle then
-					row(alias, handle.hash)
-					states[alias .. "\0" .. handle.hash] = "already set"
+					row(alias, handle.id)
+					states[alias .. "\0" .. handle.id] = "already set"
 				end
 			else
-				row(alias, handle and handle.hash)
+				row(alias, handle and handle.id)
 			end
 		end
 		local unassigned = {}
@@ -162,7 +164,7 @@ local function draw(kind, id, conflict)
 		for _, alias in ipairs(unassigned) do
 			local handle = routines().handle_of(group, alias)
 			if handle then
-				row(alias, handle.hash)
+				row(alias, handle.id)
 			end
 		end
 	end
@@ -198,23 +200,23 @@ end
 
 ---Find the file a row names: a name the pop-up drew, or a path, from here, to a file.
 ---
+---A file the registry knows is given by its handle; one it doesn't yet, by its path's hash, until the
+---write registers the path.
+---
 ---@param file string The row's file as written
----@return Filehash|nil filehash
+---@return HandleId|Filehash|nil ref The file's handle, or its hash while the registry doesn't know it
 ---@return string|nil path A path to register as the write goes through, when the registry has none
 local function resolve(file)
 	-- a row it drew follows its file, by the file's handle, through a move since
-	local drawn = open.handles and open.handles[file]
-	local handle = drawn and history.handles.follow(drawn)
-	if handle then
-		return handle.hash, nil
-	end
-	if open.names[file] then
-		return open.names[file], nil
+	local drawn = open.names[file]
+	if drawn then
+		local handle = history.handles.follow(drawn)
+		return handle and handle.id or drawn, nil
 	end
 	local path = vim.fn.fnamemodify(file, ":p")
-	local filehash = history.get_hash_from_filepath(path)
-	if filehash then
-		return filehash, nil
+	local id = history.get_handle_from_filepath(path)
+	if id then
+		return id, nil
 	end
 	if vim.fn.filereadable(path) == 1 and vim.fn.isdirectory(path) == 0 then
 		return history.routines.get_filehash(path), path
@@ -242,24 +244,25 @@ local function decorate()
 	for i, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
 		local kind, alias, file = read_line(line)
 		if kind == "row" and file ~= "" then
-			local filehash = resolve(file)
+			local ref = resolve(file)
+			local handle = type(ref) == "number" and history.handles.get(ref) or nil
 			local arrow = line:find("->", 1, true)
 			local col = arrow and line:find("%S", arrow + 2) -- the name's first character, however it's spaced
-			if filehash and history.handles.kept_closed(filehash) and col then
+			if handle and history.handles.kept_closed(handle.id) and col then
 				vim.api.nvim_buf_set_extmark(buf, ns, i - 1, col - 1, {
 					virt_text = { { glyphs.closed .. " ", "FrogmanTrailClosed" } }, virt_text_pos = "inline",
 				})
 			end
 			local after = {}
-			local state = filehash and open.states[alias .. "\0" .. filehash]
+			local state = ref and open.states[alias .. "\0" .. ref]
 			if state then
 				table.insert(after, { "  " .. state, "FrogmanTrailDim" })
 			end
 			if not known[alias] then
 				table.insert(after, { "  unassigned", "FrogmanTrailDim" })
 			end
-			if filehash and history.data.missing[filehash] then
-				table.insert(after, { "  " .. glyphs.tag .. history.data.missing[filehash], "FrogmanTrailTag" })
+			if handle and handle.tag then
+				table.insert(after, { "  " .. glyphs.tag .. handle.tag, "FrogmanTrailTag" })
 			end
 			if #after > 0 then
 				vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 0, { virt_text = after, virt_text_pos = "eol" })
@@ -275,7 +278,7 @@ local function show_mode_line()
 end
 
 ---Put the scope's marks in the pop-up's lines, as they are now.
----@param conflict {alias: string, hash: Filehash}|nil
+---@param conflict {alias: string, id: HandleId}|nil
 ---@return nil
 local function redraw(conflict)
 	local lines, names, states, held = draw(open.kind, open.id, conflict)
@@ -285,12 +288,6 @@ local function redraw(conflict)
 	open.drawn = {}
 	for _, group in ipairs(scope and scope.groups or {}) do
 		open.drawn[group] = true
-	end
-	-- each name drawn by its file's handle, so a row follows its file through a move
-	open.handles = {}
-	for name, filehash in pairs(names) do
-		local handle = history.handles.of_hash(filehash)
-		open.handles[name] = handle and handle.id or nil
 	end
 	vim.api.nvim_buf_set_lines(open.buf, 0, -1, false, lines)
 	vim.bo[open.buf].modified = conflict ~= nil -- a conflict waits to be settled and written
@@ -351,17 +348,17 @@ local function write()
 				return refuse(row, "frogman: the marks above the first group's header have no group: put a header back above them, or delete them.")
 			end
 			if b ~= "" then
-				local filehash, path = resolve(b)
+				local ref, path = resolve(b)
 				if path then
-					fresh[filehash] = path
+					fresh[ref] = path
 				end
-				if filehash == nil then
+				if ref == nil then
 					table.insert(items, line .. "  names no file")
 					first_item = first_item or row
-				elseif current.marks[a] and current.marks[a] ~= filehash then
+				elseif current.marks[a] and current.marks[a] ~= ref then
 					return refuse(row, "frogman: ⟨" .. a .. "⟩ holds two files in " .. group_glyph() .. " " .. current.name .. ": keep one.")
 				else
-					current.marks[a] = filehash
+					current.marks[a] = ref
 				end
 			end
 		elseif kind == "other" then
@@ -390,8 +387,9 @@ local function write()
 	scope.groups = {}
 	for g, group in ipairs(groups) do
 		local marks = {}
-		for alias, filehash in pairs(group.marks) do
-			local handle = history.handles.of_hash(filehash)
+		for alias, ref in pairs(group.marks) do
+			-- a path typed there is known by now, under the hash it was read by
+			local handle = type(ref) == "number" and history.handles.get(ref) or history.handles.of_hash(ref)
 			if handle then
 				marks[alias] = handle.id
 			end
@@ -441,7 +439,7 @@ end
 ---With edits not written yet, the pop-up stays as it is, focused, and says so. With a conflict, the
 ---alias the add was for shows the incoming file and the one already set, to settle and write.
 ---
----@param opts {conflict: {alias: string, hash: Filehash}|nil}|nil
+---@param opts {conflict: {alias: string, id: HandleId}|nil}|nil
 ---@return nil
 function M.open(opts)
 	opts = opts or {}
@@ -497,7 +495,7 @@ function M.leave()
 end
 
 ---Get the file the row under the cursor names.
----@return Filehash|nil filehash
+---@return HandleId|Filehash|nil ref The file's handle, or its hash while the registry doesn't know it
 local function row_file()
 	local kind, _, file = read_line(vim.api.nvim_get_current_line())
 	if kind ~= "row" or file == "" then
@@ -512,17 +510,16 @@ end
 ---on is the row you were on, and a path typed there is registered by the write.
 ---
 ---@return string|nil alias
----@return Filehash|nil filehash Nil when the write was refused or answered No, or the row names no file
+---@return HandleId|nil id The file's handle, nil when the write was refused or answered No, or the row names no file
 local function written_row()
 	local kind, alias, file = read_line(vim.api.nvim_get_current_line())
-	local filehash = (kind == "row" and file ~= "") and (resolve(file)) or nil
+	local ref = (kind == "row" and file ~= "") and (resolve(file)) or nil
 	if vim.bo[open.buf].modified and not write() then
 		return nil, nil
 	end
-	if filehash and not history.get_filepath_from_hash(filehash) then
-		return alias, nil -- a row the write left out
-	end
-	return alias, filehash
+	-- a path typed there has its handle once the write registered it; a row the write left out has none
+	local handle = type(ref) == "number" and history.handles.get(ref) or (ref and history.handles.of_hash(ref))
+	return alias, handle and handle.id or nil
 end
 
 ---Jump to the row's file in the window the pop-up was opened from, as a mark's jump goes.
@@ -530,20 +527,20 @@ end
 ---The pop-up is written first when it was edited, and stays when that's refused. With `stay`, the
 ---pop-up stays open.
 ---
----@param stay boolean|nil
+---@param stay boolean|nil Whether the pop-up stays open once the jump is made
 ---@return nil
 function M.act(stay)
 	if not is_open() then
 		return
 	end
-	local alias, filehash = written_row()
+	local alias, id = written_row()
 	local origin = M.origin()
-	if filehash == nil or origin == nil then
+	if id == nil or origin == nil then
 		return
 	end
 	local here = vim.api.nvim_get_current_win()
 	vim.api.nvim_set_current_win(origin)
-	require('frogman.domains.window').routines.jump_to_mark(origin, filehash, "⟨" .. alias .. "⟩")
+	require('frogman.domains.window').routines.jump_to_mark(origin, id, "⟨" .. alias .. "⟩")
 	if stay and open and open.win and vim.api.nvim_win_is_valid(open.win) then
 		vim.api.nvim_set_current_win(here)
 	elseif not stay then
@@ -561,22 +558,22 @@ function M.make_primary()
 	if not is_open() then
 		return
 	end
-	local _, filehash = written_row()
+	local _, id = written_row()
 	local origin = M.origin()
 	local triquetra = origin and require('frogman.domains.window').data.get_window_triquetra(origin)
-	if filehash == nil or triquetra == nil then
+	if id == nil or triquetra == nil then
 		return
 	end
-	local at = vim.fn.index(triquetra.primary_buffer, filehash)
+	local at = vim.fn.index(triquetra.primary_buffer, id)
 	if at ~= -1 then
 		triquetra:queue_remove(at + 1)
 	end
-	triquetra:queue_insert(1, filehash)
+	triquetra:queue_insert(1, id)
 	triquetra.primary_enabled = true
 	require('frogman.domains.ui.sm').loop:to(require('frogman.domains.ui.states').LOOP.SELF)
 	vim.cmd("redrawstatus!")
 	vim.cmd("redrawtabline")
-	vim.notify("frogman: " .. require('frogman.domains.ui').routines.get_smart_basename(filehash) ..
+	vim.notify("frogman: " .. require('frogman.domains.ui').routines.get_smart_basename(id) ..
 		" is the primary of window " .. vim.api.nvim_win_get_number(origin) .. ".", vim.log.levels.INFO)
 end
 
@@ -656,9 +653,11 @@ function M.add_row()
 					break
 				end
 			end
+			-- the picked file by its handle, or by its hash while the registry doesn't know it
 			local filehash = history.routines.get_filehash(vim.fn.fnamemodify(path, ":p"))
+			local ref = history.get_handle_from_hash(filehash) or filehash
 			local text = vim.fn.fnamemodify(path, ":.")
-			if open.names[text] and open.names[text] ~= filehash then
+			if open.names[text] and open.names[text] ~= ref then
 				text = "./" .. text
 			end
 			local at = bottom
@@ -677,7 +676,7 @@ function M.add_row()
 					break
 				end
 			end
-			open.states[alias .. "\0" .. filehash] = "incoming"
+			open.states[alias .. "\0" .. ref] = "incoming"
 			vim.api.nvim_buf_set_lines(buf, at, at, false, { alias .. " -> " .. text })
 			decorate()
 		end)
@@ -730,8 +729,8 @@ function M.map_keys(buf)
 	map(keys.add, M.add_row, "Add a mark through the picker")
 	map(keys.make_primary, M.make_primary, "Make the line's file the primary")
 	map(keys.search_word, function()
-		local filehash = row_file()
-		local filepath = filehash and history.get_filepath_from_hash(filehash)
+		local ref = row_file()
+		local filepath = type(ref) == "number" and history.get_filepath_from_handle(ref) or nil
 		if filepath and not filepath:match("^NONAME_") then
 			require('frogman.domains.ui.trail').open(vim.fs.basename(filepath))
 		end

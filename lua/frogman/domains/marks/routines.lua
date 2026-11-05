@@ -104,8 +104,8 @@ end
 ---The new places hold first and the ones it no longer has let go after, so a mark that stays is
 ---never left with nothing holding its file in between.
 ---
----@param kind "window"|"tab"|"session"
----@param id any
+---@param kind "window"|"tab"|"session" The scope's kind
+---@param id any Its window, tab or session's pool id
 ---@return nil
 function M.hold_scope(kind, id)
 	local scope = data.scopes[kind][id]
@@ -116,7 +116,7 @@ function M.hold_scope(kind, id)
 			local handle = M.handle_of(group, alias)
 			if handle then
 				local place = place_of(kind, id, position, alias)
-				history.handles.hold(place, { handle.hash })
+				history.handles.hold(place, { handle.id })
 				now[place] = true
 			end
 		end
@@ -354,7 +354,7 @@ end
 ---marks pop-up on the conflict. The winbar says what the add did. While the pop-up has edits not
 ---written yet, it refuses and says why.
 ---
----@param alias string
+---@param alias string The alias to mark the current buffer's file under
 ---@return nil
 function M.add(alias)
 	if require('frogman.domains.marks.popup').refuse_if_dirty() then
@@ -372,7 +372,7 @@ function M.add(alias)
 	local held = M.handle_of(group, alias)
 	if held and held ~= handle then
 		-- the conflict is settled in the marks pop-up: the incoming file, and the one already set
-		require('frogman.domains.marks.popup').open({ conflict = { alias = alias, hash = filehash } })
+		require('frogman.domains.marks.popup').open({ conflict = { alias = alias, id = handle.id } })
 		return
 	end
 	group.marks[alias] = handle.id
@@ -387,7 +387,7 @@ end
 ---and so does every jump while a cycle runs, which says so, and while the marks pop-up has edits not
 ---written yet. From the pop-up, it leaves it and jumps in the window it was opened from.
 ---
----@param alias string
+---@param alias string The alias whose file to jump to
 ---@return nil
 function M.jump(alias)
 	if require('frogman.domains.navigation').is_cycling() then
@@ -412,26 +412,26 @@ function M.jump(alias)
 	if handle == nil then
 		return
 	end
-	require('frogman.domains.window').routines.jump_to_mark(winid, handle.hash, "⟨" .. alias .. "⟩")
+	require('frogman.domains.window').routines.jump_to_mark(winid, handle.id, "⟨" .. alias .. "⟩")
 end
 
 ---Get the aliases a file has in the first group of the current mode's scope, in their order.
 ---
----@param filehash Filehash|nil
+---@param id HandleId|nil The file's handle
 ---@param winid WinId|nil The window whose scope it reads (nil = the current one)
 ---@return string|nil aliases Like "a,s", or nil when the file isn't marked there
-function M.label_of(filehash, winid)
-	if filehash == nil then
+function M.label_of(id, winid)
+	if id == nil then
 		return nil
 	end
-	return M.labels(winid)[filehash]
+	return M.labels(winid)[id]
 end
 
 ---Get every marked file's aliases in the first group of the current mode's scope, at once: what a
 ---refresh draws, read from one walk of the group rather than one for each buffer.
 ---
 ---@param winid WinId|nil The window whose scope it reads (nil = the current one)
----@return table<Filehash, string> labels File → its aliases, like "a,s"
+---@return table<HandleId, string> labels File's handle → its aliases, like "a,s"
 function M.labels(winid)
 	local group = M.first_group(M.scope(M.scope_key(data.mode, winid)))
 	if group == nil then
@@ -441,14 +441,14 @@ function M.labels(winid)
 	for alias, _ in pairs(group.marks) do
 		local handle = assigned(alias) and M.handle_of(group, alias)
 		if handle then
-			found[handle.hash] = found[handle.hash] or {}
-			table.insert(found[handle.hash], alias)
+			found[handle.id] = found[handle.id] or {}
+			table.insert(found[handle.id], alias)
 		end
 	end
 	local labels = {}
-	for filehash, aliases in pairs(found) do
+	for id, aliases in pairs(found) do
 		table.sort(aliases, function(a, b) return before(index, a, b) end)
-		labels[filehash] = table.concat(aliases, ",")
+		labels[id] = table.concat(aliases, ",")
 	end
 	return labels
 end
@@ -549,16 +549,16 @@ end
 
 ---Get what a window shows, as a held-over group names it: its file's name, or its buffer's.
 ---
----@param winid WinId
+---@param winid WinId The window
 ---@return string what
 function M.shows(winid)
 	if not vim.api.nvim_win_is_valid(winid) then
 		return "[No Name]"
 	end
 	local bufnr = vim.api.nvim_win_get_buf(winid)
-	local filehash = history.get_hash_from_buffer(bufnr)
-	if filehash then
-		return require('frogman.domains.ui').routines.get_smart_basename(filehash)
+	local id = history.get_handle_from_buffer(bufnr)
+	if id then
+		return require('frogman.domains.ui').routines.get_smart_basename(id)
 	end
 	local name = vim.api.nvim_buf_get_name(bufnr)
 	return name ~= "" and vim.fs.basename(name) or "[No Name]"
@@ -668,14 +668,14 @@ end
 ---@return nil
 function M.queue_hold_over(tabpage, session_id, groups, what, ends)
 	-- each mark by its file's handle, so a file moved before the tick keeps its mark
-	local copy, hashes = {}, {}
+	local copy, ids = {}, {}
 	for _, group in ipairs(groups) do
 		local marks = {}
 		for alias, _ in pairs(group.marks) do
 			local handle = M.handle_of(group, alias)
 			if handle then
 				marks[alias] = handle.id
-				table.insert(hashes, handle.hash)
+				table.insert(ids, handle.id)
 			end
 		end
 		if next(marks) then
@@ -688,7 +688,7 @@ function M.queue_hold_over(tabpage, session_id, groups, what, ends)
 	-- its files stay held while it waits, by a place of its own, so none is let go in between
 	data.waited = data.waited + 1
 	local place = "mark:waiting:" .. data.waited
-	history.handles.hold(place, hashes)
+	history.handles.hold(place, ids)
 	data.places["waiting:" .. data.waited] = { [place] = true }
 	local entry = { tab = tabpage, session = session_id, groups = copy, what = what, place = place, key = "waiting:" .. data.waited }
 	local function let_go()

@@ -51,33 +51,33 @@ history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_ma
 	end
 	local winid = vim.api.nvim_get_current_win()
 	local new_bufnr = context.buf
-	local new_filehash = history.get_hash_from_buffer(new_bufnr)
+	local new_id = history.get_handle_from_buffer(new_bufnr)
 
-	if not new_filehash then return end -- Skip unregistered buffers
+	if not new_id then return end -- Skip unregistered buffers
 
 	local triquetra = data.crux[winid]
 	if not triquetra then
 		return
 	end
-	local arriving = triquetra.current_slot ~= new_filehash
+	local arriving = triquetra.current_slot ~= new_id
 	if arriving then
-		routines.remember_arrival(winid, triquetra, new_filehash)
+		routines.remember_arrival(winid, triquetra, new_id)
 	end
 	-- happens when you are dealing with an empty ternary slot and it's just an ordinary
 	-- swap with the secondary slot.
-	if triquetra.secondary_slot == new_filehash then
+	if triquetra.secondary_slot == new_id then
 		-- plain navigation onto the secondary leaves the same notes as <M-f>, and runs the guard
 		-- before the swap, so the ternary's memory gets the buffer being left.
 		local left, ternary = triquetra.current_slot, triquetra.ternary_slot
 		routines.write_secondary_swap_notes(triquetra)
-		if triquetra.displacement_ternary_map[triquetra.ternary_slot] == new_filehash then
+		if triquetra.displacement_ternary_map[triquetra.ternary_slot] == new_id then
 			triquetra.displacement_ternary_map[triquetra.ternary_slot] = triquetra.current_slot
-			require('frogman.domains.ledger').note("ternary", triquetra.ternary_slot, new_filehash, triquetra.current_slot, "guard")
+			require('frogman.domains.ledger').note("ternary", triquetra.ternary_slot, new_id, triquetra.current_slot, "guard")
 			vim.notify("Avoided conflict of ternary's remembered relationship becoming current.", vim.log.levels.WARN)
 		end
-		triquetra:update({ secondary_slot = triquetra.current_slot, current_slot = new_filehash })
-		routines.enforce_ternary_map_policy(triquetra, new_filehash, left, ternary, ternary)
-	elseif triquetra.current_slot ~= new_filehash then
+		triquetra:update({ secondary_slot = triquetra.current_slot, current_slot = new_id })
+		routines.enforce_ternary_map_policy(triquetra, new_id, left, ternary, ternary)
+	elseif triquetra.current_slot ~= new_id then
 		-- Only create displacement mapping if NOT in cycling mode
 		-- and the new bufnr is not the current alternative slot.
 		if navigation.sm:state() == navigation.states.NORMAL then
@@ -88,27 +88,27 @@ history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_ma
 			then
 				require('frogman.domains.ledger').never("Duplicates detected in current triquetra")
 			end
-			if triquetra.ternary_slot and new_filehash ~= triquetra.ternary_slot then
+			if triquetra.ternary_slot and new_id ~= triquetra.ternary_slot then
 				triquetra.displacement_ternary_map[triquetra.current_slot.."-swap"] = nil
 				triquetra.displacement_ternary_map[triquetra.current_slot] = triquetra.ternary_slot
 			end
 
-			if triquetra.current_slot == triquetra.displacement_ternary_map[new_filehash] then
-				if triquetra.ternary_slot == new_filehash then
+			if triquetra.current_slot == triquetra.displacement_ternary_map[new_id] then
+				if triquetra.ternary_slot == new_id then
 					vim.notify(
 						"The stored ternary of the new buffer is already the ternary, switching with the pre-jump stored ternary.",
 						vim.log.levels.WARN
 					)
-					triquetra.displacement_ternary_map[new_filehash] = triquetra.displacement_ternary_map[triquetra.current_slot]
-					require('frogman.domains.ledger').note("ternary", new_filehash, triquetra.current_slot,
-						triquetra.displacement_ternary_map[new_filehash], "navigation")
+					triquetra.displacement_ternary_map[new_id] = triquetra.displacement_ternary_map[triquetra.current_slot]
+					require('frogman.domains.ledger').note("ternary", new_id, triquetra.current_slot,
+						triquetra.displacement_ternary_map[new_id], "navigation")
 				else
 					vim.notify(
 						"The stored ternary of the new buffer is already the ternary, switching with the pre-jump ternary.",
 						vim.log.levels.WARN
 					)
-					triquetra.displacement_ternary_map[new_filehash] = triquetra.ternary_slot
-					require('frogman.domains.ledger').note("ternary", new_filehash, triquetra.current_slot, triquetra.ternary_slot, "navigation")
+					triquetra.displacement_ternary_map[new_id] = triquetra.ternary_slot
+					require('frogman.domains.ledger').note("ternary", new_id, triquetra.current_slot, triquetra.ternary_slot, "navigation")
 				end
 			end
 		end
@@ -117,8 +117,8 @@ history.sm:on(history.states.ATTACHED, history.states.ATTACHED, "displacement_ma
 		-- We are tracking for buffers outside, that were ternary slots.
 
 		-- Always update slots
-		triquetra:update({ ternary_slot = triquetra.current_slot, current_slot = new_filehash })
-		routines.enforce_secondary_map_policy(triquetra, new_filehash, triquetra.secondary_slot)
+		triquetra:update({ ternary_slot = triquetra.current_slot, current_slot = new_id })
+		routines.enforce_secondary_map_policy(triquetra, new_id, triquetra.secondary_slot)
 	end
 	if arriving then -- entering the current buffer again is no arrival, and keeps the last one
 		routines.seal_arrival(winid, triquetra)
@@ -140,15 +140,15 @@ end, 2, true, history.states.mode.UPDATE)
 -- no displacement
 history.sm:on(history.states.DETACHED, history.states.DETACHED, "nondisplacement_management", function(context)
 	local winid = context.winid
-	local new_filehash = history.get_hash_from_buffer(context.buf)
+	local new_id = history.get_handle_from_buffer(context.buf)
 
-	if winid == nil or new_filehash == nil then
+	if winid == nil or new_id == nil then
 		return
 	end
 
 	local triquetra = data.crux[winid]
-	if triquetra and triquetra.current_slot ~= new_filehash then
-		triquetra:set("current_slot", new_filehash)
+	if triquetra and triquetra.current_slot ~= new_id then
+		triquetra:set("current_slot", new_id)
 	end
 
 end, 2, true, history.states.mode.UPDATE)

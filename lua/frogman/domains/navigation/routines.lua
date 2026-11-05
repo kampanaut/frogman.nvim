@@ -137,9 +137,9 @@ function M.cancel_cycle(cycling_window)
 	local triquetra = require('frogman.domains.window.data').crux[cycling_window]
 	local returned = false
 	if triquetra and vim.api.nvim_win_is_valid(cycling_window) then
-		local start_bufnr = history.get_buffer_from_hash(triquetra.current_slot)
+		local start_bufnr = history.get_buffer_from_handle(triquetra.current_slot)
 		if start_bufnr == nil and history.handles.kept_closed(triquetra.current_slot) then
-			start_bufnr = history.reopen_filehash(triquetra.current_slot) -- a start closed meanwhile comes back, as a pick's would
+			start_bufnr = history.reopen_handle(triquetra.current_slot) -- a start closed meanwhile comes back, as a pick's would
 		end
 		if start_bufnr and vim.api.nvim_win_get_buf(cycling_window) ~= start_bufnr then
 			vim.api.nvim_win_set_buf(cycling_window, start_bufnr)
@@ -150,7 +150,7 @@ function M.cancel_cycle(cycling_window)
 	data.cycling_window = nil
 	local ledger = require('frogman.domains.ledger')
 	ledger.move("cancelled", { subject = tostring(cycling_window), name = ledger.window_name(cycling_window),
-		words = returned and ("cycle cancelled; back on " .. ledger.name_of(triquetra.current_slot)) or "cycle cancelled" })
+		words = returned and ("cycle cancelled; back on " .. ledger.name_of(history.get_hash_from_handle(triquetra.current_slot))) or "cycle cancelled" })
 	local named, name = false, nil
 	if triquetra then
 		named, name = pcall(require('frogman.domains.ui').routines.get_smart_basename, triquetra.current_slot)
@@ -181,7 +181,7 @@ function M.attach_on_landing()
 	-- A file it was switched to in the same batch, its arrival dropped while history was detached, isn't
 	-- untracked: it's the other buffer it shows, taken in as plain navigation.
 	local visiting = history.get_hash_from_buffer(shown_bufnr) == nil and not history.routines.is_trackable(shown_bufnr)
-	local current_bufnr = landed and not visiting and history.get_buffer_from_hash(landed.current_slot)
+	local current_bufnr = landed and not visiting and history.get_buffer_from_handle(landed.current_slot)
 	history.sm:to(history.states.ATTACHED, { buf = current_bufnr or shown_bufnr }, history.states.mode.UPDATE)
 	if current_bufnr and current_bufnr ~= shown_bufnr then
 		history.sm:to(history.states.ATTACHED, { buf = shown_bufnr }, history.states.mode.UPDATE)

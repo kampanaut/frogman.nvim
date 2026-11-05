@@ -181,9 +181,17 @@ local slot_keys = {
 }
 local cycling_keys = { ['<M-n>'] = true, ['<M-m>'] = true, ['<M-v>'] = true, X1 = true, X2 = true, X3 = true }
 
-local function name(hash)
+-- a slot's file, or a note's key, by its handle (a note's key the handle, or the handle and -swap)
+local function name(id)
+	if id == nil then return '-' end
+	local p = H.get_filepath_from_handle(W.data.note_owner(id))
+	return p and vim.fn.fnamemodify(p, ':t:r') or ('?' .. tostring(W.data.note_owner(id)))
+end
+
+-- a file by its hash, as the registry keys it
+local function hash_name(hash)
 	if hash == nil then return '-' end
-	local p = H.get_filepath_from_hash((hash:gsub('%-swap$', '')))
+	local p = H.get_filepath_from_hash(hash)
 	return p and vim.fn.fnamemodify(p, ':t:r') or ('?' .. hash:sub(1, 6))
 end
 
@@ -191,7 +199,7 @@ end
 -- returns a description of the break, or nil.
 local checks = {}
 
--- I1: current, secondary and ternary are three different hashes, or empty.
+-- I1: current, secondary and ternary are three different files, or empty.
 checks.I1 = { post = function()
 	for winid, t in pairs(W.data.crux) do
 		local c, s, tt = t.current_slot, t.secondary_slot, t.ternary_slot
@@ -201,10 +209,10 @@ checks.I1 = { post = function()
 	end
 end }
 
--- I2: every hash held anywhere has a path.
+-- I2: every handle held anywhere has a path.
 checks.I2 = { post = function()
 	local function known(h)
-		return h == nil or H.get_filepath_from_hash((h:gsub('%-swap$', ''))) ~= nil
+		return h == nil or H.get_filepath_from_handle(W.data.note_owner(h)) ~= nil
 	end
 	for winid, t in pairs(W.data.crux) do
 		for _, slot in ipairs({ 'current_slot', 'secondary_slot', 'ternary_slot' }) do

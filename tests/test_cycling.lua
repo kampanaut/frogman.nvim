@@ -572,7 +572,7 @@ T['T203 [char] a planted rule break dumps at the next step'] = function()
 	child.steps({ ':e d', ':e e' })
 	-- Plant in the first window: c's ternary note names b, which is already c's ternary.
 	child.lua('require("frogman.domains.window").data.crux[...].displacement_ternary_map[select(2, ...)] = select(3, ...)',
-		{ win1, child.hash_of('c'), child.hash_of('b') })
+		{ win1, child.handle_of('c'), child.handle_of('b') })
 	local before = child.dumps()
 	child.steps({ ':e x' })
 	child.settle(200)
@@ -1596,9 +1596,10 @@ T['T822 [char] (A26, M2 Holders) a replay\'s planted closed files are held by th
 	eq(child.lua([[
 		local H = require('frogman.domains.history')
 		local b = H.routines.get_filehash(_G.FRG_TEST.root .. '/b.txt')
+		local id = H.get_handle_from_hash(b)
 		local held = false
-		for _, place in ipairs(H.handles.holders(b)) do held = held or place:match('^pool:') ~= nil end
-		return { listed = vim.tbl_contains(H.data.closed_buffers, b), held = held, known = H.data.hash_filepath_registry.filepaths[b] ~= nil }
+		for _, place in ipairs(H.handles.holders(id)) do held = held or place:match('^pool:') ~= nil end
+		return { listed = id ~= nil and vim.tbl_contains(H.data.closed_buffers, id), held = held, known = H.data.hash_filepath_registry.filepaths[b] ~= nil }
 	]]), { listed = true, held = true, known = true })
 end
 

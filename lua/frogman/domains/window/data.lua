@@ -5,14 +5,14 @@
 ---@field altbufs table<WinId, WindowTriquetra> Window ID to buffer relationships mapping
 ---@field current_window number Currently active window ID
 
----@class WindowTriquetra Triquetra buffer relationships for a single window
----@field current_slot Filehash The current slot filename. Whatever is currently shown in the window.
----@field secondary_slot Filehash|nil User-controlled "waiting" slot, user can store what buffer is in the secondary slot.
----@field ternary_slot Filehash|nil Auto-populated waiting slot, the "previous" current.
----@field primary_buffer Filehash[]|nil The file buffer which can take its place in one of the three at a time.
+---@class WindowTriquetra Triquetra buffer relationships for a single window, each file by its handle
+---@field current_slot HandleId The current slot's file. Whatever is currently shown in the window.
+---@field secondary_slot HandleId|nil User-controlled "waiting" slot, user can store what buffer is in the secondary slot.
+---@field ternary_slot HandleId|nil Auto-populated waiting slot, the "previous" current.
+---@field primary_buffer HandleId[]|nil The file buffer which can take its place in one of the three at a time.
 ---@field primary_enabled boolean Whether the primary buffer is enabled in this triquetra.
----@field displacement_ternary_map table<Filehash, Filehash> -- This is filename's ternary before it got displaced.
----@field displacement_secondary_map table<Filehash, Filehash> -- This is filename's secondary before it got displaced.
+---@field displacement_ternary_map table<HandleId|string, HandleId> -- This is a file's ternary before it got displaced, its swap note under `<id>-swap`.
+---@field displacement_secondary_map table<HandleId|string, HandleId> -- This is a file's secondary before it got displaced, its swap note under `<id>-swap`.
 ---
 local M = {}
 
@@ -24,9 +24,9 @@ M.crux = {}
 ---@type table<WinId, { deleted: Bufnr, pick: Bufnr|nil }>
 M.landing = {}
 
----Each window's last arrival (window → the buffer, and its triquetra just before and just after),
----so the arrival can be undone when that buffer turns into something frogman doesn't track
----@type table<WinId, { hash: Filehash, before: WindowTriquetra, after: WindowTriquetra|nil }>
+---Each window's last arrival (window → the arriving file's handle, and its triquetra just before and
+---just after), so the arrival can be undone when that buffer turns into something frogman doesn't track
+---@type table<WinId, { id: HandleId, before: WindowTriquetra, after: WindowTriquetra|nil }>
 M.arrivals = {}
 
 local history = require('frogman.domains.history')
@@ -87,11 +87,11 @@ end
 ---
 ---Its place holds the new file at once, and lets the old one go.
 ---
----@param slot "current_slot"|"secondary_slot"|"ternary_slot"
----@param filehash Filehash|nil The file it holds now (nil = empty)
+---@param slot "current_slot"|"secondary_slot"|"ternary_slot" The slot to write
+---@param id HandleId|nil The handle of the file it holds now (nil = empty)
 ---@return nil
-function Triquetra:set(slot, filehash)
-	self[slot] = filehash
+function Triquetra:set(slot, id)
+	self[slot] = id
 	hold_places(self, { slot })
 end
 
@@ -131,7 +131,7 @@ end
 
 ---Replace the primary queue.
 ---
----@param queue Filehash[]
+---@param queue HandleId[] The files' handles, the primary first
 ---@return nil
 function Triquetra:set_queue(queue)
 	self.primary_buffer = queue
@@ -141,30 +141,30 @@ end
 ---Put a file in the primary queue.
 ---
 ---@param position integer Where it goes (1 = the primary)
----@param filehash Filehash
+---@param id HandleId The file's handle
 ---@return nil
-function Triquetra:queue_insert(position, filehash)
-	table.insert(self.primary_buffer, position, filehash)
+function Triquetra:queue_insert(position, id)
+	table.insert(self.primary_buffer, position, id)
 	hold_places(self, { "primary_buffer" })
 end
 
 ---Take an entry out of the primary queue.
 ---
----@param index integer
----@return Filehash|nil filehash The entry taken out
+---@param index integer The entry's position
+---@return HandleId|nil id The entry taken out
 function Triquetra:queue_remove(index)
-	local filehash = table.remove(self.primary_buffer, index)
+	local id = table.remove(self.primary_buffer, index)
 	hold_places(self, { "primary_buffer" })
-	return filehash
+	return id
 end
 
 ---Write one entry of the primary queue.
 ---
----@param index integer
----@param filehash Filehash
+---@param index integer The entry's position
+---@param id HandleId The file's handle
 ---@return nil
-function Triquetra:queue_set(index, filehash)
-	self.primary_buffer[index] = filehash
+function Triquetra:queue_set(index, id)
+	self.primary_buffer[index] = id
 	hold_places(self, { "primary_buffer" })
 end
 
@@ -202,7 +202,7 @@ end
 ---
 ---@param winid number Window ID to create the relationship for
 function M.register_triquetra(winid)
-	local current_slot = history.get_hash_from_buffer(vim.api.nvim_win_get_buf(winid))
+	local current_slot = history.routines.get_handle_from_buffer(vim.api.nvim_win_get_buf(winid))
 	if not current_slot then
 		error("Cannot create empty window buffer relationship: The window has an unregistered buffer.")
 	end
@@ -273,86 +273,146 @@ function M.get_window_triquetra(winid)
     return M.crux[winid]
 end
 
----Take a hash out of every triquetra's secondary and ternary slots and primary queue.
+---Take a file out of every triquetra's secondary and ternary slots and primary queue.
 ---
 ---The current slot is left to whatever lands the window.
 ---
----@param hash Filehash The hash to take out
+---@param id HandleId The file's handle
 ---@return nil
-function M.forget_hash_in_slots(hash)
+function M.forget_handle_in_slots(id)
 	for _, triquetra in pairs(M.crux) do
-		if triquetra.secondary_slot == hash then
+		if triquetra.secondary_slot == id then
 			triquetra:set("secondary_slot", nil)
 		end
-		if triquetra.ternary_slot == hash then
+		if triquetra.ternary_slot == id then
 			triquetra:set("ternary_slot", nil)
 		end
 		for i = #triquetra.primary_buffer, 1, -1 do
-			if triquetra.primary_buffer[i] == hash then
+			if triquetra.primary_buffer[i] == id then
 				triquetra:queue_remove(i)
 			end
 		end
 	end
 end
 
----Rename a hash to a new hash across all window triquetras.
+---Get the file a note belongs to, from its key in a note map.
 ---
----Updates all references to old_hash in triquetra slots and displacement maps.
+---A plain note is keyed by its file's handle, a swap note by the handle and `-swap`.
 ---
----@param old_hash Filehash The hash to be renamed
----@param new_hash Filehash The new hash to replace it with
-function M.rename_hash_in_triquetras(old_hash, new_hash)
-    for _, triquetra in pairs(M.crux) do
-        -- Update slots
-        if triquetra.current_slot == old_hash then
-            triquetra:set("current_slot", new_hash)
-        end
-        if triquetra.secondary_slot == old_hash then
-            triquetra:set("secondary_slot", new_hash)
-        end
-        if triquetra.ternary_slot == old_hash then
-            triquetra:set("ternary_slot", new_hash)
-        end
+---@param key HandleId|string A note map's key
+---@return HandleId|nil id The handle of the file whose note it is
+function M.note_owner(key)
+	if type(key) == "number" then
+		return key
+	end
+	return tonumber((tostring(key):gsub("%-swap$", "")))
+end
 
-		local index = vim.fn.index(triquetra.primary_buffer, old_hash) + 1
-        if index ~= 0 then
-            triquetra:queue_set(index, new_hash)
-        end
-        
-        -- Update displacement maps (keys)
-        if triquetra.displacement_ternary_map[old_hash] then
-            local displaced_value = triquetra.displacement_ternary_map[old_hash]
-            triquetra.displacement_ternary_map[old_hash] = nil
-            triquetra.displacement_ternary_map[new_hash] = displaced_value
-        end
-		if triquetra.displacement_ternary_map[old_hash.."-swap"] then
-            local displaced_value = triquetra.displacement_ternary_map[old_hash.."-swap"]
-            triquetra.displacement_ternary_map[old_hash.."-swap"] = nil
-            triquetra.displacement_ternary_map[new_hash.."-swap"] = displaced_value
-		end
-        if triquetra.displacement_secondary_map[old_hash] then
-            local displaced_value = triquetra.displacement_secondary_map[old_hash]
-            triquetra.displacement_secondary_map[old_hash] = nil
-            triquetra.displacement_secondary_map[new_hash] = displaced_value
-        end
-		if triquetra.displacement_secondary_map[old_hash.."-swap"] then
-            local displaced_value = triquetra.displacement_secondary_map[old_hash.."-swap"]
-            triquetra.displacement_secondary_map[old_hash.."-swap"] = nil
-            triquetra.displacement_secondary_map[new_hash.."-swap"] = displaced_value
-		end
+---Check if a note map's key is a swap note's.
+---
+---@param key HandleId|string A note map's key
+---@return boolean swap
+function M.is_swap_note(key)
+	return type(key) == "string" and key:match("%-swap$") ~= nil
+end
 
-        -- Update displacement maps (values)
-        for hash, displaced_hash in pairs(triquetra.displacement_ternary_map) do
-            if displaced_hash == old_hash then
-                triquetra.displacement_ternary_map[hash] = new_hash
-            end
-        end
-        for hash, displaced_hash in pairs(triquetra.displacement_secondary_map) do
-            if displaced_hash == old_hash then
-                triquetra.displacement_secondary_map[hash] = new_hash
-            end
-        end
-    end
+---Get a note map as a session file or a dump holds it, by hash.
+---
+---A plain note's key is its file's hash, and a swap note's the hash and `-swap`. A note naming a
+---handle let go since is left out.
+---
+---@param map table<HandleId|string, HandleId>|nil The note map, as memory holds it
+---@return table<string, Filehash> saved The note map, by hash
+function M.notes_by_hash(map)
+	local saved = {}
+	for key, id in pairs(map or {}) do
+		local owner = history.get_hash_from_handle(M.note_owner(key))
+		local filehash = history.get_hash_from_handle(id)
+		if owner and filehash then
+			saved[M.is_swap_note(key) and owner .. "-swap" or owner] = filehash
+		end
+	end
+	return saved
+end
+
+---Get a note map from a session file or a dump, by handle.
+---
+---A note naming a hash no handle has is left out.
+---
+---@param saved table<string, Filehash>|nil The note map, as the file holds it
+---@return table<HandleId|string, HandleId> map The note map, as memory holds it
+function M.notes_by_handle(saved)
+	local map = {}
+	for key, filehash in pairs(type(saved) == "table" and saved or {}) do
+		local owner = history.get_handle_from_hash((tostring(key):gsub("%-swap$", "")))
+		local id = history.get_handle_from_hash(filehash)
+		if owner and id then
+			map[tostring(key):match("%-swap$") and owner .. "-swap" or owner] = id
+		end
+	end
+	return map
+end
+
+---Let a moved file take the place of the file whose name it took, in every triquetra.
+---
+---Used when a move takes a name a live handle had: that handle is let go, and what held it holds the
+---moved file. A triquetra holding both would hold one file twice: the moved file keeps its slot, and
+---the other slot lets it go, unless that's the current slot, which keeps it. A primary queue keeps
+---the file once, where it came first. The name's notes become the moved file's where it has none of
+---its own, every note naming the name names the moved file, and a note that now names its own buffer
+---goes.
+---
+---@param from HandleId The handle of the file whose name was taken
+---@param to HandleId The moved file's handle
+---@return nil
+function M.take_over_handle(from, to)
+	for _, triquetra in pairs(M.crux) do
+		if triquetra.current_slot == from then
+			-- the current slot keeps the name, which is the moved file now
+			if triquetra.secondary_slot == to then triquetra:set("secondary_slot", nil) end
+			if triquetra.ternary_slot == to then triquetra:set("ternary_slot", nil) end
+			triquetra:set("current_slot", to)
+		elseif triquetra.current_slot == to or triquetra.secondary_slot == to or triquetra.ternary_slot == to then
+			if triquetra.secondary_slot == from then triquetra:set("secondary_slot", nil) end
+			if triquetra.ternary_slot == from then triquetra:set("ternary_slot", nil) end
+		else
+			if triquetra.secondary_slot == from then triquetra:set("secondary_slot", to) end
+			if triquetra.ternary_slot == from then triquetra:set("ternary_slot", to) end
+		end
+		local queue, seen = {}, false
+		for _, id in ipairs(triquetra.primary_buffer) do
+			if id == from then
+				id = to
+			end
+			if id ~= to or not seen then
+				table.insert(queue, id)
+			end
+			seen = seen or id == to
+		end
+		if #queue ~= #triquetra.primary_buffer or vim.tbl_contains(triquetra.primary_buffer, from) then
+			triquetra:set_queue(queue)
+		end
+		for _, map in ipairs({ triquetra.displacement_ternary_map, triquetra.displacement_secondary_map }) do
+			for _, keys in ipairs({ { from, to }, { from .. "-swap", to .. "-swap" } }) do
+				if map[keys[1]] ~= nil then
+					if map[keys[2]] == nil then
+						map[keys[2]] = map[keys[1]]
+					end
+					map[keys[1]] = nil
+				end
+			end
+			for key, value in pairs(map) do
+				if value == from then
+					map[key] = to
+				end
+			end
+			for _, key in ipairs({ to, to .. "-swap" }) do
+				if map[key] == to then
+					map[key] = nil
+				end
+			end
+		end
+	end
 end
 
 ---@type WinId|nil

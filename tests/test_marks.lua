@@ -37,7 +37,7 @@ local function label(name)
 		local H = require('frogman.domains.history')
 		local popup = require('frogman.domains.marks').popup
 		local win = popup.is_current() and popup.origin() or nil
-		return require('frogman.domains.marks').label_of(H.routines.get_filehash(_G.FRG_TEST.root .. '/' .. ... .. '.txt'), win) or false
+		return require('frogman.domains.marks').label_of(H.get_handle_from_hash(H.routines.get_filehash(_G.FRG_TEST.root .. '/' .. ... .. '.txt')), win) or false
 	]], { name })
 end
 
@@ -119,7 +119,7 @@ T['T717 [char] (M15) the add'] = function()
 	child.steps({ ':e a', ':e b', ADD .. 'a>' })
 	local bar = child.lua('return vim.wo.winbar')
 	child.steps({ ADD .. 's>' })
-	local label_b = child.lua('return require("frogman.domains.marks").label_of(require("frogman.domains.history").get_hash_from_buffer(vim.api.nvim_get_current_buf()))')
+	local label_b = child.lua('return require("frogman.domains.marks").label_of(require("frogman.domains.history").get_handle_from_buffer(vim.api.nvim_get_current_buf()))')
 	child.steps({ ':e c', ADD .. 'a>' })
 	local conflict = child.lua([[
 		local buf = vim.fn.bufnr('frogman://marks')
@@ -183,7 +183,7 @@ T['T720 [char] (M15, M5) a marked empty No Name text is kept'] = function()
 	local kept = child.lua([[
 		local H = require('frogman.domains.history')
 		local h = H.handles.of_hash(...)
-		return { closed = H.routines.is_filehash_closed(...), state = h and h:state() or false }
+		return { closed = H.routines.is_handle_closed(h and h.id), state = h and h:state() or false }
 	]], { hash })
 	child.steps({ JUMP .. 'a>' })
 	local back = child.lua('return { vim.api.nvim_buf_get_name(0), vim.api.nvim_buf_get_lines(0, 0, -1, false) }')
@@ -494,7 +494,7 @@ T['T732 [char] (M15, M5) a detached list keeps a copy of its session\'s marks, a
 		local tab = vim.api.nvim_list_tabpages()[3]
 		local win = vim.api.nvim_tabpage_get_win(tab)
 		local H = require('frogman.domains.history')
-		return require('frogman.domains.marks').label_of(H.routines.get_filehash(_G.FRG_TEST.root .. '/d.txt'), win) or false
+		return require('frogman.domains.marks').label_of(H.get_handle_from_hash(H.routines.get_filehash(_G.FRG_TEST.root .. '/d.txt')), win) or false
 	]])
 	eq(S2.save(child), { true })
 	local on_entry = child.lua([[
@@ -777,7 +777,7 @@ T['T744 [char] (M15) the primary key makes the line\'s file the opening window\'
 	local queue = child.lua([[
 		local t = require('frogman.domains.window').data.crux[...]
 		local H = require('frogman.domains.history')
-		return { vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_hash(h), ':t:r') end, t.primary_buffer), t.primary_enabled }
+		return { vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_handle(h), ':t:r') end, t.primary_buffer), t.primary_enabled }
 	]], { win })
 	eq(queue, { { 'b', 'c' }, true })
 end
@@ -915,7 +915,7 @@ T['T840 [char] (M15) the primary key on a typed path writes first'] = function()
 	local got = child.lua([[
 		local t = require('frogman.domains.window').data.crux[...]
 		local H = require('frogman.domains.history')
-		return { queue = vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_hash(h) or '?', ':t:r') end, t.primary_buffer),
+		return { queue = vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_handle(h) or '?', ':t:r') end, t.primary_buffer),
 			on = t.primary_enabled, x = H.get_hash_from_filepath(_G.FRG_TEST.root .. '/x.txt') ~= nil }
 	]], { win })
 	eq({ modified = popup().modified, got = got }, { modified = false, got = { queue = { 'x' }, on = true, x = true } })

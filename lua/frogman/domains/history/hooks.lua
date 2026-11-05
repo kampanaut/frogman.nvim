@@ -40,7 +40,7 @@ end, 2, true)
 -- No Name buffers deleted in this batch of events. One that's written under a name in the same batch
 -- (:w name) was renamed, not closed; anything else, like :e reusing an empty one, wasn't, and its
 -- close, made quietly at the delete, is recorded once the note goes.
----@type table<Bufnr, { hash: Filehash, history: table, targets: table|nil }>
+---@type table<Bufnr, { id: HandleId, history: table, targets: table|nil }>
 local noname_deleted = {}
 
 historySM:on("*", "*", "handle_deletion", function(context, _, from, to)
@@ -51,11 +51,11 @@ historySM:on("*", "*", "handle_deletion", function(context, _, from, to)
 	end
 	-- print("I'm fucking here. Delete ", context.buf)
 	-- print("SHEEESH")
-	local filehash = routines.get_hash_from_buffer(context.buf)
-	if filehash then -- if it's registered, then we untrack it. Ignore the untegistered, because they are unrecongised by BufEnter.
-		-- print("Deleting buffer: " .. context.buf .. " with filehash: " .. filehash .. "\n" .. debug.traceback())
+	local id = routines.get_handle_from_buffer(context.buf)
+	if id then -- if it's registered, then we untrack it. Ignore the untegistered, because they are unrecongised by BufEnter.
+		-- print("Deleting buffer: " .. context.buf .. " with handle: " .. id .. "\n" .. debug.traceback())
 		local note = noname_deleted[context.buf]
-		local closed, targets = routines.track_closing_filehash(filehash, note ~= nil)
+		local closed, targets = routines.track_closing_handle(id, note ~= nil)
 		if note then
 			note.targets = targets
 		end
@@ -80,8 +80,9 @@ navigationSM:on("*", "*", "winenter_update_history_view", function(context)
 	routines.construct_crux(require("frogman.domains.navigation").routines.find_most_recent_tracked_window())
 end, 3, true, navigationSMStates.mode.WINENTER)
 
--- renames on their way: the old hash, kept from BufFilePre until the rename settles.
----@type table<Bufnr, { hash: Filehash, history: table|nil }>
+-- renames on their way: the file's handle, which keeps the old name's hash from BufFilePre until the
+-- rename settles.
+---@type table<Bufnr, { id: HandleId, history: table|nil }>
 local renames = {}
 
 ---Settle a rename once the command that made it is over.
@@ -94,43 +95,45 @@ local renames = {}
 ---own name again wasn't renamed: both are left alone.
 ---
 ---@param bufnr Bufnr The renamed buffer
----@param rename { hash: Filehash, history: table } Its old hash, and its history if kept
+---@param rename { id: HandleId, history: table } Its file's handle, and its history if kept
 ---@return nil
 local function settle_rename(bufnr, rename)
 	if not vim.api.nvim_buf_is_valid(bufnr) then
 		return -- deleted for good (a No Name buffer closed), not renamed.
 	end
+	-- the hash its file had, kept before the move gives its handle the new one
+	local old_hash = routines.get_hash_from_handle(rename.id)
 	local new_name = vim.api.nvim_buf_get_name(bufnr)
-	if routines.get_filehash(new_name ~= "" and new_name or routines.noname_name(bufnr)) == rename.hash then
+	if routines.get_filehash(new_name ~= "" and new_name or routines.noname_name(bufnr)) == old_hash then
 		return -- its own name again: nothing was renamed
 	end
 	if new_name ~= "" and vim.fn.filereadable(new_name) == 0 then
-		data.unwritten[routines.get_filehash(new_name)] = bufnr -- a name that isn't on disk yet, marked with its buffer
+		vim.b[bufnr].frogman_unwritten = true -- a name that isn't on disk yet: its handle takes the mark as it's registered
 	end
 	local ledger = require('frogman.domains.ledger')
-	local old_name = ledger.name_of(rename.hash)
-	local moved_from = routines.settle_rename(bufnr, rename.hash, rename.history)
+	local old_name = old_hash and ledger.name_of(old_hash)
+	local moved_from = routines.settle_rename(bufnr, rename.id, rename.history)
 	local new_label = new_name ~= "" and vim.fs.basename(new_name) or "[No Name]"
 	-- the hash the file has now, which the trail's search follows from the old one
 	local new_hash = routines.get_filehash(new_name ~= "" and new_name or routines.noname_name(bufnr))
 	if moved_from then
-		ledger.move("moved", { subject = rename.hash, name = old_name, to = new_hash, words = moved_from:match("^NONAME_") and
+		ledger.move("moved", { subject = old_hash, name = old_name, to = new_hash, words = moved_from:match("^NONAME_") and
 			"written as " .. new_label .. ": a move" or "renamed to " .. new_label .. ": a move" })
-	elseif routines.get_hash_from_buffer(bufnr) == rename.hash and routines.is_trackable(bufnr) then
+	elseif old_hash and routines.get_hash_from_buffer(bufnr) == old_hash and routines.is_trackable(bufnr) then
 		-- a new name frogman doesn't track is no copy: the old name is closed all the same, and its close says so
-		ledger.move("copied", { subject = rename.hash, name = old_name, to = new_hash,
+		ledger.move("copied", { subject = old_hash, name = old_name, to = new_hash,
 			words = "renamed to " .. new_label .. ": a copy, " .. (old_name or "the old name") .. " is still on disk" })
 	end
-	if not moved_from and routines.get_hash_from_buffer(bufnr) == rename.hash then
+	if not moved_from and old_hash and routines.get_hash_from_buffer(bufnr) == old_hash then
 		-- a copy: the old name is still a file, and it's closed as a delete closes it.
 		historySM:to(historySM:state(), { buf = bufnr }, states.mode.DELETE)
 	end
 	if routines.is_trackable(bufnr) and not routines.get_hash_from_buffer(bufnr) then
 		routines.register_buffer(bufnr) -- known by its new name, whatever the history state (a cycle).
 	end
-	if not moved_from then
+	if not moved_from and old_hash then
 		-- a copy's handle is new, and linked to the one it was copied from
-		require('frogman.domains.history.handles').copied(routines.get_hash_from_buffer(bufnr), rename.hash)
+		require('frogman.domains.history.handles').copied(routines.get_hash_from_buffer(bufnr), old_hash)
 	end
 	-- the window that shows it, the current tab's first, then any tab's
 	local winid = vim.fn.bufwinid(bufnr)
@@ -170,9 +173,8 @@ function M.init_autocmds(group)
 	vim.api.nvim_create_autocmd("BufNewFile", {
 		group = group,
 		callback = function(args)
-			local name = vim.api.nvim_buf_get_name(args.buf)
-			if name ~= "" then
-				data.unwritten[routines.get_filehash(name)] = args.buf -- with its buffer, kept while that's there
+			if vim.api.nvim_buf_get_name(args.buf) ~= "" then
+				vim.b[args.buf].frogman_unwritten = true -- kept on its buffer until its handle takes it in
 			end
 		end,
 	})
@@ -187,10 +189,10 @@ function M.init_autocmds(group)
 			-- print("I was ran!" .. args.buf)
 			-- a No Name buffer written under a name is deleted and made again under it: a rename, if the
 			-- write follows in this batch (BufWritePost claims it); otherwise it's dropped once it settles.
-			local hash = routines.get_hash_from_buffer(args.buf)
-			local path = hash and routines.get_filepath_from_hash(hash)
+			local id = routines.get_handle_from_buffer(args.buf)
+			local path = routines.get_filepath_from_handle(id)
 			if path and path:match("^NONAME_") then
-				noname_deleted[args.buf] = { hash = hash, history = routines.history_of(hash) }
+				noname_deleted[args.buf] = { id = id, history = routines.history_of(id) }
 				local function drop_note()
 					if vim.fn.state("x") ~= "" then
 						-- still inside an autocommand, a write's own BufWritePre waiting among them: the
@@ -202,7 +204,7 @@ function M.init_autocmds(group)
 					local note = noname_deleted[args.buf]
 					noname_deleted[args.buf] = nil
 					if note and note.targets then
-						routines.ledger_record_close(note.hash, note.targets) -- no write claimed it: a close after all
+						routines.ledger_record_close(note.id, note.targets) -- no write claimed it: a close after all
 					end
 				end
 				require('frogman.settle').later("No Name note", drop_note)
@@ -289,8 +291,8 @@ function M.init_autocmds(group)
 			-- the old name isn't one, it's like a :badd buffer until it's entered.
 			-- the old name stays registered until the rename settles (BufFilePost), so nothing prunes what
 			-- a move carries over; a copy closes it then.
-			local old_hash = routines.get_hash_from_buffer(args.buf)
-			renames[args.buf] = old_hash and { hash = old_hash } or nil
+			local id = routines.get_handle_from_buffer(args.buf)
+			renames[args.buf] = id and { id = id } or nil
 		end
 	})
 

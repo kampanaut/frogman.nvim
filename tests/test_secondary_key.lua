@@ -183,7 +183,7 @@ end
 local function lose(hash)
 	child.cmd('bwipeout! ' .. child.lua('return require("frogman.domains.history").get_buffer_from_hash(...)', { hash }))
 	child.settle()
-	child.lua([[require('frogman.domains.history').data.noname_content[...] = { scratch = 'gone', read = function() return nil end }]], { hash })
+	child.lua([[require('frogman.domains.history').handles.of_hash(...).text = { scratch = 'gone', read = function() return nil end }]], { hash })
 end
 
 -- ⦉a⦊ [N] ⟦-⟧, the window visiting a scratch buffer while N is closed and its text lost.

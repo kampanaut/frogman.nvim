@@ -55,4 +55,29 @@ T["T49 [char] the desk's sequence (:e, :e, <M-n>, :bdelete, <M-S-f>, <M-S-f>) th
 	end
 end
 
+-- T49's old route, planted: the slot cleared right after the reopen, as the cleanup cleared the ternary
+-- once before the swap's rename of it ran (the nil rename).
+T["T896 [char] (A7, DESK.md:2017) a ternary cleared while <M-S-f> reopens it throws nothing and leaves no duplicate slot"] = function()
+	child.steps({ ':e a', ':e b', '<M-n>' })
+	child.cmd('bdelete')
+	child.settle()
+	child.messages()
+	child.lua([[
+		local H = require('frogman.domains.history')
+		local reopen = H.reopen_handle
+		H.reopen_handle = function(...)
+			local bufnr, reason = reopen(...)
+			local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
+			if t then t:set('ternary_slot', nil) end
+			return bufnr, reason
+		end
+	]])
+	for _ = 1, 2 do
+		local ok, err = child.step('<M-S-f>')
+		eq({ ok, err }, { true, nil })
+		eq(K.hook_failures(K.messages(child)), {})
+		eq(K.duplicate(child), false)
+	end
+end
+
 return T

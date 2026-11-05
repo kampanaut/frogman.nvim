@@ -107,7 +107,7 @@ end
 -- b is closed and stays known through the closed stack.
 T['T252 [char] (P10, I17) a closed file still on the closed stack keeps its history entry'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
-	local h = child.hash_of('b')
+	local h = child.handle_of('b')
 	eq(child.lua('return require("frogman.domains.history").data.crux_internals.global[...] ~= nil', { h }), true)
 	child.cmd('bdelete b.txt')
 	child.settle()
@@ -398,15 +398,16 @@ T['T266 [char] (A11, D9) a restore onto an open buffer whose file is gone flip-f
 	end
 end
 
-T['T267 [char] (A11, D9) a note at a hash with no path is cleared when it\'s used'] = function()
+T['T267 [char] (A11, D9) a note at a handle with no path is cleared when it\'s used'] = function()
 	child.steps({ ':e a', ':e b' })
-	K.set_note(child, 'dtm', 'b', '0123456789abcdef', true)
+	-- a handle no file has
+	K.set_note(child, 'dtm', 'b', 999999, true)
 	local ok, err = child.step('<M-;><M-r>')
 	eq({ ok, err }, { true, nil })
 	eq(child.lua([[
 		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
 		for _, v in pairs(t.displacement_ternary_map) do
-			if v == '0123456789abcdef' then return true end
+			if v == 999999 then return true end
 		end
 		return false
 	]]), false)
@@ -509,7 +510,7 @@ T['T271 [char] (A19) with no ternary or secondary, it lands on the primary'] = f
 	-- The queue set by hand: [a], switched on.
 	child.lua([[
 		local t = require('frogman.domains.window').data.crux[...]
-		t:set_queue({ require('frogman.domains.history').get_hash_from_filepath(_G.FRG_TEST.root .. '/a.txt') })
+		t:set_queue({ require('frogman.domains.history').get_handle_from_filepath(_G.FRG_TEST.root .. '/a.txt') })
 		t.primary_enabled = true
 	]], { w2 })
 	eq(child.primary(), '[a]on')
@@ -587,14 +588,14 @@ T['T273 [char] (A22) the stale pass keeps the history of the file it re-points']
 		local H = require('frogman.domains.history')
 		local path = _G.FRG_TEST.root .. '/b.txt'
 		local old = vim.fn.bufnr(path)
-		local hash = H.get_hash_from_buffer(old)
-		local had = H.data.crux_internals.global[hash] ~= nil
+		local id = H.get_handle_from_buffer(old)
+		local had = H.data.crux_internals.global[id] ~= nil
 		vim.cmd('noautocmd bwipeout! ' .. old)
 		local copy = vim.fn.bufadd(path)
 		vim.cmd('noautocmd call bufload(' .. copy .. ')')
 		vim.bo[copy].buflisted = true
 		H.cleanup_system()
-		return { had = had, kept = H.data.crux_internals.global[hash] ~= nil }
+		return { had = had, kept = H.data.crux_internals.global[id] ~= nil }
 	]])
 	eq(got, { had = true, kept = true })
 end
@@ -603,7 +604,7 @@ end
 
 T['T274 [char] (A23) the triquetra commands print primary_buffer[1] as "Primary buffer"'] = function()
 	child.steps({ ':e a', '<M-;><M-c>', ':e b' })
-	local h = K.hash(child, 'a')
+	local h = K.handle(child, 'a')
 	local plain = child.lua('return vim.api.nvim_exec2("FrogmanTriquetra", { output = true }).output')
 	local verbose = child.lua('return vim.api.nvim_exec2("FrogmanTriquetraVerbose", { output = true }).output')
 	eq({ plain:find('Primary buffer:%s+' .. h) ~= nil, verbose:find('Primary buffer:%s+' .. h) ~= nil }, { true, true })
@@ -625,7 +626,7 @@ T['T275 [char] (A26) "Duplicates detected" dumps'] = function()
 	child.lua([[
 		local H = require('frogman.domains.history')
 		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
-		local c = H.get_hash_from_filepath(_G.FRG_TEST.root .. '/c.txt')
+		local c = H.get_handle_from_filepath(_G.FRG_TEST.root .. '/c.txt')
 		t.secondary_slot, t.ternary_slot = c, c
 	]])
 	eq(child.slots(), '⦉c⦊ [d] ⟦c⟧')
@@ -655,7 +656,7 @@ T['T276 [char] (A26) a planted I1 break dumps at the next step'] = function()
 	eq(child.slots(win1), '⦉b⦊ [c] ⟦-⟧')
 	child.cmd('vsplit')
 	child.steps({ ':e d', ':e e' })
-	child.lua('require("frogman.domains.window").data.crux[...].secondary_slot = select(2, ...)', { win1, child.hash_of('b') })
+	child.lua('require("frogman.domains.window").data.crux[...].secondary_slot = select(2, ...)', { win1, child.handle_of('b') })
 	eq(child.slots(win1), '⦉b⦊ [c] ⟦b⟧')
 	local files = dumps_after(function() child.steps({ ':e x' }) end)
 	eq(#files, 1)
@@ -786,13 +787,13 @@ end
 
 -- A secondary set to a hash nothing knows, saved in the same call so no other
 -- pass runs first.
-T['T285 [char] (I14) a save with a slot holding a hash with no path succeeds'] = function()
+T['T285 [char] (I14) a save with a slot holding a handle no file has succeeds'] = function()
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d' })
 	eq(child.slots(), '⦉c⦊ [d] ⟦b⟧')
 	child.messages()
 	local got = child.lua([[
 		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
-		t.secondary_slot = '0123456789abcdef'
+		t.secondary_slot = 999999
 		return { pcall(require('frogman').save_session, vim.fn.getcwd()) }
 	]])
 	eq(got, { true })

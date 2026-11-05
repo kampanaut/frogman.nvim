@@ -164,10 +164,11 @@ local function is_known(filehash)
 	return filehash ~= nil and history.get_filepath_from_hash(filehash) ~= nil
 end
 
----Keep a hash only if the path registry knows it.
----@param filehash Filehash|nil The hash to look up
----@return Filehash|nil filehash The same hash, or nil if nothing knows it
-local function known(filehash)
+---Get the hash a file is saved under, only if the path registry knows it.
+---@param id HandleId|nil The file's handle
+---@return Filehash|nil filehash Its hash, or nil if nothing knows it
+local function known(id)
+	local filehash = history.get_hash_from_handle(id)
 	if is_known(filehash) then
 		return filehash
 	end
@@ -250,8 +251,8 @@ local function load_buffer_history(buffers, paths)
 		end
 	end
 
-	for saved_filehash, time in pairs(buffers.global) do
-		history.track_buffer(saved_filehash, time)
+	for id, time in pairs(history.keyed_by_handle(buffers.global)) do
+		history.track_buffer(id, time)
 	end
 end
 
@@ -265,20 +266,21 @@ local load_pool = nil
 ---under what was closed in the session, as the oldest. A No Name buffer, or a file already on the
 ---closed stack, is left alone.
 ---
----@param filehash Filehash|nil The slot's file
+---@param id HandleId|nil The slot's file's handle
 ---@return nil
-local function close_if_not_restored(filehash)
-	local filepath = filehash and history.get_filepath_from_hash(filehash)
+local function close_if_not_restored(id)
+	local filepath = history.get_filepath_from_handle(id)
 	local closed = load_pool and load_pool.closed or history.data.closed_buffers
 	if
 		filepath and
 		not filepath:match("^NONAME_") and
-		history.get_buffer_from_hash(filehash) == nil and
-		not vim.tbl_contains(closed, filehash)
+		history.get_buffer_from_handle(id) == nil and
+		not vim.tbl_contains(closed, id)
 	then
-		table.insert(closed, 1, filehash)
+		table.insert(closed, 1, id)
 		history.routines.hold_pool(load_pool or history.routines.pools()[""])
 		local ledger = require('frogman.domains.ledger')
+		local filehash = history.get_hash_from_handle(id)
 		ledger.move("closed", { subject = filehash, name = ledger.name_of(filehash),
 			lists = { history.routines.list_name(load_pool or history.routines.pools()[""]) },
 			words = "not restored by the session manager" })
@@ -295,7 +297,7 @@ end
 ---
 ---@param window_buffer WindowBufferData Window relationships, in window order
 ---@param tabpage integer|nil The tab to match windows in, for a tab session (nil = every window)
----@return table<WinId, table<Filehash, number>> window_histories Each matched window's own access history
+---@return table<WinId, table<HandleId, number>> window_histories Each matched window's own access history
 ---@return WinId[] matched The windows that took an entry
 ---@return table<integer, WinId> taken The window each saved entry went to, by the entry's index
 local function load_window_buffer_relationships(window_buffer, tabpage)
@@ -348,7 +350,8 @@ local function load_window_buffer_relationships(window_buffer, tabpage)
 		if triquetra_serialised[1] ~= vim.NIL then
 			cfilehash = triquetra_serialised[1]
 		end
-		local current_slot = cfilehash or history.get_hash_from_buffer(vim.api.nvim_win_get_buf(actual_winid))
+		local current_slot = history.get_handle_from_hash(cfilehash)
+			or history.get_handle_from_buffer(vim.api.nvim_win_get_buf(actual_winid))
 
 		-- Secondary slot [2]
 		if triquetra_serialised[2] ~= vim.NIL then
@@ -377,31 +380,36 @@ local function load_window_buffer_relationships(window_buffer, tabpage)
 			goto continue -- nothing to put in the current slot: the window shows something untracked
 		end
 
+		-- the file's hashes, as the slots' handles
+		local secondary_slot = history.get_handle_from_hash(sfilehash)
+		local ternary_slot = history.get_handle_from_hash(tfilehash)
+		local primary_buffer = history.handles_of(pfilehashes)
+
 		window.set_buffer_relationship(
 			actual_winid,
 			{
 				current_slot = current_slot,
-				secondary_slot = sfilehash,
-				ternary_slot = tfilehash,
-				primary_buffer = pfilehashes,
-				displacement_ternary_map = tdisplacement_map,
-				displacement_secondary_map = sdisplacement_map,
+				secondary_slot = secondary_slot,
+				ternary_slot = ternary_slot,
+				primary_buffer = primary_buffer,
+				displacement_ternary_map = window.data.notes_by_handle(tdisplacement_map),
+				displacement_secondary_map = window.data.notes_by_handle(sdisplacement_map),
 				primary_enabled = triquetra_serialised[8] == true
 			}
 		)
-		window_histories[actual_winid] = triquetra_serialised[9] or {}
+		window_histories[actual_winid] = history.keyed_by_handle(triquetra_serialised[9])
 		-- oil keeps the buffer it was opened from in a window variable no session manager saves, so
 		-- `q` there goes back to the window's current slot
 		local wbufnr = vim.api.nvim_win_get_buf(actual_winid)
-		local current_bufnr = history.get_buffer_from_hash(current_slot)
+		local current_bufnr = history.get_buffer_from_handle(current_slot)
 		if vim.bo[wbufnr].filetype == "oil" and current_bufnr then
 			vim.w[actual_winid].oil_original_buffer = current_bufnr
 		end
 		close_if_not_restored(current_slot)
-		close_if_not_restored(sfilehash)
-		close_if_not_restored(tfilehash)
-		for _, filehash in ipairs(pfilehashes) do
-			close_if_not_restored(filehash)
+		close_if_not_restored(secondary_slot)
+		close_if_not_restored(ternary_slot)
+		for _, id in ipairs(primary_buffer) do
+			close_if_not_restored(id)
 		end
 		table.insert(matched, actual_winid)
 		taken[index_of[triquetra_serialised]] = actual_winid
@@ -430,7 +438,7 @@ end
 ---@return BufferCruxInternalsSerialised crux_serialised Serializable copy of buffer history
 local function serialise_buffer_history()
 	return {
-		global = history.data.crux_internals.global
+		global = history.keyed_by_hash(history.data.crux_internals.global)
 	}
 end
 
@@ -439,7 +447,7 @@ end
 ---Creates a compressed representation of all window triquetra relationships
 ---that can be safely serialized to JSON. Holds one entry per window with a triquetra,
 ---in window order, with its slots and notes as hashes, its own access history and what
----it shows, so the load can find it. A slot's hash the path registry doesn't know is
+---it shows, so the load can find it. A slot whose file the path registry doesn't know is
 ---dropped.
 ---
 ---@return WindowBufferData compressed Serializable window relationship data
@@ -455,17 +463,18 @@ local function serialise_window_relationships(outsiders, tabpage)
 		if window.data.crux[winid] ~= nil then -- yes, a direct existence check sorry for breaking encapsulation
 			local triquetra = window.get_triquetra(winid)
 
-			---@type Filehash|vim.NIL|nil
-			local cfilehash 
-			---@type Filehash|vim.NIL|nil
+			-- each slot's handle first, then the hash it's saved under
+			---@type HandleId|Filehash|vim.NIL|nil
+			local cfilehash
+			---@type HandleId|Filehash|vim.NIL|nil
 			local sfilehash
-			---@type Filehash|vim.NIL|nil
+			---@type HandleId|Filehash|vim.NIL|nil
 			local tfilehash
-			---@type Filehash[]|nil
+			---@type HandleId[]|Filehash[]|nil
 			local pfilehashes = {}
-			---@type table<Filehash, Filehash>|nil
+			---@type table<HandleId|string, HandleId>|nil
 			local sdisplacement_map = {}
-			---@type table<Filehash, Filehash>|nil
+			---@type table<HandleId|string, HandleId>|nil
 			local tdisplacement_map = {}
 
 			if not triquetra then
@@ -499,8 +508,8 @@ local function serialise_window_relationships(outsiders, tabpage)
 				pfilehashes = {}
 			else
 				local serialised = {}
-				for _, hash in ipairs(pfilehashes) do -- no holes: a hash nothing knows is dropped
-					table.insert(serialised, known(hash))
+				for _, id in ipairs(pfilehashes) do -- no holes: a file nothing knows is dropped
+					table.insert(serialised, known(id))
 				end
 				pfilehashes = serialised
 			end
@@ -531,11 +540,11 @@ local function serialise_window_relationships(outsiders, tabpage)
 				[2] = sfilehash, -- Secondary slot
 				[3] = pfilehashes, -- Primary buffer
 				[4] = tfilehash, -- Ternary slot
-				[5] = tdisplacement_map,
-				[6] = sdisplacement_map,
+				[5] = window.data.notes_by_hash(tdisplacement_map),
+				[6] = window.data.notes_by_hash(sdisplacement_map),
 				[7] = shows or vim.NIL, -- What the window shows
 				[8] = triquetra.primary_enabled == true,
-				[9] = history.data.crux_internals.window[winid] or {}
+				[9] = history.keyed_by_hash(history.data.crux_internals.window[winid])
 			}
 			compressed[compressed_index][10] = marks().serialise("window", winid) -- its marks, when it has some
 			compressed[compressed_index][11] = snapshots().serialise_window(winid) -- its snapshots, when it has some
@@ -566,7 +575,7 @@ end
 ---Creates a copy of the closed buffer hashes that can be safely
 ---serialized to JSON. Preserves the stack of reopenable files. Several pools are
 ---merged by when their entries were closed, each pool's own order kept. A file
----closed in more than one pool is kept once, at its newer close, and a hash the
+---closed in more than one pool is kept once, at its newer close, and a file the
 ---path registry doesn't know is left out.
 ---
 ---@param pools Pool[] The pools to save, the editor's first
@@ -578,7 +587,7 @@ local function serialise_closed_buffers(pools)
 	for order, pool in ipairs(pools) do
 		for _, v in ipairs(pool.closed) do
 			local time = pool.times[v] or 0
-			if is_known(v) and (keep[v] == nil or time > keep[v].time) then
+			if known(v) and (keep[v] == nil or time > keep[v].time) then
 				keep[v] = { order = order, time = time }
 			end
 		end
@@ -604,8 +613,9 @@ local function serialise_closed_buffers(pools)
 		end
 		local v = pools[best].closed[heads[best]]
 		heads[best] = heads[best] + 1
-		table.insert(copy, v)
-		times[v] = pools[best].times[v]
+		local filehash = known(v) -- saved by hash
+		table.insert(copy, filehash)
+		times[filehash] = pools[best].times[v]
 	end
 	return copy, times
 end
@@ -618,20 +628,20 @@ end
 ---pool, every text is owned, as the whole editor's session holds them all while it covers every tab.
 ---
 ---@param owner Pool|nil The pool (nil = every text)
----@param filehash Filehash The No Name buffer's hash
+---@param handle_id HandleId|nil The No Name buffer's file's handle
 ---@return boolean owned True if the pool owns the text
-local function owned(owner, filehash)
+local function owned(owner, handle_id)
 	if owner == nil then
 		return true
 	end
-	local visited = history.routines.tabs_that_visited(filehash)
+	local visited = history.routines.tabs_that_visited(handle_id)
 	for tabpage, _ in pairs(visited) do
 		if history.routines.pool_of_tab(tabpage) == owner then
 			return true
 		end
 	end
 	if owner.id ~= "" then
-		return owner.visits[filehash] ~= nil -- visited in its tab, though the window that did is gone
+		return owner.visits[handle_id] ~= nil -- visited in its tab, though the window that did is gone
 	end
 	for tabpage, _ in pairs(visited) do
 		local pool = history.routines.pool_of_tab(tabpage)
@@ -640,7 +650,7 @@ local function owned(owner, filehash)
 		end
 	end
 	for id, pool in pairs(history.routines.pools()) do
-		if id ~= "" and not pool.detached and pool.visits[filehash] then
+		if id ~= "" and not pool.detached and pool.visits[handle_id] then
 			return false -- a tab session's text, by its visits
 		end
 	end
@@ -663,14 +673,16 @@ local function serialise_noname_content(owner)
 	local texts = {}
 	-- the texts its marks and its snapshots hold go too, open or closed, an empty one included
 	local marked = require('frogman.held').files_held(owner)
-	for identifier, content in pairs(history.data.noname_content) do
-		if is_known(identifier) and (owner == nil or vim.tbl_contains(owner.closed, identifier) or marked[identifier]) then
-			texts[identifier] = content
+	for id, handle in pairs(history.handles.live()) do
+		local identifier = handle.hash
+		if handle.text and is_known(identifier) and (owner == nil or vim.tbl_contains(owner.closed, id) or marked[identifier]) then
+			texts[identifier] = handle.text
 		end
 	end
 	for filehash, bufnr in pairs(history.data.hash_buffer_registry.buffers) do
 		local filepath = history.get_filepath_from_hash(filehash)
-		if filepath and filepath:match("^NONAME_") and vim.api.nvim_buf_is_loaded(bufnr) and (owned(owner, filehash) or marked[filehash]) then
+		if filepath and filepath:match("^NONAME_") and vim.api.nvim_buf_is_loaded(bufnr)
+			and (owned(owner, history.get_handle_from_hash(filehash)) or marked[filehash]) then
 			local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 			-- empty ones are skipped, as when closed, but for one a mark holds
 			if marked[filehash] or not (#lines == 0 or (#lines == 1 and lines[1] == "")) then
@@ -706,21 +718,26 @@ local function write_noname_texts(texts, key, scratch_dir)
 	for filehash, text in pairs(texts) do
 		local reopen = text.reopen
 		local name = text.scratch
+		local handle = history.handles.of_hash(filehash) -- the text in memory, when a handle has it
 		if text.lines == nil then
 			if text.source ~= scratch_dir .. name or text.key ~= key then
 				text = text.read() -- saved under another session or key: read, and written again here
 				if text then
-					history.data.noname_content[filehash] = text -- kept read, so it no longer needs that file
-				else
+					if handle then
+						handle.text = text -- kept read, so it no longer needs that file
+					end
+				elseif handle then
 					-- lost, as a reopen that can't read it finds it: no later write reads it again
-					history.data.noname_content[filehash] = nil
-					history.routines.discard_from_pools(filehash)
+					handle.text = nil
+					history.routines.discard_from_pools(handle.id)
 				end
 			elseif vim.uv.fs_stat(scratch_dir .. name) == nil then
 				-- its file is gone, swept by another editor's save: nothing is left to keep, here or in memory
 				text = nil
-				history.data.noname_content[filehash] = nil
-				history.routines.discard_from_pools(filehash)
+				if handle then
+					handle.text = nil
+					history.routines.discard_from_pools(handle.id)
+				end
 			end
 		end
 		if text and text.lines then
@@ -882,8 +899,9 @@ local function carry_marked_texts(texts, saved, key, scratch_dir, references)
 	for filehash, _ in pairs(named) do
 		local entry = type(saved.noname_content) == "table" and saved.noname_content[filehash]
 		if texts[filehash] == nil then
-			if history.data.noname_content[filehash] and is_known(filehash) then
-				texts[filehash] = history.data.noname_content[filehash]
+			local handle = history.handles.of_hash(filehash)
+			if handle and handle.text and is_known(filehash) then
+				texts[filehash] = handle.text
 			elseif type(entry) == "table" and type(entry.scratch) == "string" then
 				local source = scratch_dir .. entry.scratch
 				texts[filehash] = { scratch = entry.scratch, source = source, key = key,
@@ -1049,10 +1067,11 @@ local function restore_marks(saved_data, taken, session_id, own, key, scratch_di
 	for filehash, _ in pairs(held) do
 		local entry = type(saved_data.noname_content) == "table" and saved_data.noname_content[filehash]
 		local filepath = history.get_filepath_from_hash(filehash)
+		local handle = history.handles.of_hash(filehash)
 		if type(entry) == "table" and not entry.reopen and type(entry.scratch) == "string" and filepath
-			and filepath:match("^NONAME_") and history.data.noname_content[filehash] == nil then
+			and filepath:match("^NONAME_") and handle and handle.text == nil then
 			local source = scratch_dir .. entry.scratch
-			history.data.noname_content[filehash] = { scratch = entry.scratch, source = source, key = key,
+			handle.text = { scratch = entry.scratch, source = source, key = key,
 				read = scratch_reader(source, key, filehash) }
 		end
 	end
@@ -1094,8 +1113,9 @@ end
 
 ---Reopen the No Name buffers that were open at the save.
 ---
----They come back in the background, listed, hidden and modified, under a fresh id, and every slot,
----note and history entry that named them follows. One that is already back is taken as it is. The
+---They come back in the background, listed, hidden and modified, under a fresh id, each keeping its
+---handle, so every slot, note and history entry holding it holds it still. One that is already back
+---is taken as it is, and its handle, when it has one, gives way to the text's (`rename_handle`). The
 ---cursor goes back once a window shows the buffer. A text whose file fails its check is lost, and
 ---the rest still come back.
 ---
@@ -1108,7 +1128,7 @@ local function reopen_noname_buffers(noname_content, key, scratch_dir)
 		local filepath = history.get_filepath_from_hash(filehash)
 		-- one memory holds closed stays closed: a session open in another tab may have closed it since
 		-- its file was written
-		if entry.reopen and filepath and not history.routines.is_filehash_closed(filehash) then
+		if entry.reopen and filepath and not history.routines.is_handle_closed(history.get_handle_from_hash(filehash)) then
 			local bufnr = noname_already_back(filehash)
 			local content = bufnr == nil and scratch_reader(scratch_dir .. entry.scratch, key, filehash)()
 			if bufnr == nil and not content then
@@ -1119,13 +1139,12 @@ local function reopen_noname_buffers(noname_content, key, scratch_dir)
 				vim.b[bufnr].frogman_reopened = filehash
 			end
 			-- the text keeps its handle under the hash it's back under
-			history.handles.renamed(filehash, history.routines.get_filehash(history.routines.noname_name(bufnr)))
-			local new_filehash = history.register_buffer(bufnr)
+			history.routines.rename_handle(filehash, history.routines.get_filehash(history.routines.noname_name(bufnr)))
+			history.register_buffer(bufnr)
+			local new_filehash = history.get_hash_from_buffer(bufnr)
 			if new_filehash ~= filehash then
 				require('frogman.domains.ledger').move("reopened", { subject = new_filehash, name = "[No Name]", from = filehash,
 					words = "open at the save, reopened under a new id" })
-				window.data.rename_hash_in_triquetras(filehash, new_filehash)
-				history.routines.rename_hash_in_history(filehash, new_filehash)
 				history.routines.unregister_filepath(filepath)
 			end
 		end
@@ -1135,8 +1154,8 @@ end
 
 ---Loads closed buffer history data.
 ---
----Restores the stack of closed buffer hashes that can be reopened, into the pool
----being loaded. A closed buffer the session manager brought back isn't closed any
+---Restores the stack of closed buffer handles that can be reopened, from the file's hashes,
+---into the pool being loaded. A closed buffer the session manager brought back isn't closed any
 ---more, so it stays off the stack.
 ---
 ---A closed [No Name] text is read from its file only when it's reopened.
@@ -1172,33 +1191,34 @@ local function load_closed_buffers(closed_buffers, noname_content, key, scratch_
 		if history.get_buffer_from_hash(filehash) then
 			goto continue -- the session manager brought it back
 		end
-		if merge and vim.tbl_contains(load_pool.closed, filehash) then
+		local handle = history.handles.of_hash(filehash) -- the list holds its file's handle
+		if merge and vim.tbl_contains(load_pool.closed, handle.id) then
 			goto continue
 		end
 		if filepath:match("^NONAME_") then
-			if history.data.noname_content[filehash] == nil or (load_pool.id ~= "" and not merge) then
+			if handle.text == nil or (load_pool.id ~= "" and not merge) then
 				local content = noname_content[filehash]
 				if content == nil then
 					require('frogman.domains.ledger').never("This is impossible. Noname content must be created for this closed No Name buffer.")
 				end
 				local source = scratch_dir .. content.scratch
-				history.data.noname_content[filehash] = {
+				handle.text = {
 					scratch = content.scratch,
 					source = source,
 					key = key,
 					read = scratch_reader(source, key, filehash),
 				}
 			elseif not merge then -- merged into an open pool, its text is cached already
-				require('frogman.domains.ledger').never("This is impossible. The closed buffer must not already exist in noname_content.")
+				require('frogman.domains.ledger').never("This is impossible. The closed buffer must not already have its text on its handle.")
 			end
 		end
 		if merge then
-			table.insert(load_pool.closed, at, filehash)
+			table.insert(load_pool.closed, at, handle.id)
 			at = at + 1
 		else
-			table.insert(load_pool.closed, filehash)
+			table.insert(load_pool.closed, handle.id)
 		end
-		load_pool.times[filehash] = load_pool.times[filehash] or (times and times[filehash]) or nil
+		load_pool.times[handle.id] = load_pool.times[handle.id] or (times and times[filehash]) or nil
 		::continue::
 	end
 	history.routines.hold_pool(load_pool)
@@ -1738,9 +1758,11 @@ end
 local function carry_detached(lists, live, old, texts, paths, key, scratch_dir)
 	for _, pool in pairs(history.data.pools) do
 		if pool.detached then
-			for _, filehash in ipairs(pool.closed) do
-				if texts[filehash] == nil and history.data.noname_content[filehash] and is_known(filehash) then
-					texts[filehash] = history.data.noname_content[filehash]
+			for _, id in ipairs(pool.closed) do
+				local handle = history.handles.get(id)
+				local filehash = handle and handle.hash
+				if filehash and texts[filehash] == nil and handle.text and is_known(filehash) then
+					texts[filehash] = handle.text
 				end
 			end
 		end
@@ -1749,11 +1771,12 @@ local function carry_detached(lists, live, old, texts, paths, key, scratch_dir)
 		if not live[list.label] then
 			for _, filehash in ipairs(list.closed or {}) do
 				local entry = old and old.noname_content and old.noname_content[filehash]
+				local handle = history.handles.of_hash(filehash)
 				if texts[filehash] == nil and entry then
 					local source = scratch_dir .. entry.scratch
 					texts[filehash] = { scratch = entry.scratch, source = source, key = key, read = scratch_reader(source, key, filehash) }
-				elseif texts[filehash] == nil and history.data.noname_content[filehash] then
-					texts[filehash] = history.data.noname_content[filehash] -- moved in from a list in memory
+				elseif texts[filehash] == nil and handle and handle.text then
+					texts[filehash] = handle.text -- moved in from a list in memory
 				end
 				if paths[filehash] == nil then
 					paths[filehash] = old and old.paths and old.paths[filehash] or history.get_filepath_from_hash(filehash)
@@ -1870,8 +1893,8 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 		for _, time in pairs(saved_data.buffers.global or {}) do
 			latest = math.max(latest, time)
 		end
-		for filehash, time in pairs(saved_data.buffers.global or {}) do
-			load_pool.visits[filehash] = time - latest - 1
+		for id, time in pairs(history.keyed_by_handle(saved_data.buffers.global)) do
+			load_pool.visits[id] = time - latest - 1
 		end
 	end
 	load_closed_buffers(saved_data.closed or {}, saved_data.noname_content or {}, key, scratch_dir, saved_data.closed_times, open)
@@ -1890,11 +1913,16 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 	end
 	reopen_noname_buffers(saved_data.noname_content or {}, key, scratch_dir)
 	for filehash, tag in pairs(saved_data.missing or {}) do
-		history.data.missing[filehash] = history.data.missing[filehash] or tag
+		local handle = history.handles.of_hash(filehash)
+		if handle and handle.tag == nil then -- a tag memory holds stays
+			history.handles.set_tag(handle.id, tag)
+		end
 	end
-	history.handles.follow_tags()
 	for _, filehash in ipairs(saved_data.unwritten or {}) do
-		history.data.unwritten[filehash] = true
+		local handle = history.handles.of_hash(filehash)
+		if handle then
+			handle.unwritten = true
+		end
 	end
 	-- the tab's windows' histories and the pool's visits were replaced in place, so the next view is
 	-- built afresh, even for the window the last one was built for.
@@ -2046,7 +2074,7 @@ function M.load_history(cwd, name)
 		end
 		local window_histories, matched, taken = load_window_buffer_relationships(saved_data.windows)
 		loaded(matched, vim.api.nvim_list_wins(), #saved_data.windows)
-		history.routines.initialise_crux_internals({ window = window_histories, global = saved_data.buffers.global })
+		history.routines.initialise_crux_internals({ window = window_histories, global = history.keyed_by_handle(saved_data.buffers.global) })
 		-- each detached list whose tab came back, found through its windows, joins that tab; the
 		-- rest stay in the file alone
 		for _, list in ipairs(saved_data.detached or {}) do
@@ -2073,11 +2101,13 @@ function M.load_history(cwd, name)
 		remember_unclaimed(file_path, saved_data, gone, restore_marks(saved_data, taken, "", true, key, scratch_dir, what)) -- before the texts reopen under new hashes
 		reopen_noname_buffers(saved_data.noname_content or {}, key, scratch_dir)
 		for filehash, tag in pairs(saved_data.missing or {}) do
-			history.data.missing[filehash] = tag
+			history.handles.set_tag(history.get_handle_from_hash(filehash), tag)
 		end
-		history.handles.follow_tags()
 		for _, filehash in ipairs(saved_data.unwritten or {}) do
-			history.data.unwritten[filehash] = true
+			local handle = history.handles.of_hash(filehash)
+			if handle then
+				handle.unwritten = true
+			end
 		end
 		if type(saved_data.label) == "string" then
 			history.data.last_label = saved_data.label
@@ -2188,8 +2218,9 @@ local function commit_session(file_path, key, salt, storage, kept)
 	end
 	-- a file a closed No Name text held unread still reads from stays until that text is read
 	local held = {}
-	for _, text in pairs(history.data.noname_content) do
-		if text.lines == nil and text.source then
+	for _, handle in pairs(history.handles.live()) do
+		local text = handle.text
+		if text and text.lines == nil and text.source then
 			held[text.source] = true
 		end
 	end
@@ -2758,24 +2789,26 @@ end
 
 ---Adopt an entry moved out of a list in the file alone onto a list in memory.
 ---
----Its path is registered, and a No Name text's file is held unread, as a load holds a closed one's.
----It uses what the last `M.file_only_lists()` found, and does nothing without it.
+---Its path is registered, and a No Name text's file is held unread on its handle, as a load holds a
+---closed one's. It uses what the last `M.file_only_lists()` found, and registers nothing without it.
 ---
 ---@param filehash Filehash The entry's hash
----@return nil
+---@return HandleId|nil id The entry's file's handle, or nil when nothing knows its path
 function M.adopt_file_entry(filehash)
 	if file_view == nil then
-		return
+		return history.get_handle_from_hash(filehash)
 	end
 	local path = file_view.paths[filehash]
 	if path and history.get_filepath_from_hash(filehash) == nil then
 		history.register_filepath(path)
 	end
+	local handle = history.handles.of_hash(filehash)
 	local entry = file_view.noname_content[filehash]
-	if entry and history.data.noname_content[filehash] == nil then
+	if entry and handle and handle.text == nil then
 		local source = file_view.scratch_dir .. entry.scratch
-		history.data.noname_content[filehash] = { scratch = entry.scratch, source = source, key = file_view.key, read = scratch_reader(source, file_view.key, filehash) }
+		handle.text = { scratch = entry.scratch, source = source, key = file_view.key, read = scratch_reader(source, file_view.key, filehash) }
 	end
+	return handle and handle.id or nil
 end
 
 ---Write the closed lists' edits to the lists in the whole editor's file alone.
@@ -3091,7 +3124,7 @@ function M.noname_text_changed(filehash)
 	noname_edited[filehash] = true
 	for _, session in ipairs(known_sessions()) do
 		local held = noname_held[get_session_filepath(session.directory, session.name)]
-		if owned(session.owner, filehash) or (held and held[filehash]) then
+		if owned(session.owner, history.get_handle_from_hash(filehash)) or (held and held[filehash]) then
 			M.records_changed(session.id)
 		end
 	end
@@ -3183,8 +3216,8 @@ function M.save_history(cwd, name, tab)
 		if pool ~= before and next(pool.visits) == nil then
 			-- a tab saved as this session for the first time: its own visits start the pool's
 			for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
-				for filehash, time in pairs(history.data.crux_internals.window[winid] or {}) do
-					pool.visits[filehash] = math.max(pool.visits[filehash] or time, time)
+				for id, time in pairs(history.data.crux_internals.window[winid] or {}) do
+					pool.visits[id] = math.max(pool.visits[id] or time, time)
 				end
 			end
 		end
@@ -3201,8 +3234,8 @@ function M.save_history(cwd, name, tab)
 					history.routines.carry_closed(before, pool, triquetra.current_slot)
 					history.routines.carry_closed(before, pool, triquetra.secondary_slot)
 					history.routines.carry_closed(before, pool, triquetra.ternary_slot)
-					for _, filehash in ipairs(triquetra.primary_buffer or {}) do
-						history.routines.carry_closed(before, pool, filehash)
+					for _, id in ipairs(triquetra.primary_buffer or {}) do
+						history.routines.carry_closed(before, pool, id)
 					end
 				end
 			end
@@ -3234,19 +3267,26 @@ function M.save_history(cwd, name, tab)
 	end
 	local noname_content, kept = write_noname_texts(texts, key, file_path .. ".d/")
 	local closed, closed_times = serialise_closed_buffers(pool and { pool } or every_pool())
+	-- the never-written marks, from the handles that carry them
+	local unwritten = {}
+	for _, handle in pairs(history.handles.live()) do
+		if handle.unwritten then
+			table.insert(unwritten, handle.hash)
+		end
+	end
 	local storage = {
 		scope = tab and "tab" or "editor", -- a tab session's file loads into a tab
 		detached = detached and #detached > 0 and detached or nil, -- the whole editor's detached lists, when there are some
 		paths = paths,
 		outsiders = vim.tbl_keys(outsiders),
-		buffers = pool and { global = pool.visits } or serialise_buffer_history(),
+		buffers = pool and { global = history.keyed_by_hash(pool.visits) } or serialise_buffer_history(),
 		windows = windows,
 		closed = closed,
 		closed_times = closed_times, -- when each was closed, to merge pools by
 		noname_content = noname_content,
-		missing = history.data.missing, -- where each file gone from disk went missing
+		missing = history.tags_by_hash(), -- where each file gone from disk went missing
 		label = history.data.last_label, -- where you were at this save: the label being left at the next load
-		unwritten = next(history.data.unwritten) and vim.tbl_keys(history.data.unwritten) or nil, -- files never written
+		unwritten = #unwritten > 0 and unwritten or nil, -- files never written
 		marks = marks().serialise("session", pool and pool.id or ""), -- the session's own marks, when it has some
 		snapshots = snapshots().serialise_held(pool and pool.id or ""), -- the snapshots held over in its scope, when there are some
 		tabs = not pool and serialise_tabs() or nil, -- the plain tabs' marks, when there are some

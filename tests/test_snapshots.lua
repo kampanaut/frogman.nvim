@@ -324,7 +324,7 @@ T['T776 [char] (M16) <M-v> on the snapshot\'s current takes it'] = function()
 	local after = { slots = child.slots(win), queue = child.lua([[
 		local t = require('frogman.domains.window').data.crux[...]
 		local H = require('frogman.domains.history')
-		return vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_hash(h), ':t:r') end, t.primary_buffer)[1] .. (t.primary_enabled and 'on' or 'off')
+		return vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_handle(h), ':t:r') end, t.primary_buffer)[1] .. (t.primary_enabled and 'on' or 'off')
 	]], { win }), newest = child.ordered():match('^[^,]+'), detached = child.lua('return require("frogman.domains.history").is_detached()') }
 	local before = child.dump_files()
 	child.messages()
@@ -387,7 +387,7 @@ T['T782 [char] (M16) in the window view the commit lays the stored order into th
 		local H = require('frogman.domains.history')
 		local own = H.data.crux_internals.window[...] or {}
 		local items = {}
-		for h, t in pairs(own) do table.insert(items, { vim.fn.fnamemodify(H.get_filepath_from_hash(h) or h, ':t:r'), t }) end
+		for h, t in pairs(own) do table.insert(items, { vim.fn.fnamemodify(H.get_filepath_from_handle(h) or tostring(h), ':t:r'), t }) end
 		table.sort(items, function(a, b) return a[2] > b[2] end)
 		return table.concat(vim.tbl_map(function(i) return i[1] end, items), ',')
 	]], { win })
@@ -434,9 +434,9 @@ T['T785 [char] (M16) <M-v> outside the snapshot\'s slots'] = function()
 	local note = child.lua([[
 		local t = require('frogman.domains.window').data.crux[...]
 		local H = require('frogman.domains.history')
-		local a = H.routines.get_filehash(_G.FRG_TEST.root .. '/a.txt')
+		local a = H.get_handle_from_filepath(_G.FRG_TEST.root .. '/a.txt')
 		local v = t.displacement_ternary_map[a]
-		return v and vim.fn.fnamemodify(H.get_filepath_from_hash(v), ':t:r') or false
+		return v and vim.fn.fnamemodify(H.get_filepath_from_handle(v), ':t:r') or false
 	]], { win })
 	eq({ slots = child.slots(win), note = note }, { slots = '⦉c⦊ [a] ⟦b⟧', note = 'd' })
 end
@@ -669,8 +669,8 @@ T['T794 [char] (M16, M5) the No Name texts snapshots hold are written'] = functi
 		local s = S.of_window(vim.api.nvim_get_current_win())[1]
 		local h = s and s.ternary and S.handle(s.ternary)
 		local path = h and H.get_filepath_from_hash(h.hash) or ''
-		return { noname = path:match('^NONAME_') ~= nil, text = h ~= nil and H.data.noname_content[h.hash] ~= nil,
-			listed = h ~= nil and vim.tbl_contains(H.data.closed_buffers, h.hash) }
+		return { noname = path:match('^NONAME_') ~= nil, text = h ~= nil and h.text ~= nil,
+			listed = h ~= nil and vim.tbl_contains(H.data.closed_buffers, h.id) }
 	]]), { noname = true, text = true, listed = false })
 end
 
@@ -745,7 +745,8 @@ local function state(stem)
 	return child.lua([[
 		local H = require('frogman.domains.history')
 		local h = H.routines.get_filehash(_G.FRG_TEST.root .. '/' .. ... .. '.txt')
-		return { taken = H.get_buffer_from_hash(h) ~= nil, listed = vim.tbl_contains(H.data.closed_buffers, h) }
+		local id = H.get_handle_from_hash(h)
+		return { taken = H.get_buffer_from_hash(h) ~= nil, listed = id ~= nil and vim.tbl_contains(H.data.closed_buffers, id) }
 	]], { stem })
 end
 
@@ -755,7 +756,7 @@ local function texts_on_list()
 		local H = require('frogman.domains.history')
 		local n = 0
 		for _, h in ipairs(H.data.closed_buffers) do
-			if (H.get_filepath_from_hash(h) or ''):match('^NONAME_') then n = n + 1 end
+			if (H.get_filepath_from_handle(h) or ''):match('^NONAME_') then n = n + 1 end
 		end
 		return n
 	]])

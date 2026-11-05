@@ -22,13 +22,13 @@
 
 ---@class UIWindowTriquetra Display-optimized window buffer relationships
 ---@field winid number Window ID
----@field current_bufnr number|nil Current buffer number (resolved from hash)
+---@field current_bufnr number|nil Current buffer number (resolved from its handle)
 ---@field current_display_name string|nil Current buffer display name
----@field secondary_bufnr number|nil Secondary buffer number (resolved from hash)
+---@field secondary_bufnr number|nil Secondary buffer number (resolved from its handle)
 ---@field secondary_display_name string|nil Secondary buffer display name
----@field ternary_bufnr number|nil Ternary buffer number (resolved from hash)
+---@field ternary_bufnr number|nil Ternary buffer number (resolved from its handle)
 ---@field ternary_display_name string|nil Ternary buffer display name
----@field primary_bufnr number|nil Primary buffer number (resolved from hash)
+---@field primary_bufnr number|nil Primary buffer number (resolved from its handle)
 ---@field primary_display_name string|nil Primary buffer display name
 ---@field has_secondary boolean Whether secondary slot is populated
 ---@field has_ternary boolean Whether ternary slot is populated
@@ -104,8 +104,8 @@ local winbar_themes = {
 ---@type table<WinId, UIWindowTriquetra>
 local window_display_cache = {}
 
--- Simple basename display cache - cleared on buffer changes
----@type table<Filehash, Filepath>
+-- Simple basename display cache, by the file's handle - cleared on buffer changes
+---@type table<HandleId, string>
 local display_name_cache = {}
 
 ---Reset bufferline cache to empty state.

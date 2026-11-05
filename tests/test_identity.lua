@@ -103,11 +103,12 @@ T['T12 [char] registering a second buffer under the same hash binds it to the ne
 		vim.o.eventignore = 'all'
 		local older = vim.api.nvim_create_buf(true, false)
 		vim.api.nvim_buf_set_name(older, path)
-		local hash = H.register_buffer(older)
+		-- the registry binds by hash; register_buffer gives the file's handle, whose hash it is
+		local hash = H.get_hash_from_handle(H.register_buffer(older))
 		vim.api.nvim_buf_set_name(older, _G.FRG_TEST.root .. '/moved.txt')
 		local newer = vim.api.nvim_create_buf(true, false)
 		vim.api.nvim_buf_set_name(newer, path)
-		local hash2 = H.register_buffer(newer)
+		local hash2 = H.get_hash_from_handle(H.register_buffer(newer))
 		vim.o.eventignore = ''
 		return {
 			distinct = older ~= newer,
@@ -339,7 +340,7 @@ local function holders(stem)
 		local h = H.handles.of_hash(H.routines.get_filehash(_G.FRG_TEST.root .. '/' .. ... .. '.txt'))
 		local w = tostring(vim.api.nvim_get_current_win())
 		local out = {}
-		for _, place in ipairs(h and H.handles.holders(h.hash) or {}) do
+		for _, place in ipairs(h and H.handles.holders(h.id) or {}) do
 			table.insert(out, (place:gsub(':' .. w .. ':', ':<w>:')))
 		end
 		table.sort(out)
@@ -376,7 +377,7 @@ T['T696 [char] (M6 Triquetra) a copy of a triquetra holds nothing'] = function()
 		local H = require('frogman.domains.history')
 		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
 		local copy = vim.deepcopy(t)
-		copy:set('ternary_slot', H.routines.get_filehash(_G.FRG_TEST.root .. '/c.txt'))
+		copy:set('ternary_slot', H.get_handle_from_filepath(_G.FRG_TEST.root .. '/c.txt'))
 	]])
 	eq({ holders('c'), child.slots() }, { { 'pool:editor' }, '⦉a⦊ [b] ⟦-⟧' })
 end
@@ -418,12 +419,12 @@ T['T877 [char] (M2 Holders) two lists whose ids read alike with the newline a sp
 	local held = child.lua([[
 		local H = require('frogman.domains.history')
 		local root = _G.FRG_TEST.root
-		local a, b = H.routines.get_filehash(root .. '/a.txt'), H.routines.get_filehash(root .. '/b.txt')
+		local a, b = H.get_handle_from_filepath(root .. '/a.txt'), H.get_handle_from_filepath(root .. '/b.txt')
 		H.routines.hold_pool({ id = 'x /a\n/b', closed = { a } })
 		H.routines.hold_pool({ id = 'x\n/a /b', closed = { b } })
-		local function lists(hash)
+		local function lists(id)
 			local n = 0
-			for _, place in ipairs(H.handles.holders(hash)) do if place:match('^pool:x') then n = n + 1 end end
+			for _, place in ipairs(H.handles.holders(id)) do if place:match('^pool:x') then n = n + 1 end end
 			return n
 		end
 		return { a = lists(a), b = lists(b) }
@@ -457,7 +458,7 @@ T['T880 [char] (M6 Triquetra) a slot\'s write holds its own place alone'] = func
 		local hold, places = H.handles.hold, {}
 		H.handles.hold = function(place, ...) table.insert(places, place); return hold(place, ...) end
 		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
-		t:set('ternary_slot', H.routines.get_filehash(_G.FRG_TEST.root .. '/c.txt'))
+		t:set('ternary_slot', H.get_handle_from_filepath(_G.FRG_TEST.root .. '/c.txt'))
 		H.handles.hold = hold
 		return #places
 	]])
@@ -471,11 +472,11 @@ T['T699 [char] (M2 Holders) a file let go and held again in one batch is kept'] 
 		local path = _G.FRG_TEST.root .. '/x.txt'
 		H.register_filepath(path)
 		local x = H.get_hash_from_filepath(path)
-		H.routines.track_closing_filehash_force(x)
+		H.routines.track_closing_handle_force(H.get_handle_from_hash(x))
 		vim.wait(50)
 		local id = H.handles.of_hash(x).id
-		H.routines.discard_from_pools(x)
-		H.routines.track_closing_filehash_force(x)
+		H.routines.discard_from_pools(id)
+		H.routines.track_closing_handle_force(id)
 		return { x = x, id = id }
 	]])
 	child.settle(100)
@@ -485,6 +486,39 @@ T['T699 [char] (M2 Holders) a file let go and held again in one batch is kept'] 
 		return { path = H.get_filepath_from_hash(...) ~= nil, id = h and h.id or false }
 	]], { got.x })
 	eq(after, { path = true, id = got.id })
+end
+
+T['T895 [char] (M2 Handles, DESK.md:596-597) a move and a No Name text\'s reopen leave every consumer holding what it held'] = function()
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
+	local a, b = handle('a'), handle('b')
+	child.lua([[
+		local root = _G.FRG_TEST.root
+		os.rename(root .. '/a.txt', root .. '/g.txt')
+		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/a.txt'), root .. '/g.txt')
+	]])
+	child.settle(300)
+	local held = child.lua([[
+		local H = require('frogman.domains.history')
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local b, a = ...
+		return { note = t.displacement_ternary_map[b] or false, global = H.data.crux_internals.global[a] ~= nil,
+			slots = { type(t.current_slot), type(t.ternary_slot) } }
+	]], { b.id, a.id })
+	eq({ held, handle('g').id }, { { note = a.id, global = true, slots = { 'number', 'number' } }, a.id })
+	-- a No Name text closed and reopened keeps its handle, and the split holding it holds it still
+	child.cmd('vsplit')
+	child.steps({ ':enew' })
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "n" })')
+	child.settle()
+	local n = handle(child.lua('return vim.api.nvim_get_current_buf()'))
+	child.steps({ '<M-.>', '<M-S-w>' })
+	local after = child.lua([[
+		local H = require('frogman.domains.history')
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		return { current = t.current_slot, hash = H.get_hash_from_buffer(vim.api.nvim_get_current_buf()) }
+	]])
+	eq({ after.current, after.hash ~= n.hash }, { n.id, true })
 end
 
 return T

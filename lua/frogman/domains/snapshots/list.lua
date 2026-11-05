@@ -216,15 +216,15 @@ end
 
 ---Draw a snapshot's line as it shows: the time, the triquetra, then the stored order.
 ---
----@param snapshot Snapshot
----@param labels table<Filehash, string> The marks' aliases, as `marks.labels` gives them
+---@param snapshot Snapshot The snapshot to draw
+---@param labels table<HandleId, string> The marks' aliases, as `marks.labels` gives them
 ---@return table chunks The `{text, highlight}` chunks
 local function drawing(snapshot, labels)
 	local ui = require('frogman.domains.ui').routines
 	local glyphs = ui.glyphs()
 	local function name(id)
 		local handle = routines.handle(id)
-		return handle and ui.get_smart_basename(handle.hash) or "?"
+		return handle and ui.get_smart_basename(handle.id) or "?"
 	end
 	local today = os.date("%Y-%m-%d") == os.date("%Y-%m-%d", snapshot.time)
 	local chunks = { { os.date(today and "%H:%M" or "%m-%d %H:%M", snapshot.time) .. "  ", "FrogmanTrailTime" } }
@@ -234,12 +234,12 @@ local function drawing(snapshot, labels)
 	for _, id in ipairs(snapshot.order) do
 		local handle = routines.handle(id)
 		if handle then
-			local bufnr = history.get_buffer_from_hash(handle.hash)
-			local label = labels[handle.hash]
+			local bufnr = history.get_buffer_from_handle(handle.id)
+			local label = labels[handle.id]
 			local text = name(id) .. (label and (" ⟨" .. label .. "⟩") or "")
-			if history.data.missing[handle.hash] then
+			if handle.tag then
 				table.insert(chunks, { "  ✗ ", "DiagnosticError" })
-				table.insert(chunks, { text .. " " .. glyphs.tag .. history.data.missing[handle.hash], "FrogmanTrailDim" })
+				table.insert(chunks, { text .. " " .. glyphs.tag .. handle.tag, "FrogmanTrailDim" })
 			elseif bufnr == nil then
 				table.insert(chunks, { "  " .. glyphs.closed .. " " .. text, "FrogmanTrailDim" })
 			else

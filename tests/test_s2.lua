@@ -812,7 +812,7 @@ local NONAME_LISTED = [[
 	local H = require('frogman.domains.history')
 	for _, pool in pairs(H.routines.pools()) do
 		for _, h in ipairs(pool.closed) do
-			if (H.get_filepath_from_hash(h) or ''):match('^NONAME_') then return true end
+			if (H.get_filepath_from_handle(h) or ''):match('^NONAME_') then return true end
 		end
 	end
 	return false
@@ -974,11 +974,12 @@ T['T638 [char] (M14, S1) a whole-editor load starts the tick\'s round over on th
 	local got = child.lua([[
 		local H = require('frogman.domains.history')
 		local path = _G.FRG_TEST.root .. '/c.txt'
-		local c = H.routines.get_filehash(path)
-		local closed = H.routines.is_filehash_closed(c)
+		local c = H.get_handle_from_filepath(path)
+		local closed = H.routines.is_handle_closed(c)
 		os.remove(path)
 		H.routines.cleanup_system(true)
-		return { closed = closed, missing = H.data.missing[c] ~= nil }
+		local handle = H.handles.get(c)
+		return { closed = closed, missing = handle ~= nil and handle.tag ~= nil }
 	]])
 	eq(got, { closed = true, missing = true })
 end
@@ -993,14 +994,15 @@ T['T650 [char] (M14) a settle point checks the known files as a tick does'] = fu
 		local H = require('frogman.domains.history')
 		local pool = H.routines.pools()['']
 		for n = 1, 1000 do
-			local h = ('%016x'):format(n)
-			H.data.hash_filepath_registry.filepaths[h] = '/nowhere/' .. n
-			table.insert(pool.closed, h)
+			local path = '/nowhere/' .. n
+			H.register_filepath(path) -- known, so the list holds its handle
+			table.insert(pool.closed, H.get_handle_from_filepath(path))
 		end
+		H.routines.hold_pool(pool) -- held by their list, as a close holds them
 		vim.api.nvim_exec_autocmds('FocusGained', {})
 		local n = 0
-		for h in pairs(H.data.missing) do
-			if H.data.hash_filepath_registry.filepaths[h]:match('^/nowhere/') then n = n + 1 end
+		for _, h in pairs(H.handles.live()) do
+			if h.tag and H.get_filepath_from_hash(h.hash):match('^/nowhere/') then n = n + 1 end
 		end
 		return n
 	]])
@@ -1141,7 +1143,7 @@ T['T537 [char] (A16, M5) a closed No Name text that can\'t be read is lost, not 
 		return false
 	]])
 	eq({ lost = #lost, reopened = reopened, closed = child.closed():match('NONAME_') ~= nil,
-		cached = child.lua('return vim.tbl_count(require("frogman.domains.history").data.noname_content)') },
+		cached = child.lua('local n = 0; for _, h in pairs(require("frogman.domains.history").handles.live()) do if h.text then n = n + 1 end end; return n') },
 		{ lost = 1, reopened = false, closed = false, cached = 0 })
 
 	S2.start(child, s)
@@ -1498,8 +1500,8 @@ T['T316 [char] (S2) a No Name buffer reopened at load gets a fresh id, and every
 	child.steps({ ':e b' })
 	local old = child.lua('return require("frogman.domains.history").get_hash_from_buffer(...)', { n })
 	eq(type(old), 'string')
-	eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()].ternary_slot == ...',
-		{ old }), true)
+	eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()].ternary_slot == require("frogman.domains.history").get_handle_from_buffer(...)',
+		{ n }), true)
 	eq(Misc.save(child), { true })
 
 	S2.start(child, s)
@@ -1514,8 +1516,9 @@ T['T316 [char] (S2) a No Name buffer reopened at load gets a fresh id, and every
 		local W = require('frogman.domains.window')
 		local new = H.get_hash_from_buffer(buf)
 		local stale = {}
+		-- a consumer holding a handle that still has the old name's hash
 		local function look(where, h)
-			if type(h) == 'string' and (h:gsub('%-swap$', '')) == old then table.insert(stale, where) end
+			if h ~= nil and H.get_hash_from_handle(W.data.note_owner(h)) == old then table.insert(stale, where) end
 		end
 		for _, t in pairs(W.data.crux) do
 			look('current slot', t.current_slot)
@@ -1530,7 +1533,7 @@ T['T316 [char] (S2) a No Name buffer reopened at load gets a fresh id, and every
 			for h in pairs(hist) do look('window history', h) end
 		end
 		local t = W.data.crux[vim.api.nvim_get_current_win()]
-		return { fresh = new ~= nil and new ~= old, in_ternary = t ~= nil and t.ternary_slot == new, stale = stale }
+		return { fresh = new ~= nil and new ~= old, in_ternary = t ~= nil and t.ternary_slot == H.get_handle_from_buffer(buf), stale = stale }
 	]], { old, back })
 	eq(got, { fresh = true, in_ternary = true, stale = {} })
 end
@@ -2765,7 +2768,7 @@ T['T366 [char] (S2) a tab saved as another session writes the one it leaves, and
 		end
 		local u = {}
 		for _, h in ipairs(H.routines.current_pool().closed) do
-			table.insert(u, vim.fn.fnamemodify(H.get_filepath_from_hash(h) or h, ':t:r'))
+			table.insert(u, vim.fn.fnamemodify(H.get_filepath_from_handle(h) or tostring(h), ':t:r'))
 		end
 		return { pool = H.routines.current_pool().name, u = table.concat(u, ','), tabless = tabless }
 	]])
@@ -2785,7 +2788,7 @@ end
 -- by its name, and whether each pool has a tab.
 local LISTS = [[
 	local H = require('frogman.domains.history')
-	local h = H.get_hash_from_filepath(vim.fn.getcwd(-1, -1) .. '/' .. ... .. '.txt')
+	local h = H.get_handle_from_filepath(vim.fn.getcwd(-1, -1) .. '/' .. ... .. '.txt')
 	local out = {}
 	for id, pool in pairs(H.routines.pools()) do
 		if vim.tbl_contains(pool.closed, h) then
@@ -2854,7 +2857,7 @@ T['T369 [char] (S2) a tab session is in one tab at a time, and the tab it leaves
 			local pool = H.routines.pool_of_tab(tabpage)
 			local out = {}
 			for _, h in ipairs(pool.closed) do
-				table.insert(out, vim.fn.fnamemodify(H.get_filepath_from_hash(h) or h, ':t:r'))
+				table.insert(out, vim.fn.fnamemodify(H.get_filepath_from_handle(h) or tostring(h), ':t:r'))
 			end
 			return (pool.name or '') .. ':' .. table.concat(out, ',')
 		end
@@ -2887,7 +2890,7 @@ local LIST_OF = [[
 	local pool = H.routines.pool_of_tab(vim.api.nvim_win_get_tabpage(...))
 	local out = {}
 	for _, h in ipairs(pool.closed) do
-		table.insert(out, vim.fn.fnamemodify(H.get_filepath_from_hash(h) or h, ':t:r'))
+		table.insert(out, vim.fn.fnamemodify(H.get_filepath_from_handle(h) or tostring(h), ':t:r'))
 	end
 	return (pool.name or '') .. ':' .. table.concat(out, ',')
 ]]
@@ -3837,7 +3840,7 @@ local LISTS_STATE = [[
 	for id, pool in pairs(H.routines.pools()) do
 		local entries = {}
 		for _, h in ipairs(pool.closed) do
-			table.insert(entries, vim.fn.fnamemodify(H.get_filepath_from_hash(h) or h, ':t:r') .. '@' .. tostring(pool.times[h]))
+			table.insert(entries, vim.fn.fnamemodify(H.get_filepath_from_handle(h) or tostring(h), ':t:r') .. '@' .. tostring(pool.times[h]))
 		end
 		out[pool.name or id] = table.concat(entries, ',')
 	end
@@ -3851,7 +3854,7 @@ local function x_on_both(s)
 	child.lua([[
 		local H = require('frogman.domains.history')
 		local w2 = ...
-		local x = H.get_hash_from_filepath(vim.fn.getcwd(-1, -1) .. '/x.txt')
+		local x = H.get_handle_from_filepath(vim.fn.getcwd(-1, -1) .. '/x.txt')
 		local editor = H.routines.pools()['']
 		local session = H.routines.pool_of_tab(vim.api.nvim_win_get_tabpage(w2))
 		table.insert(session.closed, x)
@@ -3941,7 +3944,7 @@ T['T373 [char] (S2) the picker shows a missing file\'s tag'] = function()
 	child.lua([[
 		os.remove(_G.FRG_TEST.root .. '/b.txt')
 		local H = require('frogman.domains.history')
-		H.data.missing[H.get_hash_from_filepath(_G.FRG_TEST.root .. '/b.txt')] = 'feature'
+		H.handles.set_tag(H.get_handle_from_filepath(_G.FRG_TEST.root .. '/b.txt'), 'feature')
 	]])
 	child.settle()
 	local p = S2.picker(child)
@@ -3969,7 +3972,7 @@ local function lists_by_dir()
 		for _, pool in pairs(H.routines.pools()) do
 			if pool.directory then
 				local names = {}
-				for _, h in ipairs(pool.closed) do table.insert(names, vim.fs.basename(H.get_filepath_from_hash(h) or h)) end
+				for _, h in ipairs(pool.closed) do table.insert(names, vim.fs.basename(H.get_filepath_from_handle(h) or tostring(h))) end
 				out[vim.fn.fnamemodify(pool.directory, ':h:t') .. '/' .. vim.fn.fnamemodify(pool.directory, ':t')] = table.concat(names, ',')
 			end
 		end
@@ -4094,7 +4097,7 @@ T['T376 [char] (S2) discarding a No Name entry in the picker asks first'] = func
 		return child.lua([[
 			local H = require('frogman.domains.history')
 			for _, h in ipairs(H.data.closed_buffers) do
-				if (H.get_filepath_from_hash(h) or ''):match('^NONAME_') then return H.data.noname_content[h] ~= nil end
+				if (H.get_filepath_from_handle(h) or ''):match('^NONAME_') then return H.handles.get(h).text ~= nil end
 			end
 			return false
 		]])

@@ -349,9 +349,10 @@ function setup_debug_commands()
 		print("\n=== Closed Buffers ===")
 		for id, pool in pairs(history.routines.pools()) do
 			print(id == "" and "  (the editor's)" or ("  (" .. (pool.name or id) .. ")"))
-			for i, hash in ipairs(pool.closed) do
+			for i, handle_id in ipairs(pool.closed) do
+				local hash = history.get_hash_from_handle(handle_id)
 				local filepath = history.get_filepath_from_hash(hash)
-				print("  [" .. i .. "] " .. hash .. " -> " .. (filepath or "unknown"))
+				print("  [" .. i .. "] " .. handle_id .. " (" .. (hash or "?") .. ") -> " .. (filepath or "unknown"))
 			end
 		end
 	end, { desc = "Print hash-buffer and hash-filepath registry mappings" })
@@ -366,32 +367,36 @@ function setup_debug_commands()
 			return
 		end
 
-		local function hash_to_info(hash)
-			if not hash then return "nil" end
+		local function handle_to_info(id)
+			if not id then return "nil" end
+			-- a slot's handle, or a note's key: the handle, or the handle and -swap
+			local hash = history.get_hash_from_handle(window.data.note_owner(id))
 			local filepath = history.get_filepath_from_hash(hash)
 			local bufnr = history.get_buffer_from_hash(hash)
 			local basename = filepath and vim.fn.fnamemodify(filepath, ":t") or "unknown"
 			local loaded = bufnr and vim.api.nvim_buf_is_valid(bufnr) and "loaded" or "closed"
-			return hash .. " (" .. basename .. " - " .. loaded .. ")"
+			return id .. " (" .. (hash or "?") .. ", " .. basename .. " - " .. loaded .. ")"
 		end
 
 		print("=== Window " .. winid .. " Triquetra (Verbose) ===")
-		print("Current slot:    " .. hash_to_info(triquetra.current_slot))
-		print("Secondary slot:  " .. hash_to_info(triquetra.secondary_slot))
-		print("Ternary slot:    " .. hash_to_info(triquetra.ternary_slot))
-		print("Primary buffer:  " .. hash_to_info(triquetra.primary_buffer[1]))
+		print("Current slot:    " .. handle_to_info(triquetra.current_slot))
+		print("Secondary slot:  " .. handle_to_info(triquetra.secondary_slot))
+		print("Ternary slot:    " .. handle_to_info(triquetra.ternary_slot))
+		print("Primary buffer:  " .. handle_to_info(triquetra.primary_buffer[1]))
 		print("Primary enabled: " .. tostring(triquetra.primary_enabled or false))
 	end, { desc = "Print current window triquetra with filenames" })
 
 	-- Command 4: Print All Triquetra Objects
 	vim.api.nvim_create_user_command("FrogmanAllTriquetras", function()
-		local function hash_to_info(hash)
-			if not hash then return "nil" end
+		local function handle_to_info(id)
+			if not id then return "nil" end
+			-- a slot's handle, or a note's key: the handle, or the handle and -swap
+			local hash = history.get_hash_from_handle(window.data.note_owner(id))
 			local filepath = history.get_filepath_from_hash(hash)
 			local bufnr = history.get_buffer_from_hash(hash)
 			local basename = filepath and vim.fn.fnamemodify(filepath, ":t") or "unknown"
 			local loaded = bufnr and vim.api.nvim_buf_is_valid(bufnr) and "loaded" or "closed"
-			return hash .. " (" .. basename .. " - " .. loaded .. ")"
+			return id .. " (" .. (hash or "?") .. ", " .. basename .. " - " .. loaded .. ")"
 		end
 
 		print("=== All Window Triquetras ===")
@@ -420,11 +425,11 @@ function setup_debug_commands()
 			print("\n--- Window " .. winid .. " (" .. (win_valid and "valid" or "invalid") .. ") ---")
 
 			if triquetra then
-				print("Hash-based triquetra:")
-				print("  Current slot:    " .. hash_to_info(triquetra.current_slot))
-				print("  Secondary slot:  " .. hash_to_info(triquetra.secondary_slot))
-				print("  Ternary slot:    " .. hash_to_info(triquetra.ternary_slot))
-				print("  Primary buffer:  " .. hash_to_info(triquetra.primary_buffer[1]))
+				print("Handle-based triquetra:")
+				print("  Current slot:    " .. handle_to_info(triquetra.current_slot))
+				print("  Secondary slot:  " .. handle_to_info(triquetra.secondary_slot))
+				print("  Ternary slot:    " .. handle_to_info(triquetra.ternary_slot))
+				print("  Primary buffer:  " .. handle_to_info(triquetra.primary_buffer[1]))
 				print("  Primary enabled: " .. tostring(triquetra.primary_enabled or false))
 
 				-- Show displacement maps if they exist
@@ -437,19 +442,19 @@ function setup_debug_commands()
 					print("  Displacement maps:")
 					if has_secondary_displacement then
 						print("    Secondary:")
-						for from_hash, to_hash in pairs(triquetra.displacement_secondary_map) do
-							print("      " .. hash_to_info(from_hash) .. " -> " .. hash_to_info(to_hash))
+						for from, to in pairs(triquetra.displacement_secondary_map) do
+							print("      " .. handle_to_info(from) .. " -> " .. handle_to_info(to))
 						end
 					end
 					if has_ternary_displacement then
 						print("    Ternary:")
-						for from_hash, to_hash in pairs(triquetra.displacement_ternary_map) do
-							print("      " .. hash_to_info(from_hash) .. " -> " .. hash_to_info(to_hash))
+						for from, to in pairs(triquetra.displacement_ternary_map) do
+							print("      " .. handle_to_info(from) .. " -> " .. handle_to_info(to))
 						end
 					end
 				end
 			else
-				print("  No hash-based triquetra data")
+				print("  No handle-based triquetra data")
 			end
 
 			if ui_cache then
@@ -489,7 +494,7 @@ function setup_debug_commands()
 
 		print("\n=== Summary ===")
 		print("Total windows with triquetra data: " .. vim.tbl_count(windows_with_data))
-		print("Hash-based triquetras: " .. vim.tbl_count(window.data.crux))
+		print("Handle-based triquetras: " .. vim.tbl_count(window.data.crux))
 		print("UI display caches: " .. vim.tbl_count(ui.data.window_display_cache))
 	end, { desc = "Print all window triquetra objects and UI caches" })
 end

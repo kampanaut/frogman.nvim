@@ -98,7 +98,7 @@ local function fresh()
 	end
 	for _, triquetra in pairs(require('frogman.domains.window').data.crux) do
 		if triquetra.secondary_slot or triquetra.ternary_slot or next(triquetra.primary_buffer or {})
-			or not history.data.hash_buffer_registry.buffers[triquetra.current_slot] then
+			or not history.get_buffer_from_handle(triquetra.current_slot) then
 			return false
 		end
 	end
@@ -192,9 +192,10 @@ local function planter(files)
 		end
 	end
 
-	---Check if a hash is on the editor's closed list.
+	---Check if a hash is on the editor's closed list, which holds its file's handle.
 	function plant.closed(hash)
-		return vim.tbl_contains(history.data.closed_buffers, hash)
+		local id = history.get_handle_from_hash(hash)
+		return id ~= nil and vim.tbl_contains(history.data.closed_buffers, id)
 	end
 
 	---Open a hash's buffer and register it, loading it without autocmds.
@@ -245,10 +246,13 @@ local function planter(files)
 				vim.cmd("noautocmd buffer " .. shown)
 			end)
 		end
-		require('frogman.domains.window').set_buffer_relationship(winid, {
-			current_slot = row.c, secondary_slot = row.s, ternary_slot = row.t, primary_buffer = vim.deepcopy(row.p or {}),
-			primary_enabled = row.on == true, displacement_ternary_map = vim.deepcopy(row.dtm or {}),
-			displacement_secondary_map = vim.deepcopy(row.dsm or {}),
+		-- the row's hashes, as the slots' handles
+		local window = require('frogman.domains.window')
+		window.set_buffer_relationship(winid, {
+			current_slot = history.get_handle_from_hash(row.c), secondary_slot = history.get_handle_from_hash(row.s),
+			ternary_slot = history.get_handle_from_hash(row.t), primary_buffer = history.handles_of(row.p),
+			primary_enabled = row.on == true, displacement_ternary_map = window.data.notes_by_handle(row.dtm),
+			displacement_secondary_map = window.data.notes_by_handle(row.dsm),
 		})
 	end
 
@@ -284,11 +288,12 @@ local function plant_snapshot(snapshot, plant)
 	for _, list in ipairs(snapshot.lists or {}) do
 		for _, hash in ipairs(list.closed or {}) do
 			plant.known(hash)
-			if not plant.closed(hash) then
-				table.insert(history.data.closed_buffers, hash)
+			local id = history.get_handle_from_hash(hash)
+			if id and not plant.closed(hash) then
+				table.insert(history.data.closed_buffers, id)
 				if editor and list.times and list.times[hash] then
 					editor.times = editor.times or {}
-					editor.times[hash] = list.times[hash]
+					editor.times[id] = list.times[hash]
 				end
 			end
 		end
@@ -297,11 +302,7 @@ local function plant_snapshot(snapshot, plant)
 		history.routines.hold_pool(editor) -- the planted closed files are held by their list, as a close holds them
 	end
 	for _, w in ipairs(snapshot.windows or {}) do
-		local winid = windows[w.window]
-		plant.row(winid, w)
-		if winid then
-			history.data.crux_internals.window[winid] = vim.deepcopy(w.history or {})
-		end
+		plant.row(windows[w.window], w)
 	end
 	-- every file the snapshot names was held when it was taken, its history and notes following along; one
 	-- on no list and in no slot was open then, so it's opened, and nothing planted is let go as unheld
@@ -325,10 +326,18 @@ local function plant_snapshot(snapshot, plant)
 			plant.open(hash)
 		end
 	end
-	history.data.crux_internals.global = vim.deepcopy(snapshot.global or {})
+	-- the histories once every file they name has its handle
+	for _, w in ipairs(snapshot.windows or {}) do
+		local winid = windows[w.window]
+		if winid then
+			history.data.crux_internals.window[winid] = history.keyed_by_handle(w.history)
+		end
+	end
+	history.data.crux_internals.global = history.keyed_by_handle(snapshot.global)
 	history.data.history_index = snapshot.history_index or history.data.history_index
-	history.data.missing = vim.deepcopy(snapshot.missing or {})
-	history.handles.follow_tags()
+	for hash, tag in pairs(snapshot.missing or {}) do
+		history.handles.set_tag(history.get_handle_from_hash(hash), tag)
+	end
 	if snapshot.history_view then
 		require('frogman.configs').bufferline.history_view = snapshot.history_view
 	end

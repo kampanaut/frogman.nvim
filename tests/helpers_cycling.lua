@@ -14,12 +14,12 @@ local H = require('frogman.domains.history')
 local W = require('frogman.domains.window')
 local N = require('frogman.domains.navigation')
 
-local function name(hash)
-	if hash == nil then return '-' end
-	local base = hash:gsub('%-swap$', '')
-	local path = H.get_filepath_from_hash(base)
-	local n = path and vim.fn.fnamemodify(path, ':t:r') or ('?' .. base:sub(1, 6))
-	if hash:match('%-swap$') then n = n .. '-swap' end
+-- a slot's file, or a note's key, by its handle (a note's key the handle, or the handle and -swap)
+local function name(id)
+	if id == nil then return '-' end
+	local path = H.get_filepath_from_handle(W.data.note_owner(id))
+	local n = path and vim.fn.fnamemodify(path, ':t:r') or ('?' .. tostring(W.data.note_owner(id)))
+	if W.data.is_swap_note(id) then n = n .. '-swap' end
 	return n
 end
 
@@ -43,9 +43,13 @@ _G.FRG_X = {
 		end
 		return '-'
 	end,
-	-- The hash of a project file by its stem ('a' → <root>/a.txt).
+	-- The hash of a project file by its stem ('a' → <root>/a.txt), as a file or a dump holds it.
 	hash_of = function(stem)
 		return H.get_hash_from_filepath(_G.FRG_TEST.root .. '/' .. stem .. '.txt')
+	end,
+	-- The handle of a project file by its stem, as every consumer in memory holds it.
+	handle_of = function(stem)
+		return H.get_handle_from_filepath(_G.FRG_TEST.root .. '/' .. stem .. '.txt')
 	end,
 	-- Floating windows open now.
 	floats = function()
@@ -63,28 +67,28 @@ _G.FRG_X = {
 		end
 		return nil
 	end,
-	-- Every place in frogman's data that holds `hash`: slots, primary
+	-- Every place in frogman's data that holds the handle `id`: slots, primary
 	-- queues, map keys (plain or -swap) and values, history, closed stack.
-	refs = function(hash)
+	refs = function(id)
 		local out = {}
 		local function hit(where) table.insert(out, where) end
 		for winid, t in pairs(W.data.crux) do
 			for _, slot in ipairs({ 'current_slot', 'secondary_slot', 'ternary_slot' }) do
-				if t[slot] == hash then hit(winid .. '.' .. slot) end
+				if t[slot] == id then hit(winid .. '.' .. slot) end
 			end
 			for i, h in ipairs(t.primary_buffer or {}) do
-				if h == hash then hit(winid .. '.primary[' .. i .. ']') end
+				if h == id then hit(winid .. '.primary[' .. i .. ']') end
 			end
 			for _, m in ipairs({ 'displacement_ternary_map', 'displacement_secondary_map' }) do
 				for k, v in pairs(t[m] or {}) do
-					if k == hash or k == hash .. '-swap' then hit(winid .. '.' .. m .. ' key') end
-					if v == hash then hit(winid .. '.' .. m .. ' value') end
+					if W.data.note_owner(k) == id then hit(winid .. '.' .. m .. ' key') end
+					if v == id then hit(winid .. '.' .. m .. ' value') end
 				end
 			end
 		end
-		if H.data.crux[hash] then hit('history') end
+		if H.data.crux[id] then hit('history') end
 		for _, h in ipairs(H.data.closed_buffers) do
-			if h == hash then hit('closed') end
+			if h == id then hit('closed') end
 		end
 		return out
 	end,
@@ -117,13 +121,14 @@ Extra.attach = function(child)
 	child.state = function() return call('state') end
 	child.note = function(which, key, winid) return call('note', which, key, winid) end
 	child.hash_of = function(stem) return call('hash_of', stem) end
+	child.handle_of = function(stem) return call('handle_of', stem) end
 	child.floats = function() return call('floats') end
 	child.popup = function()
 		local w = call('popup')
 		if w == vim.NIL then return nil end
 		return w
 	end
-	child.refs = function(hash) return call('refs', hash) end
+	child.refs = function(id) return call('refs', id) end
 	child.dumps = function() return call('dumps') end
 	child.win = function() return child.lua('return vim.api.nvim_get_current_win()') end
 

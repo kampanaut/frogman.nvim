@@ -28,8 +28,8 @@ end
 local function tag_of(stem)
 	return child.lua([[
 		local H = require('frogman.domains.history')
-		local hash = H.get_hash_from_filepath(_G.FRG_TEST.root .. '/' .. ... .. '.txt')
-		return H.data.missing[hash] or vim.NIL
+		local h = H.handles.of_hash(H.get_hash_from_filepath(_G.FRG_TEST.root .. '/' .. ... .. '.txt'))
+		return h and h.tag or vim.NIL
 	]], { stem })
 end
 

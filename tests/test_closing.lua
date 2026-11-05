@@ -31,6 +31,10 @@ local function hash_of_buf(buf)
 	return child.lua('return require("frogman.domains.history").get_hash_from_buffer(...)', { buf })
 end
 
+local function handle_of_buf(buf)
+	return child.lua('return require("frogman.domains.history").get_handle_from_buffer(...)', { buf })
+end
+
 local function buf_open(hash)
 	return child.lua('return require("frogman.domains.history").get_buffer_from_hash(...) ~= nil', { hash })
 end
@@ -150,8 +154,8 @@ end
 T['T83 [char] <M-.> on a modified No Name buffer closes it and caches its lines, filetype and cursor'] = function()
 	child.steps({ ':e a' })
 	local buf = noname({ 'one', 'two', 'three' }, 'lua', { 2, 1 })
-	local h = hash_of_buf(buf)
-	eq(type(h), 'string')
+	local h = handle_of_buf(buf)
+	eq(type(h), 'number')
 	eq(child.lua('return vim.bo.modified'), true)
 	eq(child.lua('return vim.api.nvim_win_get_cursor(0)'), { 2, 1 })
 
@@ -159,7 +163,7 @@ T['T83 [char] <M-.> on a modified No Name buffer closes it and caches its lines,
 	eq(child.lua('return vim.api.nvim_buf_is_valid(...)', { buf }), false)
 	eq(child.lua('return require("frogman.domains.history").data.closed_buffers'), { h })
 	eq(
-		child.lua('return require("frogman.domains.history").data.noname_content[...]', { h }),
+		child.lua('return require("frogman.domains.history").handles.get(...).text', { h }),
 		{ lines = { 'one', 'two', 'three' }, filetype = 'lua', cursor = { 2, 1 } }
 	)
 end
@@ -293,7 +297,7 @@ T['T90 [char] a reopened No Name buffer gets its cursor in its own window'] = fu
 	eq(child.lua('return vim.api.nvim_win_get_cursor(0)'), { 3, 2 })
 end
 
-T['T91 [char] after a No Name buffer is reopened, its old hash is renamed everywhere'] = function()
+T['T91 [char] after a No Name buffer is reopened, everything holding its handle holds it still, under a new hash'] = function()
 	-- b is left while the No Name buffer is its ternary, so dtm[b] names it;
 	-- then the No Name buffer is closed from c, where it lands in the ternary.
 	child.steps({ ':e a' })
@@ -301,18 +305,17 @@ T['T91 [char] after a No Name buffer is reopened, its old hash is renamed everyw
 	child.steps({ ':e b', ':e c' })
 	child.cmd('buffer ' .. buf)
 	child.settle()
-	local old = hash_of_buf(buf)
+	local old, old_hash = handle_of_buf(buf), hash_of_buf(buf)
 	child.steps({ '<M-.>' })
 	eq(child.shown(), 'c')
 	eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()].ternary_slot'), old)
-	eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()].displacement_ternary_map[...]', { child.hash_of('b') }), old)
+	eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()].displacement_ternary_map[...]', { child.handle_of('b') }), old)
 
 	child.steps({ '<M-S-w>' })
 	eq(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), { 'scratch text' })
-	local new = hash_of_buf(child.lua('return vim.api.nvim_get_current_buf()'))
-	eq(new ~= old, true)
-	eq(child.refs(old), {})
-	eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()].displacement_ternary_map[...]', { child.hash_of('b') }), new)
+	local cur = child.lua('return vim.api.nvim_get_current_buf()')
+	eq({ handle = handle_of_buf(cur), new_hash = hash_of_buf(cur) ~= old_hash }, { handle = old, new_hash = true })
+	eq(child.lua('return require("frogman.domains.window").data.crux[vim.api.nvim_get_current_win()].displacement_ternary_map[...]', { child.handle_of('b') }), old)
 end
 
 T['T162 [char] pushing a hash already on the closed stack keeps one copy, as the newest'] = function()
@@ -322,11 +325,11 @@ T['T162 [char] pushing a hash already on the closed stack keeps one copy, as the
 		local root = _G.FRG_TEST.root
 		H.register_filepath(root .. '/x.txt')
 		H.register_filepath(root .. '/t.txt')
-		local x = H.get_hash_from_filepath(root .. '/x.txt')
-		local t = H.get_hash_from_filepath(root .. '/t.txt')
-		H.routines.track_closing_filehash_force(x)
-		H.routines.track_closing_filehash_force(t)
-		H.routines.track_closing_filehash_force(x)
+		local x = H.get_handle_from_filepath(root .. '/x.txt')
+		local t = H.get_handle_from_filepath(root .. '/t.txt')
+		H.routines.track_closing_handle_force(x)
+		H.routines.track_closing_handle_force(t)
+		H.routines.track_closing_handle_force(x)
 		return true
 	]])
 	eq(got, true)

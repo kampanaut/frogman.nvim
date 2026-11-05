@@ -79,24 +79,25 @@ local function snapshot()
 				number = vim.api.nvim_win_get_number(winid),
 				tab = vim.api.nvim_tabpage_get_number(vim.api.nvim_win_get_tabpage(winid)),
 				shows = history.get_hash_from_buffer(vim.api.nvim_win_get_buf(winid)),
-				c = t.current_slot, s = t.secondary_slot, t = t.ternary_slot,
-				p = vim.deepcopy(t.primary_buffer or {}), on = t.primary_enabled == true,
-				dtm = vim.deepcopy(t.displacement_ternary_map or {}), dsm = vim.deepcopy(t.displacement_secondary_map or {}),
-				history = vim.deepcopy(hdata.crux_internals.window[winid] or {}),
+				c = history.get_hash_from_handle(t.current_slot), s = history.get_hash_from_handle(t.secondary_slot),
+				t = history.get_hash_from_handle(t.ternary_slot),
+				p = history.hashes_of(t.primary_buffer), on = t.primary_enabled == true,
+				dtm = window.data.notes_by_hash(t.displacement_ternary_map), dsm = window.data.notes_by_hash(t.displacement_secondary_map),
+				history = history.keyed_by_hash(hdata.crux_internals.window[winid]),
 			})
 		end
 	end
 	local lists = {}
 	for _, pool in pairs(history.routines.pools()) do
-		table.insert(lists, { id = pool.id, name = pool.name, directory = pool.directory, closed = vim.deepcopy(pool.closed),
-			times = vim.deepcopy(pool.times or {}) })
+		table.insert(lists, { id = pool.id, name = pool.name, directory = pool.directory, closed = history.hashes_of(pool.closed),
+			times = history.keyed_by_hash(pool.times) })
 	end
 	return {
 		windows = windows,
-		global = vim.deepcopy(hdata.crux_internals.global or {}),
+		global = history.keyed_by_hash(hdata.crux_internals.global),
 		history_index = hdata.history_index,
 		lists = lists,
-		missing = vim.deepcopy(hdata.missing or {}),
+		missing = history.tags_by_hash(),
 		navigation = require('frogman.domains.navigation').sm:state(),
 		history_state = history.sm:state(),
 		cycle = require('frogman.domains.navigation').data.cycling_window,

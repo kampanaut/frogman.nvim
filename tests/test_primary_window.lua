@@ -272,7 +272,7 @@ T['T553 [char] a picked file whose path reads like another entry\'s short name g
 	local queue = child.lua([[
 		local H = require('frogman.domains.history')
 		local t = require('frogman.domains.window').data.crux[...]
-		return vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_hash(h), ':.') end, t.primary_buffer)
+		return vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_handle(h), ':.') end, t.primary_buffer)
 	]], { w })
 	eq({ shown = shown, picked = picked, queue = queue },
 		{ shown = { 'init.lua' }, picked = { 'init.lua', './init.lua' }, queue = { 'sub/init.lua', 'init.lua' } })
@@ -295,7 +295,7 @@ T['T583 [char] two queued files of one name keep their own lines'] = function()
 		return child.lua([[
 			local H = require('frogman.domains.history')
 			local t = require('frogman.domains.window').data.crux[...]
-			return vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_hash(h), ':.') end, t.primary_buffer)
+			return vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_handle(h), ':.') end, t.primary_buffer)
 		]], { w })
 	end
 	eq(queue(), { 'b/foo.lua', 'a/foo.lua' })
@@ -331,7 +331,7 @@ T['T584 [char] a picked file keeps its line through a second write'] = function(
 	local queue = child.lua([[
 		local H = require('frogman.domains.history')
 		local t = require('frogman.domains.window').data.crux[...]
-		return vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_hash(h), ':.') end, t.primary_buffer)
+		return vim.tbl_map(function(h) return vim.fn.fnamemodify(H.get_filepath_from_handle(h), ':.') end, t.primary_buffer)
 	]], { w })
 	eq({ queue = queue, errors = Extra.at_least(child.messages()) }, { queue = { 'init.lua', 'sub/init.lua' }, errors = {} })
 end
@@ -445,8 +445,8 @@ T['T452 [char] (A18, A27) the pop-up in the trail\'s language'] = function()
 	child.lua([[
 		-- b.txt gone from disk after the start (each start writes the project's files again), tagged by hand
 		os.remove(_G.FRG_TEST.root .. '/b.txt')
-		local hash = require('frogman.domains.history').get_hash_from_filepath(_G.FRG_TEST.root .. '/b.txt')
-		require('frogman.domains.history').data.missing[hash] = 'feature'
+		local H = require('frogman.domains.history')
+		H.handles.set_tag(H.get_handle_from_filepath(_G.FRG_TEST.root .. '/b.txt'), 'feature')
 	]])
 	open()
 	local lines, on = child.popup_lines(), child.lua(DECORATION)
@@ -597,7 +597,7 @@ T['T495 [char] (A18) a path that a longer open buffer\'s name begins with is its
 	child.settle()
 	local first = child.lua([[
 		local t = require('frogman.domains.window').data.crux[...]
-		return vim.fs.basename(require('frogman.domains.history').get_filepath_from_hash(t.primary_buffer[1]) or '')
+		return vim.fs.basename(require('frogman.domains.history').get_filepath_from_handle(t.primary_buffer[1]) or '')
 	]], { w })
 	eq({ primary = child.primary(w), first = first, errors = Extra.at_least(child.messages()) },
 		{ primary = '[idx,b,a]on', first = 'idx.js', errors = {} })

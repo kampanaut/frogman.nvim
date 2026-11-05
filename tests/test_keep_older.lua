@@ -261,8 +261,8 @@ T['T335 [char] no key raises over random walks: several windows, both views'] = 
 	no_key_errors('window', true, 11000)
 end
 
-T["T192 [char] rename_hash_in_triquetras(old, new) moves dsm[old-swap] to dsm[new-swap] and renames values in both maps"] = function()
-	-- Set up directly: a is renamed to x.
+T["T192 [char] a move onto a held name keeps the moved file's notes, plain and -swap, on both maps, under its new name"] = function()
+	-- Set up directly: a is moved onto x's name, as a rename settle moves it (rename_handle).
 	child.steps({ ':e x', ':e b', ':e c', ':e d', ':e a' })
 	child.lua([[
 		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
@@ -275,8 +275,11 @@ T["T192 [char] rename_hash_in_triquetras(old, new) moves dsm[old-swap] to dsm[ne
 	K.set_note(child, 'dsm', 'a', 'c')
 	K.set_note(child, 'dsm', 'd', 'a')
 	eq(child.notes(), 'dtm{a-swap>b c>a} dsm{a-swap>b a>c d>a}')
-	child.lua('require("frogman.domains.window.data").rename_hash_in_triquetras(...)',
-		{ K.hash(child, 'a'), K.hash(child, 'x') })
+	child.lua([[
+		local H = require('frogman.domains.history')
+		local from, to = ...
+		H.routines.rename_handle(H.get_hash_from_handle(from), H.get_hash_from_handle(to))
+	]], { K.handle(child, 'a'), K.handle(child, 'x') })
 	eq(child.notes(), 'dtm{c>x x-swap>b} dsm{d>x x-swap>b x>c}')
 end
 

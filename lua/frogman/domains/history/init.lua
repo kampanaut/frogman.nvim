@@ -72,16 +72,16 @@ end
 
 ---Get current buffer access history.
 ---
----@return table<string, number> history File hash to access time mapping
+---@return table<HandleId, number> history File's handle to access time mapping
 function M.get_buffer_history()
 	return data.crux
 end
 
----Get the stack of closed buffer filehashes.
+---Get the stack of closed buffer handles.
 ---
 ---This is the editor's own stack. Each tab session's pool keeps a stack of its own.
 ---
----@return string[] closed_buffers Stack of closed buffer filehashes that can be reopened
+---@return HandleId[] closed_buffers Stack of closed buffer handles that can be reopened
 function M.get_closed_buffers()
 	return data.closed_buffers
 end
@@ -98,20 +98,33 @@ M.get_hash_from_buffer = routines.get_hash_from_buffer
 M.get_filepath_from_hash = routines.get_filepath_from_hash
 M.get_filepath_from_buffer = routines.get_filepath_from_buffer
 M.get_hash_from_filepath = routines.get_hash_from_filepath
+M.get_handle_from_buffer = routines.get_handle_from_buffer
+M.get_handle_from_filepath = routines.get_handle_from_filepath
+M.get_handle_from_hash = routines.get_handle_from_hash
+M.keyed_by_hash = routines.keyed_by_hash
+M.keyed_by_handle = routines.keyed_by_handle
+M.hashes_of = routines.hashes_of
+M.handles_of = routines.handles_of
+M.tags_by_hash = routines.tags_by_hash
+M.get_hash_from_handle = routines.get_hash_from_handle
+M.get_filepath_from_handle = routines.get_filepath_from_handle
+M.get_buffer_from_handle = routines.get_buffer_from_handle
 
 M.repopulate_history = routines.repopulate_history
 
----@param filehash Filehash
----@return boolean True if the filehash is registered as closed
-function M.filehash_is_closed(filehash)
-	return routines.is_filehash_closed(filehash)
+---Check if a file is on any closed list.
+---
+---@param id HandleId The file's handle
+---@return boolean closed True if the file is on a closed list
+function M.handle_is_closed(id)
+	return routines.is_handle_closed(id)
 end
 
 function M.clear_closed_buffers()
 	data.closed_buffers = {}
 end
 
-M.reopen_filehash = routines.reopen_filehash
+M.reopen_handle = routines.reopen_handle
 
 ---Get the triquetra (window snapshot) for a specific window.
 ---@param winid WinId

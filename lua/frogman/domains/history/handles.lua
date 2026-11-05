@@ -3,16 +3,22 @@
 ---A handle is an opaque key for a file the path registry knows, made at runtime and never saved.
 ---It follows the file through renames, so whatever holds it keeps holding the same file. Each
 ---handle is an instance of the handle machine, open while its file has a buffer and closed
----otherwise. The hash API stays in front for now: the registry's own functions keep the handles in
----step with it, and nothing reads a handle yet.
+---otherwise. Everything that refers to a file holds its handle's number: a rename changes the hash
+---behind the number, and nothing that holds it is rewritten. The registry's own functions, which
+---map names to hashes, keep the handles in step with it.
 
 local data = require("frogman.domains.history.data")
 
+---@alias HandleId integer A handle's number, what every consumer holds for a file
+
 ---@class FileHandle: iStateMachine A file's handle
----@field id integer The handle's number, counted up and never given again
+---@field id HandleId The handle's number, counted up and never given again
 ---@field hash Filehash The hash of the file's name, which a rename changes
 ---@field gone boolean Whether the file is gone from disk (it has a tag)
----@field copy_of integer|nil The number of the handle it was copied from, for the trail
+---@field tag string|nil Where you were when the file went missing, or the time, while it's gone
+---@field unwritten Bufnr|true|nil Whether the file was never written, by the buffer that marked it or a session file
+---@field text NoNameBufferContent|table|nil A No Name text closed, its lines, or how to read them from its file
+---@field copy_of HandleId|nil The number of the handle it was copied from, for the trail
 ---@field holders table<string, true> The places holding it now (place → true)
 
 ---@class HandleModes
@@ -57,7 +63,7 @@ local forwards = {}
 ---Keep a handle's fields from its transition's context.
 ---
 ---The context carries the hash the handle has after the transition, which a rename changes, and
----whether its file is gone from disk.
+---whether its file is gone from disk, with its tag while it's gone.
 ---
 ---@param context table The transition's context
 ---@param handle FileHandle The handle moved
@@ -68,6 +74,7 @@ local function keep_fields(context, handle)
 	end
 	if context.gone ~= nil then
 		handle.gone = context.gone
+		handle.tag = context.gone and context.tag or nil
 	end
 end
 
@@ -95,13 +102,16 @@ M.model = model
 
 ---Make a handle for a hash that has none.
 ---
----@param hash Filehash
+---It starts with no tag: a file is tagged gone by a check of the disk, or by a load putting back
+---the tags it saved.
+---
+---@param hash Filehash The hash of the file's name
 ---@param state "open"|"closed" The state it starts in
 ---@return FileHandle handle The new handle
 local function mint(hash, state)
 	local handle = model:instantiate(state)
 	---@cast handle FileHandle
-	handle.id, handle.hash, handle.gone = next_id, hash, data.missing[hash] ~= nil
+	handle.id, handle.hash, handle.gone = next_id, hash, false
 	handle.holders = {}
 	next_id = next_id + 1
 	live[handle.id], by_hash[hash] = handle, handle
@@ -110,16 +120,16 @@ end
 
 ---Move a handle, its hash and gone flag carried in the transition's context.
 ---
----@param handle FileHandle
+---@param handle FileHandle The handle to move
 ---@param state "open"|"closed" The state it goes to
----@param context table|nil What changes with it (hash, gone)
+---@param context table|nil What changes with it (hash, gone, tag)
 ---@param mode string|nil The transition's mode
 ---@return nil
 local function move(handle, state, context, mode)
 	context = context or {}
 	context.hash = context.hash or handle.hash
 	if context.gone == nil then
-		context.gone = handle.gone
+		context.gone, context.tag = handle.gone, handle.tag
 	end
 	handle:to(state, context, mode)
 end
@@ -243,15 +253,15 @@ end
 ---Set what a place holds.
 ---
 ---A strong holder calls it at the write that changes what it holds: the handles it held and no
----longer holds leave it, and the new ones join it. A hash with no handle holds nothing.
+---longer holds leave it, and the new ones join it. A number whose handle was let go holds nothing.
 ---
 ---@param place string The holder's place, like "win:1000:ternary" or "pool:editor"
----@param hashes table<any, Filehash> The hashes it holds now (a list, or any table of them)
+---@param ids table<any, HandleId> The handles it holds now (a list, or any table of them)
 ---@return nil
-function M.hold(place, hashes)
+function M.hold(place, ids)
 	local now = {}
-	for _, hash in pairs(hashes) do
-		local handle = by_hash[hash]
+	for _, id in pairs(ids) do
+		local handle = live[id]
 		if handle then
 			now[handle] = true
 		end
@@ -268,11 +278,11 @@ end
 
 ---Add one file to what a place holds.
 ---
----@param place string
----@param hash Filehash
+---@param place string The holder's place
+---@param id HandleId The file's handle
 ---@return nil
-function M.take(place, hash)
-	local handle = by_hash[hash]
+function M.take(place, id)
+	local handle = live[id]
 	if handle then
 		add(handle, place)
 	end
@@ -280,11 +290,11 @@ end
 
 ---Take one file out of what a place holds.
 ---
----@param place string
----@param hash Filehash
+---@param place string The holder's place
+---@param id HandleId The file's handle
 ---@return nil
-function M.leave(place, hash)
-	local handle = by_hash[hash]
+function M.leave(place, id)
+	local handle = live[id]
 	if handle then
 		remove(handle, place)
 	end
@@ -301,14 +311,14 @@ function M.drop_place(place)
 	places[place] = nil
 end
 
----Get the hashes a place holds.
+---Get the handles a place holds.
 ---
----@param place string
----@return Filehash[] hashes The hashes, sorted
+---@param place string The holder's place
+---@return HandleId[] ids The handles' numbers, sorted
 function M.held_by(place)
 	local out = {}
 	for handle, _ in pairs(places[place] or {}) do
-		table.insert(out, handle.hash)
+		table.insert(out, handle.id)
 	end
 	table.sort(out)
 	return out
@@ -316,10 +326,10 @@ end
 
 ---Get the places holding a file.
 ---
----@param hash Filehash
+---@param id HandleId|nil The file's handle
 ---@return string[] places The places, sorted
-function M.holders(hash)
-	local handle = by_hash[hash]
+function M.holders(id)
+	local handle = id and live[id]
 	local out = handle and vim.tbl_keys(handle.holders) or {}
 	table.sort(out)
 	return out
@@ -427,10 +437,10 @@ end
 
 ---Check if a file is held by anything besides the windows' slots: an open buffer, a list or a mark.
 ---
----@param hash Filehash|nil
+---@param id HandleId|nil The file's handle
 ---@return boolean held
-function M.held_beyond_windows(hash)
-	return M.held_beyond(hash, { win = true })
+function M.held_beyond_windows(id)
+	return M.held_beyond(id, { win = true })
 end
 
 ---The kinds of place a file is held by for the windows, the lists and the open buffers, the rest being
@@ -441,11 +451,11 @@ M.WINDOWS_AND_LISTS = { win = true, pool = true, buffer = true }
 ---Check if a file is held by a place of a kind not given: a place's kind is its name's part before the
 ---first colon, `win`, `pool`, `mark`, `snap`, or `buffer` for the open buffer.
 ---
----@param hash Filehash|nil
+---@param id HandleId|nil The file's handle
 ---@param kinds table<string, true> The kinds that don't count
 ---@return boolean held
-function M.held_beyond(hash, kinds)
-	local handle = M.of_hash(hash)
+function M.held_beyond(id, kinds)
+	local handle = id and live[id]
 	for place, _ in pairs(handle and handle.holders or {}) do
 		if not kinds[place:match("^[^:]+")] then
 			return true
@@ -457,11 +467,11 @@ end
 ---Check if a file is closed and kept: no buffer, and something besides the windows' slots holds it, a
 ---list or a mark, so a slot keeps it and using it reopens it.
 ---
----@param hash Filehash|nil
+---@param id HandleId|nil The file's handle
 ---@return boolean kept
-function M.kept_closed(hash)
-	local handle = M.of_hash(hash)
-	return handle ~= nil and handle:state() == states.CLOSED and M.held_beyond_windows(hash)
+function M.kept_closed(id)
+	local handle = id and live[id]
+	return handle ~= nil and handle:state() == states.CLOSED and M.held_beyond_windows(id)
 end
 
 ---Link a copy's handle to the handle of the file it was copied from.
@@ -476,28 +486,21 @@ function M.copied(new_hash, old_hash)
 	end
 end
 
----Mark whether a file is gone from disk.
+---Tag a file as gone from disk, or clear its tag.
 ---
----Called wherever its tag is put on or cleared, so a handle's gone flag is true exactly while its
----file has a tag.
+---The tag is the handle's own, so its gone flag is true exactly while it has one, and a move keeps
+---it. Putting it on moves the handle with the mode `vanish`, clearing it with `return`; a tag
+---changed while the file stays gone is kept the same way.
 ---
----@param hash Filehash
----@param gone boolean Whether it's gone
+---@param id HandleId|nil The file's handle
+---@param tag string|nil Where you were when the file went missing, or the time (nil = it's back)
 ---@return nil
-function M.set_gone(hash, gone)
-	local handle = by_hash[hash]
-	if handle and handle.gone ~= gone then
-		move(handle, handle:state(), { gone = gone }, gone and states.mode.VANISH or states.mode.RETURN)
+function M.set_tag(id, tag)
+	local handle = id and live[id]
+	if handle == nil or handle.tag == tag then
+		return
 	end
-end
-
----Set every handle's gone flag from the tags, after the tags were put in place all at once.
----
----@return nil
-function M.follow_tags()
-	for _, handle in pairs(live) do
-		M.set_gone(handle.hash, data.missing[handle.hash] ~= nil)
-	end
+	move(handle, handle:state(), { gone = tag ~= nil, tag = tag }, tag and states.mode.VANISH or states.mode.RETURN)
 end
 
 ---Let a file's handle go.

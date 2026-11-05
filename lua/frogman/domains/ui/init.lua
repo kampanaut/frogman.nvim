@@ -423,8 +423,9 @@ function M.bufferline.cokeline.create_buffer_components()
 		-- a file gone from disk shows, dimmed, where it went missing
 		missing = {
 			text = function(buffer)
-				local filehash = history.get_hash_from_buffer(buffer.number)
-				local tag = filehash and history.data.missing[filehash]
+				local id = history.get_handle_from_buffer(buffer.number)
+				local handle = id and history.handles.get(id)
+				local tag = handle and handle.tag
 				-- a % drawn full-width: cokeline measures and cuts the text before the tabline reads it
 				return tag and ('⎇' .. tostring(tag):gsub("%%", "％") .. ' ') or ''
 			end,

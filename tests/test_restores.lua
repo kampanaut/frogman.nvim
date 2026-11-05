@@ -119,10 +119,10 @@ T["T174 [char] (D9) when both of a buffer's notes point at closed files deleted 
 	eq(K.notes_for(child, { 'a' }), 'dtm{a-swap>f a>b} dsm{}')
 end
 
-T["T68 [char] an unknown hash in a map doesn't make a restore throw"] = function()
+T["T68 [char] an unknown handle in a map doesn't make a restore throw"] = function()
 	child.steps({ ':e a', ':e b' })
-	-- A hash that no buffer or path has.
-	K.set_note(child, 'dtm', 'b', '0123456789abcdef', true)
+	-- A handle that no buffer or path has.
+	K.set_note(child, 'dtm', 'b', 999999, true)
 	child.messages()
 	local ok, err = child.step('<M-;><M-r>')
 	eq({ ok, err }, { true, nil })

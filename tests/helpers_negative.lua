@@ -47,14 +47,14 @@ Neg.i23 = function(child, winid)
 	return v
 end
 
--- Whether a hash is in the current, secondary or ternary slot of a window
+-- Whether a file's handle is in the current, secondary or ternary slot of a window
 -- (default: the current one).
-Neg.in_slots = function(child, hash, winid)
+Neg.in_slots = function(child, id, winid)
 	return child.lua([[
 		local h, w = ...
 		local t = require('frogman.domains.window').data.crux[w or vim.api.nvim_get_current_win()]
 		return t ~= nil and (t.current_slot == h or t.secondary_slot == h or t.ternary_slot == h)
-	]], { hash, winid })
+	]], { id, winid })
 end
 
 -- Gaps in a window's primary queue: indexes up to its highest one that hold nil.
@@ -93,11 +93,12 @@ local function rnd(k)
 	state = (state * 16807) % 2147483647
 	return (state % k) + 1
 end
-local function name(hash)
-	if hash == nil then return '-' end
-	local path = H.get_filepath_from_hash((hash:gsub('%-swap$', '')))
-	local n = path and vim.fn.fnamemodify(path, ':t:r') or ('?' .. hash:sub(1, 6))
-	if hash:match('%-swap$') then n = n .. '-swap' end
+-- a slot's file, or a note's key, by its handle (a note's key the handle, or the handle and -swap)
+local function name(id)
+	if id == nil then return '-' end
+	local path = H.get_filepath_from_handle(W.data.note_owner(id))
+	local n = path and vim.fn.fnamemodify(path, ':t:r') or ('?' .. tostring(W.data.note_owner(id)))
+	if W.data.is_swap_note(id) then n = n .. '-swap' end
 	return n
 end
 
@@ -140,7 +141,7 @@ local function check()
 		if t then
 			for which, map in pairs({ dtm = t.displacement_ternary_map, dsm = t.displacement_secondary_map }) do
 				for k, v in pairs(map or {}) do
-					if (k:gsub('%-swap$', '')) == v then
+					if W.data.note_owner(k) == v then
 						return {
 							window = i,
 							entry = which .. '{' .. name(k) .. '>' .. name(v) .. '}',

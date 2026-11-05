@@ -97,7 +97,8 @@ T['T20 [char] track_buffer(h, t) stores t in the global history'] = function()
 	child.steps({ ':e a' })
 	local got = child.lua([[
 		local H = require('frogman.domains.history')
-		local h = _G.FRG_X.hash('b')
+		H.register_filepath(_G.FRG_TEST.root .. '/b.txt') -- known, so b has its handle
+		local h = _G.FRG_X.handle('b')
 		H.track_buffer(h, 1000)
 		return { stored = H.data.crux_internals.global[h], index = H.data.history_index }
 	]])

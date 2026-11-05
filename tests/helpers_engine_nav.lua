@@ -5,18 +5,18 @@
 
 local X = {}
 
--- Code run in the child: name <-> hash for the temp project's files.
+-- Code run in the child: name <-> handle for the temp project's files.
 local CHILD_LIB = [==[
 _G.FRG_X = _G.FRG_X or {}
 local H = require('frogman.domains.history')
 local W = require('frogman.domains.window')
 
-local function name(hash)
-	if hash == nil then return nil end
-	local base = hash:gsub('%-swap$', '')
-	local path = H.get_filepath_from_hash(base)
-	local n = path and vim.fn.fnamemodify(path, ':t:r') or ('?' .. base:sub(1, 6))
-	if hash:match('%-swap$') then n = n .. '-swap' end
+-- a slot's file, or a note's key, by its handle (a note's key the handle, or the handle and -swap)
+local function name(id)
+	if id == nil then return nil end
+	local path = H.get_filepath_from_handle(W.data.note_owner(id))
+	local n = path and vim.fn.fnamemodify(path, ':t:r') or ('?' .. tostring(W.data.note_owner(id)))
+	if W.data.is_swap_note(id) then n = n .. '-swap' end
 	return n
 end
 
@@ -25,14 +25,20 @@ local function hash(stem)
 	return H.routines.get_filehash(_G.FRG_TEST.root .. '/' .. stem .. '.txt')
 end
 
+-- The handle a file of the temp project has, nil while frogman doesn't know it.
+local function handle(stem)
+	return H.get_handle_from_hash(hash(stem))
+end
+
 local function key(k)
 	local stem, swap = k:match('^(.-)(%-swap)$')
-	if stem then return hash(stem) .. swap end
-	return hash(k)
+	if stem then return handle(stem) .. swap end
+	return handle(k)
 end
 
 _G.FRG_X.name = name
 _G.FRG_X.hash = hash
+_G.FRG_X.handle = handle
 
 -- Both maps of a window as tables of names, swap keys included.
 _G.FRG_X.maps = function(winid)
@@ -52,13 +58,13 @@ _G.FRG_X.set = function(spec, winid)
 		if spec[slot] == false then
 			t[slot .. '_slot'] = nil
 		elseif spec[slot] then
-			t[slot .. '_slot'] = hash(spec[slot])
+			t[slot .. '_slot'] = handle(spec[slot])
 		end
 	end
 	for _, m in ipairs({ { 'dtm', 'displacement_ternary_map' }, { 'dsm', 'displacement_secondary_map' } }) do
 		if spec[m[1]] then
 			local map = {}
-			for k, v in pairs(spec[m[1]]) do map[key(k)] = hash(v) end
+			for k, v in pairs(spec[m[1]]) do map[key(k)] = handle(v) end
 			t[m[2]] = map
 		end
 	end
@@ -86,8 +92,8 @@ end
 _G.FRG_X.times = function()
 	local out = {}
 	for _, e in ipairs(H.get_ordered_buffers()) do
-		local h = H.get_hash_from_buffer(e.buf)
-		table.insert(out, vim.fn.fnamemodify(vim.api.nvim_buf_get_name(e.buf), ':t:r') .. '=' .. tostring(H.data.crux[h]))
+		local id = H.get_handle_from_buffer(e.buf)
+		table.insert(out, vim.fn.fnamemodify(vim.api.nvim_buf_get_name(e.buf), ':t:r') .. '=' .. tostring(H.data.crux[id]))
 	end
 	return table.concat(out, ' ')
 end
@@ -105,6 +111,7 @@ X.unnil = function(v)
 end
 
 X.hash = function(child, stem) return child.lua('return _G.FRG_X.hash(...)', { stem }) end
+X.handle = function(child, stem) return X.unnil(child.lua('return _G.FRG_X.handle(...)', { stem })) end
 X.maps = function(child, winid) return X.unnil(child.lua('return _G.FRG_X.maps(...)', { winid })) end
 X.set = function(child, spec, winid) child.lua('_G.FRG_X.set(...)', { spec, winid }) end
 X.leftmost = function(child) return X.unnil(child.lua('return _G.FRG_X.leftmost()')) end

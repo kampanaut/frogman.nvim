@@ -112,9 +112,10 @@ local function row_of(winid, names)
 	if not row then
 		return nil
 	end
-	local triquetra = require('frogman.domains.window.data').crux[winid]
-	row.dtm = vim.deepcopy(triquetra.displacement_ternary_map or {})
-	row.dsm = vim.deepcopy(triquetra.displacement_secondary_map or {})
+	local window_data = require('frogman.domains.window.data')
+	local triquetra = window_data.crux[winid]
+	row.dtm = window_data.notes_by_hash(triquetra.displacement_ternary_map)
+	row.dsm = window_data.notes_by_hash(triquetra.displacement_secondary_map)
 	row.shows = vim.api.nvim_win_is_valid(winid)
 		and require('frogman.domains.history').get_hash_from_buffer(vim.api.nvim_win_get_buf(winid)) or nil
 	local function keep(filehash)
@@ -142,7 +143,8 @@ M.row_of = row_of
 
 ---Read a window's slots as they stand, for a move's row.
 ---
----Copies its slots, primary queue and switch, without the notes or what the window shows.
+---Copies its slots, primary queue and switch, without the notes or what the window shows. A row
+---is a record, so each file is by the hash it had then.
 ---
 ---@param winid integer|nil The window to read
 ---@return FrogmanLedgerRow|nil row The window's slots, or nil if there's no triquetra for it
@@ -151,11 +153,12 @@ function M.slots(winid)
 	if not triquetra then
 		return nil
 	end
+	local history = require('frogman.domains.history')
 	return {
-		c = triquetra.current_slot,
-		s = triquetra.secondary_slot,
-		t = triquetra.ternary_slot,
-		p = vim.deepcopy(triquetra.primary_buffer or {}),
+		c = history.get_hash_from_handle(triquetra.current_slot),
+		s = history.get_hash_from_handle(triquetra.secondary_slot),
+		t = history.get_hash_from_handle(triquetra.ternary_slot),
+		p = history.hashes_of(triquetra.primary_buffer),
 		on = triquetra.primary_enabled and true or false,
 	}
 end
@@ -498,17 +501,20 @@ end
 --- - "no path": a note dropped for naming a file nothing knows any more
 ---
 ---@param map "ternary"|"secondary" The map it's on
----@param owner Filehash The buffer whose note it is
----@param before Filehash|nil What it named
----@param after Filehash|nil What it names now
+---@param owner HandleId The handle of the buffer's file whose note it is
+---@param before HandleId|nil What it named
+---@param after HandleId|nil What it names now
 ---@param by string What changed it ("stale", "guard", "navigation" or "no path")
 ---@return nil
 function M.note(map, owner, before, after, by)
 	if before == after then
 		return
 	end
+	-- the move is a record, so it names each file by the hash it has now
+	local hash_of = require('frogman.domains.history').get_hash_from_handle
 	M.move(after and "rewritten" or "note_dropped", {
-		subject = owner, name = M.name_of(owner), note = { map = map, before = before, after = after }, by = by,
+		subject = hash_of(owner), name = M.name_of(hash_of(owner)),
+		note = { map = map, before = hash_of(before), after = hash_of(after) }, by = by,
 	})
 end
 

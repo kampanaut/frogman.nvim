@@ -1,11 +1,11 @@
--- The handles' holders check (M2 Holders), run inside a case's child: the hashes whose handles have a
+-- The handles' holders check (M2 Holders), run inside a case's child: the handles that have a
 -- holder are exactly what follow-along calls known, and each place holds what its own writes say, a
 -- window's slots and queue, a list's closed files, a mark's file, a snapshot's files and the
 -- registered buffers. Both child.settle under FRG_CHECK_HOLDERS (tests/helpers.lua) and the walks'
 -- HOLDERS check (tests/helpers_decisions.lua) run this one copy, which the child finds on its
 -- runtimepath.
 --
--- Returns a function of `name`, which names a hash in a message (its hash itself when there's none),
+-- Returns a function of `name`, which names a handle in a message (its number itself when there's none),
 -- giving the first drift it finds, or nil.
 return function(name)
 	if not package.loaded['frogman.domains.history'] then
@@ -16,25 +16,25 @@ return function(name)
 		return nil
 	end
 	name = name or tostring
-	local known, held = H.routines.known_filehashes(), {}
-	for _, h in pairs(H.handles.live()) do
-		if next(h.holders) then held[h.hash] = true end
+	local known, held = H.routines.known_handles(), {}
+	for id, h in pairs(H.handles.live()) do
+		if next(h.holders) then held[id] = true end
 	end
-	for hash in pairs(known) do
-		if not held[hash] and H.handles.of_hash(hash) then
-			return string.format('%s is known, and its handle has no holder', name(hash))
+	for id in pairs(known) do
+		if not held[id] and H.handles.get(id) then
+			return string.format('%s is known, and its handle has no holder', name(id))
 		end
 	end
-	for hash in pairs(held) do
-		if not known[hash] then
-			return string.format('%s has a holder (%s), and is not known', name(hash), table.concat(H.handles.holders(hash), ', '))
+	for id in pairs(held) do
+		if not known[id] then
+			return string.format('%s has a holder (%s), and is not known', name(id), table.concat(H.handles.holders(id), ', '))
 		end
 	end
 	local W = require('frogman.domains.window')
-	local function same(place, hashes)
+	local function same(place, ids)
 		local want, seen = {}, {}
-		for _, h in pairs(hashes) do
-			if H.handles.of_hash(h) then want[h] = true end
+		for _, h in pairs(ids) do
+			if H.handles.get(h) then want[h] = true end
 		end
 		for _, h in ipairs(H.handles.held_by(place)) do
 			if not want[h] then return place .. ' holds ' .. h .. ', which it does not' end
@@ -61,7 +61,7 @@ return function(name)
 			for position, group in ipairs(scope.groups) do
 				for alias, hid in pairs(group.marks) do
 					local handle = H.handles.get(H.handles.resolve(hid))
-					local bad = same('mark:' .. kind .. ':' .. tostring(id) .. ':' .. position .. ':' .. alias, { handle and handle.hash })
+					local bad = same('mark:' .. kind .. ':' .. tostring(id) .. ':' .. position .. ':' .. alias, { handle and handle.id })
 					if bad then return bad end
 				end
 			end
@@ -77,16 +77,16 @@ return function(name)
 	for _, entry in ipairs(Sn and Sn.data.pending or {}) do table.insert(lists, entry.snapshots) end
 	for _, snaps in ipairs(lists) do
 		for _, sn in ipairs(snaps) do
-			local hashes = {}
+			local ids = {}
 			for _, id in ipairs(vim.list_extend({ sn.current, sn.secondary or false, sn.ternary or false }, vim.list_extend(vim.deepcopy(sn.queue), sn.order))) do
 				local h = id and H.handles.get(H.handles.resolve(id))
-				if h then table.insert(hashes, h.hash) end
+				if h then table.insert(ids, h.id) end
 			end
-			local bad = same('snap:' .. sn.id, hashes)
+			local bad = same('snap:' .. sn.id, ids)
 			if bad then return bad end
 		end
 	end
 	local bufs = {}
-	for h in pairs(H.data.hash_buffer_registry.buffers) do table.insert(bufs, h) end
+	for h in pairs(H.data.hash_buffer_registry.buffers) do table.insert(bufs, H.get_handle_from_hash(h)) end
 	return same('buffer', bufs)
 end

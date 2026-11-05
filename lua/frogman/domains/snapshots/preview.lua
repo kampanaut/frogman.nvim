@@ -12,8 +12,8 @@ local history = require('frogman.domains.history')
 local M = {}
 
 ---The snapshot showing: its window, the snapshot, the buffer the window showed before it, and the
----buffers it made or borrowed to show closed files, by their hashes, each with what it was before.
----@type {window: WinId, snapshot: Snapshot, before: Bufnr, made: table<Filehash, {buf: Bufnr, was: "made"|"unloaded"|"loaded"|"placeholder", text: boolean|nil, tick: integer|nil}>}|nil
+---buffers it made or borrowed to show closed files, by their files' handles, each with what it was before.
+---@type {window: WinId, snapshot: Snapshot, before: Bufnr, made: table<HandleId, {buf: Bufnr, was: "made"|"unloaded"|"loaded"|"placeholder", text: boolean|nil, tick: integer|nil}>}|nil
 local showing = nil
 
 ---The words a placeholder holds
@@ -34,21 +34,21 @@ function M.window()
 	return showing and showing.window
 end
 
----Get the hashes of a snapshot's slots, by the live slots' rule.
+---Get the handles of a snapshot's slots, by the live slots' rule.
 ---
 ---A file a rename left in two of its slots stays in the current, and the secondary keeps one the
 ---current doesn't hold over the ternary.
 ---
----@param snapshot Snapshot
----@return Filehash|nil current
----@return Filehash|nil secondary
----@return Filehash|nil ternary
+---@param snapshot Snapshot The snapshot showing
+---@return HandleId|nil current
+---@return HandleId|nil secondary
+---@return HandleId|nil ternary
 local function slots_of(snapshot)
-	local function hash(id)
+	local function live(id)
 		local handle = routines.handle(id)
-		return handle and handle.hash or nil
+		return handle and handle.id or nil
 	end
-	local c, s, t = hash(snapshot.current), hash(snapshot.secondary), hash(snapshot.ternary)
+	local c, s, t = live(snapshot.current), live(snapshot.secondary), live(snapshot.ternary)
 	if s == c then
 		s = nil
 	end
@@ -58,16 +58,16 @@ local function slots_of(snapshot)
 	return c, s, t
 end
 
----Get the hashes of a snapshot's notes, as a note map holds them.
+---Get a snapshot's notes as a note map holds them, by handle.
 ---
----@param notes SnapshotNote[]
----@return table<string, Filehash> map
+---@param notes SnapshotNote[] The snapshot's notes on one map
+---@return table<HandleId|string, HandleId> map
 local function map_of(notes)
 	local map = {}
 	for _, note in ipairs(notes) do
 		local key, value = routines.handle(note.key), routines.handle(note.value)
-		if key and value and key.hash ~= value.hash then
-			map[key.hash .. (note.swap and "-swap" or "")] = value.hash
+		if key and value and key ~= value then
+			map[note.swap and key.id .. "-swap" or key.id] = value.id
 		end
 	end
 	return map
@@ -76,7 +76,7 @@ end
 ---Get what the window's winbar is drawn from while a snapshot shows there: its slots, its queue and
 ---its notes, as a triquetra holds them.
 ---
----@param winid WinId
+---@param winid WinId The window
 ---@return table|nil triquetra Nil when no snapshot shows there
 function M.triquetra_of(winid)
 	if not showing or showing.window ~= winid then
@@ -88,7 +88,7 @@ function M.triquetra_of(winid)
 	for _, id in ipairs(snapshot.queue) do
 		local handle = routines.handle(id)
 		if handle then
-			table.insert(queue, handle.hash)
+			table.insert(queue, handle.id)
 		end
 	end
 	return {
@@ -98,17 +98,17 @@ function M.triquetra_of(winid)
 	}
 end
 
----Get the buffers the preview made or borrowed in a window, by the hashes they show, for drawing them as
----the snapshot's slots. Another window's are none.
+---Get the buffers the preview made or borrowed in a window, by the handles of the files they show, for
+---drawing them as the snapshot's slots. Another window's are none.
 ---
----@param winid WinId
----@return table<Filehash, Bufnr> buffers
+---@param winid WinId The window
+---@return table<HandleId, Bufnr> buffers
 function M.buffers(winid)
 	local out = {}
 	if showing and showing.window == winid then
-		for filehash, made in pairs(showing.made) do
+		for id, made in pairs(showing.made) do
 			if vim.api.nvim_buf_is_valid(made.buf) then
-				out[filehash] = made.buf
+				out[id] = made.buf
 			end
 		end
 	end
@@ -123,39 +123,40 @@ end
 ---once while the snapshot shows. A file whose name another buffer has, one that turned untracked,
 ---can't be shown, and nor can a text that's lost.
 ---
----@param filehash Filehash
+---@param id HandleId The file's handle
 ---@return Bufnr|nil bufnr
 ---@return string|nil why "taken" when another buffer has its name
-local function buffer_for(filehash)
-	local bufnr = history.get_buffer_from_hash(filehash)
+local function buffer_for(id)
+	local bufnr = history.get_buffer_from_handle(id)
 	if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
 		return bufnr
 	end
-	local made = showing.made[filehash]
+	local made = showing.made[id]
 	if made and vim.api.nvim_buf_is_valid(made.buf) then
 		return made.buf
 	end
-	local filepath = history.get_filepath_from_hash(filehash)
+	local handle = history.handles.get(id)
+	local filepath = history.get_filepath_from_handle(id)
 	if filepath == nil then
 		return nil
 	end
-	if require('frogman.domains.window').routines.is_missing(filehash) then
+	if require('frogman.domains.window').routines.is_missing(id) then
 		bufnr = vim.api.nvim_create_buf(false, true)
 		pcall(vim.api.nvim_buf_set_name, bufnr, "frogman://gone/" .. vim.fs.basename(filepath))
 		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { GONE })
 		vim.bo[bufnr].modifiable = false
-		showing.made[filehash] = { buf = bufnr, was = "placeholder" }
+		showing.made[id] = { buf = bufnr, was = "placeholder" }
 		return bufnr
 	end
 	if filepath:match("^NONAME_") then
-		local text = history.data.noname_content[filehash]
+		local text = handle.text
 		if text and text.lines == nil and text.read then
 			-- held unread from a session file: read now and kept read; one that's lost leaves every list,
 			-- as a reopen that can't read it finds it
 			text = text.read()
-			history.data.noname_content[filehash] = text
+			handle.text = text
 			if text == nil then
-				history.routines.discard_from_pools(filehash)
+				history.routines.discard_from_pools(id)
 			end
 		end
 		if text == nil or text.lines == nil then
@@ -165,7 +166,7 @@ local function buffer_for(filehash)
 		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, text.lines)
 		vim.bo[bufnr].filetype = text.filetype or ""
 		vim.bo[bufnr].modified = false -- setting its lines marked it
-		showing.made[filehash] = { buf = bufnr, was = "made", text = true, tick = vim.b[bufnr].changedtick }
+		showing.made[id] = { buf = bufnr, was = "made", text = true, tick = vim.b[bufnr].changedtick }
 		return bufnr
 	end
 	local holder = history.routines.find_buffer_by_filepath(filepath)
@@ -178,7 +179,7 @@ local function buffer_for(filehash)
 		vim.fn.bufload(bufnr)
 	end
 	-- its changes counted from here, so one written since, no longer modified, is still edited
-	showing.made[filehash] = { buf = bufnr, was = was, tick = vim.b[bufnr].changedtick }
+	showing.made[id] = { buf = bufnr, was = was, tick = vim.b[bufnr].changedtick }
 	return bufnr
 end
 
@@ -186,16 +187,16 @@ end
 ---text comes back holding what its borrowed buffer holds, in a buffer of its own, which takes the
 ---borrowed one's place in any window showing it.
 ---
----@param filehash Filehash
+---@param id HandleId The file's handle
 ---@param made table What the preview borrowed for it
 ---@param say boolean Whether to say so: it was edited, not landed on
 ---@return nil
-local function open_for_real(filehash, made, say)
-	local name = require('frogman.domains.ui').routines.get_smart_basename(filehash)
+local function open_for_real(id, made, say)
+	local name = require('frogman.domains.ui').routines.get_smart_basename(id)
 	if made.text then
-		history.data.noname_content[filehash] = { lines = vim.api.nvim_buf_get_lines(made.buf, 0, -1, false),
+		history.handles.get(id).text = { lines = vim.api.nvim_buf_get_lines(made.buf, 0, -1, false),
 			filetype = vim.bo[made.buf].filetype, cursor = { 1, 0 } }
-		local bufnr = history.routines.reopen_filehash(filehash)
+		local bufnr = history.routines.reopen_handle(id)
 		if bufnr then
 			for _, winid in ipairs(vim.fn.win_findbuf(made.buf)) do
 				vim.api.nvim_win_set_buf(winid, bufnr)
@@ -203,7 +204,7 @@ local function open_for_real(filehash, made, say)
 		end
 		vim.api.nvim_buf_delete(made.buf, { force = true })
 	elseif history.get_hash_from_buffer(made.buf) == nil then
-		history.routines.reopen_filehash(filehash)
+		history.routines.reopen_handle(id)
 	else
 		vim.bo[made.buf].buflisted = true -- written while it showed, so taken in already
 	end
@@ -222,22 +223,22 @@ end
 ---reopen's visit recorded in the window the snapshot showed in.
 ---
 ---@param was table The preview that showed
----@param keep Filehash|nil The file a commit lands on
+---@param keep HandleId|nil The handle of the file a commit lands on
 ---@return nil
 local function release(was, keep)
-	for filehash, made in pairs(was.made) do
+	for id, made in pairs(was.made) do
 		local buf = made.buf
 		if vim.api.nvim_buf_is_valid(buf) then
 			local edited = vim.bo[buf].modified or vim.b[buf].changedtick ~= made.tick or history.get_hash_from_buffer(buf) ~= nil
 			if made.was == "placeholder" then
 				vim.api.nvim_buf_delete(buf, { force = true })
-			elseif filehash == keep or edited then
+			elseif id == keep or edited then
 				if vim.api.nvim_win_is_valid(was.window) then
 					vim.api.nvim_win_call(was.window, function()
-						open_for_real(filehash, made, filehash ~= keep)
+						open_for_real(id, made, id ~= keep)
 					end)
 				else
-					open_for_real(filehash, made, filehash ~= keep)
+					open_for_real(id, made, id ~= keep)
 				end
 			elseif made.was == "made" and #vim.fn.win_findbuf(buf) == 0 then
 				vim.api.nvim_buf_delete(buf, { force = true })
@@ -255,7 +256,7 @@ function M.order()
 	local buffers = {}
 	for _, id in ipairs(showing and showing.snapshot.order or {}) do
 		local handle = routines.handle(id)
-		local bufnr = handle and history.get_buffer_from_hash(handle.hash)
+		local bufnr = handle and history.get_buffer_from_handle(handle.id)
 		if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
 			table.insert(buffers, bufnr)
 		end
@@ -326,7 +327,7 @@ end
 ---A closed file is borrowed and a file gone from disk shows its placeholder; one that can't be shown,
 ---its name another buffer's or its text lost, is stepped over.
 ---
----@param direction 1|2
+---@param direction 1|2 Toward the order's front (1) or toward its end (2)
 ---@return nil
 function M.step(direction)
 	if not showing or not vim.api.nvim_win_is_valid(showing.window) then
@@ -340,14 +341,14 @@ function M.step(direction)
 	local own = M.buffers(showing.window)
 	for i, id in ipairs(order) do
 		local handle = routines.handle(id)
-		if handle and (history.get_buffer_from_hash(handle.hash) == shown or own[handle.hash] == shown) then
+		if handle and (history.get_buffer_from_handle(handle.id) == shown or own[handle.id] == shown) then
 			index = i
 		end
 	end
 	for n = 1, #order do
 		local at = index == 0 and n or ((index - 1 + n * (direction == 1 and -1 or 1)) % #order) + 1
 		local handle = routines.handle(order[at])
-		local bufnr = handle and buffer_for(handle.hash)
+		local bufnr = handle and buffer_for(handle.id)
 		if bufnr then
 			vim.api.nvim_win_set_buf(showing.window, bufnr)
 			repaint()
@@ -394,13 +395,13 @@ function M.commit()
 	end
 	local winid, snapshot = showing.window, showing.snapshot
 	local shown, landing = vim.api.nvim_win_get_buf(winid), nil
-	for filehash, made in pairs(showing.made) do
+	for id, made in pairs(showing.made) do
 		if made.buf == shown and made.was == "placeholder" then
-			vim.notify("frogman: " .. require('frogman.domains.ui').routines.get_smart_basename(filehash) ..
+			vim.notify("frogman: " .. require('frogman.domains.ui').routines.get_smart_basename(id) ..
 				" isn't on disk; step onto another file to take the snapshot.", vim.log.levels.WARN)
 			return
 		elseif made.buf == shown then
-			landing = filehash
+			landing = id
 		end
 	end
 	-- the file it lands on opened for real, before its slots are read, and the rest given back
@@ -432,15 +433,15 @@ function M.commit()
 	local queue, seen = {}, {}
 	for _, id in ipairs(snapshot.queue) do
 		local handle = routines.handle(id)
-		if handle and not seen[handle.hash] then
-			seen[handle.hash] = true
-			table.insert(queue, handle.hash)
+		if handle and not seen[handle.id] then
+			seen[handle.id] = true
+			table.insert(queue, handle.id)
 		end
 	end
-	for _, filehash in ipairs(triquetra.primary_buffer or {}) do
-		if not seen[filehash] then
-			seen[filehash] = true
-			table.insert(queue, filehash)
+	for _, id in ipairs(triquetra.primary_buffer or {}) do
+		if not seen[id] then
+			seen[id] = true
+			table.insert(queue, id)
 		end
 	end
 	triquetra:set_queue(queue)
@@ -453,7 +454,7 @@ function M.commit()
 		for _, id in ipairs(snapshot.order) do
 			local handle = routines.handle(id)
 			if handle then
-				table.insert(order, handle.hash)
+				table.insert(order, handle.id)
 			end
 		end
 		for i = #order, 1, -1 do

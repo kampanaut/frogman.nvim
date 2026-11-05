@@ -204,13 +204,13 @@ T['D21 [char] the old spec marks file-picker mode as not built'] = function()
 	eq(has(s:lower(), 'not built'), true)
 end
 
-T['D25 [char] the closed-stack comments say filehashes'] = function()
+T['D25 [char] the closed-stack comments say handles'] = function()
 	local data = read('lua/frogman/domains/history/data.lua')
 	local init = read('lua/frogman/domains/history/init.lua')
 	eq({
 		has(data, 'closed buffer filenames'),
 		has(init, 'closed buffer filenames'),
-		has(init, 'Stack of closed buffer filehashes that can be reopened'),
+		has(init, 'Stack of closed buffer handles that can be reopened'),
 	}, { false, false, true })
 end
 

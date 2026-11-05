@@ -21,32 +21,32 @@ checks.I5 = { post = function()
 	local r = H.data.hash_buffer_registry
 	for h, b in pairs(r.buffers) do
 		if r.hashes[b] ~= h then
-			return string.format('buffers[%s] = %d, but hashes[%d] = %s', name(h), b, b, r.hashes[b] and name(r.hashes[b]) or 'nil')
+			return string.format('buffers[%s] = %d, but hashes[%d] = %s', hash_name(h), b, b, r.hashes[b] and hash_name(r.hashes[b]) or 'nil')
 		end
 	end
 	for b, h in pairs(r.hashes) do
 		if r.buffers[h] ~= b then
-			return string.format('hashes[%d] = %s, but buffers[%s] = %s', b, name(h), name(h), tostring(r.buffers[h]))
+			return string.format('hashes[%d] = %s, but buffers[%s] = %s', b, hash_name(h), hash_name(h), tostring(r.buffers[h]))
 		end
 	end
 	local p = H.data.hash_filepath_registry
 	for h, path in pairs(p.filepaths) do
-		if p.hashes[path] ~= h then return string.format('filepaths[%s] = %s has no matching reverse entry', name(h), base(path)) end
+		if p.hashes[path] ~= h then return string.format('filepaths[%s] = %s has no matching reverse entry', hash_name(h), base(path)) end
 	end
 	for path, h in pairs(p.hashes) do
-		if p.filepaths[h] ~= path then return string.format('hashes[%s] = %s has no matching forward entry', base(path), name(h)) end
+		if p.filepaths[h] ~= path then return string.format('hashes[%s] = %s has no matching forward entry', base(path), hash_name(h)) end
 	end
 end }
 
--- I7: after a cleanup pass, no hash on the closed stack has an open buffer.
+-- I7: after a cleanup pass, no file on the closed stack has an open buffer.
 checks.I7 = { post = function()
 	H.cleanup_system()
 	for _, h in ipairs(H.data.closed_buffers) do
-		local b = H.data.hash_buffer_registry.buffers[h]
+		local b = H.get_buffer_from_handle(h)
 		if b and vim.api.nvim_buf_is_valid(b) and vim.api.nvim_buf_is_loaded(b) then
 			return string.format('closed %s still has open buffer %d', name(h), b)
 		end
-		local path = H.get_filepath_from_hash(h)
+		local path = H.get_filepath_from_handle(h)
 		local nb = path and vim.fn.bufnr(path) or -1
 		if nb ~= -1 and vim.api.nvim_buf_is_loaded(nb) and vim.bo[nb].buflisted then
 			return string.format('closed %s is open as buffer %d', name(h), nb)
@@ -54,7 +54,7 @@ checks.I7 = { post = function()
 	end
 end }
 
--- I8: a window's current slot is the hash of the buffer it shows, outside
+-- I8: a window's current slot is the handle of the buffer it shows, outside
 -- the window a cycle runs in and outside visits (a shown buffer that isn't
 -- registered). The cycle's window is the one a cycling key started it from.
 local cycle_win
@@ -73,7 +73,7 @@ checks.I8 = {
 			if winid ~= cycle_win and vim.api.nvim_win_is_valid(winid)
 				and vim.api.nvim_win_get_config(winid).relative == '' then
 				local buf = vim.api.nvim_win_get_buf(winid)
-				local h = H.get_hash_from_buffer(buf)
+				local h = H.get_handle_from_buffer(buf)
 				if h and t.current_slot ~= h then
 					return string.format('window %d shows %s, its current slot is %s (navigation %s)',
 						winid, stem(buf), name(t.current_slot), nav)
@@ -98,8 +98,8 @@ checks.HANDLES = { post = function()
 		if (h:state() == 'open') ~= (buffers[hash] ~= nil) then
 			return string.format('%s handle %d is %s, its buffer %s', base(path), h.id, h:state(), tostring(buffers[hash]))
 		end
-		if h.gone ~= (H.data.missing[hash] ~= nil) then
-			return string.format('%s handle %d gone %s, its tag %s', base(path), h.id, tostring(h.gone), tostring(H.data.missing[hash]))
+		if h.gone ~= (h.tag ~= nil) then
+			return string.format('%s handle %d gone %s, its tag %s', base(path), h.id, tostring(h.gone), tostring(h.tag))
 		end
 	end
 	for id, h in pairs(handles.live()) do

@@ -7,23 +7,23 @@
 
 local K = {}
 
--- Code shared by the child-side helpers: name(hash) and the window's triquetra.
+-- Code shared by the child-side helpers: name(id), handle(stem) and the window's triquetra.
 local PRELUDE = [==[
 local H = require('frogman.domains.history')
 local W = require('frogman.domains.window')
-local function name(hash)
-	if hash == nil then return nil end
-	local base = hash:gsub('%-swap$', '')
-	local path = H.get_filepath_from_hash(base)
-	local n = path and vim.fn.fnamemodify(path, ':t:r') or ('?' .. base:sub(1, 6))
-	if hash:match('%-swap$') then n = n .. '-swap' end
+-- a slot's file, or a note's key, by its handle (a note's key the handle, or the handle and -swap)
+local function name(id)
+	if id == nil then return nil end
+	local path = H.get_filepath_from_handle(W.data.note_owner(id))
+	local n = path and vim.fn.fnamemodify(path, ':t:r') or ('?' .. tostring(W.data.note_owner(id)))
+	if W.data.is_swap_note(id) then n = n .. '-swap' end
 	return n
 end
-local function hash(stem)
+local function handle(stem)
 	local buf = vim.fn.bufnr(stem .. '.txt')
-	if buf ~= -1 and H.get_hash_from_buffer(buf) then return H.get_hash_from_buffer(buf) end
+	if buf ~= -1 and H.get_handle_from_buffer(buf) then return H.get_handle_from_buffer(buf) end
 	for h, path in pairs(H.data.hash_filepath_registry.filepaths) do
-		if vim.fn.fnamemodify(path, ':t:r') == stem then return h end
+		if vim.fn.fnamemodify(path, ':t:r') == stem then return H.get_handle_from_hash(h) end
 	end
 	return nil
 end
@@ -73,20 +73,20 @@ K.dsm = function(child)
 	return child.notes():match('(dsm%b{})')
 end
 
--- Set one note directly. The value is a stem, or a raw hash when raw is true.
+-- Set one note directly. The value is a stem, or a raw handle number when raw is true.
 K.set_note = function(child, which, key, value, raw)
 	child.lua(PRELUDE .. [[
 		local which, key, value, raw = ...
 		local t = W.data.crux[vim.api.nvim_get_current_win()]
 		local base, swap = key:match('^(.-)(%-swap)$')
-		local k = base and (hash(base) .. swap) or hash(key)
-		map_of(t, which)[k] = raw and value or hash(value)
+		local k = base and (handle(base) .. swap) or handle(key)
+		map_of(t, which)[k] = raw and value or handle(value)
 	]], { which, key, value, raw or false })
 end
 
--- The hash frogman holds for a stem.
-K.hash = function(child, stem)
-	return child.lua(PRELUDE .. 'return hash(...)', { stem })
+-- The handle frogman holds for a stem.
+K.handle = function(child, stem)
+	return child.lua(PRELUDE .. 'return handle(...)', { stem })
 end
 
 -- Whether current and secondary (or ternary) hold the same buffer.
@@ -197,10 +197,10 @@ local function rnd(n)
 	state = (state * 16807) % 2147483647
 	return (state % n) + 1
 end
-local function name(hash)
-	if hash == nil then return '-' end
-	local path = H.get_filepath_from_hash(hash)
-	return path and vim.fn.fnamemodify(path, ':t:r') or ('?' .. hash:sub(1, 6))
+local function name(id)
+	if id == nil then return '-' end
+	local path = H.get_filepath_from_handle(id)
+	return path and vim.fn.fnamemodify(path, ':t:r') or ('?' .. tostring(id))
 end
 
 local actions = {

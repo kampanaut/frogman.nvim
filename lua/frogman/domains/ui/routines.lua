@@ -125,7 +125,7 @@ end
 ---@return nil
 function M.search_primary_popup(dbuf)
 	local text = vim.trim(vim.api.nvim_get_current_line())
-	local filepath = (vim.b[dbuf].frogman_names or {})[text] or (text ~= "" and text) or nil
+	local filepath = history.get_filepath_from_handle((vim.b[dbuf].frogman_names or {})[text]) or (text ~= "" and text) or nil
 	if filepath and not filepath:match("^NONAME_") then
 		require('frogman.domains.ui.trail').open(vim.fs.basename(filepath))
 	end
@@ -154,7 +154,7 @@ function M.pick_into_primary_popup(dbuf)
 		local lines = vim.tbl_map(function(path)
 			local line = vim.fn.fnamemodify(path, ":.")
 			-- a line the pop-up would read as another file's short name goes in as a path of its own
-			local named = names[line]
+			local named = history.get_filepath_from_handle(names[line])
 			if named and vim.fn.fnamemodify(named, ":p") ~= vim.fn.fnamemodify(path, ":p") then
 				line = "./" .. line
 			end
@@ -199,16 +199,18 @@ function M.show_primary_buffer_history()
 		vim.api.nvim_buf_delete(existing, { force = true })
 	end
 
+	-- what each name a line shows stands for, by the file's handle, so a line follows its file
 	local basename_filepath_mapping = {}
 	
 	data.clear_display_name_cache() -- worked out afresh, once for the whole list
-	for filepath, filehash in pairs(history.data.hash_filepath_registry.hashes) do
-		local basename = M.get_smart_basename(filehash) -- Ensure cache is populated
-		if filepath then
+	for filepath, _ in pairs(history.data.hash_filepath_registry.hashes) do
+		local id = history.get_handle_from_filepath(filepath)
+		local basename = id and M.get_smart_basename(id) -- Ensure cache is populated
+		if id then
 			if filepath:match("^NONAME_") then
-				basename_filepath_mapping[filepath] = filepath
+				basename_filepath_mapping[filepath] = id
 			else
-				basename_filepath_mapping[basename] = filepath
+				basename_filepath_mapping[basename] = id
 			end
 		end
 	end
@@ -223,18 +225,18 @@ function M.show_primary_buffer_history()
 	vim.b[dbuf].frogman_names = basename_filepath_mapping -- what each short name stands for, for the picker
 	vim.b[dbuf].origin_window = cwin -- the window the queue is for, which the keys' steps are about
 
-	local function to_display(hash)
-		local basename = M.get_smart_basename(hash)
-		local filepath = history.get_filepath_from_hash(hash)
+	local function to_display(id)
+		local basename = M.get_smart_basename(id)
+		local filepath = history.get_filepath_from_handle(id)
 		if filepath and filepath:match("^NONAME_") then
 			basename = filepath
 		elseif filepath then
 			-- a name another file already goes by is drawn as the path from here, and every name drawn
 			-- stands for its own file at the next write
-			if basename_filepath_mapping[basename] and basename_filepath_mapping[basename] ~= filepath then
+			if basename_filepath_mapping[basename] and basename_filepath_mapping[basename] ~= id then
 				basename = vim.fn.fnamemodify(filepath, ":.")
 			end
-			basename_filepath_mapping[basename] = filepath
+			basename_filepath_mapping[basename] = id
 		end
 		return basename
 	end
@@ -248,9 +250,9 @@ function M.show_primary_buffer_history()
 		vim.api.nvim_buf_clear_namespace(dbuf, primary_ns, 0, -1)
 		for i, line in ipairs(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) do
 			local text = vim.trim(line)
-			local filepath = basename_filepath_mapping[text] or (text ~= "" and vim.fn.fnamemodify(text, ":p")) or nil
-			local filehash = filepath and history.get_hash_from_filepath(filepath)
-			if filehash and history.handles.kept_closed(filehash) then
+			local id = basename_filepath_mapping[text] or (text ~= "" and history.get_handle_from_filepath(vim.fn.fnamemodify(text, ":p"))) or nil
+			local handle = id and history.handles.get(id)
+			if id and history.handles.kept_closed(id) then
 				vim.api.nvim_buf_set_extmark(dbuf, primary_ns, i - 1, 0, {
 					virt_text = { { glyphs.closed .. " ", "FrogmanTrailClosed" } }, virt_text_pos = "inline",
 				})
@@ -259,8 +261,8 @@ function M.show_primary_buffer_history()
 			if i == 1 then
 				table.insert(after, { "  primary" .. glyphs.dot .. (triquetra.primary_enabled and "on" or "off"), "FrogmanTrailDim" })
 			end
-			if filehash and history.data.missing[filehash] then
-				table.insert(after, { "  " .. glyphs.tag .. history.data.missing[filehash], "FrogmanTrailTag" })
+			if handle and handle.tag then
+				table.insert(after, { "  " .. glyphs.tag .. handle.tag, "FrogmanTrailTag" })
 			end
 			if #after > 0 then
 				vim.api.nvim_buf_set_extmark(dbuf, primary_ns, i - 1, 0, { virt_text = after, virt_text_pos = "eol" })
@@ -302,7 +304,7 @@ function M.show_primary_buffer_history()
 			for row, basename in ipairs(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) do
 				basename = vim.trim(basename)
 				if basename ~= "" then
-					table.insert(lines, basename_filepath_mapping[basename] or basename)
+					table.insert(lines, history.get_filepath_from_handle(basename_filepath_mapping[basename]) or basename)
 					table.insert(rows, row)
 				end
 			end
@@ -399,29 +401,71 @@ local function close_time_text(time)
 	return os.date("%a %d %b %H:%M", math.floor(time))
 end
 
+---Get the hash of the file a closed entry names.
+---
+---An entry of a list in memory is its file's handle, one of a list in the whole editor's file alone
+---the hash the file keeps it by, so two entries name one file when their hashes are the same.
+---
+---@param ref HandleId|Filehash The entry
+---@return Filehash|nil filehash The file's hash, or nil for a handle let go
+local function entry_hash(ref)
+	if type(ref) == "number" then
+		return history.get_hash_from_handle(ref)
+	end
+	return ref
+end
+
+---Get a closed entry as a list of the given kind holds it: by its handle in memory, by its hash in
+---the whole editor's file alone.
+---
+---@param pool Pool The list
+---@param ref HandleId|Filehash The entry
+---@return HandleId|Filehash|nil entry The entry as the list holds it, or nil when memory knows no such file
+local function entry_in(pool, ref)
+	if pool.file_only then
+		return entry_hash(ref)
+	end
+	if type(ref) == "number" then
+		return ref
+	end
+	return history.get_handle_from_filepath(history.get_filepath_from_hash(ref))
+end
+
+---Get the handle memory knows a closed entry's file by, whichever kind of list it's on.
+---
+---@param ref HandleId|Filehash The entry
+---@return FileHandle|nil handle The file's handle, or nil when memory doesn't know the file
+local function entry_handle(ref)
+	if type(ref) == "number" then
+		return history.handles.get(ref)
+	end
+	return history.handles.of_hash(ref)
+end
+
 ---Get a closed entry's name, as its line holds it.
 ---
 ---A file's name is its path from the cwd. A No Name text's is its first line, cut at 24
 ---characters, read before the lists are drawn when it was still in the session file.
 ---
----@param filehash Filehash The closed entry
+---@param ref HandleId|Filehash The closed entry, its handle on a list in memory, its hash on a list in the file alone
 ---@param glyphs table The views' glyphs
 ---@param file table|nil A list in the file alone: its `paths` and `texts` ({first, filetype})
 ---@return string name The entry's line text
 ---@return string|nil filetype A No Name text's filetype
-local function closed_entry_name(filehash, glyphs, file)
-	local filepath = history.get_filepath_from_hash(filehash) or (file and file.paths[filehash]) or filehash
+local function closed_entry_name(ref, glyphs, file)
+	local handle = entry_handle(ref)
+	local filepath = (handle and history.get_filepath_from_hash(handle.hash)) or (file and file.paths[ref]) or tostring(ref)
 	if not filepath:match("^NONAME_") then
 		return vim.fn.fnamemodify(filepath, ":~:."), nil
 	end
-	if file and file.texts[filehash] and history.data.noname_content[filehash] == nil then
-		local first = vim.trim(file.texts[filehash].first or "")
+	if file and file.texts[ref] and (handle == nil or handle.text == nil) then
+		local first = vim.trim(file.texts[ref].first or "")
 		if vim.fn.strchars(first) > 24 then
 			first = vim.fn.strcharpart(first, 0, 24) .. glyphs.more
 		end
-		return '[No Name] "' .. first .. '"', file.texts[filehash].filetype ~= "" and file.texts[filehash].filetype or nil
+		return '[No Name] "' .. first .. '"', file.texts[ref].filetype ~= "" and file.texts[ref].filetype or nil
 	end
-	local content = history.data.noname_content[filehash]
+	local content = handle and handle.text
 	local first = content and content.lines and vim.trim(content.lines[1] or "") or ""
 	if vim.fn.strchars(first) > 24 then
 		first = vim.fn.strcharpart(first, 0, 24) .. glyphs.more
@@ -437,16 +481,18 @@ end
 ---
 ---@param picker table The closed-lists buffer's state
 ---@param pool Pool The list the entry is under
----@param filehash Filehash The entry
+---@param ref HandleId|Filehash The entry
 ---@param own boolean Whether to take the list's own time when it has one
 ---@return number|nil time The close time, or nil when no list held the file
-local function closed_entry_time(picker, pool, filehash, own)
-	if own and picker.times[pool] and picker.times[pool][filehash] then
-		return picker.times[pool][filehash]
+local function closed_entry_time(picker, pool, ref, own)
+	local here = entry_in(pool, ref)
+	if own and picker.times[pool] and here ~= nil and picker.times[pool][here] then
+		return picker.times[pool][here]
 	end
 	local newest
 	for _, other in ipairs(picker.order) do
-		local time = picker.times[other][filehash]
+		local there = entry_in(other, ref)
+		local time = there ~= nil and picker.times[other][there] or nil
 		if time and (newest == nil or time > newest) then
 			newest = time
 		end
@@ -493,20 +539,21 @@ local function decorate_closed_lists(dbuf)
 	for i, line in ipairs(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) do
 		local text = vim.trim(line)
 		local pool = picker.headers[text]
-		local filehash = picker.hashes[text]
+		local ref = picker.refs[text]
 		if pool then
 			current = pool
 			vim.api.nvim_buf_set_extmark(dbuf, closed_ns, i - 1, 0, {
 				end_col = #line, hl_group = "FrogmanTrailList",
 				virt_text = { { "  " .. picker.where[pool], "FrogmanTrailDim" } }, virt_text_pos = "eol",
 			})
-		elseif filehash then
+		elseif ref then
+			local handle = entry_handle(ref)
 			local entry = {
 				name = text,
-				path = history.get_filepath_from_hash(filehash) or filehash,
-				time = current and closed_entry_time(picker, current, filehash, true),
-				filetype = picker.filetypes[filehash],
-				tag = history.data.missing[filehash],
+				path = (handle and history.get_filepath_from_hash(handle.hash)) or picker.paths[ref] or tostring(ref),
+				time = current and closed_entry_time(picker, current, ref, true),
+				filetype = picker.filetypes[ref],
+				tag = handle and handle.tag,
 				list = current and picker.label[current] or "",
 			}
 			vim.api.nvim_buf_set_extmark(dbuf, closed_ns, i - 1, 0, {
@@ -540,13 +587,14 @@ local function draw_closed_lists(dbuf)
 	-- a text held unread from a session file is read now to show it, and kept read; one that's lost
 	-- leaves every list now, as a reopen that can't read it finds it, so it isn't read again
 	for _, pool in pairs(history.routines.pools()) do
-		for _, filehash in ipairs(vim.list_slice(pool.closed, 1, #pool.closed)) do
-			local content = history.data.noname_content[filehash]
+		for _, id in ipairs(vim.list_slice(pool.closed, 1, #pool.closed)) do
+			local handle = history.handles.get(id)
+			local content = handle and handle.text
 			if content and content.lines == nil and content.read then
 				local read = content.read()
-				history.data.noname_content[filehash] = read
+				handle.text = read
 				if read == nil then
-					history.routines.discard_from_pools(filehash)
+					history.routines.discard_from_pools(id)
 				end
 			end
 		end
@@ -611,7 +659,7 @@ local function draw_closed_lists(dbuf)
 		end
 	end
 
-	local headers, where, hashes, filetypes, times, drawn, lines = {}, {}, {}, {}, {}, {}, {}
+	local headers, where, refs, filetypes, times, drawn, lines = {}, {}, {}, {}, {}, {}, {}
 	local header_order = {}
 	for _, pool in ipairs(order) do
 		local tabs = {}
@@ -627,22 +675,25 @@ local function draw_closed_lists(dbuf)
 		table.insert(lines, header)
 		times[pool], drawn[pool] = vim.deepcopy(pool.times), {}
 		for i = #pool.closed, 1, -1 do
-			local filehash = pool.closed[i]
-			local name, filetype = closed_entry_name(filehash, glyphs, files[pool])
+			local ref = pool.closed[i]
+			local name, filetype = closed_entry_name(ref, glyphs, files[pool])
 			-- one line's text names one file: another file with the same name gets a number
 			local text, n = name, 1
-			while hashes[text] and hashes[text] ~= filehash do
+			while refs[text] and entry_hash(refs[text]) ~= entry_hash(ref) do
 				n = n + 1
 				text = name .. "  #" .. n
 			end
-			hashes[text], filetypes[filehash] = filehash, filetype
-			table.insert(drawn[pool], filehash)
+			refs[text] = refs[text] or ref
+			filetypes[ref] = filetype
+			table.insert(drawn[pool], ref)
 			table.insert(lines, text)
 		end
 	end
 	picker.order, picker.label, picker.headers, picker.where = order, label, headers, where
 	picker.header_order = header_order
-	picker.hashes, picker.filetypes, picker.times, picker.drawn = hashes, filetypes, times, drawn
+	-- each entry's line names its file: by its handle on a list in memory, by its hash on a list in the
+	-- whole editor's file alone, which holds hashes
+	picker.refs, picker.filetypes, picker.times, picker.drawn = refs, filetypes, times, drawn
 	picker.paths = {} -- the paths of the entries in lists in the file alone
 	for _, file in pairs(files) do
 		for filehash, path in pairs(file.paths) do
@@ -727,16 +778,20 @@ end
 ---when the prompt was answered no
 local function write_closed_lists(dbuf, leaving)
 	local picker = closed_pickers[dbuf]
+	-- the file an entry names, whichever kind of list drew it: two entries naming one file are one
+	local function file_of(ref)
+		return entry_hash(ref) or ref
+	end
 	-- which lists drew each file: a file twice under a header another list drew too is a merge
 	local drawn_by = {}
-	for pool, filehashes in pairs(picker.drawn) do
-		for _, filehash in ipairs(filehashes) do
-			drawn_by[filehash] = drawn_by[filehash] or {}
-			drawn_by[filehash][pool] = true
+	for pool, refs in pairs(picker.drawn) do
+		for _, ref in ipairs(refs) do
+			drawn_by[file_of(ref)] = drawn_by[file_of(ref)] or {}
+			drawn_by[file_of(ref)][pool] = true
 		end
 	end
-	local function merged(filehash, pool)
-		for other in pairs(drawn_by[filehash] or {}) do
+	local function merged(file, pool)
+		for other in pairs(drawn_by[file] or {}) do
 			if other ~= pool then
 				return true
 			end
@@ -747,18 +802,19 @@ local function write_closed_lists(dbuf, leaving)
 	for row, line in ipairs(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) do
 		local text = vim.trim(line)
 		if text ~= "" then
-			local filehash = picker.hashes[text]
+			local ref = picker.refs[text]
 			if picker.headers[text] then
 				current, current_header = picker.headers[text], text
 				new[current], count[current] = new[current] or {}, count[current] or {}
-			elseif filehash and current then
-				count[current][filehash] = (count[current][filehash] or 0) + 1
-				if count[current][filehash] == 1 then
-					table.insert(new[current], filehash)
-				elseif not merged(filehash, current) then
+			elseif ref and current then
+				local file = file_of(ref)
+				count[current][file] = (count[current][file] or 0) + 1
+				if count[current][file] == 1 then
+					table.insert(new[current], ref)
+				elseif not merged(file, current) then
 					table.insert(left_out, { row = row, text = text, why = "twice under " .. current_header })
 				end
-			elseif filehash then
+			elseif ref then
 				table.insert(left_out, { row = row, text = text, why = "has no list above it" })
 			else
 				table.insert(left_out, { row = row, text = text, why = "names no list or file" })
@@ -782,17 +838,19 @@ local function write_closed_lists(dbuf, leaving)
 
 	-- what's left on no list: a No Name text goes for good, so it's asked first
 	local placed, gone, lost = {}, {}, {}
-	for _, filehashes in pairs(new) do
-		for _, filehash in ipairs(filehashes) do
-			placed[filehash] = true
+	for _, refs in pairs(new) do
+		for _, ref in ipairs(refs) do
+			placed[file_of(ref)] = true
 		end
 	end
-	for text, filehash in pairs(picker.hashes) do
-		if not placed[filehash] and not gone[filehash] then
-			gone[filehash] = true
+	for text, ref in pairs(picker.refs) do
+		local file = file_of(ref)
+		if not placed[file] and not gone[file] then
+			gone[file] = true
 			-- one a mark or a snapshot holds exists there, and keeps its text
-			if (history.get_filepath_from_hash(filehash) or picker.paths[filehash] or ""):match("^NONAME_")
-				and not history.handles.held_beyond(filehash, history.handles.WINDOWS_AND_LISTS) then
+			local handle = entry_handle(ref)
+			local filepath = (handle and history.get_filepath_from_hash(handle.hash)) or picker.paths[ref] or ""
+			if filepath:match("^NONAME_") and not (handle and history.handles.held_beyond(handle.id, history.handles.WINDOWS_AND_LISTS)) then
 				table.insert(lost, text)
 			end
 		end
@@ -807,11 +865,14 @@ local function write_closed_lists(dbuf, leaving)
 	local file_changes = nil
 	for _, pool in ipairs(picker.order) do
 		if pool.file_only then
-			-- a list in the file alone: its new lines go back to the file, and an empty one goes
-			local filehashes, closed, times = new[pool] or {}, {}, {}
-			for i = #filehashes, 1, -1 do
-				table.insert(closed, filehashes[i])
-				times[filehashes[i]] = closed_entry_time(picker, pool, filehashes[i], count[pool][filehashes[i]] == 1)
+			-- a list in the file alone: its new lines go back to the file, by their hashes, and an empty one goes
+			local refs, closed, times = new[pool] or {}, {}, {}
+			for i = #refs, 1, -1 do
+				local filehash = entry_hash(refs[i])
+				if filehash then
+					table.insert(closed, filehash)
+					times[filehash] = closed_entry_time(picker, pool, refs[i], count[pool][file_of(refs[i])] == 1)
+				end
 			end
 			if not vim.deep_equal(closed, pool.closed) or not vim.deep_equal(times, pool.times) then
 				file_changes = file_changes or {}
@@ -822,27 +883,28 @@ local function write_closed_lists(dbuf, leaving)
 	for _, pool in ipairs(picker.order) do
 		-- a list a load tore down while the window was open is left alone
 		if not pool.file_only and history.data.pools[pool.id] == pool then
-			local filehashes, was_drawn = new[pool] or {}, {}
-			for _, filehash in ipairs(picker.drawn[pool]) do
-				was_drawn[filehash] = true
+			local refs, was_drawn = new[pool] or {}, {}
+			for _, id in ipairs(picker.drawn[pool]) do
+				was_drawn[id] = true
 			end
 			local closed, times = {}, {}
-			for i = #filehashes, 1, -1 do
-				local filehash = filehashes[i]
-				table.insert(closed, filehash)
-				times[filehash] = closed_entry_time(picker, pool, filehash, count[pool][filehash] == 1)
+			for i = #refs, 1, -1 do
+				local ref = refs[i]
+				-- moved in from a list in the file alone: memory takes it in, by its handle
+				local id = type(ref) == "number" and ref or storage.adopt_file_entry(ref)
+				if id then
+					table.insert(closed, id)
+					times[id] = closed_entry_time(picker, pool, ref, count[pool][file_of(ref)] == 1)
+				end
 			end
 			-- closed onto it since it was drawn: kept, as the newest
-			for _, filehash in ipairs(pool.closed) do
-				if not was_drawn[filehash] and not placed[filehash] then
-					table.insert(closed, filehash)
-					times[filehash] = pool.times[filehash]
+			for _, id in ipairs(pool.closed) do
+				if not was_drawn[id] and not placed[file_of(id)] then
+					table.insert(closed, id)
+					times[id] = pool.times[id]
 				end
 			end
 			if not vim.deep_equal(closed, pool.closed) or not vim.deep_equal(times, pool.times) then
-				for _, filehash in ipairs(closed) do
-					storage.adopt_file_entry(filehash) -- moved in from a list in the file alone
-				end
 				for i = #pool.closed, 1, -1 do
 					pool.closed[i] = nil -- in place: the editor's list is closed_buffers itself
 				end
@@ -862,18 +924,20 @@ local function write_closed_lists(dbuf, leaving)
 			written = false
 		end
 	end
-	for filehash, _ in pairs(gone) do
-		if not history.routines.is_filehash_closed(filehash) and not history.handles.held_beyond(filehash, history.handles.WINDOWS_AND_LISTS) then
-			history.data.noname_content[filehash] = nil
-			history.data.came_from[filehash] = nil
+	for file, _ in pairs(gone) do
+		local handle = entry_handle(file)
+		if handle and not history.routines.is_handle_closed(handle.id) and not history.handles.held_beyond(handle.id, history.handles.WINDOWS_AND_LISTS) then
+			handle.text = nil
+			history.data.came_from[handle.id] = nil
 		end
 	end
 	if not written then
 		-- the lists in memory are written, but the window isn't drawn again: what left them is gone
 		-- from what the window's lines stand for, so the next write asks nothing about it again
-		for text, filehash in pairs(picker.hashes) do
-			if gone[filehash] and not history.routines.is_filehash_closed(filehash) then
-				picker.hashes[text] = nil
+		for text, ref in pairs(picker.refs) do
+			local handle = entry_handle(ref)
+			if gone[file_of(ref)] and not (handle and history.routines.is_handle_closed(handle.id)) then
+				picker.refs[text] = nil
 			end
 		end
 	end
@@ -921,8 +985,8 @@ end
 function M.reopen_from_closed_lists(dbuf, stay)
 	local picker = closed_pickers[dbuf]
 	local text = vim.trim(vim.api.nvim_get_current_line())
-	local filehash = picker and picker.hashes[text]
-	if not filehash then
+	local ref = picker and picker.refs[text]
+	if not ref then
 		return
 	end
 	if vim.bo[dbuf].modified then
@@ -943,10 +1007,17 @@ function M.reopen_from_closed_lists(dbuf, stay)
 		end
 	end
 	local storage = require('frogman.domains.storage').routines
+	local filehash = entry_hash(ref) -- the file's hash, as the list in the file alone holds it
+	local id = type(ref) == "number" and ref or nil
 	if section and section.file_only then
-		storage.adopt_file_entry(filehash)
+		id = storage.adopt_file_entry(filehash)
+	elseif id == nil then
+		id = history.get_handle_from_filepath(history.get_filepath_from_hash(filehash))
 	end
-	local bufnr, reason = history.routines.reopen_filehash(filehash)
+	local bufnr, reason = nil, nil
+	if id then
+		bufnr, reason = history.routines.reopen_handle(id)
+	end
 	if bufnr and section and section.file_only then
 		-- the list as the file holds it now, the edits just written included
 		for _, list in ipairs(storage.file_only_lists()) do
@@ -966,7 +1037,7 @@ function M.reopen_from_closed_lists(dbuf, stay)
 		end
 	end
 	if not bufnr then
-		if not (history.get_filepath_from_hash(filehash) or ""):match("^NONAME_") and reason ~= "taken" then
+		if not (history.get_filepath_from_hash(filehash) or picker.paths[filehash] or ""):match("^NONAME_") and reason ~= "taken" then
 			vim.notify(text .. " isn't on disk right now; it stays on the closed list.", vim.log.levels.WARN)
 		end
 		draw_closed_lists(dbuf)
@@ -996,7 +1067,8 @@ end
 ---@return nil
 function M.search_closed_entry(dbuf)
 	local picker = closed_pickers[dbuf]
-	local filehash = picker and picker.hashes[vim.trim(vim.api.nvim_get_current_line())]
+	local ref = picker and picker.refs[vim.trim(vim.api.nvim_get_current_line())]
+	local filehash = ref and entry_hash(ref)
 	local filepath = filehash and (history.get_filepath_from_hash(filehash) or picker.paths[filehash])
 	if filepath and not filepath:match("^NONAME_") then
 		require('frogman.domains.ui.trail').open(vim.fs.basename(filepath))
@@ -1133,13 +1205,13 @@ end
 ---Find buffers with conflicting basenames.
 ---
 ---@param basename string The basename to check for conflicts
----@param filehash Filehash Buffer to exclude from conflict check
+---@param id HandleId The handle of the file to exclude from the conflict check
 ---@return string[] conflicts List of full paths with same basename
-local function find_basename_conflicts(basename, filehash)
+local function find_basename_conflicts(basename, id)
 	local conflicts = {}
-	local own_path = history.get_filepath_from_hash(filehash)
+	local own_path = history.get_filepath_from_handle(id)
 	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-		if (bufnr ~= history.get_buffer_from_hash(filehash)) and (own_path ~= nil) then
+		if (bufnr ~= history.get_buffer_from_handle(id)) and (own_path ~= nil) then
 			local path = vim.api.nvim_buf_get_name(bufnr)
 			-- a closed file's own unlisted buffer has its path too, it's not a conflict with itself.
 			if path ~= "" and path ~= own_path and vim.fn.fnamemodify(path, ":t") == basename then
@@ -1184,29 +1256,29 @@ end
 ---Returns just the basename if unique, or adds parent directories as needed
 ---to distinguish from other buffers with the same basename.
 ---
----@param filehash Filehash Buffer number to get display name for
+---@param id HandleId The handle of the file to get a display name for
 ---@return string display_name Smart basename with disambiguation
-function M.get_smart_basename(filehash)
-	local filepath = history.get_filepath_from_hash(filehash)
+function M.get_smart_basename(id)
+	local filepath = history.get_filepath_from_handle(id)
 
 	if not filepath then
-		error("Cannot get smart basename: filehash is nil or invalid")
+		error("Cannot get smart basename: the file's handle is nil or let go")
 	end
 
-	local bufnr = history.get_buffer_from_hash(filehash)
+	local bufnr = history.get_buffer_from_handle(id)
 	local name
 
 	-- Handle invalid buffers
 	if bufnr then
 		-- Fast path: return cached if available
-		if data.display_name_cache[filehash] then
-			return data.display_name_cache[filehash]
+		if data.display_name_cache[id] then
+			return data.display_name_cache[id]
 		end
 
 		-- Handle special buffer types
 		if vim.bo[bufnr].buftype ~= "" then
 			local display_name = "[" .. (vim.bo[bufnr].buftype or "No Name") .. "]"
-			data.display_name_cache[filehash] = display_name
+			data.display_name_cache[id] = display_name
 			return display_name
 		end
 		name = (vim.api.nvim_buf_is_valid(bufnr) or "") and vim.api.nvim_buf_get_name(bufnr)
@@ -1216,13 +1288,13 @@ function M.get_smart_basename(filehash)
 
 	if name == "" then
 		local display_name = "[No Name]"
-		data.display_name_cache[filehash] = display_name
+		data.display_name_cache[id] = display_name
 		return display_name
 	end
 
 	-- Get basename and check for conflicts
 	local basename = vim.fn.fnamemodify(name, ":t")
-	local conflicts = find_basename_conflicts(basename, filehash)
+	local conflicts = find_basename_conflicts(basename, id)
 
 	local display_name
 	if #conflicts == 0 then
@@ -1234,7 +1306,7 @@ function M.get_smart_basename(filehash)
 	end
 
 	-- Cache and return
-	data.display_name_cache[filehash] = display_name
+	data.display_name_cache[id] = display_name
 	return display_name
 end
 
@@ -1257,13 +1329,13 @@ local function derive_cache_from_window_triquetra(winid, again)
 	end
 	-- a slot whose buffer went without events (noautocmd) leaves the registry pointing at a dead buffer.
 	-- cleanup repairs it now, as it would at its next tick: the window is re-pointed like navigation.
-	for _, filehash in pairs({ -- pairs, not ipairs: an empty slot doesn't end the scan
+	for _, id in pairs({ -- pairs, not ipairs: an empty slot doesn't end the scan
 		window_triquetra.current_slot,
 		window_triquetra.secondary_slot,
 		window_triquetra.ternary_slot,
 		window_triquetra.primary_buffer[1],
 	}) do
-		local bufnr = history.get_buffer_from_hash(filehash)
+		local bufnr = history.get_buffer_from_handle(id)
 		if bufnr and not vim.api.nvim_buf_is_valid(bufnr) then
 			require('frogman.domains.ledger').within("timer", "cleanup", history.routines.cleanup_system)
 			window_triquetra = window.get_triquetra(winid)
@@ -1281,15 +1353,15 @@ local function derive_cache_from_window_triquetra(winid, again)
 		own[bufnr] = true
 	end
 
-	-- Helper function to resolve slot data from filehash
-	local function resolve_slot(filehash)
-		local filepath = history.get_filepath_from_hash(filehash)
-		if not filehash or not filepath then
+	-- Helper function to resolve slot data from its file's handle
+	local function resolve_slot(id)
+		local filepath = history.get_filepath_from_handle(id)
+		if not id or not filepath then
 			return nil, nil, false, false, false, false
 		end
 
-		local bufnr = history.get_buffer_from_hash(filehash) or borrowed[filehash]
-		local display_name = M.get_smart_basename(filehash) or nil
+		local bufnr = history.get_buffer_from_handle(id) or borrowed[id]
+		local display_name = M.get_smart_basename(id) or nil
 
 		if bufnr ~= nil then
 			-- Buffer exists in memory
@@ -1299,13 +1371,13 @@ local function derive_cache_from_window_triquetra(winid, again)
 		else
 			-- Check if it's a closed buffer
 			-- closed and kept by something besides the windows' slots: a list or a mark
-			local is_closed = history.get_buffer_from_hash(filehash) == nil and history.handles.held_beyond_windows(filehash)
+			local is_closed = history.get_buffer_from_handle(id) == nil and history.handles.held_beyond_windows(id)
 			if is_closed then
 				-- Closed buffer - can be reopened
 				derive_cache_lock[winid] = nil
 				return nil, display_name, true, false, true -- exists=true, loaded=false
 			else
-				filepath = history.get_filepath_from_hash(filehash)
+				filepath = history.get_filepath_from_handle(id)
 				if filepath == nil then
 					if not derive_cache_lock[winid] then
 						window.routines.enforce_editor_policy() -- I know it's really good to do this, but we need to clean up the triquetra.
@@ -1326,7 +1398,7 @@ local function derive_cache_from_window_triquetra(winid, again)
 		end
 	end
 
-	-- Update all slots using the hash-based WindowTriquetra structure
+	-- Update all slots from the WindowTriquetra's handles
 	ui_triquetra.current_bufnr, ui_triquetra.current_display_name, _, _, ui_triquetra.deleted_slots.current =
 		resolve_slot(window_triquetra.current_slot)
 	-- a window showing something we don't track is visiting it. it shows the buftype, or the filetype for a
@@ -1345,10 +1417,14 @@ local function derive_cache_from_window_triquetra(winid, again)
 		resolve_slot(window_triquetra.ternary_slot)
 
 	-- a file gone from disk shows where it went missing
+	local function tag_of(id)
+		local handle = id and history.handles.get(id)
+		return handle and handle.tag or nil
+	end
 	ui_triquetra.missing = {
-		current = history.data.missing[window_triquetra.current_slot],
-		secondary = window_triquetra.secondary_slot and history.data.missing[window_triquetra.secondary_slot],
-		ternary = window_triquetra.ternary_slot and history.data.missing[window_triquetra.ternary_slot],
+		current = tag_of(window_triquetra.current_slot),
+		secondary = tag_of(window_triquetra.secondary_slot),
+		ternary = tag_of(window_triquetra.ternary_slot),
 	}
 
 	-- reflect the primary_enabled state.
@@ -1393,16 +1469,17 @@ function M.refresh_ui(cwin)
 	cache.mark_labels, cache.marked_buffers = {}, {}
 	local labels = marks.labels(cwin) -- one walk of the marks for the whole refresh
 	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-		local filehash = vim.api.nvim_buf_is_valid(bufnr) and history.get_hash_from_buffer(bufnr)
-		local label = filehash and labels[filehash] or nil
+		local id = vim.api.nvim_buf_is_valid(bufnr) and history.get_handle_from_buffer(bufnr)
+		local label = id and labels[id] or nil
 		cache.marked_buffers[bufnr] = label ~= nil
 		cache.mark_labels[bufnr] = label
 	end
 	-- Pre-compute buffer rankings using history domain data
 	cache.buffer_ranking = {}
-	for filehash, time in pairs(history.data.crux) do
-		if filehash and history.data.hash_buffer_registry.buffers[filehash] then
-			cache.buffer_ranking[history.data.hash_buffer_registry.buffers[filehash]] = time
+	for id, time in pairs(history.data.crux) do
+		local bufnr = history.get_buffer_from_handle(id)
+		if bufnr then
+			cache.buffer_ranking[bufnr] = time
 		end
 	end
 	-- Pre-compute recent buffers using history domain data
@@ -1595,9 +1672,9 @@ local function construct_winbar_string(winid, theme)
 			winid = winid,
 			current_slot = window_triquetra and window_triquetra.current_slot or "nil",
 			filepath_exists = window_triquetra and window_triquetra.current_slot and
-				history.get_filepath_from_hash(window_triquetra.current_slot) or "lookup_failed",
+				history.get_filepath_from_handle(window_triquetra.current_slot) or "lookup_failed",
 			buffer_exists = window_triquetra and window_triquetra.current_slot and
-				history.get_buffer_from_hash(window_triquetra.current_slot) or "lookup_failed",
+				history.get_buffer_from_handle(window_triquetra.current_slot) or "lookup_failed",
 			actual_winbuf = vim.api.nvim_win_get_buf(winid)
 		}
 		vim.notify("WINBAR STATE CORRUPTION: current_bufnr is nil | " .. vim.inspect(debug_info), vim.log.levels.WARN)

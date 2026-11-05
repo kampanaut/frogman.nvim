@@ -348,8 +348,8 @@ T['T148 [char] after switching sessions, the outgoing No Name text is not in the
 	child.settle(300)
 	local found = child.lua([[
 		local function has(lines) return vim.tbl_contains(lines, 'outgoing text') end
-		for _, c in pairs(require('frogman.domains.history').data.noname_content) do
-			if has(c.lines) then return true end
+		for _, h in pairs(require('frogman.domains.history').handles.live()) do
+			if h.text and has(h.text.lines or {}) then return true end
 		end
 		for _, b in ipairs(vim.api.nvim_list_bufs()) do
 			if has(vim.api.nvim_buf_get_lines(b, 0, -1, false)) then return true end
