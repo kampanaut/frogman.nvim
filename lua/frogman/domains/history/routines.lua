@@ -1764,11 +1764,13 @@ end
 
 ---Get where each file gone from disk went missing, by hash, from the handles' tags.
 ---
+---Only the files frogman knows, those a strong holder holds: a handle about to be let go saves nothing.
+---
 ---@return table<Filehash, string> tags Each tagged file's hash → its tag
 function M.tags_by_hash()
 	local tags = {}
 	for _, handle in pairs(handles.live()) do
-		if handle.tag then
+		if handle.tag and next(handle.holders) ~= nil then
 			tags[handle.hash] = handle.tag
 		end
 	end

@@ -353,6 +353,60 @@ function M.notes_by_handle(saved)
 	return map
 end
 
+---Let a moved file take the place of the file whose name it took, in one triquetra or a copy of one.
+---
+---@param triquetra WindowTriquetra The triquetra, or an arrival's copy of one
+---@param from HandleId The handle of the file whose name was taken
+---@param to HandleId The moved file's handle
+---@return nil
+local function take_over_in(triquetra, from, to)
+	if triquetra.current_slot == from then
+		-- the current slot keeps the name, which is the moved file now
+		if triquetra.secondary_slot == to then triquetra:set("secondary_slot", nil) end
+		if triquetra.ternary_slot == to then triquetra:set("ternary_slot", nil) end
+		triquetra:set("current_slot", to)
+	elseif triquetra.current_slot == to or triquetra.secondary_slot == to or triquetra.ternary_slot == to then
+		if triquetra.secondary_slot == from then triquetra:set("secondary_slot", nil) end
+		if triquetra.ternary_slot == from then triquetra:set("ternary_slot", nil) end
+	else
+		if triquetra.secondary_slot == from then triquetra:set("secondary_slot", to) end
+		if triquetra.ternary_slot == from then triquetra:set("ternary_slot", to) end
+	end
+	local queue, seen = {}, false
+	for _, id in ipairs(triquetra.primary_buffer) do
+		if id == from then
+			id = to
+		end
+		if id ~= to or not seen then
+			table.insert(queue, id)
+		end
+		seen = seen or id == to
+	end
+	if #queue ~= #triquetra.primary_buffer or vim.tbl_contains(triquetra.primary_buffer, from) then
+		triquetra:set_queue(queue)
+	end
+	for _, map in ipairs({ triquetra.displacement_ternary_map, triquetra.displacement_secondary_map }) do
+		for _, keys in ipairs({ { from, to }, { from .. "-swap", to .. "-swap" } }) do
+			if map[keys[1]] ~= nil then
+				if map[keys[2]] == nil then
+					map[keys[2]] = map[keys[1]]
+				end
+				map[keys[1]] = nil
+			end
+		end
+		for key, value in pairs(map) do
+			if value == from then
+				map[key] = to
+			end
+		end
+		for _, key in ipairs({ to, to .. "-swap" }) do
+			if map[key] == to then
+				map[key] = nil
+			end
+		end
+	end
+end
+
 ---Let a moved file take the place of the file whose name it took, in every triquetra.
 ---
 ---Used when a move takes a name a live handle had: that handle is let go, and what held it holds the
@@ -360,57 +414,20 @@ end
 ---the other slot lets it go, unless that's the current slot, which keeps it. A primary queue keeps
 ---the file once, where it came first. The name's notes become the moved file's where it has none of
 ---its own, every note naming the name names the moved file, and a note that now names its own buffer
----goes.
+---goes. Each window's arrival copies take it the same way, so an undo still finds the window as its
+---arrival left it.
 ---
 ---@param from HandleId The handle of the file whose name was taken
 ---@param to HandleId The moved file's handle
 ---@return nil
 function M.take_over_handle(from, to)
 	for _, triquetra in pairs(M.crux) do
-		if triquetra.current_slot == from then
-			-- the current slot keeps the name, which is the moved file now
-			if triquetra.secondary_slot == to then triquetra:set("secondary_slot", nil) end
-			if triquetra.ternary_slot == to then triquetra:set("ternary_slot", nil) end
-			triquetra:set("current_slot", to)
-		elseif triquetra.current_slot == to or triquetra.secondary_slot == to or triquetra.ternary_slot == to then
-			if triquetra.secondary_slot == from then triquetra:set("secondary_slot", nil) end
-			if triquetra.ternary_slot == from then triquetra:set("ternary_slot", nil) end
-		else
-			if triquetra.secondary_slot == from then triquetra:set("secondary_slot", to) end
-			if triquetra.ternary_slot == from then triquetra:set("ternary_slot", to) end
-		end
-		local queue, seen = {}, false
-		for _, id in ipairs(triquetra.primary_buffer) do
-			if id == from then
-				id = to
-			end
-			if id ~= to or not seen then
-				table.insert(queue, id)
-			end
-			seen = seen or id == to
-		end
-		if #queue ~= #triquetra.primary_buffer or vim.tbl_contains(triquetra.primary_buffer, from) then
-			triquetra:set_queue(queue)
-		end
-		for _, map in ipairs({ triquetra.displacement_ternary_map, triquetra.displacement_secondary_map }) do
-			for _, keys in ipairs({ { from, to }, { from .. "-swap", to .. "-swap" } }) do
-				if map[keys[1]] ~= nil then
-					if map[keys[2]] == nil then
-						map[keys[2]] = map[keys[1]]
-					end
-					map[keys[1]] = nil
-				end
-			end
-			for key, value in pairs(map) do
-				if value == from then
-					map[key] = to
-				end
-			end
-			for _, key in ipairs({ to, to .. "-swap" }) do
-				if map[key] == to then
-					map[key] = nil
-				end
-			end
+		take_over_in(triquetra, from, to)
+	end
+	for _, arrival in pairs(M.arrivals) do
+		take_over_in(arrival.before, from, to)
+		if arrival.after then
+			take_over_in(arrival.after, from, to)
 		end
 	end
 end

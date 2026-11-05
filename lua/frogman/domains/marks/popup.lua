@@ -22,7 +22,7 @@ end
 
 ---The pop-up that's open: its buffer, its window, the window it was opened from, the scope it
 ---shows, what each drawn name stands for, and the rows drawn as incoming or already set.
----@type {buf: Bufnr, win: WinId, origin: WinId, kind: string, id: any, names: table<string, HandleId>, states: table<string, string>}|nil
+---@type {buf: Bufnr, win: WinId, origin: WinId, kind: string, id: any, names: table<string, HandleId>, paths: table<string, string>, states: table<string, string>}|nil
 local open = nil
 
 ---Get the glyph a group's header opens with, in the glyph set in use.
@@ -80,8 +80,9 @@ end
 ---
 ---@param id HandleId The file's handle
 ---@param names table<string, HandleId> Drawn name → the file's handle, added to in place
+---@param paths table<string, string> Drawn name → the file's path, added to in place
 ---@return string name
-local function name_of(id, names)
+local function name_of(id, names, paths)
 	local handle = history.handles.get(id)
 	local filepath = history.get_filepath_from_handle(id) or tostring(id)
 	local name
@@ -102,8 +103,9 @@ local function name_of(id, names)
 			name = vim.fn.fnamemodify(filepath, ":.")
 		end
 	end
-	-- each name drawn by its file's handle, so a row follows its file through a move
-	names[name] = id
+	-- each name drawn by its file's handle, so a row follows its file through a move, and by its path, for
+	-- a file let go and known again under a handle of its own
+	names[name], paths[name] = id, filepath
 	return name
 end
 
@@ -119,6 +121,7 @@ end
 ---@return table<string, HandleId> names
 ---@return table<string, string> states Row (alias and the file's handle) → "incoming" or "already set"
 ---@return table<string, boolean> held The names of the groups held over
+---@return table<string, string> paths Drawn name → the file's path
 local function draw(kind, id, conflict)
 	local scope = data.scopes[kind][id]
 	local groups = scope and scope.groups or {}
@@ -127,7 +130,7 @@ local function draw(kind, id, conflict)
 		groups = vim.list_extend({ { name = require('frogman.configs').marks.default_group, marks = {} } }, vim.list_slice(groups))
 	end
 	local keys_group = routines().first_group({ groups = groups })
-	local lines, names, states, held = {}, {}, {}, {}
+	local lines, names, states, held, paths = {}, {}, {}, {}, {}
 	local glyph = group_glyph()
 	local known = {}
 	for _, alias in ipairs(aliases()) do
@@ -139,7 +142,7 @@ local function draw(kind, id, conflict)
 			held[group.name] = true
 		end
 		local function row(alias, id)
-			table.insert(lines, alias .. " -> " .. (id and name_of(id, names) or ""))
+			table.insert(lines, alias .. " -> " .. (id and name_of(id, names, paths) or ""))
 		end
 		for _, alias in ipairs(aliases()) do
 			local handle = routines().handle_of(group, alias)
@@ -168,7 +171,7 @@ local function draw(kind, id, conflict)
 			end
 		end
 	end
-	return lines, names, states, held
+	return lines, names, states, held, paths
 end
 
 ---Read one of the pop-up's lines.
@@ -210,7 +213,9 @@ local function resolve(file)
 	-- a row it drew follows its file, by the file's handle, through a move since
 	local drawn = open.names[file]
 	if drawn then
+		-- a file let go since and known again has a handle of its own, which the row finds by its path
 		local handle = history.handles.follow(drawn)
+			or history.handles.get(history.get_handle_from_filepath(open.paths and open.paths[file]))
 		return handle and handle.id or drawn, nil
 	end
 	local path = vim.fn.fnamemodify(file, ":p")
@@ -281,8 +286,8 @@ end
 ---@param conflict {alias: string, id: HandleId}|nil
 ---@return nil
 local function redraw(conflict)
-	local lines, names, states, held = draw(open.kind, open.id, conflict)
-	open.names, open.states, open.held = names, states, held
+	local lines, names, states, held, paths = draw(open.kind, open.id, conflict)
+	open.names, open.states, open.held, open.paths = names, states, held, paths
 	-- what the write rebuilds from the lines: a group that comes in after stays
 	local scope = data.scopes[open.kind][open.id]
 	open.drawn = {}

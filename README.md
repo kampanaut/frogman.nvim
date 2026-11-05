@@ -317,6 +317,10 @@ This plugin was called cavediver before. Do these once, in this order, before yo
     - the filetypes, `cavediver-closed-lists`, `cavediver-primary-buffer-history` and `cavediver-trail`, become
       `frogman-closed-lists`, `frogman-primary-buffer-history` and `frogman-trail`
     - the augroup, `cavediver`, becomes `frogman`
+    - a file is a handle now, a number, where it was a hash: `get_buffer_history()` is keyed by handles, the
+      triquetras `get_window_triquetra()` and `get_all_triquetras()` give hold handles in their slots and notes,
+      `history.get_closed_buffers()` lists handles, and `get_smart_basename()` takes one;
+      `require('frogman').history.get_hash_from_handle(id)` gives a handle's hash
 
     The options `setup()` takes keep their names.
 

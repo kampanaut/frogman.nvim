@@ -17,7 +17,7 @@ CHANGED = {'T111': 'route changed so it fails for the right reason (the first ro
            'T247': 'an acwrite window whose current file is :bdeleted from the focused window, to reach the healing branch',
            'T235': 'the save runs in pcall, since the hole makes the pop-up\'s redraw throw',
            'T212': 'the child\'s umask forced to 022, so the result doesn\'t depend on the runner'}
-HAND_PAT = re.compile(r'set_note\(|X\.set\(|displacement_(ternary|secondary)_map\[|data\.crux\[|nvim_buf_set_name|register_buffer\(|track_buffer\(|rename_hash_in_triquetras|ordered\.crux\[|noautocmd')
+HAND_PAT = re.compile(r'set_note\(|X\.set\(|displacement_(ternary|secondary)_map\[|data\.crux\[|nvim_buf_set_name|register_buffer\(|track_buffer\(|rename_handle\(|ordered\.crux\[|noautocmd')
 WALK_PAT = re.compile(r'walk', re.I)
 
 def strs(s):

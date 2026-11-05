@@ -510,8 +510,11 @@ function M.note(map, owner, before, after, by)
 	if before == after then
 		return
 	end
-	-- the move is a record, so it names each file by the hash it has now
-	local hash_of = require('frogman.domains.history').get_hash_from_handle
+	-- the move is a record, so it names each file by the hash it has now, and one let go, which has none, as "?"
+	local history = require('frogman.domains.history')
+	local function hash_of(id)
+		return id ~= nil and (history.get_hash_from_handle(id) or "?") or nil
+	end
 	M.move(after and "rewritten" or "note_dropped", {
 		subject = hash_of(owner), name = M.name_of(hash_of(owner)),
 		note = { map = map, before = hash_of(before), after = hash_of(after) }, by = by,

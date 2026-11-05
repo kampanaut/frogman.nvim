@@ -185,4 +185,19 @@ T['T524 [char] a check before a new file is taken in keeps its mark'] = function
 	eq({ taken = taken, tag = tag_of('brandnew') }, { taken = true, tag = vim.NIL })
 end
 
+-- b's buffer is registered when its file goes, so Neovim's reload of it as a new file marks a handle
+-- that's there already.
+T['T898 [char] (M14) a deleted file\'s buffer reloaded as a new file is marked never written, not tagged gone'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.lua('os.remove(_G.FRG_TEST.root .. "/b.txt")')
+	child.cmd('edit!')
+	child.settle(100)
+	child.lua('require("frogman.domains.history").routines.mark_missing()')
+	eq(child.lua([[
+		local H = require('frogman.domains.history')
+		local h = H.handles.of_hash(H.get_hash_from_filepath(_G.FRG_TEST.root .. '/b.txt'))
+		return { unwritten = h ~= nil and h.unwritten ~= nil, tag = h and h.tag or false }
+	]]), { unwritten = true, tag = false })
+end
+
 return T

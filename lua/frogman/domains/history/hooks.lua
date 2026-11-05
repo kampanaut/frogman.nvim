@@ -174,7 +174,13 @@ function M.init_autocmds(group)
 		group = group,
 		callback = function(args)
 			if vim.api.nvim_buf_get_name(args.buf) ~= "" then
-				vim.b[args.buf].frogman_unwritten = true -- kept on its buffer until its handle takes it in
+				local id = routines.get_handle_from_buffer(args.buf)
+				if id then
+					-- taken in already, as a deleted file's buffer Neovim reloads as a new one: its handle takes the mark now
+					require('frogman.domains.history.handles').get(id).unwritten = args.buf
+				else
+					vim.b[args.buf].frogman_unwritten = true -- kept on its buffer until its handle takes it in
+				end
 			end
 		end,
 	})

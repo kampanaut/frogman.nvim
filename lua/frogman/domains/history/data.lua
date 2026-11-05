@@ -64,7 +64,7 @@ local corpus = {
 	history_detached = function()
 		return HistorySM:state() == states.DETACHED
 	end,
-	-- Core buffer access history: file_hash → access_time
+	-- Core buffer access history: file's handle → access_time
 	crux = {},
 	crux_internals = {
 		window = {},

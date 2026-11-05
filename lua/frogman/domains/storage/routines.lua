@@ -3267,10 +3267,10 @@ function M.save_history(cwd, name, tab)
 	end
 	local noname_content, kept = write_noname_texts(texts, key, file_path .. ".d/")
 	local closed, closed_times = serialise_closed_buffers(pool and { pool } or every_pool())
-	-- the never-written marks, from the handles that carry them
+	-- the never-written marks, from the handles that carry them, of the files frogman knows
 	local unwritten = {}
 	for _, handle in pairs(history.handles.live()) do
-		if handle.unwritten then
+		if handle.unwritten and next(handle.holders) ~= nil then
 			table.insert(unwritten, handle.hash)
 		end
 	end

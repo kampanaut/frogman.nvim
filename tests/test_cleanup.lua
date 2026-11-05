@@ -665,6 +665,25 @@ T['T893 [char] (M6 Arrivals, DESK.md:609, repro R1) a move since an arrival does
 	eq({ child.slots(), child.lua('return vim.bo.buftype') }, { '⦉g⦊ [a] ⟦-⟧', 'nofile' })
 end
 
+-- c moves onto b's name while b is closed and held by its list, so b's handle gives way to c's in the
+-- windows and in the arrival's copies alike.
+T['T897 [char] (M6 Arrivals, DESK.md:596, :608-609) a move onto a held name since an arrival doesn\'t stop its undo'] = function()
+	child.steps({ ':e b', ':e c', ':e a' })
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/b.txt")'))
+	child.settle()
+	child.steps({ ':e x' })
+	eq(child.slots(), '⦉a⦊ [x] ⟦-⟧')
+	child.lua([[
+		local root = _G.FRG_TEST.root
+		os.rename(root .. '/c.txt', root .. '/b.txt')
+		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/c.txt'), root .. '/b.txt')
+	]])
+	child.settle(300)
+	child.cmd('setlocal buftype=nofile')
+	child.settle(300)
+	eq({ child.slots(), child.lua('return vim.bo.buftype') }, { '⦉b⦊ [a] ⟦-⟧', 'nofile' })
+end
+
 T['T894 [char] (M6 Arrivals, DESK.md:609, repro R2) a file let go and known again doesn\'t come back into an undone arrival'] = function()
 	local S2 = dofile('tests/helpers_s2.lua')
 	child.steps({ ':e c', ':e a', ':e x' })
