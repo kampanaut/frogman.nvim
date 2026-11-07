@@ -4,6 +4,7 @@
 ---@field name string The group's name
 ---@field marks table<string, integer> Alias → the handle number of the file it marks
 ---@field held boolean|nil Whether it's held over: a closed window's or tab's, or a load's, until you move it first
+---@field default boolean|nil Whether it's the default group frogman made, not one typed in: it isn't saved while it has no marks
 ---@field loaded string|nil The load that gave it, as a held-over group would name it, for a marks pop-up with edits not written
 ---
 ---@class MarksScope A window's, a tab's or a session's marks

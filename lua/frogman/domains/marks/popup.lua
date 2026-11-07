@@ -21,8 +21,9 @@ local function routines()
 end
 
 ---The pop-up that's open: its buffer, its window, the window it was opened from, the scope it
----shows, what each drawn name stands for, and the rows drawn as incoming or already set.
----@type {buf: Bufnr, win: WinId, origin: WinId, kind: string, id: any, names: table<string, HandleId>, paths: table<string, string>, states: table<string, string>}|nil
+---shows, what each drawn name stands for, the rows drawn as incoming or already set, and each group
+---drawn, by itself and by its key and rows, for the write to know it again.
+---@type {buf: Bufnr, win: WinId, origin: WinId, kind: string, id: any, names: table<string, HandleId>, paths: table<string, string>, states: table<string, string>, drawn: table<MarksGroup, true>, groups_drawn: {key: string, name: string, held: boolean|nil, default: boolean|nil, rows: string[]}[]}|nil
 local open = nil
 
 ---Get the glyph a group's header opens with, in the glyph set in use.
@@ -120,29 +121,32 @@ end
 ---@return string[] lines
 ---@return table<string, HandleId> names
 ---@return table<string, string> states Row (alias and the file's handle) → "incoming" or "already set"
----@return table<string, boolean> held The names of the groups held over
+---@return {key: string, name: string, held: boolean|nil, default: boolean|nil, rows: string[]}[] drawn Each group drawn, in order: its key, its flags and its marks, each by its alias and its file
 ---@return table<string, string> paths Drawn name → the file's path
 local function draw(kind, id, conflict)
 	local scope = data.scopes[kind][id]
 	local groups = scope and scope.groups or {}
 	if routines().first_group(scope) == nil then
 		-- the keys' group first, the default one, ahead of anything held over
-		groups = vim.list_extend({ { name = require('frogman.configs').marks.default_group, marks = {} } }, vim.list_slice(groups))
+		groups = vim.list_extend({ { name = require('frogman.configs').marks.default_group, marks = {}, default = true } },
+			vim.list_slice(groups))
 	end
 	local keys_group = routines().first_group({ groups = groups })
-	local lines, names, states, held, paths = {}, {}, {}, {}, {}
+	local lines, names, states, drawn, paths = {}, {}, {}, {}, {}
 	local glyph = group_glyph()
 	local known = {}
 	for _, alias in ipairs(aliases()) do
 		known[alias] = true
 	end
-	for _, group in ipairs(groups) do
+	for g, group in ipairs(groups) do
 		table.insert(lines, glyph .. " " .. group.name)
-		if group.held then
-			held[group.name] = true
-		end
+		local info = { key = routines().group_key(groups, g), name = group.name, held = group.held, default = group.default, rows = {} }
+		table.insert(drawn, info)
 		local function row(alias, id)
 			table.insert(lines, alias .. " -> " .. (id and name_of(id, names, paths) or ""))
+			if id then
+				table.insert(info.rows, alias .. "\0" .. id) -- a mark, by its alias and its file
+			end
 		end
 		for _, alias in ipairs(aliases()) do
 			local handle = routines().handle_of(group, alias)
@@ -171,7 +175,7 @@ local function draw(kind, id, conflict)
 			end
 		end
 	end
-	return lines, names, states, held, paths
+	return lines, names, states, drawn, paths
 end
 
 ---Read one of the pop-up's lines.
@@ -286,8 +290,8 @@ end
 ---@param conflict {alias: string, id: HandleId}|nil
 ---@return nil
 local function redraw(conflict)
-	local lines, names, states, held, paths = draw(open.kind, open.id, conflict)
-	open.names, open.states, open.held, open.paths = names, states, held, paths
+	local lines, names, states, drawn, paths = draw(open.kind, open.id, conflict)
+	open.names, open.states, open.groups_drawn, open.paths = names, states, drawn, paths
 	-- what the write rebuilds from the lines: a group that comes in after stays
 	local scope = data.scopes[open.kind][open.id]
 	open.drawn = {}
@@ -311,14 +315,170 @@ function M.scope_changed(kind, id)
 	end
 end
 
+---Match each group written to the one the pop-up drew, and find each drawn group whose header was
+---deleted with some of its marks left under another group's.
+---
+---A mark is known by its alias and its file, each counted once, and a group by its name and place: a
+---drawn group whose name and place another written group still holds is that one's alone. A group
+---written is first the drawn one of its name that kept marks of it: the one of its name and place when
+---that one did, otherwise the one whose mark comes first under it, since a deleted header's rows join
+---the group above below its own. Else, renamed, it's the drawn one whose mark comes first under it,
+---unless a drawn group of its own name and place is still there to be it. Else it's the one of its name
+---and place. One renamed with every mark changed, or typed in under a new name, matches none. A drawn
+---group none matched had its header deleted, and its marks still there, beyond another group's own,
+---joined that group.
+---
+---@param groups {name: string, rows: {key: string, row: integer}[]}[] The groups written, in order, each mark by its key and its line
+---@param drawn {key: string, name: string, rows: string[]}[] The groups drawn, in order
+---@return table<integer, integer> match A written group's place → the drawn group's
+---@return {name: string, into: string, row: integer}[] joined Each drawn group whose header is gone with marks left: its name, the group they joined and the first one's line, a name with its place, `x/2`, when another group has it
+local function match_groups(groups, drawn)
+	local match, claimed = {}, {}
+	local function claim(g, d)
+		match[g], claimed[d] = d, true
+	end
+	local keys = {}
+	for g, _ in ipairs(groups) do
+		keys[g] = routines().group_key(groups, g)
+	end
+	-- the unclaimed drawn group of a key
+	local function keyed(key)
+		for d, info in ipairs(drawn) do
+			if not claimed[d] and info.key == key then
+				return d
+			end
+		end
+		return nil
+	end
+	-- how many of a drawn group's marks a written group holds
+	local function kept(group, info)
+		local have, n = {}, 0
+		for _, mark in ipairs(group.rows) do
+			have[mark.key] = (have[mark.key] or 0) + 1
+		end
+		for _, key in ipairs(info.rows) do
+			if (have[key] or 0) > 0 then
+				have[key], n = have[key] - 1, n + 1
+			end
+		end
+		return n
+	end
+	-- whether another written group, still unmatched, holds a drawn group's name and place
+	local function held_by_another(g, info)
+		for other, _ in ipairs(groups) do
+			if other ~= g and not match[other] and keys[other] == info.key then
+				return true
+			end
+		end
+		return false
+	end
+	-- the unclaimed drawn group, among those that pass and that no other written group's name and place
+	-- holds, that owns the written group's first mark
+	local function owner(g, passes)
+		for _, mark in ipairs(groups[g].rows) do
+			for d, info in ipairs(drawn) do
+				if not claimed[d] and passes(info) and not held_by_another(g, info) and vim.tbl_contains(info.rows, mark.key) then
+					return d
+				end
+			end
+		end
+		return nil
+	end
+	-- its name, with marks of it kept: the one whose header stands, else the one of its first mark
+	for g, group in ipairs(groups) do
+		local own = keyed(keys[g])
+		if own and kept(group, drawn[own]) > 0 then
+			claim(g, own)
+		else
+			local d = owner(g, function(info) return info.name == group.name end)
+			if d then
+				claim(g, d)
+			end
+		end
+	end
+	-- renamed: the one of its first mark, unless its own name and place is still drawn
+	for g, _ in ipairs(groups) do
+		if not match[g] and keyed(keys[g]) == nil then
+			local d = owner(g, function() return true end)
+			if d then
+				claim(g, d)
+			end
+		end
+	end
+	-- its name and place, for a group whose marks say nothing
+	for g, _ in ipairs(groups) do
+		local d = not match[g] and keyed(keys[g]) or nil
+		if d then
+			claim(g, d)
+		end
+	end
+	-- the marks each group holds beyond those of the group it matched
+	local beyond = {}
+	for g, group in ipairs(groups) do
+		local own = {}
+		for _, key in ipairs(match[g] and drawn[match[g]].rows or {}) do
+			own[key] = (own[key] or 0) + 1
+		end
+		beyond[g] = {}
+		for _, mark in ipairs(group.rows) do
+			if (own[mark.key] or 0) > 0 then
+				own[mark.key] = own[mark.key] - 1
+			else
+				table.insert(beyond[g], mark)
+			end
+		end
+	end
+	-- a mark beyond a group's own, taken by the drawn group it came from
+	local function take(key)
+		for g, _ in ipairs(groups) do
+			for i, mark in ipairs(beyond[g]) do
+				if mark.key == key then
+					table.remove(beyond[g], i)
+					return g, mark.row
+				end
+			end
+		end
+		return nil
+	end
+	-- a group's name in the prompt, or its name and place when another group has that name
+	local function named(list, at, key)
+		for i, other in ipairs(list) do
+			if i ~= at and other.name == list[at].name then
+				return key
+			end
+		end
+		return list[at].name
+	end
+	local joined = {}
+	for d, info in ipairs(drawn) do
+		if not claimed[d] then
+			local into, first
+			for _, key in ipairs(info.rows) do
+				local g, row = take(key)
+				if g and (first == nil or row < first) then
+					into, first = g, row
+				end
+			end
+			if into then
+				table.insert(joined, { name = named(drawn, d, info.key), into = named(groups, into, keys[into]), row = first })
+			end
+		end
+	end
+	return match, joined
+end
+
 ---Write the pop-up's lines into the scope.
 ---
----A row above the first header, or an alias that holds two files in one group, refuses the write, and
----so does a window or a tab the scope was for that's gone.
----A line naming nothing, a row naming no file, and a second group of one name are asked about in
----one prompt, and No writes nothing. The lines are the scope's groups from then on, in order, and
----what came in since the pop-up was drawn stays below them: a group held over meanwhile, and a load's
----marks, held over under its header. A row it drew follows its file through a move.
+---A row naming a file above the first header, or an alias that holds two files in one group, refuses
+---the write, and so does a window or a tab the scope was for that's gone; an empty row above the first
+---header names nothing, and goes.
+---A line naming nothing, a row naming no file, a second group of one name, and a header deleted with
+---some of its rows left under another group's are asked about in one prompt, in the lines' order, and
+---No writes nothing, the cursor on the first of them. The lines are the scope's groups from then on, in
+---order, and what came in since the pop-up was drawn stays below them: a group held over meanwhile, and
+---a load's marks, held over under its header. A row it drew follows its file through a move.
+---Each group written keeps what the drawn group it matches was (`match_groups`): held over, unless it
+---was moved first, and the default group while its name stands.
 ---
 ---@return boolean written
 local function write()
@@ -327,7 +487,7 @@ local function write()
 		vim.notify("frogman: the " .. open.kind .. " these marks are for is gone, so they aren't written.", vim.log.levels.WARN)
 		return false
 	end
-	local groups, items, first_item = {}, {}, nil
+	local groups, items = {}, {}
 	local current
 	local lines = vim.api.nvim_buf_get_lines(open.buf, 0, -1, false)
 	local function refuse(row, words)
@@ -343,41 +503,49 @@ local function write()
 		if kind == "header" then
 			current = { name = a, marks = {}, rows = {} }
 			if named[a] then
-				table.insert(items, line .. "  is a second group of that name")
-				first_item = first_item or row
+				table.insert(items, { row = row, text = line .. "  is a second group of that name" })
 			end
 			named[a] = true
 			table.insert(groups, current)
-		elseif kind == "row" then
-			if current == nil then
+		elseif kind == "row" and current == nil then
+			-- an empty row there names nothing, so nothing is lost with it
+			if b ~= "" then
 				return refuse(row, "frogman: the marks above the first group's header have no group: put a header back above them, or delete them.")
 			end
+		elseif kind == "row" then
 			if b ~= "" then
 				local ref, path = resolve(b)
 				if path then
 					fresh[ref] = path
 				end
 				if ref == nil then
-					table.insert(items, line .. "  names no file")
-					first_item = first_item or row
+					table.insert(items, { row = row, text = line .. "  names no file" })
 				elseif current.marks[a] and current.marks[a] ~= ref then
 					return refuse(row, "frogman: ⟨" .. a .. "⟩ holds two files in " .. group_glyph() .. " " .. current.name .. ": keep one.")
 				else
 					current.marks[a] = ref
+					table.insert(current.rows, { key = a .. "\0" .. tostring(ref), row = row })
 				end
 			end
 		elseif kind == "other" then
 			if current == nil then
 				return refuse(row, "frogman: the marks above the first group's header have no group: put a header back above them, or delete them.")
 			end
-			table.insert(items, line .. "  names nothing")
-			first_item = first_item or row
+			table.insert(items, { row = row, text = line .. "  names nothing" })
 		end
 	end
-	if #items > 0 and vim.fn.confirm("frogman: before writing the marks:\n" .. table.concat(items, "\n") ..
+	local drawn_groups = open.groups_drawn or {}
+	local match, joined = match_groups(groups, drawn_groups)
+	for _, gone in ipairs(joined) do
+		table.insert(items, { row = gone.row,
+			text = group_glyph() .. " " .. gone.name .. "'s header is gone: its rows join " .. group_glyph() .. " " .. gone.into })
+	end
+	table.sort(items, function(x, y) return x.row < y.row end)
+	if #items > 0 and vim.fn.confirm("frogman: before writing the marks:\n" ..
+			table.concat(vim.tbl_map(function(item) return item.text end, items), "\n") ..
 			"\nWrite as it stands?", "&Yes\n&No", 2) ~= 1 then
 		if open.win and vim.api.nvim_win_is_valid(open.win) then
-			vim.api.nvim_win_set_cursor(open.win, { first_item, 0 })
+			vim.api.nvim_win_set_cursor(open.win, { items[1].row, 0 })
 		end
 		return false
 	end
@@ -399,8 +567,12 @@ local function write()
 				marks[alias] = handle.id
 			end
 		end
-		-- a held-over group stays held over, unless you moved it first
-		table.insert(scope.groups, { name = group.name, marks = marks, held = (g > 1 and open.held[group.name]) or nil })
+		-- a held-over group stays held over, renamed or not, unless you moved it first; the default group
+		-- stays the default while its name stands, and is one typed in once it's renamed
+		local was = match[g] and drawn_groups[match[g]] or {}
+		table.insert(scope.groups, {
+			name = group.name, marks = marks, held = (g > 1 and was.held) or nil, default = (was.default and was.name == group.name) or nil,
+		})
 	end
 	-- what came in since the draw stays below: a load's marks held over under its header, as a load
 	-- holds over what it replaces

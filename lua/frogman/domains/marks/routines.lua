@@ -51,7 +51,7 @@ end
 ---
 ---A scope with none gets its default group, named by the config, first, ahead of what's held over.
 ---
----@param scope MarksScope|nil
+---@param scope MarksScope|nil The scope
 ---@param create boolean|nil Whether to make the default group when there's none
 ---@return MarksGroup|nil group
 function M.first_group(scope, create)
@@ -64,10 +64,29 @@ function M.first_group(scope, create)
 		end
 	end
 	if create then
-		table.insert(scope.groups, 1, { name = require('frogman.configs').marks.default_group, marks = {} })
+		table.insert(scope.groups, 1, { name = require('frogman.configs').marks.default_group, marks = {}, default = true })
 		return scope.groups[1]
 	end
 	return nil
+end
+
+---Get a group's key in its scope: its name and its place among the scope's groups of that name.
+---
+---The place counts from the top, so two groups named `feature-x` are `feature-x/1` and `feature-x/2`.
+---Nothing is stored for it: two of one name that swap places swap keys too. The place is the last
+---`/<digits>`, so a group named `v/2` is `v/2/1`.
+---
+---@param groups {name: string}[] The scope's groups, in order
+---@param index integer The group's place among them
+---@return string key Like "feature-x/2"
+function M.group_key(groups, index)
+	local name, place = groups[index].name, 0
+	for i = 1, index do
+		if groups[i].name == name then
+			place = place + 1
+		end
+	end
+	return name .. "/" .. place
 end
 
 ---Get the handle a mark holds now.
@@ -497,21 +516,38 @@ function M.hashes_of(group)
 	return marks
 end
 
+---Check if any of the groups holds a mark.
+---
+---Takes live groups and saved ones alike: only whether a group's marks are empty is read.
+---
+---@param groups {marks: table}[]|nil The groups
+---@return boolean marked
+function M.any_mark(groups)
+	for _, group in ipairs(type(groups) == "table" and groups or {}) do
+		if type(group) == "table" and type(group.marks) == "table" and next(group.marks) ~= nil then
+			return true
+		end
+	end
+	return false
+end
+
 ---Get a scope's groups as a session file holds them.
 ---
----Each group keeps its name and its marks, each by its alias and its file's hash. A group with no
----marks isn't kept, and a scope with none gives nil.
+---Each group keeps its name, its marks, each by its alias and its file's hash, and whether it's held
+---over or the default group. A group typed in is kept even while it has no marks, so it stays where it
+---is across a restart; the default group and a held-over one only while they have some. A scope with
+---none gives nil.
 ---
----@param kind "window"|"tab"|"session"
----@param id any
----@return {name: string, marks: table<string, Filehash>}[]|nil groups
+---@param kind "window"|"tab"|"session" The scope's kind
+---@param id any Its window, tab or session's pool id
+---@return {name: string, marks: table<string, Filehash>, held: true|nil, default: true|nil}[]|nil groups
 function M.serialise(kind, id)
 	local scope = data.scopes[kind][id]
 	local groups = {}
 	for _, group in ipairs(scope and scope.groups or {}) do
 		local marks = M.hashes_of(group)
-		if next(marks) then
-			table.insert(groups, { name = group.name, marks = marks, held = group.held or nil })
+		if next(marks) or not (group.default or group.held) then
+			table.insert(groups, { name = group.name, marks = marks, held = group.held or nil, default = group.default or nil })
 		end
 	end
 	return #groups > 0 and groups or nil
@@ -519,26 +555,29 @@ end
 
 ---Give a scope the groups a session file holds.
 ---
----Each mark takes its file's handle. A file the registry doesn't know is left out, and a scope
----left with no group goes.
+---Each mark takes its file's handle. A file the registry doesn't know is left out. A group typed in
+---comes back even with no marks; the default group and a held-over one only with some. A scope left
+---with no group goes.
 ---
----@param kind "window"|"tab"|"session"
----@param id any
----@param groups {name: string, marks: table<string, Filehash>}[]|nil The file's groups
+---@param kind "window"|"tab"|"session" The scope's kind
+---@param id any Its window, tab or session's pool id
+---@param groups {name: string, marks: table<string, Filehash>, held: true|nil, default: true|nil}[]|nil The file's groups
 ---@param what string|nil The load, as a held-over group names it: kept on each group, for a marks pop-up
 ---with edits not written, whose write holds them over under it
 ---@return nil
 function M.restore(kind, id, groups, what)
 	local scope = { groups = {} }
 	for _, saved in ipairs(type(groups) == "table" and groups or {}) do
-		local group = { name = saved.name, marks = {}, held = saved.held == true or nil, loaded = what }
+		local group = {
+			name = saved.name, marks = {}, held = saved.held == true or nil, default = saved.default == true or nil, loaded = what,
+		}
 		for alias, filehash in pairs(type(saved.marks) == "table" and saved.marks or {}) do
 			local handle = history.handles.of_hash(filehash)
 			if handle then
 				group.marks[alias] = handle.id
 			end
 		end
-		if next(group.marks) then
+		if next(group.marks) or not (group.default or group.held) then
 			table.insert(scope.groups, group)
 		end
 	end

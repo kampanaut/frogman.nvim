@@ -674,24 +674,31 @@ T['T739 [char] (M15) a header typed makes a group, and the first group drives th
 	eq({ groups = groups, jumped = child.shown(), c = label('c') }, { groups = { 'main', 'feature' }, jumped = 'b', c = false })
 end
 
-T['T740 [char] (M15) a header deleted moves its rows up; the first one deleted refuses'] = function()
+T['T740 [char] (M15, DESK.md:1072-1073) a header deleted is asked about, and its rows join the group above; the first one deleted refuses'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
 	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
 	table.insert(lines, '❖ feature')
 	table.insert(lines, 's -> c.txt')
 	write_lines(lines)
-	-- feature's header deleted: s -> c.txt joins main
+	-- feature's header deleted: the write asks first; No writes nothing, Yes joins s -> c.txt to main
 	local now = popup().lines
 	table.remove(now, vim.fn.index(now, '❖ feature') + 1)
+	child.answer('No')
 	write_lines(now)
+	local asked = child.prompts()
+	local kept = { c = label('c'), modified = popup().modified }
+	child.answer('Yes')
+	child.cmd('silent! write')
+	child.settle(100)
 	local joined = { c = label('c'), groups = #child.lua('return require("frogman.domains.marks").data.scopes.window[vim.fn.win_getid(vim.fn.winnr("#"))].groups') }
 	child.messages()
 	now = popup().lines
 	table.remove(now, 1)
 	write_lines(now)
 	local said = vim.tbl_map(function(m) return m.msg end, child.messages())
-	eq({ joined = joined, said = said, modified = popup().modified },
-		{ joined = { c = 's', groups = 1 },
+	eq({ asked = #asked, gone = (asked[1] or ''):find("❖ feature's header is gone: its rows join ❖ main", 1, true) ~= nil,
+		kept = kept, joined = joined, said = said, modified = popup().modified },
+		{ asked = 1, gone = true, kept = { c = false, modified = true }, joined = { c = 's', groups = 1 },
 		said = { "frogman: the marks above the first group's header have no group: put a header back above them, or delete them." },
 		modified = true })
 end
@@ -1942,6 +1949,350 @@ T['T954 [char] (M15, DESK.md:1061, :1093) a jump refused for the pop-up\'s unwri
 	local dirty = 'frogman: the marks pop-up has edits not written yet: write them with :w, or leave them, first.'
 	eq({ said = said, shown = child.shown(), nav = child.lua('return require("frogman.domains.navigation").sm:state()') },
 		{ said = { dirty }, shown = stepped, nav = 'cycling' })
+end
+
+-- A split's marks held over in the whole editor's scope as it closes, then the session's pop-up.
+local function held_session_popup()
+	child.steps({ ':e a' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e b', ADD .. 'a>' })
+	child.cmd('close')
+	child.settle(100)
+	child.steps({ "<M-'><M-3>", OPEN })
+	local lines = popup().lines
+	local held
+	for i, line in ipairs(lines) do
+		if line:find('^❖ held over') then held = i end
+	end
+	return lines, held
+end
+
+local SESSION_FLAGS = [[
+	local s = require('frogman.domains.marks').data.scopes.session['']
+	return vim.tbl_map(function(g) return { name = g.name:match('^held over') and 'held over' or g.name, held = g.held == true } end, s.groups)
+]]
+
+-- A group typed under a held-over group's name, below it: each keeps its own flag, by its place among
+-- the groups of that name, not by the name alone.
+T['T955 [char] (M15, DESK.md:1066-1067) two groups of one name keep their own held flags, by their place'] = function()
+	local lines, held = held_session_popup()
+	table.insert(lines, lines[held])
+	table.insert(lines, 's -> c.txt')
+	child.answer('Yes')
+	write_lines(lines)
+	eq(child.lua(SESSION_FLAGS), {
+		{ name = 'main', held = false }, { name = 'held over', held = true }, { name = 'held over', held = false },
+	})
+end
+
+-- Renaming a held-over group's header leaves it held over: it's the same group, in its place.
+T['T956 [char] (M15, DESK.md:1085-1086) a held-over group whose header is renamed stays held over'] = function()
+	local lines, held = held_session_popup()
+	lines[held] = '❖ kept'
+	write_lines(lines)
+	eq(child.lua(SESSION_FLAGS), { { name = 'main', held = false }, { name = 'kept', held = true } })
+end
+
+-- The default group's header renamed in place makes a typed group: saved, empty, it stays first across
+-- a restart.
+T['T957 [char] (M15, DESK.md:1070-1071, :1065) a typed group is saved even while it\'s empty'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e b', OPEN })
+	local lines = popup().lines
+	lines[1] = '❖ feature'
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'b' }, 'b')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	eq(child.lua([[
+		local s = require('frogman.domains.marks').data.scopes.window[vim.api.nvim_get_current_win()]
+		return s and vim.tbl_map(function(g) return g.name end, s.groups) or {}
+	]]), { 'feature' })
+end
+
+-- The default group a mark's add made, emptied again: not saved.
+T['T958 [char] (M15, DESK.md:1065) the default group isn\'t saved while it\'s empty'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e b', ADD .. 'a>', OPEN })
+	write_lines(vim.list_extend({ '❖ main' }, rows({})))
+	child.cmd('close')
+	child.settle()
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'b' }, 'b')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	eq(child.lua('return require("frogman.domains.marks").data.scopes.window[vim.api.nvim_get_current_win()] == nil'), true)
+end
+
+-- The current window's groups, each with its marks by file letter.
+local WINDOW_GROUPS = [[
+	local d = require('frogman.domains.marks').data
+	local H = require('frogman.domains.history')
+	local s = d.scopes.window[vim.api.nvim_get_current_win()]
+	return vim.tbl_map(function(g)
+		local marks = {}
+		for alias, hid in pairs(g.marks) do
+			local h = H.handles.get(hid)
+			marks[alias] = h and vim.fn.fnamemodify(H.get_filepath_from_hash(h.hash), ':t:r') or false
+		end
+		return { name = g.name, marks = marks }
+	end, s and s.groups or {})
+]]
+
+-- A tab session's window entry bringing a typed group with no marks: a window with marks of its own
+-- keeps them, nothing held over, and a window with none takes the group.
+T['T959 [char] (M15, S1 Load, DESK.md:1102, :1070) an entry bringing only an empty typed group leaves a window\'s own marks, and gives a window with none the group'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', OPEN })
+	local lines = popup().lines
+	lines[1] = '❖ feature'
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e b', ADD .. 'a>', ':e a' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local own = child.lua(WINDOW_GROUPS)
+	local held = child.lua([[
+		local id = require('frogman.domains.history').data.tab_pools[vim.api.nvim_get_current_tabpage()]
+		local scope = require('frogman.domains.marks').data.scopes.session[id]
+		return #vim.tbl_filter(function(g) return g.held == true end, scope and scope.groups or {})
+	]])
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	eq({ own = own, held = held, typed = child.lua(WINDOW_GROUPS) },
+		{ own = { { name = 'main', marks = { a = 'b' } } }, held = 0, typed = { { name = 'feature', marks = {} } } })
+end
+
+-- Deleting a held-over group's header and rows, the way to clear it, asks nothing: no row of it is left
+-- to join another group.
+T['T960 [char] (M15, DESK.md:1072, :1085) a held-over group deleted with its rows is cleared with nothing asked'] = function()
+	local lines, held = held_session_popup()
+	local kept = {}
+	for i, line in ipairs(lines) do
+		if i < held then
+			table.insert(kept, line)
+		end
+	end
+	child.answer('No')
+	write_lines(kept)
+	eq({ asked = #child.prompts(), flags = child.lua(SESSION_FLAGS), modified = popup().modified },
+		{ asked = 0, flags = { { name = 'main', held = false } }, modified = false })
+end
+
+-- The first of two groups of one name deleted, its rows under the group above: that group is asked
+-- about, and the second keeps its own.
+T['T961 [char] (M15, DESK.md:1066, :1072) the first of two groups of one name deleted is asked about as the one gone'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
+	vim.list_extend(lines, { '❖ x', 's -> c.txt', '❖ x', 'd -> d.txt' })
+	child.answer('Yes')
+	write_lines(lines)
+	child.prompts()
+	local now = popup().lines
+	table.remove(now, vim.fn.index(now, '❖ x') + 1)
+	child.answer('Yes')
+	write_lines(now)
+	local asked = child.prompts()
+	eq({ asked = #asked, gone = (asked[1] or ''):find("❖ x/1's header is gone: its rows join ❖ main", 1, true) ~= nil,
+		groups = #child.lua('return require("frogman.domains.marks").data.scopes.window[vim.fn.win_getid(vim.fn.winnr("#"))].groups'),
+		c = label('c'), d = label('d') },
+		{ asked = 1, gone = true, groups = 2, c = 's', d = false })
+end
+
+-- A header deleted, its rows under the group above, and a group typed where it was: the deleted one is
+-- still asked about, and the typed one is a group of its own.
+T['T962 [char] (M15, DESK.md:1072) a header deleted is asked about though a group is typed in its place'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
+	vim.list_extend(lines, { '❖ feature', 's -> c.txt' })
+	write_lines(lines)
+	local now = popup().lines
+	table.remove(now, vim.fn.index(now, '❖ feature') + 1)
+	table.insert(now, '❖ new')
+	child.answer('Yes')
+	write_lines(now)
+	local asked = child.prompts()
+	eq({ asked = #asked, gone = (asked[1] or ''):find("❖ feature's header is gone: its rows join ❖ main", 1, true) ~= nil,
+		c = label('c') }, { asked = 1, gone = true, c = 's' })
+end
+
+-- A held-over group deleted whole asks nothing, though the first group holds the same mark.
+T['T963 [char] (M15, DESK.md:1072, :1085) a held-over group deleted whole asks nothing though the first group holds the same mark'] = function()
+	child.steps({ ':e a', "<M-'><M-3>", ':e b', ADD .. 'a>', "<M-'><M-1>" })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ADD .. 'a>' })
+	child.cmd('close')
+	child.settle(100)
+	child.steps({ "<M-'><M-3>", OPEN })
+	local lines = popup().lines
+	local held
+	for i, line in ipairs(lines) do
+		if line:find('^❖ held over') then held = i end
+	end
+	child.answer('No')
+	write_lines(vim.list_slice(lines, 1, held - 1))
+	eq({ asked = #child.prompts(), flags = child.lua(SESSION_FLAGS), b = label('b') },
+		{ asked = 0, flags = { { name = 'main', held = false } }, b = 'a' })
+end
+
+-- The current window's groups, from the pop-up opened on it, with their default flags.
+local DEFAULTS = [[
+	local s = require("frogman.domains.marks").data.scopes.window[vim.fn.win_getid(vim.fn.winnr("#"))]
+	return vim.tbl_map(function(g) return { name = g.name, default = g.default == true } end, s.groups)
+]]
+
+-- A header deleted under an empty default group: asked about, and the default group stays the default.
+T['T964 [char] (M15, DESK.md:1072, :1065) a header deleted under an empty default group is asked about, and the default stays'] = function()
+	child.steps({ ':e e', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({}))
+	vim.list_extend(lines, { '❖ dev', 'a -> b.txt' })
+	write_lines(lines)
+	local now = popup().lines
+	table.remove(now, vim.fn.index(now, '❖ dev') + 1)
+	child.answer('Yes')
+	write_lines(now)
+	local asked = child.prompts()
+	eq({ asked = #asked, gone = (asked[1] or ''):find("❖ dev's header is gone: its rows join ❖ main", 1, true) ~= nil,
+		groups = child.lua(DEFAULTS), b = label('b') },
+		{ asked = 1, gone = true, groups = { { name = 'main', default = true } }, b = 'a' })
+end
+
+-- A group typed where a held-over group was deleted whole is a group of its own, not held over.
+T['T965 [char] (M15, DESK.md:1072, :1085) a group typed where a held-over group was deleted whole isn\'t held over'] = function()
+	local lines, held = held_session_popup()
+	local kept = vim.list_slice(lines, 1, held - 1)
+	vim.list_extend(kept, { '❖ new', 's -> c.txt' })
+	child.answer('No')
+	write_lines(kept)
+	eq({ asked = #child.prompts(), flags = child.lua(SESSION_FLAGS) },
+		{ asked = 0, flags = { { name = 'main', held = false }, { name = 'new', held = false } } })
+end
+
+-- Of two groups of one name, the second's header deleted: the first, whose header stands, keeps what it
+-- was, though the second had more marks.
+T['T966 [char] (M15, DESK.md:1066, :1072) of two groups of one name, the one whose header stands keeps what it was'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
+	vim.list_extend(lines, { '❖ main', 's -> c.txt', 'd -> d.txt' })
+	child.answer('Yes')
+	write_lines(lines)
+	child.prompts()
+	local now = popup().lines
+	local second
+	for i, line in ipairs(now) do
+		if line == '❖ main' and i > 1 then second = i end
+	end
+	table.remove(now, second)
+	child.answer('Yes')
+	write_lines(now)
+	local asked = child.prompts()
+	eq({ asked = #asked, gone = (asked[1] or ''):find("❖ main/2's header is gone: its rows join ❖ main", 1, true) ~= nil,
+		groups = child.lua(DEFAULTS) },
+		{ asked = 1, gone = true, groups = { { name = 'main', default = true } } })
+end
+
+-- A held-over group whose header is renamed and every mark changed is a group of its own: what it was
+-- is known by its marks, and none is left (mine).
+T['T967 [char] (M15, DESK.md:1072, :1085) a held-over group renamed with every mark changed is a group of its own'] = function()
+	local lines, held = held_session_popup()
+	lines[held] = '❖ kept'
+	for i = held + 1, #lines do
+		if lines[i] == 'a -> b.txt' then lines[i] = 's -> c.txt' end
+	end
+	write_lines(lines)
+	eq(child.lua(SESSION_FLAGS), { { name = 'main', held = false }, { name = 'kept', held = false } })
+end
+
+-- The first group's header deleted while it has no marks: its empty rows name nothing, so the write goes
+-- through and the next group is the first.
+T['T971 [char] (M15, DESK.md:1072) the first group\'s header deleted while it has no marks writes, the next group first'] = function()
+	child.steps({ ':e e', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({}))
+	vim.list_extend(lines, { '❖ dev', 'a -> b.txt' })
+	write_lines(lines)
+	local now = popup().lines
+	table.remove(now, 1)
+	child.answer('No')
+	child.messages()
+	write_lines(now)
+	eq({ asked = #child.prompts(), said = said(), groups = child.lua(DEFAULTS), b = label('b'), modified = popup().modified },
+		{ asked = 0, said = {}, groups = { { name = 'dev', default = false } }, b = 'a', modified = false })
+end
+
+-- A header renamed and the next one deleted in one write: the deleted one is asked about, though it had
+-- more marks than the renamed one.
+T['T972 [char] (M15, DESK.md:1072) a header renamed and the next one deleted: the deleted one is asked about'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
+	vim.list_extend(lines, { '❖ feature', 's -> c.txt', 'd -> d.txt', 'f -> f.txt' })
+	write_lines(lines)
+	local now = popup().lines
+	now[1] = '❖ work'
+	table.remove(now, vim.fn.index(now, '❖ feature') + 1)
+	child.answer('Yes')
+	write_lines(now)
+	local asked = child.prompts()
+	eq({ asked = #asked, gone = (asked[1] or ''):find("❖ feature's header is gone: its rows join ❖ work", 1, true) ~= nil,
+		groups = child.lua(DEFAULTS) },
+		{ asked = 1, gone = true, groups = { { name = 'work', default = false } } })
+end
+
+-- A header renamed with another group's rows moved under it, that group's header standing: nothing is
+-- asked, and each group is the one it was.
+T['T973 [char] (M15, DESK.md:1072) a header renamed with another group\'s rows moved under it asks nothing'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
+	vim.list_extend(lines, { '❖ feature', 's -> c.txt', 'd -> d.txt' })
+	write_lines(lines)
+	child.answer('No')
+	write_lines({ '❖ work', 'a -> b.txt', 's -> c.txt', 'd -> d.txt', '❖ feature' })
+	eq({ asked = #child.prompts(), groups = child.lua(DEFAULTS), c = label('c') },
+		{ asked = 0, groups = { { name = 'work', default = false }, { name = 'feature', default = false } }, c = 's' })
+end
+
+-- A header renamed with another group's row pasted first under it, that group's header standing:
+-- nothing is asked, and each group is the one it was.
+T['T974 [char] (M15, DESK.md:1066, :1072) a renamed group with another group\'s row pasted first under it asks nothing'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
+	vim.list_extend(lines, { '❖ feature', 's -> c.txt' })
+	write_lines(lines)
+	child.answer('No')
+	write_lines({ '❖ work', 's -> c.txt', 'a -> b.txt', '❖ feature' })
+	eq({ asked = #child.prompts(), groups = child.lua(DEFAULTS) },
+		{ asked = 0, groups = { { name = 'work', default = false }, { name = 'feature', default = false } } })
+end
+
+-- Two groups of one name whose rows swap places: each group is the one at its place, so the first stays
+-- the default ("we distinguish them by which comes first").
+T['T975 [char] (M15, DESK.md:1066) two groups of one name keep their places when their rows swap'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
+	vim.list_extend(lines, { '❖ main', 's -> c.txt' })
+	child.answer('Yes')
+	write_lines(lines)
+	child.prompts()
+	child.answer('Yes')
+	write_lines({ '❖ main', 's -> c.txt', '❖ main', 'a -> b.txt' })
+	local asked = child.prompts()
+	eq({ asked = #asked, second = (asked[1] or ''):find('is a second group of that name', 1, true) ~= nil,
+		gone = (asked[1] or ''):find('header is gone', 1, true) ~= nil, groups = child.lua(DEFAULTS) },
+		{ asked = 1, second = true, gone = false, groups = { { name = 'main', default = true }, { name = 'main', default = false } } })
 end
 
 return T

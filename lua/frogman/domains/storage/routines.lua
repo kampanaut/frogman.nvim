@@ -843,7 +843,7 @@ local function restore_tabs(saved_tabs, what)
 			marks().restore("tab", best.tabpage, saved.groups)
 		else
 			marks().hold_over("", type(saved.groups) == "table" and saved.groups or {}, what, true, true)
-			unclaimed[i] = true
+			unclaimed[i] = marks().any_mark(saved.groups) or nil -- only marks are held over, so only they leave the file
 		end
 	end
 	return unclaimed
@@ -994,7 +994,8 @@ end
 ---
 ---The session's own come from its `marks`, unless it's open already, when memory's stay, each
 ---matched window's from the entry it took, the groups it had held over but for those the entry
----brings back, and each plain tab's from the saved tab it is. What no
+---brings back, and each plain tab's from the saved tab it is. An entry that brings no marks, only
+---groups typed in with none, leaves a window that has marks of its own as it is. What no
 ---window or tab takes is held over, and so, when memory's marks win, are the file's it doesn't hold. A No Name text a mark names that no list holds and that
 ---isn't reopened is held unread, as a closed one is, on no list.
 ---
@@ -1035,30 +1036,34 @@ local function restore_marks(saved_data, taken, session_id, own, key, scratch_di
 		local winid = (taken or {})[i]
 		if type(entry) == "table" and type(entry[10]) == "table" then
 			if winid and vim.api.nvim_win_is_valid(winid) then
-				-- what the window had is held over under the load's header, but for what the entry brings back
 				local had = marks().scope("window", winid)
-				if had and not marks().unchanged_copy(winid) then -- a copy no one changed loses nothing
-					local keep = {}
-					for _, group in ipairs(had.groups) do
-						local by_hash = marks().hashes_of(group)
-						local brought = false
-						for _, saved in ipairs(entry[10]) do
-							brought = brought or (type(saved) == "table" and vim.deep_equal(saved.marks, by_hash))
+				-- an entry that brings no marks, only groups typed in with none, leaves a window that has
+				-- marks of its own as it is
+				if marks().any_mark(entry[10]) or not marks().any_mark(had and had.groups) then
+					-- what the window had is held over under the load's header, but for what the entry brings back
+					if had and not marks().unchanged_copy(winid) then -- a copy no one changed loses nothing
+						local keep = {}
+						for _, group in ipairs(had.groups) do
+							local by_hash = marks().hashes_of(group)
+							local brought = false
+							for _, saved in ipairs(entry[10]) do
+								brought = brought or (type(saved) == "table" and vim.deep_equal(saved.marks, by_hash))
+							end
+							if not brought then
+								table.insert(keep, group)
+							end
 						end
-						if not brought then
-							table.insert(keep, group)
-						end
+						marks().hold_over(session_id, keep, what, nil, true)
 					end
-					marks().hold_over(session_id, keep, what, nil, true)
-				end
-				marks().restore("window", winid, entry[10], what)
-				if waited[i] then
-					-- a detached list's tab came back with this window: the copy a load held over goes, unchanged
-					marks().drop_load_copies(session_id, entry[10])
+					marks().restore("window", winid, entry[10], what)
+					if waited[i] then
+						-- a detached list's tab came back with this window: the copy a load held over goes, unchanged
+						marks().drop_load_copies(session_id, entry[10])
+					end
 				end
 			else
 				marks().hold_over(session_id, entry[10], what, true, true) -- a window the load didn't bring back
-				gone[i] = true
+				gone[i] = marks().any_mark(entry[10]) or nil
 			end
 		end
 	end
