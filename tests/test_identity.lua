@@ -369,6 +369,117 @@ T['T695 [char] (M6 Triquetra) an update that would leave a file in two slots is 
 	eq({ ok, child.slots(), child.dumped_since(dumps) ~= nil }, { false, '⦉a⦊ [b] ⟦-⟧', true })
 end
 
+-- The Pool class (M5, DESK.md:654-655): a change that would break one of a list's rules is refused,
+-- the list as it was, and dumps, as T695's update is.
+T['T923 [char] (M5, I22, DESK.md:654) a change that would put a file twice on a list is refused, and dumps'] = function()
+	child.steps({ ':e c', ':e a', ':e b', ':bdelete c.txt' })
+	eq(holders('c'), { 'pool:editor' })
+	local dumps = child.dump_files()
+	local got = child.lua([[
+		local H = require('frogman.domains.history')
+		local pool = H.routines.pools()['']
+		local c = H.get_handle_from_filepath(_G.FRG_TEST.root .. '/c.txt')
+		local before = vim.deepcopy(pool.closed)
+		local method = type(pool.push_oldest) == 'function'
+		local ok = pcall(function() pool:push_oldest(c) end)
+		return { method = method, ok = ok, same = vim.deep_equal(before, pool.closed) }
+	]])
+	child.settle(100)
+	eq({ got, child.dumped_since(dumps) ~= nil }, { { method = true, ok = false, same = true }, true })
+end
+
+T['T924 [char] (M5, I7, DESK.md:654) a change that would put an open file on a list is refused, and dumps'] = function()
+	child.steps({ ':e c', ':e a', ':e b', ':bdelete c.txt' })
+	local dumps = child.dump_files()
+	local got = child.lua([[
+		local H = require('frogman.domains.history')
+		local pool = H.routines.pools()['']
+		local b = H.get_handle_from_filepath(_G.FRG_TEST.root .. '/b.txt') -- open, the window's current
+		local before = vim.deepcopy(pool.closed)
+		local method = type(pool.push) == 'function'
+		local ok = pcall(function() pool:push(b) end)
+		return { method = method, ok = ok, same = vim.deep_equal(before, pool.closed) }
+	]])
+	child.settle(100)
+	eq({ got, child.dumped_since(dumps) ~= nil }, { { method = true, ok = false, same = true }, true })
+end
+
+-- Every line of the code but the class's own module that writes a list's closed files or close times,
+-- or the editor's old field: the session file's own fields, a step's flag and the closed lists' own
+-- record of what they drew aren't a list's.
+local LIST_WRITES = {
+	'%.closed%s*%[[^%]]*%]%s*=[^=]', 'table%.insert%(%s*[^,]-%.closed%s*,', 'table%.remove%(%s*[^,]-%.closed%s*[,)]',
+	'list_extend%(%s*[^,]-%.closed%s*,', '%.times%s*%[[^%]]*%]%s*=[^=]',
+	'data%.closed_buffers', 'corpus%.closed_buffers', '^%s*closed_buffers%s*=',
+}
+local NOT_A_LIST = {
+	['lua/frogman/domains/storage/routines.lua'] = {
+		'storage.closed = vim.tbl_filter(keeps, storage.closed or {})', -- the session file's policy
+		'list.closed = vim.tbl_filter(keeps, list.closed or {})', -- the same, a detached list in the file
+		'saved.closed, saved.closed_times = serialise_closed_buffers(session.pools)', -- a records write's file
+		'list.closed, list.closed_times = change.closed, change.times', -- a list in that file alone
+	},
+	['lua/frogman/domains/ledger/routines.lua'] = { 'step.closed = true' }, -- a step closed, no list
+	['lua/frogman/domains/ui/routines.lua'] = {
+		'picker.refs, picker.filetypes, picker.times, picker.drawn = refs, filetypes, times, drawn', -- what it drew
+	},
+}
+
+-- Whether a line assigns a list's closed files or close times: one of its targets, before its first
+-- `=`, is a field named `closed` or `times`.
+local function assigns(code)
+	local targets = code:match('^%s*([%w_%.%[%]%s,]-)%s*=[^=]')
+	for target in (targets or ''):gmatch('[^,]+') do
+		if vim.trim(target):match('%.closed$') or vim.trim(target):match('%.times$') then
+			return true
+		end
+	end
+	return false
+end
+
+T['T925 [char] (M5, DESK.md:654-655) every write to a list goes through the Pool class'] = function()
+	local found = {}
+	for _, path in ipairs(vim.fs.find(function(name) return name:match('%.lua$') ~= nil end,
+			{ path = 'lua/frogman', type = 'file', limit = math.huge })) do
+		local rel = path:match('(lua/frogman/.*)$')
+		if not rel:match('domains/history/pool%.lua$') then
+			local n = 0
+			for line in io.lines(path) do
+				n = n + 1
+				local code = line:gsub('%-%-.*$', '')
+				local named = false
+				for _, ok in ipairs(NOT_A_LIST[rel] or {}) do
+					if vim.trim(code) == ok then named = true end
+				end
+				if not named then
+					local hit = assigns(code)
+					for _, pattern in ipairs(LIST_WRITES) do
+						hit = hit or code:match(pattern) ~= nil
+					end
+					if hit then
+						table.insert(found, rel .. ':' .. n)
+					end
+				end
+			end
+		end
+	end
+	table.sort(found)
+	eq({ module = vim.uv.fs_stat('lua/frogman/domains/history/pool.lua') ~= nil, writes = found }, { module = true, writes = {} })
+end
+
+T['T927 [char] (M5, DESK.md:654) clear_closed_buffers() empties the editor\'s list in place'] = function()
+	child.steps({ ':e c', ':e a', ':e b', ':bdelete c.txt' })
+	local got = child.lua([[
+		local H = require('frogman.domains.history')
+		local before = H.routines.pools()['']
+		H.clear_closed_buffers()
+		local after = H.routines.pools()['']
+		return { same = rawequal(before, after), empty = #after.closed == 0, field = H.data.closed_buffers == nil,
+			read = #H.get_closed_buffers() }
+	]])
+	eq(got, { same = true, empty = true, field = true, read = 0 })
+end
+
 T['T696 [char] (M6 Triquetra) a copy of a triquetra holds nothing'] = function()
 	child.steps({ ':e c', ':e a', ':e b', ':bdelete c.txt' })
 	eq(child.slots(), '⦉a⦊ [b] ⟦-⟧')
@@ -415,13 +526,14 @@ T['T698 [char] (M2 Holders, P10) a file no holder holds is forgotten once the ed
 end
 
 T['T877 [char] (M2 Holders) two lists whose ids read alike with the newline a space hold apart'] = function()
-	child.steps({ ':e a', ':e b', ':e c' })
+	child.steps({ ':e a', ':e b', ':e c', ':bdelete a.txt', ':bdelete b.txt' })
 	local held = child.lua([[
 		local H = require('frogman.domains.history')
+		local Pool = require('frogman.domains.history.pool')
 		local root = _G.FRG_TEST.root
 		local a, b = H.get_handle_from_filepath(root .. '/a.txt'), H.get_handle_from_filepath(root .. '/b.txt')
-		H.routines.hold_pool({ id = 'x /a\n/b', closed = { a } })
-		H.routines.hold_pool({ id = 'x\n/a /b', closed = { b } })
+		Pool.new({ id = 'x /a\n/b' }):push(a, nil, true) -- closed, so a list can hold them
+		Pool.new({ id = 'x\n/a /b' }):push(b, nil, true)
 		local function lists(id)
 			local n = 0
 			for _, place in ipairs(H.handles.holders(id)) do if place:match('^pool:x') then n = n + 1 end end

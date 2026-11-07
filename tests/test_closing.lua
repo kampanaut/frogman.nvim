@@ -161,7 +161,7 @@ T['T83 [char] <M-.> on a modified No Name buffer closes it and caches its lines,
 
 	child.steps({ '<M-.>' })
 	eq(child.lua('return vim.api.nvim_buf_is_valid(...)', { buf }), false)
-	eq(child.lua('return require("frogman.domains.history").data.closed_buffers'), { h })
+	eq(child.lua('return require("frogman.domains.history").get_closed_buffers()'), { h })
 	eq(
 		child.lua('return require("frogman.domains.history").handles.get(...).text', { h }),
 		{ lines = { 'one', 'two', 'three' }, filetype = 'lua', cursor = { 2, 1 } }

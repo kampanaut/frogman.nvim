@@ -40,6 +40,7 @@
 
 local data = require('frogman.domains.storage.data')
 local history = require('frogman.domains.history')
+local pool_class = require('frogman.domains.history.pool')
 local historyState = require('frogman.domains.history.states')
 local window = require('frogman.domains.window')
 local configs = require('frogman.configs')
@@ -270,19 +271,18 @@ local load_pool = nil
 ---@return nil
 local function close_if_not_restored(id)
 	local filepath = history.get_filepath_from_handle(id)
-	local closed = load_pool and load_pool.closed or history.data.closed_buffers
+	local into = load_pool or history.routines.pools()[""]
 	if
 		filepath and
 		not filepath:match("^NONAME_") and
 		history.get_buffer_from_handle(id) == nil and
-		not vim.tbl_contains(closed, id)
+		not vim.tbl_contains(into.closed, id)
 	then
-		table.insert(closed, 1, id)
-		history.routines.hold_pool(load_pool or history.routines.pools()[""])
+		into:push_oldest(id, nil, true) -- the load's own: not news to its file
 		local ledger = require('frogman.domains.ledger')
 		local filehash = history.get_hash_from_handle(id)
 		ledger.move("closed", { subject = filehash, name = ledger.name_of(filehash),
-			lists = { history.routines.list_name(load_pool or history.routines.pools()[""]) },
+			lists = { history.routines.list_name(into) },
 			words = "not restored by the session manager" })
 	end
 end
@@ -1168,21 +1168,18 @@ end
 ---entries it doesn't have go under them, as the oldest
 ---@return nil
 local function load_closed_buffers(closed_buffers, noname_content, key, scratch_dir, times, merge)
+	-- the list as it stands once the load is done, written through its class in one change
+	local closed, closed_times, placed = {}, {}, {}
 	if merge then
 		-- what's in memory is newer than the file
-	elseif load_pool.id == "" then
-		history.clear_closed_buffers()
-		load_pool = history.routines.pools()[""]
-	else
-		load_pool.closed, load_pool.times = {}, {}
+		closed, closed_times = vim.list_slice(load_pool.closed, 1, #load_pool.closed), vim.deepcopy(load_pool.times)
+	end
+	for _, id in ipairs(closed) do
+		placed[id] = true
 	end
 	local at = 1
 
-	if closed_buffers == nil then
-		return
-	end
-
-	for _, filehash in ipairs(closed_buffers) do
+	for _, filehash in ipairs(closed_buffers or {}) do
 		local filepath = history.get_filepath_from_hash(filehash) -- return: either closed filepath or NONAME_<x>
 		if not filepath then
 			require('frogman.domains.ledger').never("What the fuck. This is impossible.")
@@ -1191,9 +1188,10 @@ local function load_closed_buffers(closed_buffers, noname_content, key, scratch_
 			goto continue -- the session manager brought it back
 		end
 		local handle = history.handles.of_hash(filehash) -- the list holds its file's handle
-		if merge and vim.tbl_contains(load_pool.closed, handle.id) then
-			goto continue
+		if placed[handle.id] then
+			goto continue -- in memory already, or a hash the file holds twice: placed once
 		end
+		placed[handle.id] = true
 		if filepath:match("^NONAME_") then
 			if handle.text == nil or (load_pool.id ~= "" and not merge) then
 				local content = noname_content[filehash]
@@ -1212,16 +1210,16 @@ local function load_closed_buffers(closed_buffers, noname_content, key, scratch_
 			end
 		end
 		if merge then
-			table.insert(load_pool.closed, at, handle.id)
+			table.insert(closed, at, handle.id)
 			at = at + 1
 		else
-			table.insert(load_pool.closed, handle.id)
+			table.insert(closed, handle.id)
 		end
-		load_pool.times[handle.id] = load_pool.times[handle.id] or (times and times[filehash]) or nil
+		closed_times[handle.id] = closed_times[handle.id] or (times and times[filehash]) or nil
 		::continue::
 	end
-	history.routines.hold_pool(load_pool)
-	-- print_table(history.data.closed_buffers)
+	load_pool:replace(closed, closed_times, true) -- the load's own: not news to its file
+	-- print_table(history.routines.pools()[""].closed)
 end
 
 ---Get a session's file path from its directory and name.
@@ -1617,9 +1615,7 @@ end
 ---@param of string|nil The id of the session's pool it came from
 ---@return Pool pool The new pool, added to the pools
 local function new_detached_pool(label, of)
-	local pool = { id = "\0detached\n" .. label, name = label, detached = true, of = of, closed = {}, times = {}, visits = {}, tabs = {} }
-	history.data.pools[pool.id] = pool
-	return pool
+	return pool_class.new({ id = "\0detached\n" .. label, name = label, detached = true, of = of })
 end
 
 ---Move a tab into a detached pool, out of the pool it was in.
@@ -1684,12 +1680,11 @@ local function push_out(pool, tabpage)
 		if other ~= tabpage and vim.api.nvim_tabpage_is_valid(other) then
 			in_file = in_file or file_detached_lists()
 			local detached = new_detached_pool(detached_label(pool, in_file), pool.id)
-			detached.closed, detached.times, detached.visits = vim.deepcopy(pool.closed), vim.deepcopy(pool.times), vim.deepcopy(pool.visits)
-			history.routines.hold_pool(detached)
+			detached:replace(pool.closed, pool.times) -- the whole editor's records hold it from now on
+			detached.visits = vim.deepcopy(pool.visits)
 			join_detached(other, detached)
 			marks().copy_scope("session", pool.id, detached.id) -- the session's marks, the two going their own ways after
 			snapshots().copy_held(pool.id, detached.id) -- and its held-over snapshots, the same way
-			history.routines.pool_changed(detached)
 			require('frogman.domains.ledger').move("detached", { subject = detached.id, name = detached.name,
 				words = "tab " .. vim.api.nvim_tabpage_get_number(other) .. " keeps " .. history.routines.list_name(pool) .. "'s list" })
 		end
@@ -2852,8 +2847,7 @@ function M.settle_merging()
 		if pool.merging and next(pool.tabs) == nil then
 			pool.merging = nil
 			if #pool.closed == 0 then
-				history.data.pools[id] = nil
-				history.routines.drop_pool(pool)
+				pool:drop()
 				-- what windows closed in its tab left held over isn't a copy: it goes to the whole editor's scope
 				marks().move_held(id, "")
 				snapshots().move_held(id, "")
@@ -3029,8 +3023,7 @@ local function close_now(pool)
 		end
 		local ledger = require('frogman.domains.ledger')
 		if ok then
-			history.data.pools[pool.id] = nil
-			history.routines.drop_pool(pool)
+			pool:drop()
 			marks().drop_scope("session", pool.id) -- its marks are on its entry in the file now
 			snapshots().drop_held(pool.id) -- and its held-over snapshots
 			ledger.move("detached_left", { subject = pool.id, name = pool.name, words = data.replayed and "let go" or "into the whole editor's file" })
@@ -3045,8 +3038,7 @@ local function close_now(pool)
 	local ledger = require('frogman.domains.ledger')
 	if ok then
 		dirty[pool.id] = nil
-		history.data.pools[pool.id] = nil
-		history.routines.drop_pool(pool)
+		pool:drop()
 		marks().drop_scope("session", pool.id) -- its marks are in its file now, and go with its list
 		snapshots().drop_held(pool.id) -- and so are the snapshots held over in its scope
 		forget_closed_keys()

@@ -11,19 +11,6 @@
 ---@field hash_buffer_registry BuffersRegistry Bidirectional file hash ↔ buffer number mappings
 ---@field hash_filepath_registry FilepathRegistry Bidirectional file hash ↔ file path mappings
 ---@field cycling_origins table<number, WindowSnapshot> Window states before cycling began (winid → snapshot)
----@field closed_buffers HandleId[] Stack of closed buffer handles that can be reopened via hash_filepath_registry
-
----@class Pool A session's own closed stack, close times and visits
----@field id string Pool id: "" for the editor's, or the tab session's name and directory
----@field name string|nil The tab session's name
----@field directory string|nil The tab session's directory
----@field closed HandleId[] Closed files' handles, newest last
----@field times table<HandleId, number> File's handle → close time, in seconds to the microsecond
----@field visits table<HandleId, integer> Its own visits, ranked above the editor's in its tab
----@field tabs table<integer, boolean> Tabs it's in (tabpage → true), none if its last tab closed unsaved
----@field detached boolean|nil Whether it's a detached list: a tab's own once its session moved to another tab
----@field of string|nil For a detached list, the id of the session it was detached from
----@field merging boolean|nil Whether a detached list waits in memory for the closed lists opened on it to close
 
 ---@class BufferCruxInternals
 ---@field window table<WinId, table<HandleId, integer>> -- Window-specific crux: winid → file's handle → access_time. Can be partial
@@ -87,14 +74,12 @@ local corpus = {
 	},
 	-- Window states captured before cycling for restoration
 	cycling_origins = {}, -- cycling_origins
-	-- Stack of closed buffer handles that can be reopened
-	closed_buffers = {},
 	-- How many session loads have run: an arrival queued before one is the restore's own, and dropped
 	loads = 0,
 	-- The last label seen (a git branch, say), and whether one was looked for yet
 	last_label = nil,
 	label_seen = false,
-	-- Each session's pool (id → pool): the editor's, id "", holds closed_buffers itself; a tab session's is
+	-- Each session's pool (id → pool), a `Pool` (history/pool.lua): the editor's, id "", and a tab session's,
 	-- keyed by its name and directory
 	pools = {},
 	-- The tab session each tab belongs to (tabpage → pool id); a tab in none belongs to the editor's pool
@@ -105,5 +90,4 @@ local corpus = {
 	-- cleanup and the UI leave such a buffer to its close
 	closing = {},
 }
-corpus.pools[""] = { id = "", closed = corpus.closed_buffers, times = {}, visits = {}, tabs = {} }
 return corpus

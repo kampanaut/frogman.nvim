@@ -1599,7 +1599,7 @@ T['T822 [char] (A26, M2 Holders) a replay\'s planted closed files are held by th
 		local id = H.get_handle_from_hash(b)
 		local held = false
 		for _, place in ipairs(H.handles.holders(id)) do held = held or place:match('^pool:') ~= nil end
-		return { listed = id ~= nil and vim.tbl_contains(H.data.closed_buffers, id), held = held, known = H.data.hash_filepath_registry.filepaths[b] ~= nil }
+		return { listed = id ~= nil and vim.tbl_contains(H.get_closed_buffers(), id), held = held, known = H.data.hash_filepath_registry.filepaths[b] ~= nil }
 	]]), { listed = true, held = true, known = true })
 end
 

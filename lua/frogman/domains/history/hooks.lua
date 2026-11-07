@@ -65,15 +65,8 @@ end, 0, true, states.mode.DELETE)
 local handles = require('frogman.domains.history.handles')
 local handle_states = handles.states
 
--- a file open again is closed nowhere: it leaves every list, which remembers it for its next close, and
--- the lists' names go to the trail
-handles.model:on(handle_states.CLOSED, handle_states.OPEN, "off_the_lists", function(context, handle)
-	context.left, context.others = routines.open_out_of_pools(handle.id)
-	-- a file never written comes back as a new one, which the trail says
-	local filepath = routines.get_filepath_from_hash(context.hash)
-	context.new = handle.unwritten ~= nil and filepath ~= nil and not filepath:match("^NONAME_")
-		and vim.fn.filereadable(filepath) == 0 or nil
-end, 2, true)
+-- a file open again comes off every list: the lists' own hook, `off_the_lists`, is the class's
+-- (history/pool.lua), class 2
 
 -- a No Name text reopened is its buffer's now
 handles.model:on(handle_states.CLOSED, handle_states.OPEN, "text_into_buffer", function(_, handle)

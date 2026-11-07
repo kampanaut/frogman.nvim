@@ -196,7 +196,7 @@ local function planter(files)
 	---Check if a hash is on the editor's closed list, which holds its file's handle.
 	function plant.closed(hash)
 		local id = history.get_handle_from_hash(hash)
-		return id ~= nil and vim.tbl_contains(history.data.closed_buffers, id)
+		return id ~= nil and vim.tbl_contains(history.get_closed_buffers(), id)
 	end
 
 	---Open a hash's buffer and register it, loading it without autocmds.
@@ -286,22 +286,21 @@ local function plant_snapshot(snapshot, plant)
 			editor = pool
 		end
 	end
+	-- every list's closed files go on the editor's, a replay having no tab sessions
+	local closed, times = vim.list_slice(editor.closed, 1, #editor.closed), vim.deepcopy(editor.times)
 	for _, list in ipairs(snapshot.lists or {}) do
 		for _, hash in ipairs(list.closed or {}) do
 			plant.known(hash)
 			local id = history.get_handle_from_hash(hash)
-			if id and not plant.closed(hash) then
-				table.insert(history.data.closed_buffers, id)
-				if editor and list.times and list.times[hash] then
-					editor.times = editor.times or {}
-					editor.times[id] = list.times[hash]
+			if id and not vim.tbl_contains(closed, id) then
+				table.insert(closed, id)
+				if list.times and list.times[hash] then
+					times[id] = list.times[hash]
 				end
 			end
 		end
 	end
-	if editor then
-		history.routines.hold_pool(editor) -- the planted closed files are held by their list, as a close holds them
-	end
+	editor:replace(closed, times, true) -- the planted closed files are held by their list, as a close holds them
 	for _, w in ipairs(snapshot.windows or {}) do
 		plant.row(windows[w.window], w)
 	end

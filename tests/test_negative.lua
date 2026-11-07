@@ -886,14 +886,14 @@ T['T246 [char] (S2) a No Name buffer closed with <M-.> stays on the closed stack
 	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "kept text" })')
 	child.steps({ '<M-.>' })
 	eq(child.shown(), 'a')
-	eq(#child.lua('return require("frogman.domains.history").data.closed_buffers'), 1)
+	eq(#child.lua('return require("frogman.domains.history").get_closed_buffers()'), 1)
 	eq(Misc.save(child), { true })
 
 	start(s)
 	Misc.restore(child, { 'a' }, 'a')
 	eq(Misc.load(child), { true })
 	child.settle(300)
-	eq(#child.lua('return require("frogman.domains.history").data.closed_buffers'), 1)
+	eq(#child.lua('return require("frogman.domains.history").get_closed_buffers()'), 1)
 	child.steps({ '<M-S-w>' })
 	eq(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), { 'kept text' })
 end

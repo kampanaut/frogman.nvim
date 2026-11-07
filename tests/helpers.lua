@@ -112,7 +112,7 @@ _G.FRG_TEST = {
 	end,
 	closed = function()
 		local out = {}
-		for _, h in ipairs(H.data.closed_buffers) do table.insert(out, name(h)) end
+		for _, h in ipairs(H.get_closed_buffers()) do table.insert(out, name(h)) end
 		return table.concat(out, ',')
 	end,
 	-- Press a mapped key by running its mapping, so errors come back instead of

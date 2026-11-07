@@ -51,7 +51,7 @@ return function(name)
 		if bad then return bad end
 	end
 	for _, pool in pairs(H.routines.pools()) do
-		local bad = same(H.routines.pool_place(pool), pool.closed)
+		local bad = same(pool:place(), pool.closed)
 		if bad then return bad end
 	end
 	-- each mark's place holds its file (M15)

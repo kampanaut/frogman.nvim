@@ -236,7 +236,7 @@ checks.I2 = { post = function()
 			if not known(h) then return string.format('window %d history entry has no path', winid) end
 		end
 	end
-	for _, h in ipairs(H.data.closed_buffers) do if not known(h) then return 'closed stack entry has no path' end end
+	for _, h in ipairs(H.get_closed_buffers()) do if not known(h) then return 'closed stack entry has no path' end end
 end }
 
 -- I3: every triquetra has its window's history entry.

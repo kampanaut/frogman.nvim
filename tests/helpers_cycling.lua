@@ -87,7 +87,7 @@ _G.FRG_X = {
 			end
 		end
 		if H.data.crux[id] then hit('history') end
-		for _, h in ipairs(H.data.closed_buffers) do
+		for _, h in ipairs(H.get_closed_buffers()) do
 			if h == id then hit('closed') end
 		end
 		return out

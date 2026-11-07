@@ -768,9 +768,10 @@ end
 ---confirmed, since it exists nowhere else.
 ---
 ---The lines it would leave out are asked about first, in one prompt: a line that names no list or
----file, a file with no list above it, and a file twice under one header that no other list drew,
----which can only be a pasted copy. A file twice under a header that another list drew too is a
----merge, and kept once without asking. No writes nothing, and puts the cursor on the first of those
+---file, a file with no list above it, a file twice under one header that no other list drew,
+---which can only be a pasted copy, and a file open again since it was drawn, which no list in memory
+---holds. A file twice under a header that another list drew too is a merge, and kept once without
+---asking. No writes nothing, and puts the cursor on the first of those
 ---lines. A No Name text kept at its own question writes nothing too. When the lists in the whole
 ---editor's file alone can't be written, it says so and returns false, with the other lists already
 ---written.
@@ -804,7 +805,7 @@ local function write_closed_lists(dbuf, leaving)
 		end
 		return false
 	end
-	local current, current_header, new, count, left_out = nil, nil, {}, {}, {}
+	local current, current_header, new, count, left_out, open_now = nil, nil, {}, {}, {}, {}
 	for row, line in ipairs(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) do
 		local text = vim.trim(line)
 		if text ~= "" then
@@ -812,6 +813,10 @@ local function write_closed_lists(dbuf, leaving)
 			if picker.headers[text] then
 				current, current_header = picker.headers[text], text
 				new[current], count[current] = new[current] or {}, count[current] or {}
+			elseif ref and current and not current.file_only and history.get_buffer_from_hash(file_of(ref)) then
+				-- open again since it was drawn: a list in memory holds no open file
+				open_now[file_of(ref)] = true
+				table.insert(left_out, { row = row, text = text, why = "open now" })
 			elseif ref and current then
 				local file = file_of(ref)
 				count[current][file] = (count[current][file] or 0) + 1
@@ -851,7 +856,7 @@ local function write_closed_lists(dbuf, leaving)
 	end
 	for text, ref in pairs(picker.refs) do
 		local file = file_of(ref)
-		if not placed[file] and not gone[file] then
+		if not placed[file] and not gone[file] and not open_now[file] then -- an open file isn't gone
 			gone[file] = true
 			-- one a mark or a snapshot holds exists there, and keeps its text
 			local handle = entry_handle(ref)
@@ -896,11 +901,14 @@ local function write_closed_lists(dbuf, leaving)
 			local closed, times = {}, {}
 			for i = #refs, 1, -1 do
 				local ref = refs[i]
-				-- moved in from a list in the file alone: memory takes it in, by its handle
-				local id = type(ref) == "number" and ref or storage.adopt_file_entry(ref)
-				if id then
-					table.insert(closed, id)
-					times[id] = closed_entry_time(picker, pool, ref, count[pool][file_of(ref)] == 1)
+				-- one opened while the prompt waited is left out too, as an open file is
+				if history.get_buffer_from_hash(file_of(ref)) == nil then
+					-- moved in from a list in the file alone: memory takes it in, by its handle
+					local id = type(ref) == "number" and ref or storage.adopt_file_entry(ref)
+					if id then
+						table.insert(closed, id)
+						times[id] = closed_entry_time(picker, pool, ref, count[pool][file_of(ref)] == 1)
+					end
 				end
 			end
 			-- closed onto it since it was drawn: kept, as the newest
@@ -911,12 +919,7 @@ local function write_closed_lists(dbuf, leaving)
 				end
 			end
 			if not vim.deep_equal(closed, pool.closed) or not vim.deep_equal(times, pool.times) then
-				for i = #pool.closed, 1, -1 do
-					pool.closed[i] = nil -- in place: the editor's list is closed_buffers itself
-				end
-				vim.list_extend(pool.closed, closed)
-				pool.times = times
-				history.routines.pool_changed(pool)
+				pool:replace(closed, times)
 			end
 		end
 	end

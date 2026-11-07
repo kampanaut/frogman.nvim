@@ -993,12 +993,13 @@ T['T650 [char] (M14) a settle point checks the known files as a tick does'] = fu
 	local tagged = child.lua([[
 		local H = require('frogman.domains.history')
 		local pool = H.routines.pools()['']
+		local closed = vim.list_slice(pool.closed, 1, #pool.closed)
 		for n = 1, 1000 do
 			local path = '/nowhere/' .. n
 			H.register_filepath(path) -- known, so the list holds its handle
-			table.insert(pool.closed, H.get_handle_from_filepath(path))
+			table.insert(closed, H.get_handle_from_filepath(path))
 		end
-		H.routines.hold_pool(pool) -- held by their list, as a close holds them
+		pool:replace(closed, pool.times, true) -- held by their list, as a close holds them
 		vim.api.nvim_exec_autocmds('FocusGained', {})
 		local n = 0
 		for _, h in pairs(H.handles.live()) do
@@ -1224,10 +1225,42 @@ T['T541 [char] (S1 Load, S2) a load fixes a session file that broke its own rule
 		return false
 	]])
 	eq({ errors = errors, dump = child.dumped_since(dumps), warns = #warns, trail = trail, x = child.closed():find('x') ~= nil,
-		nopath = child.lua('for _, h in ipairs(require("frogman.domains.history").data.closed_buffers) do if h == "deadbeefdeadbeef" then return true end end return false') },
+		nopath = child.lua('for _, h in ipairs(require("frogman.domains.history").get_closed_buffers()) do if h == "deadbeefdeadbeef" then return true end end return false') },
 		{ errors = {}, dump = nil, warns = 1, trail = true, x = true, nopath = false })
 	child.step('<M-S-w>')
 	eq(child.shown(), 'x')
+end
+
+-- A file another writer left holding a closed hash twice, as a hand edit could: the load places it once,
+-- since a list holds a file once (I22), and nothing dumps.
+T['T928 [char] (S1 Load, M5, I22, DESK.md:660) a session file holding a closed hash twice loads it once'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c', ':e b', ':bdelete c.txt' })
+	eq(Misc.save(child), { true })
+
+	-- planted in the fresh editor: the first one's quit writes its records over the file
+	S2.start(child, s)
+	child.lua([[
+		local crypto = require('frogman.domains.storage.crypto')
+		local dir, name = vim.fn.getcwd(-1, -1), vim.fn.getcwd()
+		local path = require('frogman.configs').session_dir .. vim.fn.sha256(dir .. "\n" .. name)
+		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
+		local salt = bytes:sub(5, 4 + crypto.salt_length)
+		local data = require('frogman.domains.storage.routines').read_session(dir, name)
+		table.insert(data.closed, 1, data.closed[#data.closed]) -- c's hash, twice
+		local header = "CDV1" .. salt
+		local out = header .. crypto.seal(crypto.derive_key(dir, salt), vim.json.encode(data), header)
+		fh = assert(io.open(path, 'wb')); fh:write(out); fh:close()
+	]])
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	child.messages()
+	local dumps = child.dump_files()
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	local errors = vim.tbl_map(function(m) return m.msg end,
+		vim.tbl_filter(function(m) return m.level == Misc.ERROR end, child.messages()))
+	eq({ errors = errors, dump = child.dumped_since(dumps), closed = child.closed() }, { errors = {}, dump = nil, closed = 'c' })
 end
 
 -- The text is open in the ternary, the window on b, when the session is saved;
@@ -1317,7 +1350,7 @@ end
 T['T309 [char] (S2) no count limit: 150 closed files all come back'] = function()
 	local s = S2.shared()
 	for i = 1, 150 do vim.fn.writefile({ 'n' }, s.root .. '/n' .. i .. '.txt') end
-	local function closed() return child.lua('return #require("frogman.domains.history").data.closed_buffers') end
+	local function closed() return child.lua('return #require("frogman.domains.history").get_closed_buffers()') end
 	S2.start(child, s)
 	child.steps({ ':e a' })
 	child.lua([[
@@ -3912,8 +3945,7 @@ local function x_on_both(s)
 		local x = H.get_handle_from_filepath(vim.fn.getcwd(-1, -1) .. '/x.txt')
 		local editor = H.routines.pools()['']
 		local session = H.routines.pool_of_tab(vim.api.nvim_win_get_tabpage(w2))
-		table.insert(session.closed, x)
-		session.times[x] = editor.times[x] + 60
+		session:push(x, editor.times[x] + 60, true)
 	]], { w2 })
 	return w1, w2
 end
@@ -4151,7 +4183,7 @@ T['T376 [char] (S2) discarding a No Name entry in the picker asks first'] = func
 	local function noname_listed()
 		return child.lua([[
 			local H = require('frogman.domains.history')
-			for _, h in ipairs(H.data.closed_buffers) do
+			for _, h in ipairs(H.get_closed_buffers()) do
 				if (H.get_filepath_from_handle(h) or ''):match('^NONAME_') then return H.handles.get(h).text ~= nil end
 			end
 			return false
@@ -4333,6 +4365,31 @@ T['T677 [char] (S2) q stays open when the prompt is answered No'] = function()
 	child.settle()
 	eq({ no, { open = child.lua('return vim.api.nvim_win_is_valid(...)', { p.win }), closed = child.closed() } },
 		{ { open = true, modified = true }, { open = false, closed = 'b,c' } })
+end
+
+-- b and c closed, the lists open with an edit not written (their lines swapped), then c reopened in the
+-- window they came from, as from another window: c's line, drawn closed, is open by the write. The
+-- cleanup tick waits an hour, so nothing else takes c off a list between.
+T['T926 [char] (S2 Closed-stack picker, I7, DESK.md:654) the write asks about a line whose file is open now, and Yes leaves it off'] = function()
+	two_closed()
+	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
+	local p = S2.picker(child)
+	local lines = vim.deepcopy(p.lines)
+	local c, b = S2.line_of(lines, 'c.txt'), S2.line_of(lines, 'b.txt')
+	lines[c], lines[b] = lines[b], lines[c]
+	child.lua('vim.api.nvim_buf_set_lines(..., 0, -1, false, select(2, ...))', { p.buf, lines })
+	child.lua([[
+		local from = ...
+		vim.api.nvim_win_call(from, function() vim.cmd('edit c.txt') end)
+	]], { p.came_from })
+	child.settle()
+	child.prompts()
+	child.answer('Yes')
+	child.lua('vim.api.nvim_buf_call(..., function() vim.cmd("write") end)', { p.buf })
+	child.settle()
+	local asked = child.prompts()
+	local open_now = #asked == 1 and asked[1]:find('c.txt', 1, true) ~= nil and asked[1]:find('open now', 1, true) ~= nil
+	eq({ asked = open_now, closed = child.closed() }, { asked = true, closed = 'b' })
 end
 
 T['T525 [char] (S1 Load) a window entry whose maps are saved as null loads with empty ones'] = function()

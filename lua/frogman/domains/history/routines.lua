@@ -1,6 +1,7 @@
 local data = require("frogman.domains.history.data")
 local configs = require("frogman.configs")
 local handles = require("frogman.domains.history.handles")
+local pool_class = require("frogman.domains.history.pool")
 
 local M = {}
 
@@ -222,47 +223,13 @@ function M.known_handles()
 	return known
 end
 
----Get the name of a list's place, as the handles' holders know it.
----
----@param pool Pool
----@return string place "pool:editor", or "pool:" and the pool's id, the session's name and directory
-local function pool_place(pool)
-	return "pool:" .. (pool.id == "" and "editor" or pool.id) -- the id as it is, so two never read alike
-end
-M.pool_place = pool_place
-
----Hold the files a list holds now, by its place.
----
----Called at every change to a list's closed files, and once a list is made or filled.
----
----@param pool Pool
----@return nil
-function M.hold_pool(pool)
-	handles.hold(pool_place(pool), pool.closed)
-end
-
----Let go of everything a list held, as it leaves memory.
----
----@param pool Pool
----@return nil
-function M.drop_pool(pool)
-	handles.drop_place(pool_place(pool))
-end
-
 ---Get the editor's pool.
 ---
----Its closed stack is closed_buffers itself, whatever replaced that table last. When it isn't,
----or there's no editor's pool yet, a fresh pool is made around that table.
+---Its list is its own, as every list is (`history/pool.lua`).
 ---
 ---@return Pool pool The editor's pool
 local function editor_pool()
-	local pool = data.pools[""]
-	if pool == nil or not rawequal(pool.closed, data.closed_buffers) then
-		pool = { id = "", closed = data.closed_buffers, times = {}, visits = {}, tabs = {} }
-		data.pools[""] = pool
-		M.hold_pool(pool) -- the table it's made around holds what it holds
-	end
-	return pool
+	return pool_class.editor()
 end
 
 ---Callback given a pool's id when its records (closed list, close times) change
@@ -271,20 +238,6 @@ end
 ---
 ---@type fun(id: string)|nil
 M.on_records_change = nil
-
----Mark a pool's records as changed.
----
----Tells `M.on_records_change`, when that's set.
----
----@param pool Pool The pool whose closed list or close times changed
----@return nil
-local function changed(pool)
-	M.hold_pool(pool) -- its holders follow its closed files at once
-	if M.on_records_change then
-		M.on_records_change(pool.id)
-	end
-end
-M.pool_changed = changed
 
 ---Get a pool's list name, as the closed lists and the trail show it.
 ---
@@ -344,12 +297,11 @@ end
 ---@return nil
 function M.reset_pools()
 	for _, pool in pairs(data.pools) do
-		M.drop_pool(pool)
+		pool:drop()
 	end
-	data.pools = {}
 	data.tab_pools = {}
 	data.came_from = {}
-	editor_pool()
+	pool_class.new({ id = "" }) -- the editor's, fresh: no close times, visits or tabs
 end
 
 ---Get the pool a tab belongs to.
@@ -382,7 +334,7 @@ end
 function M.holding_pools(id)
 	local found = {}
 	for pool_id, pool in pairs(M.pools()) do
-		if vim.tbl_contains(handles.held_by(pool_place(pool)), id) then
+		if vim.tbl_contains(handles.held_by(pool:place()), id) then
 			found[pool_id] = true
 		end
 	end
@@ -409,11 +361,7 @@ end
 ---@return Pool pool The tab session's pool
 function M.join_pool(tabpage, name, directory)
 	local id = M.pool_id(name, directory)
-	local pool = data.pools[id]
-	if pool == nil then
-		pool = { id = id, name = name, directory = directory, closed = {}, times = {}, visits = {}, tabs = {} }
-		data.pools[id] = pool
-	end
+	local pool = data.pools[id] or pool_class.new({ id = id, name = name, directory = directory })
 	local previous = data.tab_pools[tabpage]
 	if previous and previous ~= id and data.pools[previous] then
 		data.pools[previous].tabs[tabpage] = nil
@@ -421,26 +369,6 @@ function M.join_pool(tabpage, name, directory)
 	data.tab_pools[tabpage] = id
 	pool.tabs[tabpage] = true
 	return pool
-end
-
----Put a file on a pool's closed stack as its newest entry.
----
----A pool keeps one copy of each file, so an older entry for it is taken off first. The close
----time is stored, and the pool is marked as changed.
----
----@param pool Pool The pool it goes on
----@param id HandleId The file's handle
----@param time integer|nil When it was closed (defaults to now)
----@return nil
-local function push_closed(pool, id, time)
-	for i = #pool.closed, 1, -1 do
-		if pool.closed[i] == id then
-			table.remove(pool.closed, i)
-		end
-	end
-	table.insert(pool.closed, id)
-	pool.times[id] = time or require('frogman.domains.ledger').now() -- to the microsecond, so closes in one second keep their order
-	changed(pool)
 end
 
 ---Get the tabs that visited a file.
@@ -492,30 +420,31 @@ function M.close_targets(id)
 	return ids
 end
 
----Close a file into its pools.
+---Close a file into its pools, so no list ever holds it open.
 ---
----Each of its pools (see `M.close_targets()`) gets it as its newest entry, with the same close time;
----one gone since its close was read is skipped. The trail gets the close from the handle's own
----close, which these lists' names go to, and a close onto lists other than the current tab's also
----gets a message there.
+---Its pools are the ones its close read at its event, or else its pools now (see
+---`M.close_targets()`), one gone since skipped. Its buffer's registration goes first, and its handle
+---closes with the lists' names for the trail, a close onto lists other than the current tab's getting
+---a message there; then the file goes on each list as its newest entry, with one close time.
 ---
----@param id HandleId The file's handle
----@param targets string[]|nil The pools' ids, when the close read them before (at its event)
----@return string[] lists The lists it went on, by name, the current tab's first
----@return string[] others Of those, the lists other than the current tab's
-function M.close_into_pools(id, targets)
+---@param close FrogmanClose|{ id: HandleId, bufnr: Bufnr, hash: Filehash } The file's handle, and the buffer and hash it's registered under
+---@param context HandleContext|nil What else the handle's close carries, a repair's words
+---@return nil
+function M.close_into_pools(close, context)
 	local time = require('frogman.domains.ledger').now()
 	local pools, into = M.pools(), {}
-	for _, pool_id in ipairs(targets or M.close_targets(id)) do
+	for _, pool_id in ipairs(close.targets or M.close_targets(close.id)) do
 		if pools[pool_id] then
 			into[pools[pool_id]] = true
 		end
 	end
-	data.came_from[id] = nil
+	data.came_from[close.id] = nil
+	local closing = vim.tbl_extend("force", {}, context or {})
+	closing.lists, closing.others = named_lists(into)
+	M.unregister_buffer(close.bufnr, closing, close.hash)
 	for pool, _ in pairs(into) do
-		push_closed(pool, id, time)
+		pool:push(close.id, time)
 	end
-	return named_lists(into)
 end
 
 ---Take a file that's open again off every pool's closed stack.
@@ -530,15 +459,10 @@ end
 function M.open_out_of_pools(id)
 	local left = {}
 	for pool_id, pool in pairs(M.pools()) do
-		for i = #pool.closed, 1, -1 do
-			if pool.closed[i] == id then
-				table.remove(pool.closed, i)
-				pool.times[id] = nil
-				changed(pool)
-				data.came_from[id] = data.came_from[id] or {}
-				data.came_from[id][pool_id] = true
-				left[pool] = true
-			end
+		if pool:remove(id) then
+			data.came_from[id] = data.came_from[id] or {}
+			data.came_from[id][pool_id] = true
+			left[pool] = true
 		end
 	end
 	return named_lists(left)
@@ -552,13 +476,7 @@ end
 ---@return nil
 function M.discard_from_pools(id)
 	for _, pool in pairs(M.pools()) do
-		for i = #pool.closed, 1, -1 do
-			if pool.closed[i] == id then
-				table.remove(pool.closed, i)
-				pool.times[id] = nil
-				changed(pool)
-			end
-		end
+		pool:remove(id)
 	end
 	data.came_from[id] = nil
 end
@@ -577,9 +495,7 @@ function M.carry_closed(from, to, id)
 	if id == nil or not vim.tbl_contains(from.closed, id) or vim.tbl_contains(to.closed, id) then
 		return
 	end
-	table.insert(to.closed, 1, id)
-	to.times[id] = from.times[id]
-	changed(to)
+	to:push_oldest(id, from.times[id])
 end
 
 ---Find the git directory for the session's directory.
@@ -1384,13 +1300,13 @@ end
 
 ---Run a close read before (`M.closing()`).
 ---
----The file goes on its lists and its buffer's registration goes, the handle's close carrying the
----lists' names to the trail. Nothing happens when its handle was let go since, as a load's teardown
+---Its buffer's registration goes, the handle's close carrying the lists' names to the trail, and then
+---the file goes on its lists. Nothing happens when its handle was let go since, as a load's teardown
 ---lets every handle go, or when the file isn't registered to that buffer any more, open again in
 ---another or closed already.
 ---
 ---@param close FrogmanClose The close, as read
----@return boolean closed True if the file went on its lists
+---@return boolean closed True if the file was closed and kept, on its lists or by a mark or a snapshot
 function M.close(close)
 	if data.closing[close.bufnr] and data.closing[close.bufnr].seq == close.seq then
 		data.closing[close.bufnr] = nil
@@ -1398,10 +1314,9 @@ function M.close(close)
 	if handles.get(close.id) == nil or data.hash_buffer_registry.buffers[close.hash] ~= close.bufnr then
 		return false
 	end
-	local closed, lists, others = M.track_closing_handle(close)
+	local closed = M.track_closing_handle(close)
 	if closed then
 		-- closed, it's still known, so its history stays; it leaves the bufferline.
-		M.unregister_buffer(close.bufnr, { lists = lists, others = others }, close.hash)
 		M.update_buffer_history_ordered()
 	end
 	-- not closed, an empty No Name buffer: its close untracked and forgot it already
@@ -1431,11 +1346,10 @@ end
 ---
 ---Its close was read before (`M.closing()`): the buffer registered under the hash it had, a No Name
 ---buffer's text copied while the buffer was there, and the lists it goes on. A No Name text is kept
----on its handle.
+---on its handle. The buffer's registration goes before the file goes on any list, so no list holds
+---it open (`M.close_into_pools()`).
 ---@param close FrogmanClose The close, as read
----@return boolean success True if the file was added to the closed lists
----@return string[]|nil lists The lists it went on, by name, the current tab's first, when it was added
----@return string[]|nil others Of those, the lists other than the current tab's
+---@return boolean success True if the file was closed and kept, on its lists or by a mark or a snapshot
 function M.track_closing_handle(close)
 	local id = close.id
 	local handle = handles.get(id)
@@ -1458,7 +1372,8 @@ function M.track_closing_handle(close)
 			-- a marked one keeps its empty text, for its mark alone, and so does one a snapshot holds,
 			-- as it holds texts as marks do: closed, and on no list
 			handle.text = { lines = { "" }, filetype = close.text.filetype, cursor = close.text.cursor }
-			return true, {}, {}
+			M.unregister_buffer(bufnr, { lists = {}, others = {} }, close.hash)
+			return true
 		end
 		if #lines == 0 or (#lines == 1 and lines[1] == "") then
 			M.untrack_handle(id) -- its own history goes first, and it leaves the slots.
@@ -1474,8 +1389,8 @@ function M.track_closing_handle(close)
 	end
 
 	-- one copy per pool: a file closed again is the newest
-	local lists, others = M.close_into_pools(id, close.targets)
-	return true, lists, others
+	M.close_into_pools(close)
+	return true
 end
 
 
@@ -1492,7 +1407,7 @@ function M.track_closing_handle_force(id)
 		require('frogman.domains.ledger').never("This must not happen: Closing filehash is not registered at all.")
 	end
 
-	push_closed(M.current_pool(), id)
+	M.current_pool():push(id)
 end
 
 
@@ -1935,23 +1850,10 @@ function M.cleanup_system(on_tick)
 		-- a file whose buffer went without events is closed like any other: slots keep it and reopen it.
 		local handle = handles.of_hash(filehash)
 		if filepath and not filepath:match("^NONAME_") and handle then
-			local lists
-			if not M.is_handle_closed(handle.id) then
-				lists = M.close_into_pools(handle.id)
-			else
-				local holding = {}
-				for _, pool in pairs(M.pools()) do
-					if vim.tbl_contains(pool.closed, handle.id) then
-						holding[pool] = true
-					end
-				end
-				lists = named_lists(holding)
-			end
 			-- closed, it's still known, so its history stays: only its buffer is forgotten. The trail gets
 			-- the repair from its handle's close.
-			data.hash_buffer_registry.hashes[bufnr] = nil
-			data.hash_buffer_registry.buffers[filehash] = nil
-			handles.closed(filehash, { lists = lists, repair = "its buffer vanished without an event; kept on the closed lists" })
+			M.close_into_pools({ id = handle.id, bufnr = bufnr, hash = filehash },
+				{ repair = "its buffer vanished without an event; kept on the closed lists" })
 		else
 			detach_filehash_from_crux(filepath, filehash, { repair = "its buffer vanished without an event, and its text with it" })
 		end
@@ -1959,35 +1861,6 @@ function M.cleanup_system(on_tick)
 		::continue::
 	end
 	
-	-- 2. Clean invalid closed buffers (entries nothing names, or open again). A closed file gone from
-	-- disk stays: it may come back.
-	for pool_id, pool in pairs(M.pools()) do
-		for i = #pool.closed, 1, -1 do
-			local id = pool.closed[i]
-			local filehash = M.get_hash_from_handle(id)
-			local filepath = M.get_filepath_from_hash(filehash)
-			if filepath and M.get_buffer_from_hash(filehash) == nil then
-				goto continue
-			end
-
-			require('frogman.domains.ledger').move("repair", {
-				subject = filehash, name = filehash and require('frogman.domains.ledger').name_of(filehash) or tostring(id),
-				lists = { M.list_name(pool) },
-				state = filepath and "open" or nil,
-				words = filepath and "open again without a visit frogman saw; taken off its list"
-					or "nothing names it; taken off its list",
-			})
-			table.remove(pool.closed, i)
-			pool.times[id] = nil
-			changed(pool)
-			if filepath then -- open again: the pool is remembered for its next close
-				data.came_from[id] = data.came_from[id] or {}
-				data.came_from[id][pool_id] = true
-			end
-			::continue::
-		end
-	end
-
 	-- 1. Follow along: the notes and history of hashes no longer known go, and then their paths. A
 	-- registered buffer stays whatever the disk says: its file may not be written yet, or may come back.
 	local known = M.known_handles()
@@ -2031,7 +1904,6 @@ function M.teardown()
 	data.hash_buffer_registry = { buffers = {}, hashes = {} }
 	data.hash_filepath_registry = { filepaths = {}, hashes = {} }
 	data.cycling_origins = {}
-	data.closed_buffers = {}
 	data.last_label = nil
 	data.label_seen = false
 	handles.reset()
@@ -2049,7 +1921,6 @@ function M.repopulate_history()
 	data.hash_filepath_registry.filepaths = {}
 	data.history_index = 1
 	data.cycling_origins = {}
-	data.closed_buffers = {}
 	handles.reset()
 	M.reset_pools()
 

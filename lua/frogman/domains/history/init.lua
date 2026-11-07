@@ -94,7 +94,7 @@ end
 ---
 ---@return HandleId[] closed_buffers Stack of closed buffer handles that can be reopened
 function M.get_closed_buffers()
-	return data.closed_buffers
+	return require('frogman.domains.history.pool').editor().closed
 end
 
 ---Get ordered buffer list by recency.
@@ -132,7 +132,7 @@ function M.handle_is_closed(id)
 end
 
 function M.clear_closed_buffers()
-	data.closed_buffers = {}
+	require('frogman.domains.history.pool').editor():replace({}, {}, true) -- a reset: not news to any session's file
 end
 
 M.reopen_handle = routines.reopen_handle

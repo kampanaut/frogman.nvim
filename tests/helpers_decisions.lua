@@ -41,7 +41,7 @@ end }
 -- I7: after a cleanup pass, no file on the closed stack has an open buffer.
 checks.I7 = { post = function()
 	H.cleanup_system()
-	for _, h in ipairs(H.data.closed_buffers) do
+	for _, h in ipairs(H.get_closed_buffers()) do
 		local b = H.get_buffer_from_handle(h)
 		if b and vim.api.nvim_buf_is_valid(b) and vim.api.nvim_buf_is_loaded(b) then
 			return string.format('closed %s still has open buffer %d', name(h), b)

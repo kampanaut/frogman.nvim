@@ -670,7 +670,7 @@ T['T794 [char] (M16, M5) the No Name texts snapshots hold are written'] = functi
 		local h = s and s.ternary and S.handle(s.ternary)
 		local path = h and H.get_filepath_from_hash(h.hash) or ''
 		return { noname = path:match('^NONAME_') ~= nil, text = h ~= nil and h.text ~= nil,
-			listed = h ~= nil and vim.tbl_contains(H.data.closed_buffers, h.id) }
+			listed = h ~= nil and vim.tbl_contains(H.get_closed_buffers(), h.id) }
 	]]), { noname = true, text = true, listed = false })
 end
 
@@ -746,7 +746,7 @@ local function state(stem)
 		local H = require('frogman.domains.history')
 		local h = H.routines.get_filehash(_G.FRG_TEST.root .. '/' .. ... .. '.txt')
 		local id = H.get_handle_from_hash(h)
-		return { taken = H.get_buffer_from_hash(h) ~= nil, listed = id ~= nil and vim.tbl_contains(H.data.closed_buffers, id) }
+		return { taken = H.get_buffer_from_hash(h) ~= nil, listed = id ~= nil and vim.tbl_contains(H.get_closed_buffers(), id) }
 	]], { stem })
 end
 
@@ -755,7 +755,7 @@ local function texts_on_list()
 	return child.lua([[
 		local H = require('frogman.domains.history')
 		local n = 0
-		for _, h in ipairs(H.data.closed_buffers) do
+		for _, h in ipairs(H.get_closed_buffers()) do
 			if (H.get_filepath_from_handle(h) or ''):match('^NONAME_') then n = n + 1 end
 		end
 		return n
