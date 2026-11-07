@@ -33,15 +33,6 @@ function M.held_header(what, taken)
 	return name
 end
 
----Check if a held-over header is a load's: `held over · proj, loaded · …`, not a close's.
----
----@param header string The header, a group's name or a snapshot's
----@return boolean loaded Whether a load wrote it
-function M.from_load(header)
-	return header:find("^held over · ") ~= nil and header:find(", loaded", 1, true) ~= nil
-		and header:find("^held over · window") == nil and header:find("^held over · tab on ") == nil
-end
-
 ---Wait for the editor to settle before doing what a close left, in a queue a load or a tab's close
 ---can drop from.
 ---

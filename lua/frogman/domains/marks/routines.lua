@@ -628,21 +628,38 @@ local function held_name(scope, what)
 	return require('frogman.held').held_header(what, taken)
 end
 
----Let go of the copies a load held over of these groups, as the window they came from takes them back:
----each held-over group under a load's header still holding one of them, alias for alias.
+---Get the groups held over in a session's scope now, for a load to tell them from those it holds over.
+---
+---@param session_id string The session's pool id ("" for the whole editor's)
+---@return table<MarksGroup, true> held
+function M.held_now(session_id)
+	local held = {}
+	for _, group in ipairs((data.scopes.session[session_id] or { groups = {} }).groups) do
+		if group.held then
+			held[group] = true
+		end
+	end
+	return held
+end
+
+---Let go of the copies held over of these groups, as the window they came from takes them back from its
+---entry: each group held over before the load, a close's or a load's, holding one of them alias for alias.
+---
+---A copy you edited no longer holds one of them, and one you moved up first is a group of your own, not
+---held over, so both stay; what the load itself holds over, another entry's, stays too.
 ---
 ---@param session_id string The session's pool id ("" for the whole editor's)
 ---@param groups {name: string, marks: table<string, Filehash>}[] The groups the window took back, saved
+---@param earlier table<MarksGroup, true> The groups held over there before the load
 ---@return nil
-function M.drop_load_copies(session_id, groups)
+function M.drop_copies(session_id, groups, earlier)
 	local scope = data.scopes.session[session_id]
 	if scope == nil then
 		return
 	end
-	local held = require('frogman.held')
 	for i = #scope.groups, 1, -1 do
 		local group = scope.groups[i]
-		if group.held and held.from_load(group.name) then
+		if earlier[group] then
 			local marks = M.hashes_of(group)
 			for _, saved in ipairs(groups) do
 				if type(saved) == "table" and vim.deep_equal(saved.marks, marks) then

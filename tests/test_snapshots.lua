@@ -686,9 +686,10 @@ T['T795 [char] (M16) a switch holds no snapshot over'] = function()
 	eq({ held = #held(''), own = #snapshots() }, { held = 0, own = 1 })
 end
 
--- Saved on its window, then held over before the quit's records: one snapshot comes back, held over,
--- whether the window left takes the split's entry (the split back on b) or not (on x).
-T['T797 [char] (M16, S1 Load) a snapshot held over after its save comes back once'] = function()
+-- Saved on its window, then held over before the quit's records: one snapshot comes back, the window's
+-- when the window left takes the split's entry (the split back on b), the held copy going as the window
+-- takes it, or held over when it doesn't (on x).
+T['T797 [char] (M16, S1 Load, DESK.md:1087) a snapshot held over after its save comes back once'] = function()
 	local got = {}
 	for _, last in ipairs({ ':e b', ':e x' }) do
 		local s = S2.shared()
@@ -706,7 +707,7 @@ T['T797 [char] (M16, S1 Load) a snapshot held over after its save comes back onc
 		child.settle(300)
 		table.insert(got, { held = #held(''), own = #snapshots() })
 	end
-	eq(got, { { held = 1, own = 0 }, { held = 1, own = 0 } })
+	eq(got, { { held = 0, own = 1 }, { held = 1, own = 0 } })
 end
 
 -- A detached list has no file of its own: the whole editor's holds what its tab's windows leave.

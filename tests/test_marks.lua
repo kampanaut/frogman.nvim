@@ -2800,4 +2800,176 @@ T['T987 [char] (M15, S1 Load, DESK.md:1093-1094, :1068) a load under a draft for
 	})
 end
 
+-- The held-over groups and snapshots in a session's scope that hold c, and what the window holds of it.
+local C_HELD = [[
+	local session_id, win = ...
+	local H = require('frogman.domains.history')
+	local Sn = require('frogman.domains.snapshots').routines
+	local c = H.routines.get_filehash(_G.FRG_TEST.root .. '/c.txt')
+	local function is_c(id)
+		local h = id and H.handles.get(H.handles.resolve(id))
+		return h ~= nil and h.hash == c
+	end
+	local held, snaps = 0, 0
+	for _, g in ipairs((require('frogman.domains.marks').data.scopes.session[session_id] or { groups = {} }).groups) do
+		if g.held and is_c(g.marks.a) then held = held + 1 end
+	end
+	for _, snap in ipairs(Sn.held_in(session_id)) do
+		if is_c(snap.current) then snaps = snaps + 1 end
+	end
+	local own = 0
+	for _, g in ipairs((require('frogman.domains.marks').data.scopes.window[win] or { groups = {} }).groups) do
+		if is_c(g.marks.a) then own = own + 1 end
+	end
+	return { held = held, held_snapshots = snaps, window = own, window_snapshots = #Sn.of_window(win) }
+]]
+
+-- P1: a tab session loaded twice, first into a tab its entries don't match, then into one they do: the
+-- window takes its mark and its snapshot back, and the copies the first load held over go.
+T['T997 [char] (M15, M16, S1 Load, DESK.md:1087-1088) a tab session loaded twice, first where no entry matches, gives the window its mark and snapshot once'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e c', ADD .. 'a>', '<M-;><M-s>', ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local first = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	eq(S2.load_tab_session(child, 't'), { true })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	local pool = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	eq({ same = pool == first, got = child.lua(C_HELD, { pool, win }) },
+		{ same = true, got = { held = 0, held_snapshots = 0, window = 1, window_snapshots = 1 } })
+end
+
+-- P2: a plain tab closed after the whole editor's save, its window's mark and snapshot held over and written
+-- with the records; a fresh editor restores both tabs and loads: the window takes them back from its entry,
+-- and the copies the close held over go.
+T['T998 [char] (M15, M16, S1 Load, DESK.md:1087-1088) a plain tab restored before any save takes its window\'s mark and snapshot back once'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e x' })
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e c', ADD .. 'a>', '<M-;><M-s>' })
+	eq(S2.save(child), { true })
+	child.cmd('tabclose')
+	child.settle(1500) -- held over, and the records written within the second
+	S2.start(child, s)
+	S2.restore_tabs(child, { { files = { 'x' }, shown = 'x' }, { files = { 'c' }, shown = 'c' } })
+	eq(S2.load(child), { true })
+	child.settle(300)
+	child.cmd('tabnext 2')
+	child.settle()
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	eq(child.lua(C_HELD, { '', win }), { held = 0, held_snapshots = 0, window = 1, window_snapshots = 1 })
+end
+
+-- A copy the first load held over that you edited stays at the second load, beside the window's own mark.
+T['T999 [char] (M15, S1 Load, DESK.md:1087) a held-over copy you edited stays when the window takes its entry back'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e c', ADD .. 'a>', ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	-- the held copy edited: e marked under s beside a -> c
+	local first = child.lua([[
+		local pool = require('frogman.domains.history').data.tab_pools[vim.api.nvim_get_current_tabpage()]
+		local H = require('frogman.domains.history')
+		local e = H.get_handle_from_filepath(_G.FRG_TEST.root .. '/x.txt')
+		for _, g in ipairs(require('frogman.domains.marks').data.scopes.session[pool].groups) do
+			if g.held then g.marks.s = e end
+		end
+		return pool
+	]])
+	eq(S2.load_tab_session(child, 't'), { true })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	eq(child.lua(C_HELD, { first, win }), { held = 1, held_snapshots = 0, window = 1, window_snapshots = 0 })
+end
+
+-- A copy the first load held over that you moved up first is a group of your own, as the pop-up's write
+-- leaves a held-over group it finds first, so it stays at the second load, beside the window's own mark.
+T['T1000 [char] (M15, S1 Load, DESK.md:1087, :1085) a held-over copy you moved up first stays when the window takes its entry back'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e c', ADD .. 'a>', ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	-- the copy first, as the pop-up writes it there: held over no more (marks/popup.lua, held only below the first)
+	local first = child.lua([[
+		local pool = require('frogman.domains.history').data.tab_pools[vim.api.nvim_get_current_tabpage()]
+		for _, g in ipairs(require('frogman.domains.marks').data.scopes.session[pool].groups) do g.held = nil end
+		return pool
+	]])
+	eq(S2.load_tab_session(child, 't'), { true })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	local own = child.lua([[
+		local H = require('frogman.domains.history')
+		local c = H.routines.get_filehash(_G.FRG_TEST.root .. '/c.txt')
+		local n = 0
+		for _, g in ipairs(require('frogman.domains.marks').data.scopes.session[...].groups) do
+			local h = not g.held and g.marks.a and H.handles.get(H.handles.resolve(g.marks.a))
+			if h and h.hash == c then n = n + 1 end
+		end
+		return n
+	]], { first })
+	eq({ kept = own, got = child.lua(C_HELD, { first, win }) },
+		{ kept = 1, got = { held = 0, held_snapshots = 0, window = 1, window_snapshots = 0 } })
+end
+
+-- A group of your own typed below a copy the first load held over doesn't keep it: the copy goes at the
+-- second load all the same.
+T['T1001 [char] (M15, S1 Load, DESK.md:1087) a group typed below a held-over copy doesn\'t keep it when the window takes its entry back'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e c', ADD .. 'a>', ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local first = child.lua([[
+		local pool = require('frogman.domains.history').data.tab_pools[vim.api.nvim_get_current_tabpage()]
+		local x = require('frogman.domains.history').get_handle_from_filepath(_G.FRG_TEST.root .. '/x.txt')
+		table.insert(require('frogman.domains.marks').data.scopes.session[pool].groups, { name = 'feature', marks = { s = x } })
+		return pool
+	]])
+	eq(S2.load_tab_session(child, 't'), { true })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	eq(child.lua(C_HELD, { first, win }), { held = 0, held_snapshots = 0, window = 1, window_snapshots = 0 })
+end
+
+-- Two windows marking c under a, one entry no window takes and one a window takes, the untaken first:
+-- what this load holds over of the untaken entry stays, though the other window brings the same marks back.
+T['T1002 [char] (M15, S1 Load, DESK.md:1087) what a load holds over of an entry no window takes stays, though another window brings the same marks back'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', ADD .. 'a>', ':e d' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e c', ADD .. 'a>' }) -- the split, first in the saved order, on c
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'c', 'd' }, 'd')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	eq(child.lua(C_HELD, { '', win }), { held = 1, held_snapshots = 0, window = 1, window_snapshots = 0 })
+end
+
 return T

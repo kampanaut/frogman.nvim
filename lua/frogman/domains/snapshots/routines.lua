@@ -435,7 +435,7 @@ end
 
 ---Drop the snapshots still queued to be held over from a tab, as a tab session's load into it starts.
 ---
----@param tabpage integer
+---@param tabpage integer The tab whose queued snapshots go
 ---@param after integer|nil Only what was queued after this wait (nil = all of it)
 ---@return nil
 function M.drop_pending(tabpage, after)
@@ -444,22 +444,6 @@ function M.drop_pending(tabpage, after)
 			history.handles.drop_place(place_of(snapshot))
 		end
 	end, after)
-end
-
----Let go of the copy a load held over of a snapshot, as the window it came from takes it back: when
----it's still held over under that load's header.
----
----@param session_id string The session's pool id ("" for the whole editor's)
----@param id string The snapshot's id
----@return boolean dropped Whether there was such a copy
-function M.drop_load_copy(session_id, id)
-	for _, snapshot in ipairs(data.held[session_id] or {}) do
-		if snapshot.id == id and require('frogman.held').from_load(snapshot.held) then
-			M.delete(id)
-			return true
-		end
-	end
-	return false
 end
 
 ---Move the snapshots held over in one session's scope into another's, each keeping its header,
@@ -714,6 +698,40 @@ function M.not_held(list)
 	return vim.tbl_filter(function(saved)
 		return type(saved) == "table" and not (type(saved.id) == "string" and M.find(saved.id))
 	end, type(list) == "table" and list or {})
+end
+
+---Get the snapshot held over in a session's scope under an id, a close's copy or a load's.
+---
+---@param session_id string The session's pool id ("" for the whole editor's)
+---@param id string The snapshot's id
+---@return Snapshot|nil snapshot
+function M.held_copy(session_id, id)
+	for _, snapshot in ipairs(data.held[session_id] or {}) do
+		if snapshot.id == id then
+			return snapshot
+		end
+	end
+	return nil
+end
+
+---Let go of the copy held over of a snapshot its window's entry brings back unchanged, the window taking
+---it: a close's copy or a load's, by its id, while it's still what was held over.
+---
+---@param session_id string The session's pool id ("" for the whole editor's)
+---@param saved table The entry's snapshot, as its session file holds it
+---@return boolean dropped Whether the copy went; one that changed since stays held over
+function M.drop_copy(session_id, saved)
+	local copy = M.held_copy(session_id, saved.id)
+	if copy == nil then
+		return false
+	end
+	local held, brought = saved_of(copy), vim.deepcopy(saved)
+	held.held, brought.held = nil, nil
+	if not vim.deep_equal(held, brought) then
+		return false
+	end
+	M.delete(saved.id)
+	return true
 end
 
 ---Copying between windows ----------------------------------------------------------------

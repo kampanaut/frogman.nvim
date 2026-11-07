@@ -957,7 +957,7 @@ end
 ---@param what string The load, as a held-over header names it
 ---@return table<integer, true> gone The entries no window took that carried snapshots, by index
 local function restore_snapshots(saved_data, taken, session_id, own, what)
-	local unclaimed, held_over, gone, waited = {}, {}, {}, waited_on(saved_data)
+	local unclaimed, held_over, gone = {}, {}, {}
 	for _, saved in ipairs(type(saved_data.snapshots) == "table" and saved_data.snapshots or {}) do
 		if type(saved) == "table" and saved.id ~= nil then
 			held_over[saved.id] = true
@@ -971,11 +971,17 @@ local function restore_snapshots(saved_data, taken, session_id, own, what)
 	for i, entry in ipairs(saved_data.windows or {}) do
 		local winid = (taken or {})[i]
 		if type(entry) == "table" and type(entry[11]) == "table" then
-			local back = waited[i] and winid and vim.api.nvim_win_is_valid(winid)
+			local back = winid and vim.api.nvim_win_is_valid(winid)
 			local list = vim.tbl_filter(function(saved)
-				-- a detached list's tab come back takes its window's snapshot from an unchanged copy a load held over
-				return type(saved) == "table" and (not held_over[saved.id]
-					or (back and snapshots().drop_load_copy(session_id, saved.id)))
+				if type(saved) ~= "table" then
+					return false
+				end
+				-- a window taking its entry takes a snapshot held over meanwhile back when the copy is unchanged,
+				-- a close's or a load's; a changed copy stays held over, and so does one only the file holds so
+				if back and snapshots().held_copy(session_id, saved.id) then
+					return snapshots().drop_copy(session_id, saved)
+				end
+				return not held_over[saved.id]
 			end, entry[11])
 			if winid and vim.api.nvim_win_is_valid(winid) then
 				snapshots().restore_window(winid, list, session_id, what)
@@ -1009,10 +1015,12 @@ end
 ---@return table<integer, true> gone The window entries no window took that carried marks, by index
 ---@return table<integer, true> gone_tabs The tab entries no tab took, by index
 local function restore_marks(saved_data, taken, session_id, own, key, scratch_dir, what)
-	local gone, waited = {}, waited_on(saved_data)
+	local gone, earlier = {}, nil -- earlier: the groups held over before this load, which a window taking its entry clears
 	if own then
 		marks().restore("session", session_id, saved_data.marks, what) -- named by the load, for a pop-up with edits not written
+		earlier = marks().held_now(session_id)
 	else
+		earlier = marks().held_now(session_id)
 		-- memory's marks win: every file mark memory doesn't hold, alias by alias, is held over
 		local scope = marks().scope("session", session_id)
 		for _, saved in ipairs(type(saved_data.marks) == "table" and saved_data.marks or {}) do
@@ -1056,10 +1064,8 @@ local function restore_marks(saved_data, taken, session_id, own, key, scratch_di
 						marks().hold_over(session_id, keep, what, nil, true)
 					end
 					marks().restore("window", winid, entry[10], what)
-					if waited[i] then
-						-- a detached list's tab came back with this window: the copy a load held over goes, unchanged
-						marks().drop_load_copies(session_id, entry[10])
-					end
+					-- what a close or an earlier load held over of the entry's groups goes, the window holding them
+					marks().drop_copies(session_id, entry[10], earlier)
 				end
 			else
 				marks().hold_over(session_id, entry[10], what, true, true) -- a window the load didn't bring back
