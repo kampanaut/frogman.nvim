@@ -351,6 +351,49 @@ T['T171 [char] with no cokeline, <M-n> and <M-m> step through the ordered histor
 	eq(cycle_walk(), with_cokeline)
 end
 
+-- Two files gone from disk in the cycle's way, d then b: Neovim prints its first E211 itself and gives
+-- every later one as an error, which the step onto b raises inside keep_cycling.
+local function gone_cycle()
+	child.steps({ ':e b', ':e d', ':e a', ':e c' })
+	child.lua('os.remove(_G.FRG_TEST.root .. "/b.txt"); os.remove(_G.FRG_TEST.root .. "/d.txt")')
+	child.messages()
+	local dumps = child.dump_files()
+	local shown = {}
+	for _ = 1, 4 do
+		child.steps({ '<M-m>' })
+		table.insert(shown, child.shown())
+	end
+	local wrong = vim.tbl_filter(function(m)
+		return m.msg:find('failed', 1, true) ~= nil or m.msg:find("shouldn't happen", 1, true) ~= nil
+	end, child.messages())
+	local history = child.lua('return vim.fn.execute("messages")')
+	child.steps({ '<M-v>' })
+	return {
+		shown = shown, wrong = #wrong, dump = child.dumped_since(dumps), state = child.state(),
+		said = select(2, history:gsub('E211: File "b.txt" no longer available', '')),
+	}
+end
+
+T['T948 [char] (A12, DESK.md:924-925) a Vim error in a cycle step shows as Neovim shows it, and the cycle goes on'] = function()
+	local want = { shown = { 'a', 'd', 'b', 'c' }, wrong = 0, said = 1, state = NORMAL }
+	eq(gone_cycle(), want)
+	child.setup({ no_cokeline = true })
+	eq(gone_cycle(), want)
+end
+
+-- The step's switch raising a Lua error of its own is a bug, as anywhere in frogman.
+T['T949 [char] (A12, A26, DESK.md:924-925) an error in a cycle step that isn\'t Vim\'s is still a hook failure, and dumps'] = function()
+	child.steps({ ':e a', ':e b', ':e c' })
+	child.messages()
+	local dumps = child.dump_files()
+	child.lua([[require('cokeline.mappings').by_step = function() error('boom') end]])
+	child.steps({ '<M-m>' })
+	local failed = vim.tbl_filter(function(m)
+		return m.level == vim.log.levels.ERROR and m.msg:find("Hook 'start_cycling' failed", 1, true) ~= nil
+	end, child.messages())
+	eq({ #failed, (child.dumped_since(dumps) or ''):find("Hook 'start_cycling' failed", 1, true) ~= nil }, { 1, true })
+end
+
 T['T79 [char] <M-n> steps left, toward newer buffers, and <M-m> right, toward older'] = function()
 	-- Runs against the stub, not the real cokeline: checks the step each key
 	-- asks cokeline for, and that frogman's bufferline order puts the newer

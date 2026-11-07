@@ -173,13 +173,14 @@ end
 ---
 ---A transition asked for inside the running one's hooks waits, and runs once it's done, from the
 ---state it ended in, its history entry naming the one it was asked for in. When the running
----transition is abandoned, what it asked for goes with it.
+---transition is abandoned, what it asked for goes with it, and when an asked one fails, so do the
+---ones asked after it.
 ---
 ---@param model StateMachine|mStateMachine The model whose transitions and hooks run
 ---@param instance iStateMachine|StateMachine The instance being moved
 ---@param next_state stateName The state to transition to
 ---@param context_arg transitionContextArg? Optional mutable data passed to all hooks. `caller` is reserved.
----@param mode transitionMode?
+---@param mode transitionMode? The mode whose hooks run besides the "*" ones, nil for none
 ---@param parent transitionName? The transition it was asked for in
 ---@param depth integer? How deep it is in transitions asked for inside hooks
 ---@return nil
@@ -241,13 +242,19 @@ local function transition(model, instance, next_state, context_arg, mode, parent
 
 	while #instance.pending > 0 do
 		local asked = table.remove(instance.pending, 1)
-		transition(model, instance, asked.next_state, asked.context, asked.mode, asked.parent, asked.depth)
+		local done, failed = pcall(transition, model, instance, asked.next_state, asked.context, asked.mode,
+			asked.parent, asked.depth)
+		if not done then
+			-- a nested ask that fails drops the asks queued after it, so none runs in a later, unrelated to()
+			instance.pending = {}
+			error(failed, 0)
+		end
 	end
 end
 
 ---Set an instance's state with no transition run, recorded in its history as forced.
----@param model StateMachine|mStateMachine
----@param instance iStateMachine|StateMachine
+---@param model StateMachine|mStateMachine The model whose sets of who's in each state it keeps
+---@param instance iStateMachine|StateMachine The instance being set
 ---@param state stateName A registered state
 ---@return nil
 local function force(model, instance, state)
@@ -255,9 +262,9 @@ local function force(model, instance, state)
 	if not model:is_state_registered(state) then
 		error("Cannot force an unregistered state: " .. state, 3)
 	end
-	if type(instance.current_state) == "string" then
-		table.insert(instance.history, instance.current_state .. "->" .. state .. " (forced)")
-	end
+	-- a machine the factory makes starts on an empty table, no state, so its first entry names none
+	local from = type(instance.current_state) == "string" and instance.current_state or ""
+	table.insert(instance.history, from .. "->" .. state .. " (forced)")
 	place(model, instance, state)
 end
 
@@ -695,7 +702,7 @@ function StateMachine:enable_transition(from_state, to_state)
 	local transition_names = helper.parse_transition_pattern(transition_pattern, self)
 
 	for _, transition_name in ipairs(transition_names) do
-		if self.transitions[transition_name] then
+		if self.transitions[transition_name] ~= nil then
 			self.transitions[transition_name] = true
 		end
 	end

@@ -29,7 +29,8 @@ navigation.sm:on("*", "*", "cancel_preview_on_window_jump", function()
 			M.preview.cancel()
 		end
 	end)
-end, 2, true, navigation.states.mode.WINENTER)
+-- after the window's own (2) and a cycle's cancel (2.1)
+end, 2.2, true, navigation.states.mode.WINENTER)
 
 -- a move onto a name a snapshot holds: the snapshot keeps the file once, by the live slots' rule, as the
 -- move settles, and the trail says which slots let it go

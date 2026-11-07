@@ -53,7 +53,8 @@ navigationSM:on(states.CYCLING, states.CYCLING, "cancel_cycle_on_window_jump", f
 	require('frogman.settle').later("cycle cancel", function()
 		routines.cancel_cycle(cycling_window)
 	end)
-end, 2, true, states.mode.WINENTER)
+-- after winenter_track_current_window (2), and before a preview's cancel (2.2): none reads what another writes
+end, 2.1, true, states.mode.WINENTER)
 
 navigationSM:on("*", "*", "winenter_record_window", function(context)
 	local current_win = vim.api.nvim_get_current_win()

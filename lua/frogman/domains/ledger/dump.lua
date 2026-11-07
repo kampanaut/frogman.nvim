@@ -495,20 +495,34 @@ end
 ---Dump a hook that failed without being critical.
 ---
 ---The engine calls this through its `on_failure`. Dumps once per hook and error message,
----unless the error carries a message `ledger.never()` already dumped.
+---unless the error carries a message `ledger.never()` already dumped. The dump says what the
+---engine's notification says, the transition and the instance it was in, a handle by its file's name.
 ---
 ---@param name string The hook's name
 ---@param err string The hook's error, with its traceback
+---@param message string The engine's message for the failure, naming its transition and instance
 ---@return nil
-function M.hook_failed(name, err)
+function M.hook_failed(name, err, message)
 	local text = tostring(err)
-	for message, _ in pairs(nevers) do
-		if text:find(message, 1, true) then
+	for never_message, _ in pairs(nevers) do
+		if text:find(never_message, 1, true) then
 			return
 		end
 	end
 	local first = text:match("[^\n]*"):gsub("^[^:]*:%d+: ", "")
-	M.fire("hook:" .. name .. ":" .. first, "Hook '" .. name .. "' failed: " .. text, data.scopes[#data.scopes] or data.open)
+	M.fire("hook:" .. name .. ":" .. first, message, data.scopes[#data.scopes] or data.open)
+end
+
+---Get a Vim error's own words, an `E` number a command or the API gave.
+---
+---Such an error is something the editor's state can reach, not a bug of frogman's: a key lets it
+---through as it was raised, and a cycle step prints it as Neovim prints one.
+---
+---@param err any The error, as raised
+---@return string|nil said Its `E` number and words, as Neovim shows them, or nil when it isn't one
+function M.vim_error(err)
+	local text = tostring(err)
+	return text:match("Vim[^:]*:(E%d+:[^\n]*)") or text:match("^(E%d+:[^\n]*)")
 end
 
 ---Dump a key's error, a plain Lua error raised inside its job.
@@ -522,7 +536,7 @@ end
 ---@return nil
 function M.key_failed(err, traceback)
 	local text = tostring(err)
-	if text:match("Vim[^:]*:E%d+") or text:match("^E%d+:") then
+	if M.vim_error(text) then
 		return
 	end
 	for message, _ in pairs(nevers) do

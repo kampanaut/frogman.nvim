@@ -243,7 +243,10 @@ T['T664 [char] a failing hook\'s notification names the instance by the labeler'
 		m:on('a', 'b', 'breaks', function() error('boom') end, 1, true)
 		m:instantiate('a'):to('b')
 	]])
-	local said = vim.tbl_filter(function(msg) return msg.msg:find("Hook 'breaks' failed during transition a->b of x.txt", 1, true) end, child.messages())
+	-- the notification itself: the dump's WARN quotes it too
+	local said = vim.tbl_filter(function(msg)
+		return msg.level == vim.log.levels.ERROR and msg.msg:find("Hook 'breaks' failed during transition a->b of x.txt", 1, true)
+	end, child.messages())
 	eq(#said, 1)
 end
 
@@ -351,6 +354,166 @@ T['T846 [char] the labeler is called only for a message'] = function()
 		return { through, calls }
 	]])
 	eq(got, { 0, 1 })
+end
+
+-- R13: a hook on a->b asks for c, which isn't registered (or is disabled), then for a. The failed ask
+-- drops the one queued after it, so a later to('a') runs b->a alone, once a->a is registered for a
+-- stale ask to have something to run.
+T['T941 [char] (M11, DESK.md:919-920, repro R13) a nested ask that fails drops the asks queued after it'] = function()
+	local got = child.lua([[
+		local E = require('frogman.engine')
+		local out = {}
+		for _, kind in ipairs({ 'unregistered', 'disabled' }) do
+			local m = E:create('t941_' .. kind)
+			m:register_state('a'); m:register_state('b'); m:register_state('c')
+			m:on('b', 'a', 'back', function() end, 1, true)
+			if kind == 'disabled' then
+				m:on('b', 'c', 'over', function() end, 1, true)
+				m:disable_transition('b', 'c')
+			end
+			m:on('a', 'b', 'ask', function(_, inst) inst:to('c'); inst:to('a') end, 1, true)
+			local one = m:instantiate('a')
+			local ok = pcall(one.to, one, 'b')
+			local queued = #one.pending
+			m:on('a', 'a', 'stale', function() end, 1, true)
+			one:to('a')
+			out[kind] = { ok = ok, queued = queued, history = one.history, state = one:state() }
+		end
+		return out
+	]])
+	local want = { ok = false, queued = 0, history = { 'a->b', 'b->a' }, state = 'a' }
+	eq(got, { unregistered = want, disabled = want })
+end
+
+-- R14: twelve hooks of one class, registered in an order no sort by name gives, and two general
+-- hooks that run before the rest.
+T['T942 [char] (M11, DESK.md:919-920, repro R14) hooks of one class run in the order they were registered'] = function()
+	local got = child.lua(model_with('t942') .. [[
+		local names = { 'k', 'c', 'h', 'a', 'l', 'e', 'j', 'b', 'g', 'd', 'i', 'f' }
+		local ran = {}
+		for _, n in ipairs(names) do
+			m:on('a', 'b', n, function() table.insert(ran, n) end, 1, true)
+		end
+		for _, n in ipairs({ 'first', 'second' }) do
+			table.insert(m.general_hooks, { name = n, func = function() table.insert(ran, n) end, enabled = true, type = 'before', class = 0 })
+		end
+		m:instantiate('a'):to('b')
+		return ran
+	]])
+	eq(got, { 'first', 'second', 'k', 'c', 'h', 'a', 'l', 'e', 'j', 'b', 'g', 'd', 'i', 'f' })
+end
+
+-- The ties DESK.md:920 lists, each in the order what its hooks read and write needs: the history
+-- registered before the window looks for its triquetra, the window kept before the jump's cancels, and
+-- the save before the hook that only registers the way back to idle.
+T['T943 [char] (M11, DESK.md:919-920, repro R14) each tie of the built-in machines runs in its given order'] = function()
+	local got = child.lua([[
+		local helpers = require('frogman.engine.helpers')
+		local history = require('frogman.domains.history')
+		local navigation = require('frogman.domains.navigation')
+		local storage = require('frogman.domains.storage')
+		local function pipeline(from, to, mode, sm, names)
+			local order, classes, shared = {}, {}, false
+			for _, hook in ipairs(helpers.compute_transition_pipeline(from, to, mode, sm, sm)) do
+				if classes[hook.class] then shared = true end
+				classes[hook.class] = true
+				if vim.tbl_contains(names, hook.name) then table.insert(order, hook.name) end
+			end
+			return { order = order, shared = shared }
+		end
+		local h = { 'attach_history_update', 'ensure_curwin_crux' }
+		local w = { 'winenter_track_current_window', 'cancel_cycle_on_window_jump', 'cancel_preview_on_window_jump' }
+		local s = { 'save_history_on_save', 'back_to_idle' }
+		return {
+			pipeline('attached', 'attached', history.states.mode.UPDATE, history.sm, h),
+			pipeline('detached', 'attached', history.states.mode.UPDATE, history.sm, h),
+			pipeline('normal', 'normal', navigation.states.mode.WINENTER, navigation.sm, w),
+			pipeline('cycling', 'cycling', navigation.states.mode.WINENTER, navigation.sm, w),
+			pipeline('bare', 'saving', '*', storage.sm, s),
+		}
+	]])
+	local h = { order = { 'attach_history_update', 'ensure_curwin_crux' }, shared = false }
+	local s = { order = { 'save_history_on_save', 'back_to_idle' }, shared = false }
+	eq(got, {
+		h, h,
+		{ order = { 'winenter_track_current_window', 'cancel_preview_on_window_jump' }, shared = false },
+		{ order = { 'winenter_track_current_window', 'cancel_cycle_on_window_jump', 'cancel_preview_on_window_jump' }, shared = false },
+		s,
+	})
+end
+
+T['T944 [char] (M11, DESK.md:919-920) enable_transition switches a disabled transition back on'] = function()
+	local got = child.lua(model_with('t944') .. [[
+		m:on('a', 'b', 'noop', function() end, 1, true)
+		local one = m:instantiate('a')
+		m:disable_transition('a', 'b')
+		local off = pcall(one.to, one, 'b')
+		m:enable_transition('a', 'b')
+		local on = pcall(one.to, one, 'b')
+		return { off = off, on = on, state = one:state() }
+	]])
+	eq(got, { off = false, on = true, state = 'b' })
+end
+
+-- A machine the factory makes starts on an empty table, no state, so the entry for its first state
+-- has nothing before the arrow.
+T['T945 [char] (M11, DESK.md:919-920) a factory machine\'s first force_state leaves its forced entry'] = function()
+	local got = child.lua([[
+		local E = require('frogman.engine')
+		local m = E:create('t945')
+		m:register_state('a'); m:register_state('b')
+		m:force_state('a')
+		m:force_state('b')
+		local first = {}
+		for _, name in ipairs(E:list()) do
+			if not name:find('^t945') and E:get(name).history then first[name] = E:get(name).history[1] end
+		end
+		return { made = m.history, first = first }
+	]])
+	eq(got.made, { '->a (forced)', 'a->b (forced)' })
+	eq({ history = got.first.history, navigation = got.first.navigation, storage = got.first.storage, loop = got.first.ui_loop },
+		{ history = '->attached (forced)', navigation = '->normal (forced)', storage = '->bare (forced)', loop = '->self (forced)' })
+	for name, entry in pairs(got.first) do
+		eq({ name, entry:match('^%->[%w_]+ %(forced%)$') ~= nil }, { name, true })
+	end
+end
+
+T['T946 [char] (M11, DESK.md:919-920) a hook\'s failure names its transition with its link'] = function()
+	child.messages()
+	child.lua(model_with('t946') .. [[
+		m:set_labeler(function() return 'x.txt' end)
+		m:on('b', 'c', 'breaks', function() error('boom') end, 1, true)
+		m:on('a', 'b', 'ask', function(_, inst) inst:to('c') end, 1, true)
+		m:instantiate('a'):to('b')
+	]])
+	local said = vim.tbl_filter(function(msg)
+		return msg.level == vim.log.levels.ERROR and msg.msg:find("Hook 'breaks' failed during transition b->c <- a->b of x.txt", 1, true)
+	end, child.messages())
+	eq(#said, 1)
+end
+
+T['T947 [char] (M11, A26, DESK.md:922-923) a hook\'s failure hands on its instance, and the dump names the handle'] = function()
+	local got = child.lua(model_with('t947') .. [[
+		m:set_labeler(function() return 'x.txt' end)
+		m:on('a', 'b', 'breaks', function() error('boom') end, 1, true)
+		local helpers = require('frogman.engine.helpers')
+		local before, seen = helpers.on_failure, nil
+		helpers.on_failure = function(...) seen = { ... } end
+		local one = m:instantiate('a')
+		one:to('b')
+		helpers.on_failure = before
+		return { name = seen[1], instance = seen[3] == one,
+			message = (seen[4] or ''):find("Hook 'breaks' failed during transition a->b of x.txt: ", 1, true) ~= nil }
+	]])
+	eq(got, { name = 'breaks', instance = true, message = true })
+	-- a hook bound by hand to the handle model's close, failing as b.txt closes: the dump says it's b.txt's
+	child.steps({ ':e a', ':e b' })
+	local dumps = child.dump_files()
+	child.lua([[require('frogman.domains.history').handles.model:on('open', 'closed', 't947_breaks', function() error('boom') end, 20, true)]])
+	child.cmd('bdelete b.txt')
+	child.settle(100)
+	local fired = child.dumped_since(dumps) or ''
+	eq(fired:find("Hook 't947_breaks' failed during transition open->closed of b.txt: ", 1, true) ~= nil, true)
 end
 
 T['T670 [char] no state is written directly outside the engine'] = function()

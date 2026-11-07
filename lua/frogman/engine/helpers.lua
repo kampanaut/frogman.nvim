@@ -1,8 +1,9 @@
 local M = {}
 
----Callback run when a hook that isn't critical fails, given the hook's name and its error (the
----ledger sets it for its dump, so the engine knows nothing of the ledger)
----@type fun(name: string, err: string)|nil
+---Callback run when a hook that isn't critical fails, given the hook's name, its error, the instance
+---whose transition it was in and the failure's message, which names that instance (the ledger sets it
+---for its dump, so the engine knows nothing of the ledger)
+---@type fun(name: string, err: string, instance: iStateMachine|StateMachine, message: string)|nil
 M.on_failure = nil
 
 function M.get_keys(tbl)
@@ -43,16 +44,17 @@ function M.execute_transition(from_state, to_state, mode, context, statemachine,
 			local success, error_msg = xpcall(hook.func, debug.traceback, context, instance, from_state, to_state)
 
 			if not success then
-				-- the instance is named only when a message needs it, its model's labeler asked then
+				-- the instance is named only when a message needs it, its model's labeler asked then; the
+				-- transition goes by its history entry, a nested one with its link to the one it was asked in
 				local of = statemachine.labeler and (" of " .. M.label_of(statemachine, instance)) or ""
-				local message = "Hook '" .. hook.name .. "' failed during transition " .. transition_name .. of .. ": " .. tostring(error_msg)
+				local message = "Hook '" .. hook.name .. "' failed during transition " .. entry .. of .. ": " .. tostring(error_msg)
 				if hook.critical then
 					-- the transition is abandoned, so the machine stays where it was and the caller sees it.
 					error(message, 0)
 				end
 				vim.notify(message, vim.log.levels.ERROR)
 				if M.on_failure then
-					pcall(M.on_failure, hook.name, tostring(error_msg))
+					pcall(M.on_failure, hook.name, tostring(error_msg), instance, message)
 				end
 			end
 		end
@@ -97,14 +99,22 @@ function M.compute_transition_pipeline(from_state, to_state, mode, statemachine,
 	end
 
 	-- Sort hooks by class (priority) - lower class number = higher priority
+	-- hooks of one class keep the order they were registered in, which is the order they're bound in
+	local registered = {}
+	for index, hook in ipairs(hooks_to_execute) do
+		registered[hook] = index
+	end
 	table.sort(hooks_to_execute, function(a, b)
-		return a.class < b.class
+		if a.class ~= b.class then
+			return a.class < b.class
+		end
+		return registered[a] < registered[b]
 	end)
-	
-	-- Add general hooks that run before normal hooks
+
+	-- Add general hooks that run before normal hooks, in the order they were registered
 	for _, hook in ipairs(statemachine.general_hooks) do
 		if hook.enabled and own[hook.name] ~= false and hook.type == "before" then
-			table.insert(pipeline, 1, hook) -- Insert at beginning
+			table.insert(pipeline, hook)
 		end
 	end
 	

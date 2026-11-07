@@ -21,6 +21,7 @@ storageSM:on("{bare,idle}", states.LOADING, "load_history_pre_start", function(c
 	routines.load_history(context.directory, context.name)
 end, 1, true)
 
-storageSM:on("{bare,saving,loading}", "{idle,saving}", "back_to_idle", function(_, _, _) end, 1, true)
+-- after the save (1) on bare->saving: it does nothing but register the way back to idle
+storageSM:on("{bare,saving,loading}", "{idle,saving}", "back_to_idle", function(_, _, _) end, 2, true)
 
 

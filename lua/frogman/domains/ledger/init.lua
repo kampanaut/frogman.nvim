@@ -96,8 +96,8 @@ end
 ---@param group integer The frogman augroup
 ---@return nil
 function M.init_autocmds(group)
-	require('frogman.engine.helpers').on_failure = function(name, err)
-		require('frogman.domains.ledger.dump').hook_failed(name, err)
+	require('frogman.engine.helpers').on_failure = function(name, err, _, message)
+		require('frogman.domains.ledger.dump').hook_failed(name, err, message)
 	end
 
 	-- a command line entered is a step under its text, never the keys that typed it.

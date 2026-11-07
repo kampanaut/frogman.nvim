@@ -8,6 +8,27 @@ local history = require('frogman.domains.history')
 
 local M = {}
 
+---Run a cycle step's switch to the next buffer.
+---
+---A Vim error the switch gives is the editor's own, such as E211 for a file deleted on disk, which
+---Neovim raises once it has warned about another: it's printed as Neovim prints it, and the cycle goes
+---on. Any other error is raised again, as a bug.
+---
+---@param switch function The switch, cokeline's step or the window's buffer set
+---@param ... any Its arguments
+---@return nil
+local function step(switch, ...)
+	local switched, err = pcall(switch, ...)
+	if switched then
+		return
+	end
+	local said = require('frogman.domains.ledger.dump').vim_error(err)
+	if not said then
+		error(err, 0)
+	end
+	vim.api.nvim_echo({ { said } }, true, { err = true })
+end
+
 function M.cycle_buffer(direction)
 	if #history.get_ordered_buffers() <= 1 then
 		return
@@ -28,15 +49,15 @@ function M.cycle_buffer(direction)
 				index = i
 			end
 		end
-		local step = direction == 1 and -1 or 1
-		vim.api.nvim_set_current_buf(ordered[((index - 1 + step) % #ordered) + 1].buf)
+		local by = direction == 1 and -1 or 1
+		step(vim.api.nvim_set_current_buf, ordered[((index - 1 + by) % #ordered) + 1].buf)
 		return
 	end
 
 	if direction == 1 then
-		require('cokeline.mappings').by_step("focus", -1)
+		step(require('cokeline.mappings').by_step, "focus", -1)
 	elseif direction == 2 then
-		require('cokeline.mappings').by_step("focus", 1)
+		step(require('cokeline.mappings').by_step, "focus", 1)
 	else
 		error("Invalid direction for cycling mode, must be 1 (left) or 2 (right).")
 	end

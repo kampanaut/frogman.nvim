@@ -31,7 +31,8 @@ history.sm:on("*", "*", "ensure_curwin_crux", function(context, _, _)
 	if not triquetra then
 		context.window = nil
 	end
-end, 1, true, history.states.mode.UPDATE)
+-- after attach_history_update (1): a triquetra is made only for a buffer that's registered
+end, 1.5, true, history.states.mode.UPDATE)
 
 history.sm:on("*", "*", "enforce_editor_policy", function(context, _, _)
 	-- the filepath-hash registry is the source of truth. If it don't exist, then it shouldn't be in the triquetra.
