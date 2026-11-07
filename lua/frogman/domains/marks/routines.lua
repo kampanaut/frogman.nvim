@@ -343,16 +343,17 @@ end
 
 ---Switch the editor's mode.
 ---
----From inside the marks pop-up it shows the new mode's scope there, writing its edits first; outside
----it, while the pop-up has edits not written yet, it refuses and says why.
+---From inside the marks pop-up it shows the new mode's scope there, the scope it leaves kept as a
+---draft when the pop-up's screen holds edits; outside it, while the pop-up has edits not written yet,
+---it refuses and says why.
 ---
----@param mode "window"|"tab"|"session"
+---@param mode "window"|"tab"|"session" The mode to switch to
 ---@return nil
 function M.set_mode(mode)
 	local popup = require('frogman.domains.marks.popup')
 	local winid = vim.api.nvim_get_current_win()
 	if popup.is_current() then
-		-- inside the pop-up: its edits written first, then the new mode's scope shown
+		-- inside the pop-up: its edits kept as a draft, then the new mode's scope shown
 		if not popup.switch_mode(mode) then
 			return
 		end

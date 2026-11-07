@@ -847,19 +847,31 @@ T['T747 [char] (M15) q writes and leaves, :q refuses, and :q! discards'] = funct
 		{ e37 = true, still = true, discarded = false, gone = true, c = 's' })
 end
 
-T['T748 [char] (M15) a mode key in the pop-up shows the new scope, writing the edits first'] = function()
+T['T748 [char] (M15, DESK.md:1068-1069) a mode key in the pop-up keeps the edits as a draft, :w writes the screen\'s scope, q every draft'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	-- the window's scope edited, then the tab's shown: nothing written yet
+	child.lua('vim.api.nvim_buf_set_lines(0, 2, 3, false, { "s -> c.txt" })')
 	child.steps({ "<M-'><M-2>" })
-	local tab = { lines = popup().lines, mode = decoration()[1] }
-	child.lua('vim.api.nvim_buf_set_lines(0, 1, 2, false, { "a -> c.txt" })')
+	local tab = { lines = popup().lines, mode = decoration()[1], modified = popup().modified }
+	-- the tab's edited too, then the window's draft back as it was left
+	child.lua('vim.api.nvim_buf_set_lines(0, 1, 2, false, { "a -> d.txt" })')
 	child.steps({ "<M-'><M-1>" })
-	local back = popup().lines
-	child.cmd('close')
-	child.settle()
+	local back = { s = popup().lines[3], mode = decoration()[1], c = label('c') }
+	-- :w writes the window's scope alone, the tab's draft still held
+	child.cmd('silent! write')
+	child.settle(100)
+	local written = { c = label('c'), modified = popup().modified, mode = decoration()[1] }
+	-- q writes the tab's draft and leaves
+	child.step('q')
+	child.settle(100)
+	local gone = popup() == vim.NIL
 	child.steps({ "<M-'><M-2>" })
-	local in_tab = label('c')
-	eq({ tab = tab, back = back[2], in_tab = in_tab },
-		{ tab = { lines = vim.list_extend({ '❖ main' }, rows({})), mode = 'marks · tab' }, back = 'a -> b.txt', in_tab = 'a' })
+	eq({ tab = tab, back = back, written = written, gone = gone, d = label('d') }, {
+		tab = { lines = vim.list_extend({ '❖ main' }, rows({})), mode = 'marks · tab · draft: window', modified = true },
+		back = { s = 's -> c.txt', mode = 'marks · window · draft: tab', c = false },
+		written = { c = 's', modified = true, mode = 'marks · window · draft: tab' },
+		gone = true, d = 'a',
+	})
 end
 
 T['T749 [char] (M15) <CR>, gf and a jump key act in the window the pop-up came from'] = function()
@@ -2293,6 +2305,383 @@ T['T975 [char] (M15, DESK.md:1066) two groups of one name keep their places when
 	eq({ asked = #asked, second = (asked[1] or ''):find('is a second group of that name', 1, true) ~= nil,
 		gone = (asked[1] or ''):find('header is gone', 1, true) ~= nil, groups = child.lua(DEFAULTS) },
 		{ asked = 1, second = true, gone = false, groups = { { name = 'main', default = true }, { name = 'main', default = false } } })
+end
+
+-- A mode switch with an alias holding two files on the screen is refused.
+T['T968 [char] (M15, DESK.md:1068-1069) a mode switch is refused while an alias holds two files on the screen'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	local lines = popup().lines
+	table.insert(lines, 3, 'a -> c.txt')
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, ...)', { lines })
+	child.messages()
+	child.steps({ "<M-'><M-2>" })
+	eq({ said = said(), mode = decoration()[1], lines = popup().lines, modified = popup().modified }, {
+		said = { 'frogman: ⟨a⟩ holds two files in ❖ main: keep one.' }, mode = 'marks · window', lines = lines, modified = true,
+	})
+end
+
+-- :q refuses while another scope holds a draft, the mark keys refuse too, and :q! drops every draft.
+T['T969 [char] (M15, DESK.md:1068-1069, :1093) :q refuses while a draft is held, the mark keys refuse, and :q! drops every draft'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.lua('vim.api.nvim_buf_set_lines(0, 2, 3, false, { "s -> c.txt" })')
+	child.steps({ "<M-'><M-2>" })
+	local quit = child.lua('return { pcall(vim.cmd, "quit") }')
+	local still = popup() ~= vim.NIL
+	child.cmd('wincmd p')
+	child.settle()
+	child.messages()
+	child.steps({ JUMP .. 'a>' })
+	local refused = said()
+	child.lua('vim.api.nvim_set_current_win(vim.fn.bufwinid("frogman://marks"))')
+	child.cmd('quit!')
+	child.settle(100)
+	child.steps({ "<M-'><M-1>" })
+	eq({ e37 = (quit[2] or ''):find('E37', 1, true) ~= nil, still = still, refused = refused, gone = popup() == vim.NIL,
+		b = label('b'), c = label('c') }, {
+		e37 = true, still = true,
+		refused = { 'frogman: the marks pop-up has edits not written yet: write them with :w, or leave them, first.' },
+		gone = true, b = 'a', c = false,
+	})
+end
+
+-- q stops at a draft its checks refuse, showing that draft.
+T['T970 [char] (M15, DESK.md:1068-1069) q stops at a draft its checks refuse, and shows it'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	-- the window's header deleted: its rows have no group
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, 1, false, {})')
+	child.messages()
+	child.steps({ "<M-'><M-2>" })
+	-- the switch checks nothing but an alias holding two files: the window's lines go as a draft
+	local switched = { said = said(), mode = decoration()[1] }
+	child.step('q')
+	child.settle(100)
+	eq({ switched = switched, said = said(), open = popup() ~= vim.NIL, mode = decoration()[1], first = popup().lines[1],
+		modified = popup().modified }, {
+		switched = { said = {}, mode = 'marks · tab · draft: window' },
+		said = { "frogman: the marks above the first group's header have no group: put a header back above them, or delete them." },
+		open = true, mode = 'marks · window', first = 'a -> b.txt', modified = true,
+	})
+end
+
+-- A draft held keeps the pop-up modified through an undo on the screen, so :q still refuses.
+T['T982 [char] (M15, DESK.md:1068-1069) a draft held keeps the pop-up modified through an undo on the screen'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.lua('vim.api.nvim_buf_set_lines(0, 2, 3, false, { "s -> c.txt" })')
+	child.steps({ "<M-'><M-2>" })
+	child.lua('vim.api.nvim_buf_set_lines(0, 1, 2, false, { "a -> d.txt" })')
+	child.cmd('silent! undo')
+	child.settle(50)
+	local quit = child.lua('return { pcall(vim.cmd, "quit") }')
+	eq({ e37 = (quit[2] or ''):find('E37', 1, true) ~= nil, open = popup() ~= vim.NIL, modified = popup().modified },
+		{ e37 = true, open = true, modified = true })
+end
+
+-- An edit undone leaves the screen holding none: the pop-up follows its scope again, and q writes
+-- nothing over a mark added meanwhile.
+T['T983 [char] (M15, DESK.md:1068) an edit undone leaves the pop-up following its scope, and q writes nothing over it'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>', 'u')
+	local undone = popup().modified
+	child.cmd('wincmd p')
+	child.settle()
+	child.steps({ ADD .. 'd>' })
+	local shown = popup().lines[4]
+	child.lua('vim.api.nvim_set_current_win(vim.fn.bufwinid("frogman://marks"))')
+	child.step('q')
+	child.settle(100)
+	eq({ undone = undone, shown = shown, gone = popup() == vim.NIL, c = label('c') },
+		{ undone = false, shown = 'd -> c.txt', gone = true, c = 'd' })
+end
+
+-- An undo on a screen a mode switch drew takes back what was typed there and goes no further, and so on
+-- a draft brought back: the screen before it never comes back.
+T['T984 [char] (M15, DESK.md:1068) an undo on a screen a mode switch drew takes back what was typed there, and no further'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>')
+	local typed = popup().lines
+	child.steps({ "<M-'><M-2>" })
+	local tab = popup().lines
+	child.type_keys('2G', 'cc', 'a -> d.txt', '<Esc>', 'u')
+	local once = popup().lines
+	child.type_keys('u')
+	local twice = popup().lines
+	child.steps({ "<M-'><M-1>" })
+	local back = popup().lines
+	child.type_keys('4G', 'cc', 'd -> b.txt', '<Esc>', 'u', 'u')
+	eq({ once = once, twice = twice, back = back, back_undone = popup().lines },
+		{ once = tab, twice = tab, back = typed, back_undone = typed })
+end
+
+-- A row typed back as it was drawn holds nothing: the pop-up is unmodified at once, :q closes it, and the
+-- mark keys work.
+T['T985 [char] (M15, DESK.md:1068, :1093) a row typed back as it was drawn leaves the pop-up unmodified at once'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>')
+	local typed = popup().modified
+	child.type_keys('cc', 's -> ', '<Esc>')
+	local typed_back = popup()
+	local quit = child.lua('return { pcall(vim.cmd, "quit") }')
+	child.settle()
+	child.messages()
+	child.steps({ JUMP .. 'a>' })
+	eq({ typed = typed, back = typed_back.lines[3], modified = typed_back.modified, quit = quit[1], gone = popup() == vim.NIL,
+		said = said(), shown = child.shown() },
+		{ typed = true, back = 's -> ', modified = false, quit = true, gone = true, said = {}, shown = 'b' })
+end
+
+-- An undo right after the pop-up opens takes nothing back: its draw starts the undo history, so the lines
+-- stay as drawn, unmodified, and q writes nothing.
+T['T986 [char] (M15, DESK.md:1068) an undo right after the pop-up opens takes nothing back'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', ADD .. 's>', OPEN })
+	local drawn = popup().lines
+	child.type_keys('u')
+	local undone = popup()
+	child.step('q')
+	child.settle(100)
+	eq({ lines = undone.lines, modified = undone.modified, gone = popup() == vim.NIL, b = label('b'), c = label('c') },
+		{ lines = drawn, modified = false, gone = true, b = 'a', c = 's' })
+end
+
+-- The flag set by hand over lines as drawn: :w finds nothing to write and clears it, and :q then closes.
+T['T988 [char] (M15, DESK.md:1068) :w over lines as drawn clears a flag set by hand, and :q then closes the pop-up'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.cmd('set modified')
+	child.cmd('silent! write')
+	child.settle(100)
+	local modified = popup().modified
+	local quit = child.lua('return { pcall(vim.cmd, "quit") }')
+	child.settle()
+	eq({ modified = modified, quit = quit[1], gone = popup() == vim.NIL, b = label('b') },
+		{ modified = false, quit = true, gone = true, b = 'a' })
+end
+
+-- :set nomodified leaves nothing on the screen to write, so q writes none of its edits; a draft held keeps
+-- the mark keys refusing all the same, and q writes it.
+T['T989 [char] (M15, DESK.md:1068, :1093) :set nomodified leaves the screen\'s edits unwritten, and a draft held still keeps the mark keys refusing'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	-- a draft of the window's marks: s -> c.txt typed, then the tab's screen
+	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>')
+	child.steps({ "<M-'><M-2>" })
+	-- on the tab's screen, an edit thrown away
+	child.type_keys('2G', 'cc', 'a -> d.txt', '<Esc>')
+	child.cmd('set nomodified')
+	child.cmd('wincmd p')
+	child.settle()
+	child.messages()
+	child.steps({ JUMP .. 'a>' })
+	local refused = said()
+	child.lua('vim.api.nvim_set_current_win(vim.fn.bufwinid("frogman://marks"))')
+	child.step('q')
+	child.settle(100)
+	local d_in_tab = label('d')
+	child.steps({ "<M-'><M-1>" })
+	eq({ refused = refused, gone = popup() == vim.NIL, d_in_tab = d_in_tab, c = label('c') }, {
+		refused = { 'frogman: the marks pop-up has edits not written yet: write them with :w, or leave them, first.' },
+		gone = true, d_in_tab = false, c = 's',
+	})
+end
+
+-- q writing a draft of another mode leaves the editor in the mode the screen was in, and repaints it
+-- then, not at the UI's next timed refresh.
+T['T990 [char] (M15, DESK.md:1068) q writing a draft of another mode repaints once the mode is back'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>')
+	child.steps({ "<M-'><M-2>" })
+	child.lua([[
+		local loop = require('frogman.domains.ui.sm').loop
+		local to = loop.to
+		_G.REPAINTED = {}
+		loop.to = function(self, ...)
+			table.insert(_G.REPAINTED, require('frogman.domains.marks').data.mode)
+			return to(self, ...)
+		end
+	]])
+	-- q and the read in one call, so the UI's own timed refresh can't run between them
+	local state = child.lua([[
+		_G.FRG_TEST.press('q')
+		return { mode = require('frogman.domains.marks').data.mode, last = _G.REPAINTED[#_G.REPAINTED] }
+	]])
+	child.settle(100)
+	child.steps({ "<M-'><M-1>" })
+	eq({ state = state, c = label('c') }, { state = { mode = 'tab', last = 'tab' }, c = 's' })
+end
+
+-- :e! throws the pop-up's edits away, leaving it empty and unmodified: q writes nothing.
+T['T991 [char] (M15, DESK.md:1068) :e! throws the pop-up\'s edits away, and q writes nothing'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>')
+	child.cmd('edit!')
+	child.settle(50)
+	local thrown = popup()
+	child.step('q')
+	child.settle(100)
+	eq({ modified = thrown.modified, gone = popup() == vim.NIL, b = label('b'), c = label('c') },
+		{ modified = false, gone = true, b = 'a', c = false })
+end
+
+-- :wq with a draft held writes the screen's scope and leaves the pop-up open: Vim takes a write that
+-- leaves the buffer modified as not done, so the draft stays for q.
+T['T992 [char] (M15, DESK.md:1068) :wq with a draft held writes the screen\'s scope and leaves the pop-up open'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>')
+	child.steps({ "<M-'><M-2>" })
+	child.type_keys('2G', 'cc', 'a -> d.txt', '<Esc>')
+	child.cmd('silent! wq')
+	child.settle(100)
+	local after = { open = popup() ~= vim.NIL, mode = decoration()[1], d_in_tab = label('d') }
+	child.step('q')
+	child.settle(100)
+	child.steps({ "<M-'><M-1>" })
+	eq({ after = after, gone = popup() == vim.NIL, c = label('c') }, {
+		after = { open = true, mode = 'marks · tab · draft: window', d_in_tab = 'a' }, gone = true, c = 's',
+	})
+end
+
+-- The flag reset by hand over an alias holding two files: the lines hold nothing a draft would keep, so a
+-- mode key switches, saying nothing.
+T['T993 [char] (M15, DESK.md:1068) a mode key after :set nomodified switches over an alias holding two files, keeping no draft'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	local lines = popup().lines
+	table.insert(lines, 3, 'a -> c.txt')
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, ...)', { lines })
+	child.cmd('set nomodified')
+	child.messages()
+	child.steps({ "<M-'><M-2>" })
+	eq({ said = said(), mode = decoration()[1], modified = popup().modified }, { said = {}, mode = 'marks · tab', modified = false })
+end
+
+-- :e! with a draft held throws the screen away, leaving it empty and unmodified: q writes the draft, and
+-- the screen's scope keeps its marks.
+T['T994 [char] (M15, DESK.md:1068) :e! with a draft held throws the screen away: q writes the draft, the screen\'s scope as it was'] = function()
+	child.steps({ ':e b', ADD .. 'a>', "<M-'><M-2>", ':e c', ADD .. 's>', "<M-'><M-1>", OPEN })
+	child.type_keys('4G', 'cc', 'd -> b.txt', '<Esc>')
+	child.steps({ "<M-'><M-2>" })
+	child.cmd('edit!')
+	child.settle(100)
+	local thrown = popup()
+	child.step('q')
+	child.settle(100)
+	child.steps({ "<M-'><M-2>" })
+	local c_in_tab = label('c')
+	child.steps({ "<M-'><M-1>" })
+	eq({ lines = thrown.lines, modified = thrown.modified, gone = popup() == vim.NIL, c_in_tab = c_in_tab, b = label('b') },
+		{ lines = { '' }, modified = false, gone = true, c_in_tab = 's', b = 'a,d' })
+end
+
+-- An undo after :w takes nothing back: the write's draw starts the undo history, so the lines stay as the
+-- write drew them, and a later edit written keeps what the first write wrote.
+T['T995 [char] (M15, DESK.md:1068) an undo after :w takes nothing back, so a later write keeps what the first wrote'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>')
+	child.cmd('silent! write')
+	child.settle(100)
+	local written = popup().lines
+	child.type_keys('u', 'u')
+	local undone = popup()
+	child.type_keys('4G', 'cc', 'd -> b.txt', '<Esc>')
+	child.cmd('silent! write')
+	child.settle(100)
+	eq({ lines = undone.lines, modified = undone.modified, c = label('c'), b = label('b') },
+		{ lines = written, modified = false, c = 's', b = 'a,d' })
+end
+
+-- A pop-up drawn again for a mark added from the window it came from: an undo there takes nothing back,
+-- the draw starting the undo history though another window was the current one, and a later write keeps
+-- the mark.
+T['T996 [char] (M15, DESK.md:1068) an undo after the scope changed under a clean pop-up takes nothing back, so a later write keeps the mark'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.cmd('wincmd p')
+	child.settle()
+	child.steps({ ADD .. 'd>' })
+	child.lua('vim.api.nvim_set_current_win(vim.fn.bufwinid("frogman://marks"))')
+	local shown = popup().lines
+	child.type_keys('u')
+	local undone = popup().lines
+	child.type_keys('<C-r>')
+	local redone = popup().lines
+	child.type_keys('3G', 'cc', 's -> b.txt', '<Esc>')
+	child.cmd('silent! write')
+	child.settle(100)
+	eq({ shown = shown[4], undone = undone, redone = redone, c = label('c') },
+		{ shown = 'd -> c.txt', undone = shown, redone = shown, c = 'd' })
+end
+
+-- An empty typed group above a marked one: saved, it comes back first, and the keys then do nothing.
+T['T979 [char] (M15, DESK.md:1070) an empty typed group first is saved, comes back first, and the keys then do nothing'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
+	write_lines(vim.list_extend(vim.list_extend({ '❖ feature' }, rows({})), { '❖ main', 'a -> b.txt' }))
+	child.cmd('close')
+	child.settle()
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'b', 'e' }, 'e')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local names = child.lua([[
+		local s = require('frogman.domains.marks').data.scopes.window[vim.api.nvim_get_current_win()]
+		return s and vim.tbl_map(function(g) return g.name end, s.groups) or {}
+	]])
+	child.steps({ JUMP .. 'a>' })
+	eq({ names = names, shown = child.shown() }, { names = { 'feature', 'main' }, shown = 'e' })
+end
+
+-- A saved window entry no window takes, holding only an empty typed group, is no entry the records
+-- write takes marks off: nothing was held over for it.
+T['T980 [char] (M15, S1 Records, DESK.md:1070) an entry no window takes holding only an empty typed group keeps it through the records'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e b', OPEN })
+	local lines = popup().lines
+	lines[1] = '❖ feature'
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a' }, 'a')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	child.lua("vim.api.nvim_exec_autocmds('VimLeavePre', {})") -- the quit writes the records
+	eq(child.lua([[
+		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+		for _, entry in ipairs(saved.windows or {}) do
+			if type(entry[10]) == 'table' and entry[10][1] and entry[10][1].name == 'feature' then return true end
+		end
+		return false
+	]]), true)
+end
+
+-- The same for a saved tab no tab takes.
+T['T981 [char] (M15, S1 Records, DESK.md:1070) a saved tab no tab takes holding only an empty typed group keeps it through the records'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e b', "<M-'><M-2>", OPEN })
+	local lines = popup().lines
+	lines[1] = '❖ feature'
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a' }, 'a')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	child.lua("vim.api.nvim_exec_autocmds('VimLeavePre', {})") -- the quit writes the records
+	eq(child.lua([[
+		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+		for _, tab in ipairs(saved.tabs or {}) do
+			if type(tab.groups) == 'table' and tab.groups[1] and tab.groups[1].name == 'feature' then return true end
+		end
+		return false
+	]]), true)
 end
 
 return T

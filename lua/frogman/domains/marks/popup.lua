@@ -21,9 +21,10 @@ local function routines()
 end
 
 ---The pop-up that's open: its buffer, its window, the window it was opened from, the scope it
----shows, what each drawn name stands for, the rows drawn as incoming or already set, and each group
----drawn, by itself and by its key and rows, for the write to know it again.
----@type {buf: Bufnr, win: WinId, origin: WinId, kind: string, id: any, names: table<string, HandleId>, paths: table<string, string>, states: table<string, string>, drawn: table<MarksGroup, true>, groups_drawn: {key: string, name: string, held: boolean|nil, default: boolean|nil, rows: string[]}[]}|nil
+---shows, what each drawn name stands for, the rows drawn as incoming or already set, each group
+---drawn, by itself and by its key and rows, for the write to know it again, the drafts of the scopes
+---a mode switch left with edits, and the lines the screen's scope was drawn as.
+---@type {buf: Bufnr, win: WinId, origin: WinId, kind: string, id: any, names: table<string, HandleId>, paths: table<string, string>, states: table<string, string>, drawn: table<MarksGroup, true>, groups_drawn: {key: string, name: string, held: boolean|nil, default: boolean|nil, rows: string[]}[], drafts: table[], drawn_lines: string[]|nil}|nil
 local open = nil
 
 ---Get the glyph a group's header opens with, in the glyph set in use.
@@ -49,10 +50,56 @@ local function is_open()
 	return open ~= nil and vim.api.nvim_buf_is_valid(open.buf)
 end
 
----Check if the marks pop-up has edits not written yet.
+---Check if the screen holds edits: the buffer modified, and its lines not the ones their scope was
+---drawn as, a conflict waiting to be settled counting as edits.
+---
+---The modified flag counts as much as the lines: the flag reset by hand, `:set nomodified` or `:e!`,
+---leaves nothing on the screen to write, `:w`, `:q` and `q` writing none of it until it's edited again.
+---
+---@return boolean edited
+local function screen_edited()
+	return vim.bo[open.buf].modified
+		and (open.drawn_lines == nil or not vim.deep_equal(vim.api.nvim_buf_get_lines(open.buf, 0, -1, false), open.drawn_lines))
+end
+
+---Check if the pop-up holds anything not written: edits on its screen, or a draft.
+---@return boolean holds
+local function holds_edits()
+	return screen_edited() or #open.drafts > 0
+end
+
+---Mark the pop-up modified while it holds anything not written, so `:q` refuses until it's written or
+---dropped; lines typed back as they were drawn leave it unmodified.
+---@return nil
+local function set_modified()
+	vim.bo[open.buf].modified = holds_edits()
+end
+
+---Put lines on the screen as frogman draws them, the undo history starting from them, so an undo takes
+---back only what's typed since, never a draw: not a write's, not a scope's that changed, not another
+---scope's lines a mode switch left.
+---@param lines string[] The lines to draw
+---@return nil
+local function put_lines(lines)
+	local levels = vim.bo[open.buf].undolevels
+	vim.bo[open.buf].undolevels = -1
+	local put, problem = pcall(vim.api.nvim_buf_set_lines, open.buf, 0, -1, false, lines)
+	vim.bo[open.buf].undolevels = levels
+	if not put then
+		error(problem, 0)
+	end
+end
+
+---Redraw the UI once marks or the mode changed.
+---@return nil
+local function repaint()
+	require('frogman.domains.ui.sm').loop:to(require('frogman.domains.ui.states').LOOP.SELF)
+end
+
+---Check if the marks pop-up has edits not written yet: on its screen, or in a draft.
 ---@return boolean dirty
 function M.dirty()
-	return is_open() and vim.bo[open.buf].modified
+	return is_open() and holds_edits()
 end
 
 ---Check if the marks pop-up is the window you're in.
@@ -243,8 +290,14 @@ local function decorate()
 	local buf = open.buf
 	local glyphs = require('frogman.domains.ui').routines.glyphs()
 	vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+	local mode_line = "marks" .. glyphs.dot .. open.kind
+	if #open.drafts > 0 then
+		-- the scopes a mode switch left with edits, still to be written
+		mode_line = mode_line .. glyphs.dot .. (#open.drafts == 1 and "draft: " or "drafts: ") ..
+			table.concat(vim.tbl_map(function(draft) return draft.kind end, open.drafts), ", ")
+	end
 	vim.api.nvim_buf_set_extmark(buf, ns, 0, 0, {
-		virt_lines = { { { "marks" .. glyphs.dot .. open.kind, "FrogmanTrailDim" } } }, virt_lines_above = true,
+		virt_lines = { { { mode_line, "FrogmanTrailDim" } } }, virt_lines_above = true,
 	})
 	local known = {}
 	for _, alias in ipairs(aliases()) do
@@ -286,7 +339,7 @@ local function show_mode_line()
 	require('frogman.domains.ui.view').show_top(open and open.win)
 end
 
----Put the scope's marks in the pop-up's lines, as they are now.
+---Put the scope's marks in the pop-up's lines, as they are now, the undo history starting there.
 ---@param conflict {alias: string, id: HandleId}|nil
 ---@return nil
 local function redraw(conflict)
@@ -298,19 +351,20 @@ local function redraw(conflict)
 	for _, group in ipairs(scope and scope.groups or {}) do
 		open.drawn[group] = true
 	end
-	vim.api.nvim_buf_set_lines(open.buf, 0, -1, false, lines)
-	vim.bo[open.buf].modified = conflict ~= nil -- a conflict waits to be settled and written
+	put_lines(lines)
+	open.drawn_lines = conflict == nil and lines or nil -- a conflict waits to be settled and written, as edits do
+	set_modified()
 	decorate()
 	show_mode_line()
 end
 
----Draw the pop-up again when its scope changed and it has nothing unwritten, so it shows what's there.
+---Draw the pop-up again when its scope changed and the screen holds no edits, so it shows what's there.
 ---
 ---@param kind "window"|"tab"|"session" The kind of the scope that changed
 ---@param id any Its window, tab or session's pool id
 ---@return nil
 function M.scope_changed(kind, id)
-	if is_open() and open.kind == kind and open.id == id and not vim.bo[open.buf].modified then
+	if is_open() and open.kind == kind and open.id == id and not screen_edited() then
 		redraw(nil)
 	end
 end
@@ -467,11 +521,62 @@ local function match_groups(groups, drawn)
 	return match, joined
 end
 
+---Read the pop-up's lines into the groups they'd write.
+---
+---A header starts a group, and the rows under it are its marks, each by its alias and its file. A
+---line naming nothing, a row naming no file and a second group of one name are noted with why, to ask
+---about. A line naming something above the first header and an alias that holds two files in one group
+---are noted at the first of each, for the write to refuse; an empty row there names nothing, and goes.
+---
+---@param lines string[] The pop-up's lines
+---@return {groups: table[], items: {row: integer, text: string}[], fresh: table<Filehash, string>, orphan: integer|nil, two: {row: integer, words: string}|nil} read
+local function read_groups(lines)
+	local read = { groups = {}, items = {}, fresh = {} }
+	local current
+	local named = {}
+	for row, line in ipairs(lines) do
+		local kind, a, b = read_line(line)
+		if kind == "header" then
+			current = { name = a, marks = {}, rows = {} }
+			if named[a] then
+				table.insert(read.items, { row = row, text = line .. "  is a second group of that name" })
+			end
+			named[a] = true
+			table.insert(read.groups, current)
+		elseif kind == "row" and current == nil then
+			-- an empty row there names nothing, so nothing is lost with it
+			if b ~= "" then
+				read.orphan = read.orphan or row
+			end
+		elseif kind == "other" and current == nil then
+			read.orphan = read.orphan or row
+		elseif kind == "row" and b ~= "" then
+			local ref, path = resolve(b)
+			if path then
+				read.fresh[ref] = path
+			end
+			if ref == nil then
+				table.insert(read.items, { row = row, text = line .. "  names no file" })
+			elseif current.marks[a] and current.marks[a] ~= ref then
+				read.two = read.two or {
+					row = row, words = "frogman: ⟨" .. a .. "⟩ holds two files in " .. group_glyph() .. " " .. current.name .. ": keep one.",
+				}
+			else
+				current.marks[a] = ref
+				table.insert(current.rows, { key = a .. "\0" .. tostring(ref), row = row })
+			end
+		elseif kind == "other" then
+			table.insert(read.items, { row = row, text = line .. "  names nothing" })
+		end
+	end
+	return read
+end
+
 ---Write the pop-up's lines into the scope.
 ---
----A row naming a file above the first header, or an alias that holds two files in one group, refuses
----the write, and so does a window or a tab the scope was for that's gone; an empty row above the first
----header names nothing, and goes.
+---Lines that hold no edits write nothing. A row naming a file above the first header, or an alias that
+---holds two files in one group, refuses the write, and so does a window or a tab the scope was for
+---that's gone; an empty row above the first header names nothing, and goes.
 ---A line naming nothing, a row naming no file, a second group of one name, and a header deleted with
 ---some of its rows left under another group's are asked about in one prompt, in the lines' order, and
 ---No writes nothing, the cursor on the first of them. The lines are the scope's groups from then on, in
@@ -482,58 +587,27 @@ end
 ---
 ---@return boolean written
 local function write()
+	if not screen_edited() then
+		set_modified() -- lines typed back as they were drawn leave the drafts alone to keep it modified
+		return true -- the drafts are written by leaving
+	end
 	if (open.kind == "window" and not vim.api.nvim_win_is_valid(open.id))
 		or (open.kind == "tab" and not vim.api.nvim_tabpage_is_valid(open.id)) then
 		vim.notify("frogman: the " .. open.kind .. " these marks are for is gone, so they aren't written.", vim.log.levels.WARN)
 		return false
 	end
-	local groups, items = {}, {}
-	local current
-	local lines = vim.api.nvim_buf_get_lines(open.buf, 0, -1, false)
-	local function refuse(row, words)
-		vim.notify(words, vim.log.levels.WARN)
+	local read = read_groups(vim.api.nvim_buf_get_lines(open.buf, 0, -1, false))
+	local refused = read.orphan and (read.two == nil or read.orphan < read.two.row) and {
+		row = read.orphan, words = "frogman: the marks above the first group's header have no group: put a header back above them, or delete them.",
+	} or read.two
+	if refused then
+		vim.notify(refused.words, vim.log.levels.WARN)
 		if open.win and vim.api.nvim_win_is_valid(open.win) then
-			vim.api.nvim_win_set_cursor(open.win, { row, 0 })
+			vim.api.nvim_win_set_cursor(open.win, { refused.row, 0 })
 		end
 		return false
 	end
-	local named, fresh = {}, {}
-	for row, line in ipairs(lines) do
-		local kind, a, b = read_line(line)
-		if kind == "header" then
-			current = { name = a, marks = {}, rows = {} }
-			if named[a] then
-				table.insert(items, { row = row, text = line .. "  is a second group of that name" })
-			end
-			named[a] = true
-			table.insert(groups, current)
-		elseif kind == "row" and current == nil then
-			-- an empty row there names nothing, so nothing is lost with it
-			if b ~= "" then
-				return refuse(row, "frogman: the marks above the first group's header have no group: put a header back above them, or delete them.")
-			end
-		elseif kind == "row" then
-			if b ~= "" then
-				local ref, path = resolve(b)
-				if path then
-					fresh[ref] = path
-				end
-				if ref == nil then
-					table.insert(items, { row = row, text = line .. "  names no file" })
-				elseif current.marks[a] and current.marks[a] ~= ref then
-					return refuse(row, "frogman: ⟨" .. a .. "⟩ holds two files in " .. group_glyph() .. " " .. current.name .. ": keep one.")
-				else
-					current.marks[a] = ref
-					table.insert(current.rows, { key = a .. "\0" .. tostring(ref), row = row })
-				end
-			end
-		elseif kind == "other" then
-			if current == nil then
-				return refuse(row, "frogman: the marks above the first group's header have no group: put a header back above them, or delete them.")
-			end
-			table.insert(items, { row = row, text = line .. "  names nothing" })
-		end
-	end
+	local groups, items, fresh = read.groups, read.items, read.fresh
 	local drawn_groups = open.groups_drawn or {}
 	local match, joined = match_groups(groups, drawn_groups)
 	for _, gone in ipairs(joined) do
@@ -590,7 +664,60 @@ local function write()
 	end
 	routines().hold_scope(open.kind, open.id)
 	redraw(nil)
-	require('frogman.domains.ui.sm').loop:to(require('frogman.domains.ui.states').LOOP.SELF)
+	repaint()
+	return true
+end
+
+---Take a scope's draft out of the drafts held.
+---@param kind string The scope's kind
+---@param id any Its window, tab or session's pool id
+---@return table|nil draft
+local function take_draft(kind, id)
+	for i, draft in ipairs(open.drafts) do
+		if draft.kind == kind and draft.id == id then
+			return table.remove(open.drafts, i)
+		end
+	end
+	return nil
+end
+
+---Show a draft as the screen: its lines as they were left, and what they were drawn from, the undo
+---history starting there.
+---@param draft table A scope's lines as a mode switch left them, with its mode and what they were drawn from
+---@return nil
+local function show_draft(draft)
+	open.names, open.paths, open.states = draft.names, draft.paths, draft.states
+	open.groups_drawn, open.drawn, open.drawn_lines = draft.groups_drawn, draft.drawn, draft.drawn_lines
+	put_lines(draft.lines)
+	set_modified()
+	decorate()
+	show_mode_line()
+end
+
+---Write the screen when it holds edits, then every draft, each shown in turn in its mode and checked.
+---
+---One that's refused or answered No stays shown, in its mode, and the drafts after it wait. With
+---every one written, the mode is the one the screen was in.
+---
+---@return boolean written
+local function write_all()
+	local mode = data.mode
+	if not write() then
+		return false
+	end
+	while #open.drafts > 0 do
+		local draft = table.remove(open.drafts, 1)
+		data.mode, open.kind, open.id = draft.mode, draft.kind, draft.id
+		show_draft(draft)
+		if not write() then
+			repaint() -- its mode shows
+			return false
+		end
+	end
+	if data.mode ~= mode then
+		data.mode = mode
+		repaint() -- the mode the screen was in shows again
+	end
 	return true
 end
 
@@ -635,11 +762,14 @@ function M.open(opts)
 	local buf, win = view.open({
 		name = NAME, filetype = "frogman-marks", title = "Marks", size = require('frogman.configs').marks_popup,
 		fill = function(buf)
-			open = { buf = buf, origin = origin, kind = kind, id = id, names = {}, states = {} }
+			open = { buf = buf, origin = origin, kind = kind, id = id, names = {}, states = {}, drafts = {} }
 			redraw(opts.conflict)
 		end,
 		write = write,
-		changed = decorate,
+		changed = function()
+			set_modified() -- lines typed back as they were drawn hold nothing
+			decorate()
+		end,
 		closed = function(buf)
 			if open and open.buf == buf then
 				open = nil
@@ -659,16 +789,18 @@ function M.open(opts)
 	end
 end
 
----Write the pop-up's lines when they were edited, then leave it.
+---Write the pop-up's lines when they were edited, and every draft, then leave it.
 ---
----A write that's refused or answered No leaves it open, its lines as typed.
+---A write that's refused or answered No leaves it open, showing the lines it refused.
 ---
 ---@return nil
 function M.leave()
 	if not is_open() then
 		return
 	end
-	require('frogman.domains.ui.view').leave(open.buf, open.win, write)
+	if write_all() then
+		close()
+	end
 end
 
 ---Get the file the row under the cursor names.
@@ -703,7 +835,7 @@ end
 ---Jump to the row's file in the window the pop-up was opened from, as a mark's jump goes.
 ---
 ---The pop-up is written first when it was edited, and stays when that's refused. With `stay`, the
----pop-up stays open.
+---pop-up stays open, its drafts held; leaving, every draft is written first, as `q` writes them.
 ---
 ---@param stay boolean|nil Whether the pop-up stays open once the jump is made
 ---@return nil
@@ -713,7 +845,7 @@ function M.act(stay)
 	end
 	local alias, id = written_row()
 	local origin = M.origin()
-	if id == nil or origin == nil then
+	if id == nil or origin == nil or (not stay and not write_all()) then
 		return
 	end
 	local here = vim.api.nvim_get_current_win()
@@ -864,22 +996,47 @@ end
 
 ---Switch the mode from inside the pop-up, and show the new mode's scope.
 ---
----Edits not written yet are written first, and a write that's refused or answered No keeps the mode
----and the pop-up as they are. With the window it was opened from gone, it refuses and says so.
+---The scope it leaves stays a draft when the screen holds edits, and the new scope's draft comes back
+---with its lines as they were left, or the scope is drawn as it is.
+---A switch is refused while an alias holds two files in the edits it would keep, and with the window
+---it was opened from gone; each says so.
 ---
----@param mode "window"|"tab"|"session"
+---@param mode "window"|"tab"|"session" The mode to switch to
 ---@return boolean switched
 function M.switch_mode(mode)
 	if not M.origin() then
 		vim.notify("frogman: the window these marks are for is gone.", vim.log.levels.WARN)
 		return false
 	end
-	if vim.bo[open.buf].modified and not write() then
-		return false
+	local kind, id = routines().scope_key(mode, open.origin)
+	if kind == open.kind and id == open.id then
+		data.mode = mode -- a tab session's tab and session modes read one scope
+		decorate()
+		return true
 	end
-	data.mode = mode
-	open.kind, open.id = routines().scope_key(mode, open.origin)
-	redraw(nil)
+	if screen_edited() then
+		-- the lines kept as a draft can't hold two files for an alias
+		local two = read_groups(vim.api.nvim_buf_get_lines(open.buf, 0, -1, false)).two
+		if two then
+			vim.notify(two.words, vim.log.levels.WARN)
+			if open.win and vim.api.nvim_win_is_valid(open.win) then
+				vim.api.nvim_win_set_cursor(open.win, { two.row, 0 })
+			end
+			return false
+		end
+		table.insert(open.drafts, {
+			mode = data.mode, kind = open.kind, id = open.id, lines = vim.api.nvim_buf_get_lines(open.buf, 0, -1, false),
+			names = open.names, paths = open.paths, states = open.states, groups_drawn = open.groups_drawn, drawn = open.drawn,
+			drawn_lines = open.drawn_lines,
+		})
+	end
+	data.mode, open.kind, open.id = mode, kind, id
+	local draft = take_draft(kind, id)
+	if draft then
+		show_draft(draft)
+	else
+		redraw(nil)
+	end
 	return true
 end
 
