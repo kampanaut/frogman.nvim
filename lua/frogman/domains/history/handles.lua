@@ -25,6 +25,8 @@ local data = require("frogman.domains.history.data")
 ---@field RENAME "rename" The file took a new hash: a move, or a No Name text reopened
 ---@field VANISH "vanish" The file went from disk
 ---@field RETURN "return" The file is back on disk
+---@field COPY "copy" The handle is a copy's, linked to the file it was copied from
+---@field FORGET "forget" The handle is let go, just before it's unregistered
 ---
 ---@class HandleStates
 ---@field OPEN "open" The file has a buffer
@@ -37,8 +39,30 @@ local states = {
 		RENAME = "rename",
 		VANISH = "vanish",
 		RETURN = "return",
+		COPY = "copy",
+		FORGET = "forget",
 	},
 }
+
+---@class HandleContext What a handle's transition carries, for the hooks that react on it
+---@field was? Filehash The hash the handle had before the transition (filled in by the move)
+---@field hash? Filehash The hash it has after it (the move fills in the one it has when none is given)
+---@field gone? boolean Whether its file is gone from disk after it (the move fills it in when it doesn't change)
+---@field tag string|nil Its tag after it, while its file is gone
+---@field quiet boolean|nil Whether the trail leaves it out
+---@field load boolean|nil Whether a load makes it, which the trail leaves out but for a No Name text reopened under a new id and a file taken off a closed list
+---@field lists string[]|nil A close's lists, by name, or a repair's
+---@field left string[]|nil The lists a reopen took the file off, by name (the closed lists' hook fills it)
+---@field others string[]|nil Of `lists` or `left`, those other than the current tab's
+---@field new boolean|nil Whether a reopened file was never written, so it opens as a new one
+---@field reopen boolean|nil Whether a reopen asked for, by a key or a list, which the trail records even off no list
+---@field from Filehash|nil The hash a No Name text had before its reopen
+---@field kind "move"|"reopen"|"load"|nil What a rename was: a move, a No Name text's reopen, or a load's
+---@field other HandleId|nil The handle a move onto a held name lets go
+---@field repair string|nil What a cleanup's repair found, which the trail says in place of a close
+---@field notes integer|nil How many notes about a forgotten file went with it
+---@field words string|nil What a move or a copy says in the trail
+---@field cleared table[]|nil The snapshots a move left holding one file twice, and the slot each let go
 
 local M = {}
 
@@ -84,16 +108,22 @@ if model == nil then
 	model = engine:create("handle")
 	model:register_state(states.OPEN)
 	model:register_state(states.CLOSED)
-	model:register_mode(states.mode.RENAME)
-	model:register_mode(states.mode.VANISH)
-	model:register_mode(states.mode.RETURN)
-	local in_place = "{" .. states.mode.RENAME .. "," .. states.mode.VANISH .. "," .. states.mode.RETURN .. "}"
+	for _, mode in pairs(states.mode) do
+		model:register_mode(mode)
+	end
+	local in_place = "{" .. table.concat({ states.mode.RENAME, states.mode.VANISH, states.mode.RETURN, states.mode.COPY,
+		states.mode.FORGET }, ",") .. "}"
 	model:on(states.OPEN, states.CLOSED, "keep_fields_on_close", keep_fields, 1, true)
 	model:on(states.CLOSED, states.OPEN, "keep_fields_on_open", keep_fields, 1, true)
 	model:on(states.OPEN, states.OPEN, "keep_fields_while_open", keep_fields, 1, true, in_place)
 	model:on(states.CLOSED, states.CLOSED, "keep_fields_while_closed", keep_fields, 1, true, in_place)
-	-- a handle goes by its file's name in messages
+	-- a handle goes by its file's unique name in messages, as the winbar names it; one with no path any
+	-- more, let go, by its name's last part or its hash
 	model:set_labeler(function(handle)
+		local ok, name = pcall(function() return require('frogman.domains.ui').routines.get_smart_basename(handle.id) end)
+		if ok and type(name) == "string" then
+			return name
+		end
 		local filepath = data.hash_filepath_registry.filepaths[handle.hash]
 		return filepath and vim.fs.basename(filepath) or handle.hash
 	end)
@@ -120,13 +150,17 @@ end
 
 ---Move a handle, its hash and gone flag carried in the transition's context.
 ---
+---The context also carries the hash the handle had before, and whatever the caller knows of what
+---happened, for the hooks that react on the transition (see `HandleContext`).
+---
 ---@param handle FileHandle The handle to move
 ---@param state "open"|"closed" The state it goes to
----@param context table|nil What changes with it (hash, gone, tag)
+---@param context HandleContext|table|nil What changes with it (hash, gone, tag), and what happened
 ---@param mode string|nil The transition's mode
 ---@return nil
 local function move(handle, state, context, mode)
 	context = context or {}
+	context.was = handle.hash
 	context.hash = context.hash or handle.hash
 	if context.gone == nil then
 		context.gone, context.tag = handle.gone, handle.tag
@@ -199,8 +233,8 @@ end
 ---Forget the handles that nothing holds, of those given.
 ---
 ---Follow-along drops the notes and history entries naming them and forgets their paths. One that
----nothing weak names either has its path forgotten after it, and the trail says so as it does for
----the rest.
+---nothing weak names either has its path forgotten after it, its let-go a move in the trail as every
+---let-go is.
 ---
 ---@param waiting table<FileHandle, true> The handles to look at
 ---@return nil
@@ -216,15 +250,10 @@ function M.forget_unheld(waiting)
 		return
 	end
 	routines.follow_along()
-	local ledger = require('frogman.domains.ledger')
 	for handle, _ in pairs(waiting) do
 		local filepath = data.hash_filepath_registry.filepaths[handle.hash]
 		if not handle.unregistered and next(handle.holders) == nil and filepath then
-			local name = ledger.name_of(handle.hash)
 			routines.unregister_filepath(filepath)
-			if data.hash_filepath_registry.filepaths[handle.hash] == nil then
-				ledger.move("forgotten", { subject = handle.hash, name = name, notes = 0, words = "nothing holds it any more" })
-			end
 		end
 	end
 end
@@ -357,14 +386,15 @@ end
 ---A hash with no handle gets one, open. A closed handle moves to open, and an open one stays. The
 ---open buffer holds it.
 ---
----@param hash Filehash
+---@param hash Filehash The hash the buffer is registered under
+---@param context HandleContext|nil What the reopen is, when it is one: asked for, a load's, a text's
 ---@return FileHandle handle The file's handle
-function M.opened(hash)
+function M.opened(hash, context)
 	local handle = by_hash[hash]
 	if handle == nil then
 		handle = mint(hash, states.OPEN)
 	elseif handle:state() == states.CLOSED then
-		move(handle, states.OPEN)
+		move(handle, states.OPEN, context)
 	end
 	add(handle, "buffer")
 	return handle
@@ -372,44 +402,49 @@ end
 
 ---Mark a file's handle closed, its hash no longer registered to a buffer.
 ---
----@param hash Filehash|nil
+---@param hash Filehash|nil The hash the buffer was registered under; nil closes nothing
+---@param context HandleContext|nil What the close is: the lists it went on, a repair's words, or quiet
 ---@return nil
-function M.closed(hash)
+function M.closed(hash, context)
 	local handle = M.of_hash(hash)
 	if handle == nil then
 		return
 	end
 	remove(handle, "buffer")
 	if handle:state() == states.OPEN then
-		move(handle, states.CLOSED)
+		move(handle, states.CLOSED, context)
 	end
 end
 
 ---Give a file's handle the hash of its new name.
 ---
 ---Used when a file takes a new hash: a rename that was a move, or a No Name text reopened under a
----new id. A live handle the new hash had is let go, since the moved file wins, and the places that
----held it hold the moved file now. When a buffer is registered under the new hash already, the
----handle is open.
+---new id. A live handle the new hash had is let go, quietly, since the moved file wins and takes its
+---name, and the places that held it hold the moved file now; the rename's hooks hand it the rest
+---(`context.other`). When a buffer is registered under the new hash already, the handle is open.
 ---
 ---@param old_hash Filehash The hash it had
 ---@param new_hash Filehash The hash it takes
+---@param context HandleContext|nil What the rename is (`kind`) and what the trail says of it
 ---@return nil
-function M.renamed(old_hash, new_hash)
+function M.renamed(old_hash, new_hash, context)
 	local handle = by_hash[old_hash]
 	if handle == nil or old_hash == new_hash then
 		return
 	end
+	context = context or {}
 	local other = by_hash[new_hash]
 	if other then
 		for place, _ in pairs(other.holders) do
 			add(handle, place)
 		end
-		M.let_go(new_hash)
+		M.let_go(new_hash, { quiet = true }) -- its name is the moved file's now, which the trail follows
 		forwards[other.id] = handle.id -- what held the other file holds the moved one now
+		context.other = other.id
 	end
 	by_hash[old_hash], by_hash[new_hash] = nil, handle
-	move(handle, handle:state(), { hash = new_hash }, states.mode.RENAME)
+	context.hash = new_hash
+	move(handle, handle:state(), context, states.mode.RENAME)
 	if data.hash_buffer_registry.buffers[new_hash] then
 		M.opened(new_hash)
 	end
@@ -476,13 +511,18 @@ end
 
 ---Link a copy's handle to the handle of the file it was copied from.
 ---
+---The copy's handle moves with the mode `copy`, its `copy_of` set, which what reacts on the copy reads,
+---the trail's hook writing the source's hash beside the copy's.
+---
 ---@param new_hash Filehash The copy's hash
 ---@param old_hash Filehash The hash of the file it was copied from
+---@param context HandleContext|nil What the trail says of the copy (`words`)
 ---@return nil
-function M.copied(new_hash, old_hash)
+function M.copied(new_hash, old_hash, context)
 	local copy, source = by_hash[new_hash], by_hash[old_hash]
 	if copy and source and copy ~= source then
 		copy.copy_of = source.id
+		move(copy, copy:state(), context, states.mode.COPY)
 	end
 end
 
@@ -494,27 +534,33 @@ end
 ---
 ---@param id HandleId|nil The file's handle
 ---@param tag string|nil Where you were when the file went missing, or the time (nil = it's back)
+---@param context HandleContext|nil A load's or a replay's, which the trail leaves out
 ---@return nil
-function M.set_tag(id, tag)
+function M.set_tag(id, tag, context)
 	local handle = id and live[id]
 	if handle == nil or handle.tag == tag then
 		return
 	end
-	move(handle, handle:state(), { gone = tag ~= nil, tag = tag }, tag and states.mode.VANISH or states.mode.RETURN)
+	context = context or {}
+	context.gone, context.tag = tag ~= nil, tag
+	move(handle, handle:state(), context, tag and states.mode.VANISH or states.mode.RETURN)
 end
 
 ---Let a file's handle go.
 ---
----Called once the path registry forgets the file. Its instance is unregistered, and its number
----isn't given again.
+---Called once the path registry is about to forget the file. The handle moves with the mode `forget`,
+---while its path is still known, so what reacts on it can name it; then its instance is unregistered,
+---and its number isn't given again.
 ---
----@param hash Filehash
+---@param hash Filehash The hash of the file being forgotten
+---@param context HandleContext|nil Why it goes: a load's teardown, quiet, and the notes that went with it
 ---@return nil
-function M.let_go(hash)
+function M.let_go(hash, context)
 	local handle = by_hash[hash]
 	if handle == nil then
 		return
 	end
+	move(handle, handle:state(), context, states.mode.FORGET)
 	by_hash[hash], live[handle.id] = nil, nil
 	for place, _ in pairs(handle.holders) do
 		remove(handle, place, true)
@@ -524,11 +570,13 @@ end
 
 ---Let every handle go, as a teardown starts from nothing.
 ---
----The count isn't reset, so a handle made afterwards is numbered above every one before.
+---Each goes through its `forget`, a load's in its context, so the trail leaves them out. The count
+---isn't reset, so a handle made afterwards is numbered above every one before.
 ---
 ---@return nil
 function M.reset()
 	for _, handle in pairs(live) do
+		move(handle, handle:state(), { load = true }, states.mode.FORGET)
 		handle:unregister()
 	end
 	live, by_hash, places, unheld, forwards = {}, {}, {}, {}, {}

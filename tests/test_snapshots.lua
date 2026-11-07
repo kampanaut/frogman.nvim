@@ -1811,4 +1811,78 @@ T['T829 [char] (M16, S1) the detached list\'s held-over snapshots ride its entry
 	eq({ on_entry = on_entry, detached = detached:match('DETACHED') ~= nil, back = #held(detached) }, { on_entry = 1, detached = true, back = 1 })
 end
 
+-- b.txt moved over a.txt, a.txt's buffer wiped first, as T783 moves it
+local function b_over_a()
+	child.cmd('bwipeout a.txt')
+	child.settle()
+	child.lua([[
+		local root = _G.FRG_TEST.root
+		os.rename(root .. '/b.txt', root .. '/a.txt')
+		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/b.txt'), root .. '/a.txt')
+	]])
+	child.settle(300)
+end
+
+T['T902 [char] (M16, A20, DESK.md:1607-1608) a rename onto a name a snapshot holds applies the live slots\' rule as it settles'] = function()
+	child.steps({ ':e a', ':e b', '<M-f>', ':e a', TAKE, ':e c' })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	b_over_a()
+	local held = snapshots(win)[1]
+	local saved = child.lua([[
+		local s = require('frogman.domains.snapshots').routines.serialise_window(...)[1]
+		return { current = s.current ~= nil, secondary = s.secondary or false, order = #s.order }
+	]], { win })
+	local cleared = child.lua([[
+		for _, step in ipairs(require('frogman').ledger.trail()) do
+			for _, m in ipairs(step.moves) do
+				if m.kind == 'cleared' and m.name == 'a.txt' then return step.trigger end
+			end
+		end
+		return false
+	]])
+	eq({ slots = held.slots, order = held.order, saved = saved, cleared = cleared ~= false },
+		{ slots = '⦉-⦊ [a] ⟦-⟧', order = 'a', saved = { current = true, secondary = false, order = 1 }, cleared = true })
+end
+
+T['T903 [char] (M16, A20, DESK.md:1607) where the current doesn\'t hold the file, the slot the moved file was in keeps it'] = function()
+	child.steps({ ':e a', ':e x', '<M-f>', ':e b', ':e x' })
+	eq(child.slots(), '⦉b⦊ [x] ⟦a⟧')
+	child.steps({ TAKE })
+	b_over_a()
+	eq(snapshots()[1].slots, '⦉a⦊ [x] ⟦-⟧')
+end
+
+T['T904 [char] (M16, S1 Load, DESK.md:1607) a saved snapshot holding one file twice gets the rule at its next load'] = function()
+	local got = {}
+	for _, twice in ipairs({ 'ternary', 'secondary' }) do
+		local s = S2.shared()
+		S2.start(child, s)
+		child.steps({ ':e b', ':e a', '<M-f>', ':e c', ':e a' })
+		eq(child.slots(), '⦉c⦊ [a] ⟦b⟧')
+		child.steps({ TAKE })
+		eq(S2.save(child), { true })
+		S2.start(child, s)
+		-- sealed again by hand: the ternary holds the secondary's file too, or the secondary the current's
+		child.lua([[
+			local twice = ...
+			local crypto = require('frogman.domains.storage.crypto')
+			local dir = vim.fn.getcwd(-1, -1)
+			local path = require('frogman.configs').session_dir .. vim.fn.sha256(dir) -- a nameless save's file
+			local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
+			local salt = bytes:sub(5, 4 + crypto.salt_length)
+			local data = require('frogman.domains.storage.routines').read_session(dir, nil)
+			local snapshot = data.windows[1][11][1]
+			if twice == 'ternary' then snapshot.ternary = snapshot.secondary else snapshot.secondary = snapshot.current end
+			local header = "CDV1" .. salt
+			local out = header .. crypto.seal(crypto.derive_key(dir, salt), vim.json.encode(data), header)
+			fh = assert(io.open(path, 'wb')); fh:write(out); fh:close()
+		]], { twice })
+		Misc.restore(child, { 'a', 'b', 'c' }, 'a')
+		eq(S2.load(child), { true })
+		child.settle(300)
+		got[twice] = snapshots()[1].slots
+	end
+	eq(got, { ternary = '⦉-⦊ [a] ⟦b⟧', secondary = '⦉c⦊ [a] ⟦-⟧' })
+end
+
 return T

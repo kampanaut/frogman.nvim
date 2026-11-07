@@ -1016,4 +1016,35 @@ T['T709 [char] (A27, M5) a No Name text\'s reopen keeps it one line'] = function
 	eq(header:find('3 moves over 1 day', 1, true) ~= nil, true)
 end
 
+T['T899 [char] (A27, M5, DESK.md:2150, repro R25) a No Name text reopened from no list links its two ids'] = function()
+	child.setup()
+	child.steps({ ':e a', ':enew' })
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "hello" })')
+	child.settle()
+	child.steps({ "<M-'><M-'><M-a>", '<M-.>' })
+	child.settle(100)
+	-- its line deleted in the closed lists: the mark alone keeps it
+	local p = S2.picker(child)
+	local kept = vim.deepcopy(p.lines)
+	table.remove(kept, S2.line_of(kept, '[No Name]'))
+	S2.write_picker(child, p, kept)
+	child.cmd('close')
+	child.settle(100)
+	child.steps({ "<M-'><M-a>" })
+	child.settle(100)
+	child.steps({ '<M-.>' })
+	child.settle(100)
+	local link = child.lua([[
+		for _, step in ipairs(require('frogman').ledger.trail()) do
+			for _, m in ipairs(step.moves) do
+				if m.kind == 'reopened' and m.to ~= nil and m.to ~= m.subject then return true end
+			end
+		end
+		return false
+	]])
+	open_trail()
+	local header = star_on('↓ [No Name]', -1)
+	eq({ link = link, line = header:find('3 moves over 1 day', 1, true) ~= nil }, { link = true, line = true })
+end
+
 return T

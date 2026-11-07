@@ -11,6 +11,10 @@ local M = {}
 M.data = data
 M.routines = routines
 
+-- the trail's one place for what a file's handle does: its hook runs last on every transition, after
+-- what reacts on it has put what it found in the context
+require('frogman.domains.history.handles').model:on("*", "*", "trail_move", routines.handle_moved, 9, true)
+
 M.begin = routines.begin
 
 ---Run a key's job as a step of its own.

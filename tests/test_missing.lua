@@ -200,4 +200,21 @@ T['T898 [char] (M14) a deleted file\'s buffer reloaded as a new file is marked n
 	]]), { unwritten = true, tag = false })
 end
 
+T['T908 [char] (M14, P2, DESK.md:617) a settle point\'s check of the disk runs once the editor settles'] = function()
+	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
+	child.steps({ ':e a', ':e b' })
+	child.cmd('bdelete b.txt')
+	child.settle(100)
+	child.lua('os.remove(_G.FRG_TEST.root .. "/b.txt")')
+	local tag = [[
+		local H = require('frogman.domains.history')
+		local handle = H.handles.get(H.get_handle_from_filepath(_G.FRG_TEST.root .. '/b.txt'))
+		return handle and handle.tag or false
+	]]
+	local during = child.lua('vim.cmd("doautocmd FocusGained"); ' .. tag)
+	child.settle(100)
+	local after = child.lua(tag)
+	eq({ during = during, tagged = type(after) == 'string' }, { during = false, tagged = true })
+end
+
 return T

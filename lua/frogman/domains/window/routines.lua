@@ -278,9 +278,9 @@ function M.undo_arrival(bufnr, text)
 		end
 	end
 	-- a close: the file goes on its lists, and whatever holds it keeps it
-	if history.routines.track_closing_handle(id, nil, text) then
-		history.routines.unregister_buffer(bufnr)
-		history.routines.update_buffer_history_ordered()
+	local close = history.routines.closing(bufnr, text)
+	if close then
+		history.routines.close(close)
 	end
 	loop_sm:to(loop_states.SELF)
 end
@@ -577,6 +577,25 @@ function M.land_after_delete(winid, deleted_bufnr)
 	end)
 end
 
+---Note the windows a buffer being deleted makes land, at its delete's event.
+---
+---A window that shows it lands once the delete is over (`M.land_after_delete()`) when its current slot
+---is the buffer's file, or has no buffer, the window visiting the buffer; Neovim's own pick meanwhile
+---isn't a visit. It's read at the event, since the close runs once the editor settles, by when the
+---window shows Neovim's pick.
+---
+---@param bufnr Bufnr The buffer being deleted
+---@param id HandleId|nil Its file's handle, nil for a buffer frogman doesn't track
+---@return nil
+function M.note_landings(bufnr, id)
+	for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
+		local triquetra = data.crux[winid]
+		if triquetra and (triquetra.current_slot == id or history.get_buffer_from_handle(triquetra.current_slot) == nil) then
+			M.land_after_delete(winid, bufnr)
+		end
+	end
+end
+
 ---Check if this BufEnter is Neovim's own pick for a window whose buffer is being deleted.
 ---
 ---Only the first one counts, and only once the buffer has left the buffer list (a rename keeps it).
@@ -604,6 +623,8 @@ end
 ---@param bufnr_ondelete nil | Bufnr
 ---@return nil
 function M.enforce_editor_policy(bufnr_ondelete)
+	-- a buffer the screen shows deleted already is judged gone: its close, still to settle, runs first
+	history.routines.run_closes()
 	local set_cache_from_window_triquetra = require("frogman").ui.routines.set_cache_from_window_triquetra
 	local ledger = require('frogman.domains.ledger')
 	local slots_before, rows_before = {}, {}
@@ -616,6 +637,9 @@ function M.enforce_editor_policy(bufnr_ondelete)
 			-- a window gone without its WinClosed: closed while frogman was off, or with noautocmd
 			data.unregister_triquetra(winid)
 			goto continue
+		end
+		if data.landing[winid] then
+			goto continue -- its buffer is being deleted: it lands by itself once the delete is over
 		end
 		local current_bufnr = history.get_buffer_from_handle(triquetra.current_slot)
 		local filepath, bufnr
@@ -776,7 +800,8 @@ function M.enforce_editor_policy(bufnr_ondelete)
 		bufnr = history.get_buffer_from_handle(triquetra.secondary_slot)
 		if triquetra.secondary_slot ~= nil and is_handle_stale(triquetra.secondary_slot) then
 			if bufnr then
-				history.routines.unregister_buffer(bufnr)
+				-- quiet: the trail has the slot cleared, from the pass's own rows, and no close of the file
+				history.routines.unregister_buffer(bufnr, { quiet = true })
 			end
 			triquetra:set("secondary_slot", nil)
 		end
@@ -784,7 +809,7 @@ function M.enforce_editor_policy(bufnr_ondelete)
 		bufnr = history.get_buffer_from_handle(triquetra.ternary_slot)
 		if triquetra.ternary_slot ~= nil and is_handle_stale(triquetra.ternary_slot) then
 			if bufnr then
-				history.routines.unregister_buffer(bufnr)
+				history.routines.unregister_buffer(bufnr, { quiet = true })
 			end
 			triquetra:set("ternary_slot", nil)
 		end
@@ -795,7 +820,7 @@ function M.enforce_editor_policy(bufnr_ondelete)
 			bufnr = history.get_buffer_from_handle(pid)
 			if is_handle_stale(pid) then
 				if bufnr then
-					history.routines.unregister_buffer(bufnr)
+					history.routines.unregister_buffer(bufnr, { quiet = true })
 				end
 				triquetra:queue_remove(index)
 			end
@@ -806,7 +831,7 @@ function M.enforce_editor_policy(bufnr_ondelete)
 		if not filepath then
 			bufnr = history.get_buffer_from_handle(triquetra.current_slot)
 			if bufnr then
-				history.routines.unregister_buffer(bufnr)
+				history.routines.unregister_buffer(bufnr, { quiet = true })
 			end
 		end
 

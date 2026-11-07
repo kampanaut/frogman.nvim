@@ -1336,7 +1336,8 @@ local function derive_cache_from_window_triquetra(winid, again)
 		window_triquetra.primary_buffer[1],
 	}) do
 		local bufnr = history.get_buffer_from_handle(id)
-		if bufnr and not vim.api.nvim_buf_is_valid(bufnr) then
+		-- a buffer deleted with its close still to settle is that close's, not a repair's
+		if bufnr and not vim.api.nvim_buf_is_valid(bufnr) and not history.data.closing[bufnr] then
 			require('frogman.domains.ledger').within("timer", "cleanup", history.routines.cleanup_system)
 			window_triquetra = window.get_triquetra(winid)
 			if not window_triquetra then
@@ -1362,6 +1363,11 @@ local function derive_cache_from_window_triquetra(winid, again)
 
 		local bufnr = history.get_buffer_from_handle(id) or borrowed[id]
 		local display_name = M.get_smart_basename(id) or nil
+		if bufnr ~= nil and not vim.api.nvim_buf_is_valid(bufnr) then
+			-- deleted, its close still to settle: it draws as the closed file it's about to be
+			derive_cache_lock[winid] = nil
+			return nil, display_name, true, false, true
+		end
 
 		if bufnr ~= nil then
 			-- Buffer exists in memory
@@ -1430,9 +1436,11 @@ local function derive_cache_from_window_triquetra(winid, again)
 	-- reflect the primary_enabled state.
 	ui_triquetra.has_primary = ui_triquetra.has_primary and window_triquetra.primary_enabled
 
-	-- a trackable buffer not taken in yet has its arrival still to settle, which the heal leaves it to
+	-- a trackable buffer not taken in yet has its arrival still to settle, which the heal leaves it to, and
+	-- a window whose buffer is being deleted lands by itself once the delete is over
 	local arriving = ui_triquetra.visiting ~= nil and history.routines.is_trackable(shown)
-	if ui_triquetra.current_bufnr == nil and not (ui_triquetra.visiting and (ui_triquetra.deleted_slots.current or arriving)) then
+	local landing = window.data.landing[winid] ~= nil
+	if ui_triquetra.current_bufnr == nil and not landing and not (ui_triquetra.visiting and (ui_triquetra.deleted_slots.current or arriving)) then
 		-- the retry is counted here: resolve_slot clears derive_cache_lock when another slot resolves.
 		if not again then
 			derive_cache_lock[winid] = true

@@ -101,6 +101,9 @@ local corpus = {
 	tab_pools = {},
 	-- The pools a file came out of when it was opened again (file's handle → pool id → true), for its next close
 	came_from = {},
+	-- The closes read at a delete's event and waiting for the editor to settle (buffer → its close); the
+	-- cleanup and the UI leave such a buffer to its close
+	closing = {},
 }
 corpus.pools[""] = { id = "", closed = corpus.closed_buffers, times = {}, visits = {}, tabs = {} }
 return corpus

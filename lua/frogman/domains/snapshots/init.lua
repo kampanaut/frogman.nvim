@@ -31,6 +31,15 @@ navigation.sm:on("*", "*", "cancel_preview_on_window_jump", function()
 	end)
 end, 2, true, navigation.states.mode.WINENTER)
 
+-- a move onto a name a snapshot holds: the snapshot keeps the file once, by the live slots' rule, as the
+-- move settles, and the trail says which slots let it go
+local history = require('frogman.domains.history')
+history.handles.model:on("*", "*", "snapshots_take_over", function(context, handle)
+	if context.other then
+		context.cleared = routines.take_over(context.other, handle.id)
+	end
+end, 5, true, history.handles.states.mode.RENAME)
+
 -- a load from idle starts from nothing, as at startup: no snapshot, before the handles go
 local storageSM = require('frogman.domains.storage.sm')
 local storageStates = require('frogman.domains.storage.states')

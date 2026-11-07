@@ -80,8 +80,9 @@ end
 ---never-written mark over to its handle.
 ---
 ---@param bufnr number Buffer number to register
+---@param context HandleContext|nil What its file's reopen is, when its handle was closed: asked for, or a load's
 ---@return HandleId id The handle of the buffer's file
-function M.register_buffer(bufnr)
+function M.register_buffer(bufnr, context)
 	local filepath = vim.api.nvim_buf_get_name(bufnr)
 	if vim.bo[bufnr].buftype ~= "" and not M.is_nowrite_file(bufnr) then
 		require('frogman.domains.ledger').never("I don't want to track non-file buffers.")
@@ -102,7 +103,7 @@ function M.register_buffer(bufnr)
 	data.hash_buffer_registry.hashes[bufnr] = filehash
 	data.hash_filepath_registry.filepaths[filehash] = filepath
 	data.hash_filepath_registry.hashes[filepath] = filehash
-	local handle = handles.opened(filehash) -- its handle, made or opened
+	local handle = handles.opened(filehash, context) -- its handle, made or opened
 	if vim.b[bufnr].frogman_unwritten then
 		handle.unwritten, vim.b[bufnr].frogman_unwritten = bufnr, nil -- a new file, not written yet
 	end
@@ -138,15 +139,22 @@ end
 
 ---Unregister a buffer from the regietry
 ---
----Removes the buffer from the hash-to-buffer mapping system.
+---Removes the buffer from the hash-to-buffer mapping system. Given a hash, it drops that pair alone,
+---as a close read at its event does once it runs: by then the buffer number may name another file.
 ---@param bufnr number Buffer number to unregister
-function M.unregister_buffer(bufnr)
-	local filehash = data.hash_buffer_registry.hashes[bufnr]
+---@param context HandleContext|nil What the close is: the lists it went on, a repair's words, or quiet
+---@param filehash Filehash|nil The hash it was registered under, when the caller read it before
+function M.unregister_buffer(bufnr, context, filehash)
+	filehash = filehash or data.hash_buffer_registry.hashes[bufnr]
 	if filehash == nil then return end
 
-	data.hash_buffer_registry.hashes[bufnr] = nil
-	data.hash_buffer_registry.buffers[filehash] = nil
-	handles.closed(filehash)
+	if data.hash_buffer_registry.hashes[bufnr] == filehash then
+		data.hash_buffer_registry.hashes[bufnr] = nil
+	end
+	if data.hash_buffer_registry.buffers[filehash] == bufnr then
+		data.hash_buffer_registry.buffers[filehash] = nil
+	end
+	handles.closed(filehash, context)
 
 	-- print("Unregistered buffer: " .. bufnr .. "\n with filehash: " .. filehash .. "\n" .. debug.traceback())
 end
@@ -429,64 +437,67 @@ function M.tabs_that_visited(id)
 	return tabpages
 end
 
----Close a file into its pools.
+---Get the pools a file closes into.
 ---
 ---Its pools are the current tab's, every pool it came out of when it was opened again, and the
----pool of every tab that visited it (see `M.tabs_that_visited()`). Each one gets it as its
----newest entry, with the same close time. The trail records the close, and a close onto lists
----other than the current tab's also gets a message.
+---pool of every tab that visited it (see `M.tabs_that_visited()`). A delete reads them at its event,
+---while the window still shows the buffer, and its close goes on them once the editor settles.
 ---
 ---@param id HandleId The file's handle
----@param quiet boolean|nil Whether the caller records the close itself
----@return table<Pool, boolean> pools The pools it went on (pool → true)
-function M.close_into_pools(id, quiet)
-	local time = require('frogman.domains.ledger').now()
+---@return string[] targets The pools' ids
+function M.close_targets(id)
+	local pools = M.pools()
 	local targets = { [M.current_pool()] = true }
 	for pool_id, _ in pairs(data.came_from[id] or {}) do
-		if data.pools[pool_id] then
-			targets[data.pools[pool_id]] = true
+		if pools[pool_id] then
+			targets[pools[pool_id]] = true
 		end
 	end
-	data.came_from[id] = nil
 	for tabpage, _ in pairs(M.tabs_that_visited(id)) do
 		targets[M.pool_of_tab(tabpage)] = true
 	end
+	local ids = {}
 	for pool, _ in pairs(targets) do
-		push_closed(pool, id, time)
+		table.insert(ids, pool.id)
 	end
-	if not quiet then
-		M.ledger_record_close(id, targets)
-	end
-	return targets
+	return ids
 end
 
----Record a close in the trail, and say it when it went on lists other than the tab's.
+---Close a file into its pools.
 ---
----A close the caller held back, as a No Name buffer's that a write may yet make a rename, is
----recorded here once it turns out to be one. The trail keeps the file's hash, as it was then.
+---Each of its pools (see `M.close_targets()`) gets it as its newest entry, with the same close time;
+---one gone since its close was read is skipped. The trail gets the close from the handle's own
+---close, which these lists' names go to, and a close onto lists other than the current tab's also
+---gets a message there.
 ---
----@param id HandleId The closed file's handle
----@param targets table<Pool, boolean> The pools it went on (pool → true)
----@return nil
-function M.ledger_record_close(id, targets)
-	local ledger = require('frogman.domains.ledger')
-	local filehash = M.get_hash_from_handle(id)
-	local name = ledger.name_of(filehash) or filehash
-	local lists, others = named_lists(targets)
-	ledger.move("closed", { subject = filehash, name = name, lists = lists, dim = #others == 0 })
-	if #others > 0 then
-		ledger.tell("closed", name, others)
+---@param id HandleId The file's handle
+---@param targets string[]|nil The pools' ids, when the close read them before (at its event)
+---@return string[] lists The lists it went on, by name, the current tab's first
+---@return string[] others Of those, the lists other than the current tab's
+function M.close_into_pools(id, targets)
+	local time = require('frogman.domains.ledger').now()
+	local pools, into = M.pools(), {}
+	for _, pool_id in ipairs(targets or M.close_targets(id)) do
+		if pools[pool_id] then
+			into[pools[pool_id]] = true
+		end
 	end
+	data.came_from[id] = nil
+	for pool, _ in pairs(into) do
+		push_closed(pool, id, time)
+	end
+	return named_lists(into)
 end
 
 ---Take a file that's open again off every pool's closed stack.
 ---
 ---A file open again is closed nowhere, and the pools it left are remembered for its next
----close. The trail records the reopen, and a reopen off lists other than the current tab's
----also gets a message.
+---close. The trail gets the reopen from the handle's own reopen, which these lists' names go to, and
+---a reopen off lists other than the current tab's also gets a message there.
 ---
 ---@param id HandleId The file's handle
----@return FrogmanLedgerMove|nil move The reopen the trail recorded, when it took the file off a list
+---@return string[] left The lists it left, by name, the current tab's first
+---@return string[] others Of those, the lists other than the current tab's
 function M.open_out_of_pools(id)
 	local left = {}
 	for pool_id, pool in pairs(M.pools()) do
@@ -501,22 +512,7 @@ function M.open_out_of_pools(id)
 			end
 		end
 	end
-	-- the trail gets the reopen, and one off lists other than the tab's is said too
-	if next(left) then
-		local ledger = require('frogman.domains.ledger')
-		local filehash = M.get_hash_from_handle(id)
-		local name = ledger.name_of(filehash) or filehash
-		local lists, others = named_lists(left)
-		-- a file never written comes back as a new one, which the trail says
-		local filepath = M.get_filepath_from_handle(id)
-		local handle = handles.get(id)
-		local new = handle ~= nil and handle.unwritten ~= nil and filepath ~= nil and vim.fn.filereadable(filepath) == 0
-		local move = ledger.move("reopened", { subject = filehash, name = name, lists = lists, dim = #others == 0, new = new or nil })
-		if #others > 0 then
-			ledger.tell("reopened", name, others)
-		end
-		return move
-	end
+	return named_lists(left)
 end
 
 ---Take a file off every pool's closed stack, remembering nothing.
@@ -650,18 +646,14 @@ function M.mark_missing(label, limit, known)
 			return
 		end
 		checked[id] = true
-		local ledger = require('frogman.domains.ledger')
+		-- the trail gets each tag put on and taken off from the handle's own vanish and return
 		if vim.fn.filereadable(filepath) == 1 then
-			if handle.tag ~= nil then
-				ledger.move("back", { subject = handle.hash, name = ledger.name_of(handle.hash), words = "back on disk" })
-			end
 			handles.set_tag(id, nil)
 			handle.unwritten = nil
 		elseif handle.unwritten then
 			return -- never written, so it didn't go missing
 		elseif handle.tag == nil then
 			handles.set_tag(id, label or os.date("%H:%M"))
-			ledger.move("gone", { subject = handle.hash, name = ledger.name_of(handle.hash), words = "gone from disk ⎇" .. handle.tag })
 		end
 	end
 	if limit then
@@ -751,7 +743,7 @@ local function watch_head(git_dir)
 	end
 	head_watch:start(git_dir, {}, vim.schedule_wrap(function(err, filename)
 		if not err and filename == "HEAD" then
-			M.refresh_label()
+			require('frogman.settle').later("label", M.refresh_label) -- once the editor settles
 		end
 	end))
 	head_watch_dir = git_dir
@@ -858,12 +850,10 @@ function M.follow_along(known_set)
 		local filepath = M.get_filepath_from_hash(filehash)
 		if is_unknown and filepath then
 			local name = ledger.name_of(filehash)
-			M.unregister_filepath(filepath)
+			-- the trail gets what's forgotten from its handle's let-go, with the notes about it that went
+			M.unregister_filepath(filepath, { notes = notes[id] or 0 })
 			if M.get_filepath_from_hash(filehash) == nil then
 				forgotten = forgotten + 1
-				-- the trail gets what's forgotten, with the notes about it that went
-				ledger.move("forgotten", { subject = filehash, name = name, notes = notes[id] or 0,
-					words = "nothing holds it any more" })
 			elseif notes[id] then
 				ledger.move("note_dropped", { subject = filehash, name = name, notes = notes[id],
 					words = "notes naming it dropped: nothing holds it any more" })
@@ -876,19 +866,21 @@ end
 ---unregister a filepath from the registry
 ---
 ---A path is never forgotten while anything references its file's handle, so a referenced one stays.
+---Its handle is let go first, while the path still names it, so the trail names what's forgotten.
 ---
 ---@param filepath Filepath The path to forget, or a No Name text's NONAME_ name
+---@param context HandleContext|nil What the let-go is: the notes that went with it, a load's, or quiet
 ---@return nil
-function M.unregister_filepath(filepath)
+function M.unregister_filepath(filepath, context)
 	local filehash = data.hash_filepath_registry.hashes[filepath]
 
 	if filehash == nil then return end
 	local handle = handles.of_hash(filehash)
 	if handle and M.is_handle_referenced(handle.id) then return end
 
+	handles.let_go(filehash, context) -- forgotten, its handle goes with it
 	data.hash_filepath_registry.hashes[filepath] = nil
 	data.hash_filepath_registry.filepaths[filehash] = nil
-	handles.let_go(filehash) -- forgotten, its handle goes with it
 
 	-- print("Unregistered filepath: " .. filepath .. "\n with filehash: " .. filehash .. "\n" .. debug.traceback())
 end
@@ -1027,11 +1019,6 @@ function M.track_buffer(id, time)
 		data.crux_internals.window[winid][id] = data.history_index - 1
 	end
 
-	-- open again, it's closed nowhere: it leaves every pool, which remember it for its next close. A
-	-- load's entry, given its time, opens nothing: the load fills the closed lists from its file.
-	if time == nil then
-		M.open_out_of_pools(id)
-	end
 	-- a visit in a tab session's tab is the session's own too.
 	local pool = M.pool_of_tab(winid and vim.api.nvim_win_get_tabpage(winid) or vim.api.nvim_get_current_tabpage())
 	if time == nil and pool.id ~= "" then
@@ -1045,7 +1032,16 @@ end
 ---
 ---@param bufnr Bufnr The buffer to untrack
 function M.untrack_buffer(bufnr)
-	local id = M.get_handle_from_buffer(bufnr)
+	M.untrack_handle(M.get_handle_from_buffer(bufnr))
+end
+
+---Untrack a file's visits in the history crux, by its handle.
+---
+---Removes the file from the history, overall and in every window. A close read at its event goes by
+---its handle, since by the time it runs the buffer's number may name another file.
+---
+---@param id HandleId|nil The file's handle
+function M.untrack_handle(id)
 	if id ~= nil then
 		data.crux[id] = nil
 		data.crux_internals.global[id] = nil
@@ -1089,7 +1085,8 @@ function M.update_buffer_history(cbufnr)
 		)
 	then
 		M.untrack_buffer(cbufnr)
-		M.unregister_buffer(cbufnr) -- clean this up. this buffer evolved into something we don't like.
+		-- its close is part of its let-go, which the trail records once its path is forgotten
+		M.unregister_buffer(cbufnr, { quiet = true }) -- clean this up. this buffer evolved into something we don't like.
 		M.unregister_filepath(filename)
 		return false
 	end
@@ -1223,19 +1220,16 @@ function M.reopen_handle(id)
 			return nil
 		end
 	end
-	local reopened = M.open_out_of_pools(id)
+	-- the handle's reopen takes the file off every list, its buffer holding a text now, and the trail
+	-- gets it from there, off no list too
 	local bufnr
 	if filepath:match("^NONAME_") then
 		bufnr = M.buffer_from_text(cache)
 		vim.bo[bufnr].buftype = ""
-		handle.text = nil -- the buffer holds it now
 		local old_filehash = handle.hash
-		-- the text keeps its handle under the new id it comes back with
-		M.rename_handle(old_filehash, M.get_filehash(M.noname_name(bufnr)))
-		M.register_buffer(bufnr)
-		if reopened and handle.hash ~= old_filehash then
-			reopened.to = handle.hash -- the trail's search follows the text to its new id
-		end
+		-- the text keeps its handle under the new id it comes back with, and its reopen links the two
+		handles.renamed(old_filehash, M.get_filehash(M.noname_name(bufnr)), { kind = "reopen" })
+		M.register_buffer(bufnr, { reopen = true, from = old_filehash })
 		if M.get_filepath_from_buffer(bufnr) ~= filepath then
 			M.unregister_filepath(filepath) -- This NONAME_ buffer is now irrelevant, we don't want to track it anymore.
 		end
@@ -1244,11 +1238,11 @@ function M.reopen_handle(id)
 		bufnr = vim.fn.bufadd(filepath)
 		vim.bo[bufnr].buflisted = true -- listed before bufload, whose BufEnter only tracks listed buffers.
 		vim.fn.bufload(bufnr)
-		M.register_buffer(bufnr)
+		M.register_buffer(bufnr, { reopen = true })
 	end
 
 	if bufnr then
-		M.update_buffer_history(bufnr) -- its visit, once, and it leaves the closed lists
+		M.update_buffer_history(bufnr) -- its visit, once
 		M.update_buffer_history_ordered()
 		return bufnr
 	else
@@ -1265,7 +1259,7 @@ end
 ---@param from HandleId The handle whose visits go
 ---@param to HandleId The handle that takes them
 ---@return nil
-local function merge_history(from, to)
+function M.merge_history(from, to)
 	local cruxes = { data.crux, data.crux_internals.global }
 	for _, window_crux in pairs(data.crux_internals.window) do
 		table.insert(cruxes, window_crux)
@@ -1281,61 +1275,22 @@ local function merge_history(from, to)
 	end
 end
 
----Give a file's handle the hash of its new name.
----
----Used when a file takes a new hash: a rename that was a move, or a No Name text reopened under a
----new id. The handle keeps its number, so everything holding it holds the file still. A live handle
----the new name had is let go: it leaves every closed list, a buffer holding the name open now, the
----moved file takes its place in every window (the window domain's `take_over_handle`), and of the
----two names' visits the newer stays.
----
----@param old_hash Filehash The hash the file had
----@param new_hash Filehash The hash of its new name
----@return nil
-function M.rename_handle(old_hash, new_hash)
-	local moved, other = handles.of_hash(old_hash), handles.of_hash(new_hash)
-	if other and other ~= moved then
-		-- a name still on a closed list is open now, the buffer holding it: its old entry goes, nothing remembered
-		M.discard_from_pools(other.id)
-		if moved then
-			require('frogman.domains.window.data').take_over_handle(other.id, moved.id)
-			merge_history(other.id, moved.id)
-		end
-	end
-	handles.renamed(old_hash, new_hash) -- the moved file keeps its handle, and the name's old one goes
-end
-
----Get a file's visits, overall and in each window.
----
----Used to keep them through the delete a rename starts with, which untracks them. A rename
----that turns out to be a move then gives them back.
----
----@param id HandleId The file's handle
----@return { crux: integer|nil, global: integer|nil, windows: table<WinId, integer> } visits
-function M.history_of(id)
-	local windows = {}
-	for winid, window_crux in pairs(data.crux_internals.window) do
-		windows[winid] = window_crux[id]
-	end
-	return { crux = data.crux[id], global = data.crux_internals.global[id], windows = windows }
-end
-
 ---Decide whether a rename was a copy or a move, once the command that made it is over.
 ---
 ---The disk decides. If the old name is still a file, it was a copy, and the caller closes the
 ---old name. If it isn't, or never was (a No Name buffer), it was a move: the moved file keeps its
 ---handle, which takes the new name's hash, so every slot, note and history entry holding it holds it
----still. It leaves every closed stack, its buffer holding it open, and a No Name buffer's text is in
----its file now. A live handle the new name had is let go, the moved file taking its place in every
----window, and of the two names' visits the newer stays (see `rename_handle`).
+---still, and the trail gets the move from the handle's rename. Its buffer was never closed (a No Name
+---buffer written under a name is claimed before its close runs), so it's on no list. A live handle
+---the new name had is let go, the rename's hooks giving the moved file its place in every window and
+---the newer of the two names' visits.
 ---The buffer is unregistered from the old hash, for the caller to register under the new one. A
 ---buffer frogman doesn't track is left alone.
 ---
 ---@param bufnr Bufnr The renamed buffer
 ---@param id HandleId The handle of its file before the rename, which still has the old name's hash
----@param old_history table|nil Its history, when a delete untracked it before the rename settled
 ---@return string|nil moved_from The old name, when it was a move
-function M.settle_rename(bufnr, id, old_history)
+function M.settle_rename(bufnr, id)
 	local old_hash = M.get_hash_from_handle(id)
 	local old_path = M.get_filepath_from_hash(old_hash)
 	if
@@ -1347,86 +1302,151 @@ function M.settle_rename(bufnr, id, old_history)
 	end
 	local new_name = vim.api.nvim_buf_get_name(bufnr)
 	local new_hash = M.get_filehash(new_name ~= "" and new_name or M.noname_name(bufnr)) -- no name: a No Name buffer's
-	local moved = handles.of_hash(old_hash)
-	if moved then
-		M.discard_from_pools(moved.id)
-		moved.text = nil -- a No Name buffer's text is in its file now.
-	end
-	M.rename_handle(old_hash, new_hash)
+	local new_label = new_name ~= "" and vim.fs.basename(new_name) or "[No Name]"
+	handles.renamed(old_hash, new_hash, { kind = "move", words = (old_path:match("^NONAME_") and "written as " or "renamed to ")
+		.. new_label .. ": a move" })
 	if data.hash_buffer_registry.hashes[bufnr] == old_hash then
 		M.unregister_buffer(bufnr) -- the buffer is registered under its new name next.
-	end
-	if old_history and moved then
-		-- the newer visit stays, where the moved file has one already
-		local id = moved.id
-		if old_history.crux then
-			data.crux[id] = math.max(data.crux[id] or old_history.crux, old_history.crux)
-		end
-		if old_history.global then
-			data.crux_internals.global[id] = math.max(data.crux_internals.global[id] or old_history.global, old_history.global)
-		end
-		for winid, time in pairs(old_history.windows) do
-			if data.crux_internals.window[winid] then
-				data.crux_internals.window[winid][id] = math.max(data.crux_internals.window[winid][id] or time, time)
-			end
-		end
 	end
 	return old_path
 end
 
+---@class FrogmanClose A file's close, read when its buffer goes (its delete's event), run once the editor settles
+---@field seq integer Its number, so a newer close of the same buffer is told apart
+---@field id HandleId The file's handle
+---@field hash Filehash The hash its buffer was registered under
+---@field bufnr Bufnr The buffer that went
+---@field targets string[] The lists it goes on, by their pools' ids
+---@field text NoNameBufferContent|nil A No Name buffer's text, copied while the buffer was there
+
+-- counts the closes read, so each is told apart from a newer one of the same buffer
+local closes = 0
+
+---Read a buffer's close while the buffer is still there.
+---
+---A delete reads it at its event: the file's handle, the hash and buffer number it's registered under,
+---the lists it goes on, and a No Name buffer's text with its cursor, which the buffer won't have once
+---the delete is over. The close itself runs once the editor settles (`M.close()`); until then the
+---cleanup and the UI leave the buffer to it.
+---
+---@param bufnr Bufnr The buffer going
+---@param text NoNameBufferContent|nil A No Name buffer's text copied before, to keep in place of what the buffer holds now
+---@return FrogmanClose|nil close The close, or nil for a buffer frogman doesn't track
+function M.closing(bufnr, text)
+	local id = M.get_handle_from_buffer(bufnr)
+	if id == nil then
+		return nil
+	end
+	closes = closes + 1
+	local hash = M.get_hash_from_handle(id)
+	local close = { seq = closes, id = id, hash = hash, bufnr = bufnr, targets = M.close_targets(id) }
+	if M.get_filepath_from_hash(hash):match("^NONAME_") then
+		local winid = vim.fn.bufwinid(bufnr)
+		close.text = text or {
+			lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false),
+			filetype = vim.bo[bufnr].filetype,
+			-- the close key switches the window away first, so it keeps the cursor on the buffer.
+			cursor = winid ~= -1 and vim.api.nvim_win_get_cursor(winid) or vim.b[bufnr].frogman_cursor or { 1, 0 },
+		}
+	end
+	data.closing[bufnr] = close
+	return close
+end
+
+---Run a close read before (`M.closing()`).
+---
+---The file goes on its lists and its buffer's registration goes, the handle's close carrying the
+---lists' names to the trail. Nothing happens when its handle was let go since, as a load's teardown
+---lets every handle go, or when the file isn't registered to that buffer any more, open again in
+---another or closed already.
+---
+---@param close FrogmanClose The close, as read
+---@return boolean closed True if the file went on its lists
+function M.close(close)
+	if data.closing[close.bufnr] and data.closing[close.bufnr].seq == close.seq then
+		data.closing[close.bufnr] = nil
+	end
+	if handles.get(close.id) == nil or data.hash_buffer_registry.buffers[close.hash] ~= close.bufnr then
+		return false
+	end
+	local closed, lists, others = M.track_closing_handle(close)
+	if closed then
+		-- closed, it's still known, so its history stays; it leaves the bufferline.
+		M.unregister_buffer(close.bufnr, { lists = lists, others = others }, close.hash)
+		M.update_buffer_history_ordered()
+	end
+	-- not closed, an empty No Name buffer: its close untracked and forgot it already
+	return closed
+end
+
+---Run the closes still to settle, whose buffers the screen shows gone already.
+---
+---What fits frogman's model to the screen asks for it first (`enforce_editor_policy`), so a window
+---whose buffer was deleted in the same batch as an earlier arrival is judged with that buffer gone,
+---as it is on screen; each close's own queued turn then finds it done. Never inside an autocommand:
+---nothing acts inside an event, and a No Name buffer's close waits there for a write that may claim it.
+---
+---@return nil
+function M.run_closes()
+	if next(data.closing) == nil or vim.fn.state("x") ~= "" then
+		return
+	end
+	local waiting = vim.tbl_values(data.closing)
+	table.sort(waiting, function(a, b) return a.seq < b.seq end)
+	for _, close in ipairs(waiting) do
+		M.close(close)
+	end
+end
+
 ---Track a closed file for potential reopening.
 ---
----The file's buffer must still be registered. A No Name text is kept on its handle.
----@param id HandleId The file's handle, its buffer still registered
----@param quiet boolean|nil Whether the close is left out of the trail, for the caller to record
----@param text { lines: string[], filetype: string, cursor: integer[] }|nil A No Name buffer's text copied before, to keep in place of what the buffer holds now
+---Its close was read before (`M.closing()`): the buffer registered under the hash it had, a No Name
+---buffer's text copied while the buffer was there, and the lists it goes on. A No Name text is kept
+---on its handle.
+---@param close FrogmanClose The close, as read
 ---@return boolean success True if the file was added to the closed lists
----@return table<Pool, boolean>|nil targets The pools it went on, when it was added
-function M.track_closing_handle(id, quiet, text)
+---@return string[]|nil lists The lists it went on, by name, the current tab's first, when it was added
+---@return string[]|nil others Of those, the lists other than the current tab's
+function M.track_closing_handle(close)
+	local id = close.id
 	local handle = handles.get(id)
 	local filepath = M.get_filepath_from_handle(id)
-	local bufnr = M.get_buffer_from_handle(id)
+	local bufnr = close.bufnr
 
 	if handle == nil or filepath == nil then
 		require('frogman.domains.ledger').never("This must not happen: Closing filehash is not registered at all.")
 	end
-	if bufnr == nil then
+	if M.get_buffer_from_hash(close.hash) ~= bufnr then
 		require('frogman.domains.ledger').never("The closing filehash must be registered in the hash_buffer_registry.")
 	end
 
 	if filepath:match("^NONAME_") then
-		local lines = text and text.lines or vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+		local lines = close.text.lines
 
 		-- Check if buffer is empty (no lines or single empty line)
 		local marked = handles.held_beyond(id, handles.WINDOWS_AND_LISTS)
 		if (#lines == 0 or (#lines == 1 and lines[1] == "")) and marked then
 			-- a marked one keeps its empty text, for its mark alone, and so does one a snapshot holds,
 			-- as it holds texts as marks do: closed, and on no list
-			local winid = vim.fn.bufwinid(bufnr)
-			handle.text = text or { lines = { "" }, filetype = vim.bo[bufnr].filetype,
-				cursor = winid ~= -1 and vim.api.nvim_win_get_cursor(winid) or { 1, 0 } }
-			return true, {}
+			handle.text = { lines = { "" }, filetype = close.text.filetype, cursor = close.text.cursor }
+			return true, {}, {}
 		end
 		if #lines == 0 or (#lines == 1 and lines[1] == "") then
-			M.untrack_buffer(bufnr) -- its own history goes first, and it leaves the slots.
+			M.untrack_handle(id) -- its own history goes first, and it leaves the slots.
 			require('frogman.domains.window.data').forget_handle_in_slots(id)
-			M.unregister_buffer(bufnr)
+			-- its close is part of its let-go, which the trail records once its path is forgotten
+			M.unregister_buffer(bufnr, { quiet = true }, close.hash)
 			M.follow_along() -- the notes about it go, and then its path
 			M.unregister_filepath(filepath) -- Yes, remove it from the system entirely. We are not interested in empty no name buffers.
 			return false           -- Don't track empty [No Name] buffers
 		end
 
-		local winid = vim.fn.bufwinid(bufnr)
-		handle.text = text or {
-			lines = lines,
-			filetype = vim.bo[bufnr].filetype,
-			-- the close key switches the window away first, so it keeps the cursor on the buffer.
-			cursor = winid ~= -1 and vim.api.nvim_win_get_cursor(winid) or vim.b[bufnr].frogman_cursor or { 1, 0 }
-		}
+		handle.text = close.text
 	end
 
 	-- one copy per pool: a file closed again is the newest
-	return true, M.close_into_pools(id, quiet)
+	local lists, others = M.close_into_pools(id, close.targets)
+	return true, lists, others
 end
 
 
@@ -1809,8 +1829,9 @@ end
 ---
 ---@param filepath Filepath The file's path, or a No Name text's NONAME_ name
 ---@param filehash Filehash The hash of the file's name, as the registry knows it
+---@param context HandleContext|nil What its close is, for the trail: a repair's words
 ---@return nil
-local function detach_filehash_from_crux(filepath, filehash)
+local function detach_filehash_from_crux(filepath, filehash, context)
 	if filehash == nil then
 		return
 	end
@@ -1827,7 +1848,7 @@ local function detach_filehash_from_crux(filepath, filehash)
 		data.hash_buffer_registry.hashes[bufnr] = nil
 	end
 	data.hash_buffer_registry.buffers[filehash] = nil
-	handles.closed(filehash)
+	handles.closed(filehash, context)
 end
 
 ---Find the buffer whose name is exactly this filepath.
@@ -1867,8 +1888,8 @@ function M.cleanup_system(on_tick)
 	-- 3. Clean stale hash registry entries (buffers that no longer exist)
 	for filehash, bufnr in pairs(data.hash_buffer_registry.buffers) do
 		local filepath = data.hash_filepath_registry.filepaths[filehash]
-		if vim.api.nvim_buf_is_valid(bufnr) then
-			goto continue
+		if vim.api.nvim_buf_is_valid(bufnr) or data.closing[bufnr] then
+			goto continue -- a buffer whose delete's close waits for the editor to settle is that close's
 		end
 		-- the same file can be open as another buffer (e.g. reloaded without events), then we
 		-- track that one instead of forgetting the file.
@@ -1885,26 +1906,25 @@ function M.cleanup_system(on_tick)
 		-- a file whose buffer went without events is closed like any other: slots keep it and reopen it.
 		local handle = handles.of_hash(filehash)
 		if filepath and not filepath:match("^NONAME_") and handle then
-			local holding = {}
+			local lists
 			if not M.is_handle_closed(handle.id) then
-				holding = M.close_into_pools(handle.id, true)
+				lists = M.close_into_pools(handle.id)
 			else
+				local holding = {}
 				for _, pool in pairs(M.pools()) do
 					if vim.tbl_contains(pool.closed, handle.id) then
 						holding[pool] = true
 					end
 				end
+				lists = named_lists(holding)
 			end
-			ledger.move("repair", { subject = filehash, name = ledger.name_of(filehash), lists = named_lists(holding),
-				state = "closed", words = "its buffer vanished without an event; kept on the closed lists" })
-			-- closed, it's still known, so its history stays: only its buffer is forgotten
+			-- closed, it's still known, so its history stays: only its buffer is forgotten. The trail gets
+			-- the repair from its handle's close.
 			data.hash_buffer_registry.hashes[bufnr] = nil
 			data.hash_buffer_registry.buffers[filehash] = nil
-			handles.closed(filehash)
+			handles.closed(filehash, { lists = lists, repair = "its buffer vanished without an event; kept on the closed lists" })
 		else
-			ledger.move("repair", { subject = filehash, name = ledger.name_of(filehash),
-				words = "its buffer vanished without an event, and its text with it" })
-			detach_filehash_from_crux(filepath, filehash)
+			detach_filehash_from_crux(filepath, filehash, { repair = "its buffer vanished without an event, and its text with it" })
 		end
 		report.stale_hash_entries = report.stale_hash_entries + 1
 		::continue::

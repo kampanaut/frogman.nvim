@@ -402,4 +402,44 @@ T['T167 [char] <M-.> on a running terminal refuses with a message'] = function()
 	eq(child.lua('return vim.api.nvim_buf_is_valid(...) and vim.api.nvim_get_current_buf() == ...', { term }), true)
 end
 
+T['T905 [char] (M5, DESK.md:606-607, repro R24) a file written without a visit leaves its list at once'] = function()
+	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
+	child.steps({ ':e a', ':e b' })
+	child.cmd('bdelete a.txt')
+	child.settle(100)
+	eq(child.closed(), 'a')
+	child.lua([[
+		vim.cmd('badd a.txt')
+		local b = vim.fn.bufnr(_G.FRG_TEST.root .. '/a.txt')
+		vim.fn.bufload(b)
+		vim.api.nvim_buf_set_lines(b, 0, -1, false, { 'changed' })
+		vim.api.nvim_buf_call(b, function() vim.cmd('silent write') end)
+	]])
+	child.settle(100)
+	local reopened = child.lua([[
+		for _, step in ipairs(require('frogman').ledger.trail()) do
+			for _, m in ipairs(step.moves) do
+				if m.kind == 'reopened' and m.name == 'a.txt' then return m.lists or {} end
+			end
+		end
+		return false
+	]])
+	eq({ closed = child.closed(), reopened = reopened }, { closed = '', reopened = { 'editor' } })
+end
+
+T['T907 [char] (A19, P2, DESK.md:617) a delete\'s close runs once the editor settles'] = function()
+	child.steps({ ':e a', ':e b' })
+	local during = child.lua([[vim.cmd('bdelete b.txt'); return _G.FRG_TEST.closed()]])
+	child.settle(100)
+	local trigger = child.lua([[
+		for _, step in ipairs(require('frogman').ledger.trail()) do
+			for _, m in ipairs(step.moves) do
+				if m.kind == 'closed' and m.name == 'b.txt' then return step.trigger end
+			end
+		end
+		return false
+	]])
+	eq({ during = during, after = child.closed(), trigger = trigger }, { during = '', after = 'b', trigger = 'BufDelete b.txt' })
+end
+
 return T

@@ -1162,4 +1162,57 @@ T['T516 [char] (A27, S1) each whole-editor session\'s file keeps the moves made 
 	})
 end
 
+T['T906 [char] (A27, M15, DESK.md:617, :1002) a file only a mark holds, reopened by its key, leaves a reopen in the trail'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b', "<M-'><M-'><M-a>", ':e a' })
+	child.cmd('bdelete b.txt')
+	child.settle(100)
+	-- b's line deleted in the closed lists: its mark alone keeps it
+	local p = S2.picker(child)
+	local kept = vim.deepcopy(p.lines)
+	table.remove(kept, S2.line_of(kept, 'b.txt'))
+	S2.write_picker(child, p, kept)
+	child.cmd('close')
+	child.settle(100)
+	child.steps({ "<M-'><M-a>" })
+	child.settle(100)
+	local m = found('reopened', 'b.txt')
+	eq({ cause = m and m.cause, listless = m ~= nil and (m.lists == nil or #m.lists == 0) }, { cause = 'keymap', listless = true })
+end
+
+
+T['T910 [char] (A21, A27, DESK.md:617) the window pass letting go a slot\'s buffer whose path is gone writes no close'] = function()
+	child.setup()
+	child.steps({ ':e b', ':e a' })
+	-- b's path pair dropped by hand, its buffer still registered: the window pass finds its slot stale,
+	-- clears it and unregisters the buffer, and the trail gets the slot cleared, never a close of b
+	local wrote = child.lua([=[
+		local H = require('frogman.domains.history')
+		local reg = H.data.hash_filepath_registry
+		local hash = reg.hashes[_G.FRG_TEST.root .. '/b.txt']
+		reg.hashes[reg.filepaths[hash]] = nil
+		reg.filepaths[hash] = nil
+		require('frogman.domains.ledger').within('timer', 'cleanup', function()
+			require('frogman.domains.window.routines').enforce_editor_policy()
+		end)
+		return H.data.hash_buffer_registry.buffers[hash] == nil
+	]=])
+	child.settle(100)
+	eq({ unregistered = wrote, closed = found('closed') ~= nil }, { unregistered = true, closed = false })
+end
+
+T['T911 [char] (A27, M5, S1 Load) a load that takes a restored file off a closed list leaves a reopen in the trail'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	-- d closed in the first tab: on the whole editor's list
+	child.steps({ ':e x', ':e d', ':e y' })
+	child.cmd('bdelete d.txt')
+	child.settle()
+	-- t loaded into a second tab, the manager bringing back its c and d: d leaves the editor's list
+	eq(S2.load_tab_session(child, 't'), { true })
+	local m = found('reopened', 'd.txt')
+	eq({ cause = m and m.cause, lists = m and m.lists }, { cause = 'load', lists = { 'editor' } })
+end
+
 return T

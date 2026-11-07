@@ -521,4 +521,52 @@ T['T895 [char] (M2 Handles, DESK.md:596-597) a move and a No Name text\'s reopen
 	eq({ after.current, after.hash ~= n.hash }, { n.id, true })
 end
 
+T['T900 [char] (M2 Handles, M11, DESK.md:617, :622-623) every handle transition runs the ledger\'s hook last, and no two of its hooks share a class'] = function()
+	local got = child.lua([[
+		local helpers = require('frogman.engine.helpers')
+		local model = require('frogman.domains.history.handles').model
+		local cases = { { 'open', 'closed' }, { 'closed', 'open' } }
+		for _, mode in ipairs({ 'rename', 'vanish', 'return', 'copy', 'forget' }) do
+			table.insert(cases, { 'open', 'open', mode })
+			table.insert(cases, { 'closed', 'closed', mode })
+		end
+		local out = {}
+		for _, c in ipairs(cases) do
+			local ok, pipeline = pcall(helpers.compute_transition_pipeline, c[1], c[2], c[3] or '*', model)
+			local last, classes, shared = 'none', {}, false
+			for _, hook in ipairs(ok and pipeline or {}) do
+				last = hook.name
+				shared = shared or classes[hook.class] ~= nil
+				classes[hook.class] = true
+			end
+			table.insert(out, c[1] .. '->' .. c[2] .. ' ' .. (c[3] or '') .. ': ' .. last .. (shared and ', a shared class' or ''))
+		end
+		return out
+	]])
+	local want = vim.tbl_map(function(line) return (line:gsub(': .*$', ': trail_move')) end, got)
+	eq(got, want)
+end
+
+T['T901 [char] (M11, DESK.md:625-626) a handle goes by its file\'s unique name in a message'] = function()
+	child.lua([[
+		local root = _G.FRG_TEST.root
+		for _, d in ipairs({ 'sub1', 'sub2' }) do
+			vim.fn.mkdir(root .. '/' .. d, 'p')
+			vim.fn.writefile({ d }, root .. '/' .. d .. '/init.lua')
+		end
+	]])
+	child.steps({ ':e sub1/init.lua', ':e sub2/init.lua', ':e a' })
+	child.lua([[
+		require('frogman.domains.history.handles').model:on('open', 'closed', 'fails_on_close', function() error('planted') end, 50, true)
+	]])
+	child.messages()
+	child.cmd('bdelete sub1/init.lua')
+	child.settle(100)
+	local said
+	for _, m in ipairs(child.messages()) do
+		if m.msg:find('fails_on_close', 1, true) then said = said or m.msg end
+	end
+	eq(said ~= nil and said:find('of sub1/init.lua', 1, true) ~= nil, true)
+end
+
 return T

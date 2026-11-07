@@ -521,6 +521,84 @@ function M.note(map, owner, before, after, by)
 	})
 end
 
+---Record what a file's handle did, as a move in the trail.
+---
+---It's the trail's one place for a file's close, reopen, going from disk and coming back, move, copy
+---and let-go: the handle's transitions, each carrying in its context what its caller and the hooks
+---before this one found. A quiet one leaves no move, and so does what a load does, but for a No Name
+---text it reopens under a new id and a file it takes off a closed list; a file opened that no list
+---held, not asked for, is no reopen.
+---
+---@param context HandleContext The transition's context
+---@param handle FileHandle The handle that moved
+---@param from "open"|"closed" The state it left
+---@param to "open"|"closed" The state it goes to
+---@return nil
+function M.handle_moved(context, handle, from, to)
+	if context.quiet then
+		return
+	end
+	local mode = context.mode
+	if mode == "rename" then
+		if context.kind == "move" then
+			M.move("moved", { subject = context.was, name = M.name_of(context.was), to = context.hash, words = context.words })
+			-- a snapshot the move left holding the file twice keeps it once, and the trail says which slots let go
+			local name = M.name_of(context.hash)
+			for _, snapshot in ipairs(context.cleared or {}) do
+				M.move("cleared", { subject = context.hash, name = name, words = "a snapshot of " ..
+					os.date("%m-%d %H:%M", snapshot.time) .. " held it twice: its " .. table.concat(snapshot.slots, " and ") .. " let it go" })
+			end
+		end
+	elseif mode == "copy" then
+		-- the copy's link is its handle's own: the file it was copied from, by its hash now, beside the copy's
+		local source = require('frogman.domains.history.handles').get(handle.copy_of)
+		local from = source and source.hash
+		M.move("copied", { subject = from, name = M.name_of(from), to = context.hash, words = context.words })
+	elseif context.load then
+		if from == "closed" and to == "open" and context.from then
+			M.move("reopened", { subject = context.hash, name = "[No Name]", from = context.from,
+				words = "open at the save, reopened under a new id" })
+		elseif from == "closed" and to == "open" and context.left and #context.left > 0 then
+			-- a file the load brought back that a closed list held: it's open again, so it's off them
+			local others = context.others or {}
+			M.move("reopened", { subject = context.hash, name = M.name_of(context.hash) or context.hash,
+				lists = context.left, dim = #others == 0 })
+		end
+	elseif mode == "vanish" then
+		M.move("gone", { subject = context.hash, name = M.name_of(context.hash), words = "gone from disk ⎇" .. context.tag })
+	elseif mode == "return" then
+		M.move("back", { subject = context.hash, name = M.name_of(context.hash), words = "back on disk" })
+	elseif mode == "forget" then
+		M.move("forgotten", { subject = context.hash, name = M.name_of(context.hash), notes = context.notes or 0,
+			words = "nothing holds it any more" })
+	elseif from == "open" and to == "closed" then
+		local name = M.name_of(context.hash) or context.hash
+		if context.repair then
+			M.move("repair", { subject = context.hash, name = name, lists = context.lists,
+				state = context.lists and "closed" or nil, words = context.repair })
+		else
+			local others = context.others or {}
+			M.move("closed", { subject = context.hash, name = name, lists = context.lists, dim = #others == 0 })
+			if #others > 0 then
+				M.tell("closed", name, others)
+			end
+		end
+	elseif from == "closed" and to == "open" then
+		local left, others = context.left or {}, context.others or {}
+		if #left == 0 and not context.reopen then
+			return
+		end
+		-- a No Name text's reopen links its id before to the one it's back under, which the search follows
+		local subject = context.from or context.hash
+		local name = M.name_of(subject) or subject
+		M.move("reopened", { subject = subject, name = name, lists = left, dim = #others == 0, new = context.new,
+			to = context.from and context.hash or nil })
+		if #others > 0 then
+			M.tell("reopened", name, others)
+		end
+	end
+end
+
 ---Record a window's slots that frogman moved by itself.
 ---
 ---The move's row runs from the slots taken before the change to the window's slots now.

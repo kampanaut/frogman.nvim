@@ -158,6 +158,14 @@ navigation.sm:on("*", "*", "winenter_track_current_window", function(context)
 	data.current_window = current_window
 end, 2, true, navigation.states.mode.WINENTER)
 
+-- a move onto a name a live handle had: the moved file takes that handle's place in every window and in
+-- every window's arrival copies, the window's own file kept once
+history.handles.model:on("*", "*", "windows_take_over", function(context, handle)
+	if context.other then
+		data.take_over_handle(context.other, handle.id)
+	end
+end, 3, true, history.handles.states.mode.RENAME)
+
 local M = {}
 
 ---Create the window domain's autocmds in frogman's augroup.

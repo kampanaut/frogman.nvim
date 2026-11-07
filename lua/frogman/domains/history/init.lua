@@ -46,9 +46,21 @@ function M.stop_cleanup_timer()
 	end
 end
 
+---Run one cleanup tick.
+---
+---What's still queued to settle runs first, so the tick acts on the editor as it stands once the batch
+---is over, as a key does. Each repair goes into the trail, as a move of the tick's own step, and
+---nothing is said.
+---
+---@return nil
+function M.tick()
+	require('frogman.settle').drain()
+	require('frogman.domains.ledger').within("timer", "cleanup", routines.cleanup_system, true)
+end
+
 ---Initiate the history cleanup timer.
 ---
----It runs `routines.cleanup_system()` right away, then every `configs.cleanup_interval`.
+---It runs a tick (`M.tick()`) right away, then every `configs.cleanup_interval`.
 ---Calling it again restarts it.
 ---
 ---@return nil
@@ -57,8 +69,7 @@ function M.init_cleanup_timer()
 	cleanup_timer = vim.loop:new_timer()
 	if cleanup_timer then
 		cleanup_timer:start(0, configs.cleanup_interval, vim.schedule_wrap(function()
-			-- each repair goes into the trail, as a move of the tick's own step, and nothing is said
-			require('frogman.domains.ledger').within("timer", "cleanup", routines.cleanup_system, true)
+			M.tick()
 		end))
 	end
 end

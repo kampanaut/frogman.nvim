@@ -247,7 +247,7 @@ local function load_buffer_history(buffers, paths)
 			and paths[history.routines.get_filehash(name)]
 			and history.routines.is_trackable(bufnr)
 		then
-			history.register_buffer(bufnr)
+			history.register_buffer(bufnr, { load = true }) -- the load's own, which the trail leaves out
 		end
 	end
 
@@ -1115,7 +1115,7 @@ end
 ---
 ---They come back in the background, listed, hidden and modified, under a fresh id, each keeping its
 ---handle, so every slot, note and history entry holding it holds it still. One that is already back
----is taken as it is, and its handle, when it has one, gives way to the text's (`rename_handle`). The
+---is taken as it is, and its handle, when it has one, gives way to the text's (`handles.renamed`). The
 ---cursor goes back once a window shows the buffer. A text whose file fails its check is lost, and
 ---the rest still come back.
 ---
@@ -1138,13 +1138,12 @@ local function reopen_noname_buffers(noname_content, key, scratch_dir)
 				bufnr = history.routines.buffer_from_text(content)
 				vim.b[bufnr].frogman_reopened = filehash
 			end
-			-- the text keeps its handle under the hash it's back under
-			history.routines.rename_handle(filehash, history.routines.get_filehash(history.routines.noname_name(bufnr)))
-			history.register_buffer(bufnr)
-			local new_filehash = history.get_hash_from_buffer(bufnr)
+			-- the text keeps its handle under the hash it's back under, and its reopen links the two in the
+			-- trail, the one thing of a load's the trail gets from the handle
+			local new_filehash = history.routines.get_filehash(history.routines.noname_name(bufnr))
+			history.handles.renamed(filehash, new_filehash, { kind = "load" })
+			history.register_buffer(bufnr, { load = true, from = new_filehash ~= filehash and filehash or nil })
 			if new_filehash ~= filehash then
-				require('frogman.domains.ledger').move("reopened", { subject = new_filehash, name = "[No Name]", from = filehash,
-					words = "open at the save, reopened under a new id" })
 				history.routines.unregister_filepath(filepath)
 			end
 		end
@@ -1915,7 +1914,7 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 	for filehash, tag in pairs(saved_data.missing or {}) do
 		local handle = history.handles.of_hash(filehash)
 		if handle and handle.tag == nil then -- a tag memory holds stays
-			history.handles.set_tag(handle.id, tag)
+			history.handles.set_tag(handle.id, tag, { load = true })
 		end
 	end
 	for _, filehash in ipairs(saved_data.unwritten or {}) do
@@ -2101,7 +2100,7 @@ function M.load_history(cwd, name)
 		remember_unclaimed(file_path, saved_data, gone, restore_marks(saved_data, taken, "", true, key, scratch_dir, what)) -- before the texts reopen under new hashes
 		reopen_noname_buffers(saved_data.noname_content or {}, key, scratch_dir)
 		for filehash, tag in pairs(saved_data.missing or {}) do
-			history.handles.set_tag(history.get_handle_from_hash(filehash), tag)
+			history.handles.set_tag(history.get_handle_from_hash(filehash), tag, { load = true })
 		end
 		for _, filehash in ipairs(saved_data.unwritten or {}) do
 			local handle = history.handles.of_hash(filehash)

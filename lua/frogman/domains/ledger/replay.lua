@@ -120,9 +120,10 @@ local function forget_start()
 	for bufnr, hash in pairs(vim.deepcopy(history.data.hash_buffer_registry.hashes)) do
 		local path = history.data.hash_filepath_registry.filepaths[hash]
 		history.routines.untrack_buffer(bufnr)
-		history.routines.unregister_buffer(bufnr)
+		-- what a replay forgets and plants is its own, which the trail leaves out
+		history.routines.unregister_buffer(bufnr, { quiet = true })
 		if path then
-			history.routines.unregister_filepath(path)
+			history.routines.unregister_filepath(path, { quiet = true })
 		end
 	end
 end
@@ -213,7 +214,7 @@ local function planter(files)
 			vim.bo[bufnr].buflisted = true
 			vim.cmd("noautocmd call bufload(" .. bufnr .. ")")
 		end
-		history.routines.register_buffer(bufnr)
+		history.routines.register_buffer(bufnr, { quiet = true })
 		return bufnr
 	end
 
@@ -336,7 +337,7 @@ local function plant_snapshot(snapshot, plant)
 	history.data.crux_internals.global = history.keyed_by_handle(snapshot.global)
 	history.data.history_index = snapshot.history_index or history.data.history_index
 	for hash, tag in pairs(snapshot.missing or {}) do
-		history.handles.set_tag(history.get_handle_from_hash(hash), tag)
+		history.handles.set_tag(history.get_handle_from_hash(hash), tag, { quiet = true })
 	end
 	if snapshot.history_view then
 		require('frogman.configs').bufferline.history_view = snapshot.history_view

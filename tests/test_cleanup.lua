@@ -714,4 +714,21 @@ T['T702 [char] (I10, A21) a cleanup pass leaves the closed file in the current s
 	eq({ child.slots(), child.lua('return vim.api.nvim_get_current_buf()') }, { '⦉c⦊ [d] ⟦b⟧', nofile })
 end
 
+T['T909 [char] (A22, DESK.md:617) a cleanup tick runs what\'s queued to settle first'] = function()
+	local order = child.lua([[
+		_G.FRG_ORDER = {}
+		local routines = require('frogman.domains.history.routines')
+		local cleanup = routines.cleanup_system
+		routines.cleanup_system = function(...)
+			table.insert(_G.FRG_ORDER, 'tick')
+			return cleanup(...)
+		end
+		require('frogman.settle').later('planted', function() table.insert(_G.FRG_ORDER, 'queued') end)
+		local ok = pcall(function() require('frogman.domains.history').tick() end)
+		routines.cleanup_system = cleanup
+		return ok and _G.FRG_ORDER or { 'no tick' }
+	]])
+	eq(order, { 'queued', 'tick' })
+end
+
 return T

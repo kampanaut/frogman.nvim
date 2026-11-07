@@ -37,10 +37,11 @@ historySM:on(states.ATTACHED, states.DETACHED, "detach_history", function(contex
 end, 2, true)
 
 
--- No Name buffers deleted in this batch of events. One that's written under a name in the same batch
--- (:w name) was renamed, not closed; anything else, like :e reusing an empty one, wasn't, and its
--- close, made quietly at the delete, is recorded once the note goes.
----@type table<Bufnr, { id: HandleId, history: table, targets: table|nil }>
+-- No Name buffers deleted in this batch of events, each with its close as read at its delete. One
+-- that's written under a name in the same batch (:w name) was renamed, not closed: the write claims it,
+-- and it's never closed. Anything else, like :e reusing an empty one, wasn't, and its close runs once the
+-- batch is over.
+---@type table<Bufnr, FrogmanClose>
 local noname_deleted = {}
 
 historySM:on("*", "*", "handle_deletion", function(context, _, from, to)
@@ -51,22 +52,48 @@ historySM:on("*", "*", "handle_deletion", function(context, _, from, to)
 	end
 	-- print("I'm fucking here. Delete ", context.buf)
 	-- print("SHEEESH")
-	local id = routines.get_handle_from_buffer(context.buf)
-	if id then -- if it's registered, then we untrack it. Ignore the untegistered, because they are unrecongised by BufEnter.
+	-- a delete's close was read at its event, while the buffer was there; a copy's old name is read here
+	local close = context.close or routines.closing(context.buf)
+	if close then -- if it's registered, then we untrack it. Ignore the untegistered, because they are unrecongised by BufEnter.
 		-- print("Deleting buffer: " .. context.buf .. " with handle: " .. id .. "\n" .. debug.traceback())
-		local note = noname_deleted[context.buf]
-		local closed, targets = routines.track_closing_handle(id, note ~= nil)
-		if note then
-			note.targets = targets
-		end
-		if closed then
-			-- closed, it's still known, so its history stays; it leaves the bufferline.
-			routines.unregister_buffer(context.buf)
-			routines.update_buffer_history_ordered()
-		end
-		-- not closed, an empty No Name buffer: its close untracked and forgot it already
+		routines.close(close)
 	end
 end, 0, true, states.mode.DELETE)
+
+-- What reacts on a file's handle, each in a class of its own, whoever needs the "before" first; the
+-- trail's hook, the ledger's, runs last and reads what these found in the context.
+local handles = require('frogman.domains.history.handles')
+local handle_states = handles.states
+
+-- a file open again is closed nowhere: it leaves every list, which remembers it for its next close, and
+-- the lists' names go to the trail
+handles.model:on(handle_states.CLOSED, handle_states.OPEN, "off_the_lists", function(context, handle)
+	context.left, context.others = routines.open_out_of_pools(handle.id)
+	-- a file never written comes back as a new one, which the trail says
+	local filepath = routines.get_filepath_from_hash(context.hash)
+	context.new = handle.unwritten ~= nil and filepath ~= nil and not filepath:match("^NONAME_")
+		and vim.fn.filereadable(filepath) == 0 or nil
+end, 2, true)
+
+-- a No Name text reopened is its buffer's now
+handles.model:on(handle_states.CLOSED, handle_states.OPEN, "text_into_buffer", function(_, handle)
+	handle.text = nil
+end, 3, true)
+
+-- a move onto a name a live handle had: that handle comes off every list, nothing remembered, the buffer
+-- holding the name open now
+handles.model:on("*", "*", "replaced_off_the_lists", function(context)
+	if context.other then
+		routines.discard_from_pools(context.other)
+	end
+end, 2, true, handle_states.mode.RENAME)
+
+-- and of the two names' visits the newer stays, overall, in each window and in each pool
+handles.model:on("*", "*", "visits_merge", function(context, handle)
+	if context.other then
+		routines.merge_history(context.other, handle.id)
+	end
+end, 4, true, handle_states.mode.RENAME)
 
 -- a load from idle starts from nothing, as at startup. a cycle left open ends with it, and nothing is picked.
 local storageSM = require('frogman.domains.storage.sm')
@@ -110,30 +137,26 @@ local function settle_rename(bufnr, rename)
 	if new_name ~= "" and vim.fn.filereadable(new_name) == 0 then
 		vim.b[bufnr].frogman_unwritten = true -- a name that isn't on disk yet: its handle takes the mark as it's registered
 	end
-	local ledger = require('frogman.domains.ledger')
-	local old_name = old_hash and ledger.name_of(old_hash)
-	local moved_from = routines.settle_rename(bufnr, rename.id, rename.history)
-	local new_label = new_name ~= "" and vim.fs.basename(new_name) or "[No Name]"
-	-- the hash the file has now, which the trail's search follows from the old one
-	local new_hash = routines.get_filehash(new_name ~= "" and new_name or routines.noname_name(bufnr))
-	if moved_from then
-		ledger.move("moved", { subject = old_hash, name = old_name, to = new_hash, words = moved_from:match("^NONAME_") and
-			"written as " .. new_label .. ": a move" or "renamed to " .. new_label .. ": a move" })
-	elseif old_hash and routines.get_hash_from_buffer(bufnr) == old_hash and routines.is_trackable(bufnr) then
-		-- a new name frogman doesn't track is no copy: the old name is closed all the same, and its close says so
-		ledger.move("copied", { subject = old_hash, name = old_name, to = new_hash,
-			words = "renamed to " .. new_label .. ": a copy, " .. (old_name or "the old name") .. " is still on disk" })
-	end
+	-- a move: the handle's rename, which the trail gets
+	local moved_from = routines.settle_rename(bufnr, rename.id)
 	if not moved_from and old_hash and routines.get_hash_from_buffer(bufnr) == old_hash then
-		-- a copy: the old name is still a file, and it's closed as a delete closes it.
+		-- a copy: the old name is still a file, and it's closed as a delete closes it. A copy frogman tracks
+		-- is linked to the file it came from first, its handle made for its name, so the trail has the copy
+		-- ahead of the old name's close; a new name frogman doesn't track is no copy, and its close says so
+		if routines.is_trackable(bufnr) then
+			local ledger = require('frogman.domains.ledger')
+			local old_name = ledger.name_of(old_hash)
+			local new_path = new_name ~= "" and new_name or routines.noname_name(bufnr) -- no name: a No Name buffer's
+			routines.register_filepath(new_path)
+			require('frogman.domains.history.handles').copied(routines.get_filehash(new_path), old_hash, {
+				words = "renamed to " .. (new_name ~= "" and vim.fs.basename(new_name) or "[No Name]") .. ": a copy, "
+					.. (old_name or "the old name") .. " is still on disk",
+			})
+		end
 		historySM:to(historySM:state(), { buf = bufnr }, states.mode.DELETE)
 	end
 	if routines.is_trackable(bufnr) and not routines.get_hash_from_buffer(bufnr) then
 		routines.register_buffer(bufnr) -- known by its new name, whatever the history state (a cycle).
-	end
-	if not moved_from and old_hash then
-		-- a copy's handle is new, and linked to the one it was copied from
-		require('frogman.domains.history.handles').copied(routines.get_hash_from_buffer(bufnr), old_hash)
 	end
 	-- the window that shows it, the current tab's first, then any tab's
 	local winid = vim.fn.bufwinid(bufnr)
@@ -159,13 +182,16 @@ local M = {}
 ---@return nil
 function M.init_autocmds(group)
 	-- where you are can change without frogman seeing it: the label is read again at these
-	-- settle points, and the files gone from disk are marked with it, checked as a tick checks them.
+	-- settle points, and the files gone from disk are marked with it, checked as a tick checks them,
+	-- once the editor settles, as every change to what frogman knows.
 	vim.api.nvim_create_autocmd({ "FocusGained", "ShellCmdPost", "TermLeave", "DirChanged" }, {
 		group = group,
 		callback = function()
-			if not routines.refresh_label() then
-				routines.mark_missing(data.last_label, true)
-			end
+			require('frogman.settle').later("disk check", function()
+				if not routines.refresh_label() then
+					routines.mark_missing(data.last_label, true)
+				end
+			end)
 		end,
 	})
 
@@ -193,29 +219,37 @@ function M.init_autocmds(group)
 			-- print_table(args)
 			-- print("BufUnload"..args.buf .. " - "..vim.api.nvim_buf_get_name(args.buf))
 			-- print("I was ran!" .. args.buf)
-			-- a No Name buffer written under a name is deleted and made again under it: a rename, if the
-			-- write follows in this batch (BufWritePost claims it); otherwise it's dropped once it settles.
-			local id = routines.get_handle_from_buffer(args.buf)
-			local path = routines.get_filepath_from_handle(id)
-			if path and path:match("^NONAME_") then
-				noname_deleted[args.buf] = { id = id, history = routines.history_of(id) }
+			-- the settle rule: the close runs once the editor settles, as everything does. What needs the
+			-- buffer is read now, while it's there: its file, the lists it goes on, and a No Name text.
+			local settle = require('frogman.settle')
+			local close = routines.closing(args.buf)
+			local label = require('frogman.domains.ledger.routines').buffer_label(args.buf)
+			local function delete()
+				historySM:to(historySM:state(), { buf = args.buf, close = close }, states.mode.DELETE)
+			end
+			if close and close.text then
+				-- a No Name buffer written under a name is deleted and made again under it: a rename, if the
+				-- write follows in this batch (BufWritePost claims it); otherwise it's closed once it settles.
+				noname_deleted[args.buf] = close
 				local function drop_note()
 					if vim.fn.state("x") ~= "" then
 						-- still inside an autocommand, a write's own BufWritePre waiting among them: the
 						-- batch isn't over, so the write may yet claim the note. Asked again a moment later,
 						-- by a timer: queued again at once, it would run at once, inside the same wait.
-						vim.defer_fn(function() require('frogman.settle').later("No Name note", drop_note) end, 10)
+						vim.defer_fn(function() settle.later("No Name note", drop_note) end, 10)
 						return
 					end
-					local note = noname_deleted[args.buf]
-					noname_deleted[args.buf] = nil
-					if note and note.targets then
-						routines.ledger_record_close(note.id, note.targets) -- no write claimed it: a close after all
+					if noname_deleted[args.buf] == close then
+						noname_deleted[args.buf] = nil
+						delete() -- no write claimed it: a close after all
 					end
 				end
-				require('frogman.settle').later("No Name note", drop_note)
+				settle.later("No Name note", drop_note)
+			else
+				settle.later("close " .. label, delete)
 			end
-			historySM:to(historySM:state(), { buf = args.buf }, states.mode.DELETE)
+			-- a window that showed it lands once the delete is over; Neovim's own pick meanwhile isn't a visit
+			require('frogman.domains.window.routines').note_landings(args.buf, close and close.id)
 		end,
 	})
 
@@ -224,6 +258,9 @@ function M.init_autocmds(group)
 		callback = function(args)
 			local rename = noname_deleted[args.buf]
 			noname_deleted[args.buf] = nil
+			if rename and data.closing[args.buf] == rename then
+				data.closing[args.buf] = nil -- claimed: a rename, so it's never closed
+			end
 			-- once the write is over: a No Name buffer written under a name settles as a rename.
 			require('frogman.settle').later("write " .. require('frogman.domains.ledger.routines').buffer_label(args.buf), function()
 				if rename then

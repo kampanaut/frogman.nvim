@@ -56,6 +56,103 @@ local function hold(snapshot)
 	history.handles.hold(place_of(snapshot), ids)
 end
 
+---Keep each file once in a snapshot, by the live slots' rule.
+---
+---The current slot keeps a file when it holds it; otherwise the slot given keeps it (at a move, the
+---slot the moved file was in), or else the secondary over the ternary, as a load, which can't tell,
+---reads it; any other slot holding it lets go. A repeat in its queue or its order keeps its first
+---place. Each file is held by its live handle's number from then on.
+---
+---@param snapshot Snapshot The snapshot, rewritten in place
+---@param keeper "secondary"|"ternary"|nil The slot keeping a file the current doesn't hold, when it's known
+---@return string[] cleared The slots that let a file go
+local function once(snapshot, keeper)
+	local function live(id)
+		local handle = M.handle(id)
+		return handle and handle.id or nil
+	end
+	local c, s, t = live(snapshot.current), live(snapshot.secondary), live(snapshot.ternary)
+	snapshot.current, snapshot.secondary, snapshot.ternary = c or snapshot.current, s or snapshot.secondary, t or snapshot.ternary
+	local cleared = {}
+	if s ~= nil and s == c then
+		snapshot.secondary, s = nil, nil
+		table.insert(cleared, "secondary")
+	end
+	if t ~= nil and t == c then
+		snapshot.ternary, t = nil, nil
+		table.insert(cleared, "ternary")
+	end
+	if s ~= nil and s == t then
+		local goes = keeper == "ternary" and "secondary" or "ternary"
+		snapshot[goes] = nil
+		table.insert(cleared, goes)
+	end
+	for _, field in ipairs({ "queue", "order" }) do
+		local seen, kept = {}, {}
+		for _, id in ipairs(snapshot[field]) do
+			local file = live(id)
+			if file == nil or not seen[file] then
+				if file then
+					seen[file] = true
+				end
+				table.insert(kept, file or id)
+			end
+		end
+		snapshot[field] = kept
+	end
+	return cleared
+end
+
+---Apply the live slots' rule to the snapshots a move left holding one file twice.
+---
+---The move gave the moved file a name another live file had, so a snapshot that held both holds one
+---file twice: the current keeps it when it holds it, otherwise the slot the moved file was in. Every
+---snapshot is looked at, a window's, a held-over one and one waiting a tick to be held over.
+---
+---@param other HandleId The handle the move let go, which leads to the moved file's now
+---@param moved HandleId The moved file's handle
+---@return table[] cleared Each snapshot that let a slot go: `{ time = when it was taken, slots = the slots }`
+function M.take_over(other, moved)
+	local out = {}
+	local function names(id)
+		return id ~= nil and (id == other or id == moved)
+	end
+	local function each(snapshot)
+		local holds = names(snapshot.current) or names(snapshot.secondary) or names(snapshot.ternary)
+		for _, id in ipairs(snapshot.queue) do
+			holds = holds or names(id)
+		end
+		for _, id in ipairs(snapshot.order) do
+			holds = holds or names(id)
+		end
+		if not holds then
+			return
+		end
+		local keeper = snapshot.secondary == moved and "secondary" or (snapshot.ternary == moved and "ternary" or nil)
+		local cleared = once(snapshot, keeper)
+		hold(snapshot)
+		if #cleared > 0 then
+			table.insert(out, { time = snapshot.time, slots = cleared })
+		end
+	end
+	for _, list in pairs(data.by_window) do
+		for _, snapshot in ipairs(list) do
+			each(snapshot)
+		end
+	end
+	for _, list in pairs(data.held) do
+		for _, snapshot in ipairs(list) do
+			each(snapshot)
+		end
+	end
+	for _, entry in ipairs(data.pending) do
+		for _, snapshot in ipairs(entry.snapshots or {}) do
+			each(snapshot)
+		end
+	end
+	return out
+end
+
 ---Get a file's handle id from its hash.
 ---@param filehash Filehash|nil
 ---@return integer|nil id
@@ -498,6 +595,7 @@ local function from_saved(saved)
 		queue = ids(saved.queue), primary_enabled = saved.on == true,
 		dtm = notes(saved.dtm), dsm = notes(saved.dsm), order = ids(saved.order),
 	}
+	once(snapshot) -- a file saved twice, by a move before the rule held at moves, is kept once
 	hold(snapshot)
 	return snapshot
 end
