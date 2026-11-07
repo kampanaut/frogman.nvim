@@ -370,6 +370,35 @@ function M.current_pool()
 	return M.pool_of_tab(vim.api.nvim_get_current_tabpage())
 end
 
+---Get the lists of the sessions that hold a file, by their lists or their windows.
+---
+---A list holds the file when the file is on it. A session's windows hold it when a window of one of
+---its tabs holds it in a slot or its primary queue, and a tab's session is its list's: its tab
+---session's, its detached list, or the editor's for a tab in neither. A mark or a snapshot isn't a
+---list or a window.
+---
+---@param id HandleId|nil The file's handle
+---@return string[] ids The lists' ids, sorted, each once
+function M.holding_pools(id)
+	local found = {}
+	for pool_id, pool in pairs(M.pools()) do
+		if vim.tbl_contains(handles.held_by(pool_place(pool)), id) then
+			found[pool_id] = true
+		end
+	end
+	local window_data = require('frogman.domains.window.data')
+	for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+		for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
+			if window_data.holds(winid, id) then
+				found[M.pool_of_tab(tabpage).id] = true
+			end
+		end
+	end
+	local ids = vim.tbl_keys(found)
+	table.sort(ids)
+	return ids
+end
+
 ---Join a tab to a tab session's pool, making the pool when it's first needed.
 ---
 ---The tab leaves the pool it was in before.

@@ -1047,4 +1047,179 @@ T['T899 [char] (A27, M5, DESK.md:2150, repro R25) a No Name text reopened from n
 	eq({ link = link, line = header:find('3 moves over 1 day', 1, true) ~= nil }, { link = true, line = true })
 end
 
+-- The pop-ups' * -------------------------------------------------------------------
+
+-- Close every float, the trail's and a pop-up's.
+local function close_floats()
+	child.lua([[
+		for _, w in ipairs(vim.api.nvim_list_wins()) do
+			if vim.api.nvim_win_get_config(w).relative ~= '' then vim.api.nvim_win_close(w, true) end
+		end
+	]])
+	child.settle(200)
+end
+
+-- Press * on the line the pop-up's float shows that `match` picks (a function of the line), and
+-- give the trail's header, or '' when no trail opened; every float is closed after.
+local function star_in_popup()
+	child.lua([[
+		for i, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+			if _G.FRG_MATCH(l) then vim.api.nvim_win_set_cursor(0, { i, 0 }) end
+		end
+	]])
+	child.steps({ '*' })
+	child.settle(100)
+	local header = view() ~= vim.NIL and lines()[1] or ''
+	close_floats()
+	return header
+end
+
+-- sub/c.txt closed, then c.txt: both drawn c.txt in the trail.
+local function two_c()
+	child.lua([[
+		vim.fn.mkdir(_G.FRG_TEST.root .. '/sub', 'p')
+		vim.fn.writefile({ 'sub c' }, _G.FRG_TEST.root .. '/sub/c.txt')
+	]])
+	child.steps({ ':e a', ':e sub/c.txt', '<M-.>' })
+	child.settle(100)
+end
+
+T['T913 [char] (A27, S2 Closed-stack picker, DESK.md:1613-1614) * in the closed lists follows the line\'s file'] = function()
+	-- two files of one name: c.txt's own close, not sub/c.txt's too
+	child.setup()
+	two_c()
+	child.steps({ ':e c', '<M-.>' })
+	child.settle(100)
+	child.cmd('FrogmanClosed')
+	child.settle()
+	child.lua('_G.FRG_MATCH = function(l) return vim.trim(l) == "c.txt" end')
+	local same_name = star_in_popup()
+	-- across a move: b closed, reopened, moved to g and g closed, g's line follows it back to b
+	moved_b()
+	child.cmd('FrogmanClosed')
+	child.settle()
+	child.lua('_G.FRG_MATCH = function(l) return vim.trim(l) == "g.txt" end')
+	local moved = star_in_popup()
+	-- a No Name text closed, reopened and closed again: its line follows it across its reopen
+	child.setup()
+	child.steps({ ':e a', ':enew' })
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "n" })')
+	child.settle()
+	child.steps({ '<M-.>', '<M-S-w>', '<M-.>' })
+	child.settle(100)
+	child.cmd('FrogmanClosed')
+	child.settle()
+	child.lua('_G.FRG_MATCH = function(l) return l:find("[No Name]", 1, true) ~= nil end')
+	local noname = star_in_popup()
+	eq({ same_name = same_name:find('1 move over 1 day', 1, true) ~= nil, moved = moved:find('4 moves over 1 day', 1, true) ~= nil,
+		noname = noname:find('3 moves over 1 day', 1, true) ~= nil },
+		{ same_name = true, moved = true, noname = true })
+end
+
+T['T914 [char] (A27, A18, DESK.md:1613-1614) * in the primary pop-up follows the line\'s file'] = function()
+	child.setup()
+	two_c()
+	child.steps({ ':e c', '<M-;><M-c>', ':e a' })
+	child.cmd('bdelete c.txt')
+	child.settle(100)
+	child.steps({ '<M-;>F' })
+	child.settle()
+	-- the queue's one line, c.txt drawn by the shortest name telling it from sub/c.txt
+	child.lua('_G.FRG_MATCH = function(l) return vim.trim(l):match("c%.txt$") ~= nil end')
+	local same_name = star_in_popup()
+	-- a No Name text queued, closed, reopened and closed again: its line follows it across its reopen
+	child.setup()
+	child.steps({ ':e a', ':enew' })
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "n" })')
+	child.settle()
+	child.steps({ '<M-;><M-c>', '<M-.>', '<M-S-w>', '<M-.>' })
+	child.settle(100)
+	child.steps({ '<M-;>F' })
+	child.settle()
+	child.lua('_G.FRG_MATCH = function(l) return l:find("NONAME_", 1, true) ~= nil end')
+	local noname = star_in_popup()
+	eq({ same_name = same_name:find('1 move over 1 day', 1, true) ~= nil, noname = noname:find('3 moves over 1 day', 1, true) ~= nil },
+		{ same_name = true, noname = true })
+end
+
+T['T915 [char] (A27, M15, DESK.md:1613-1614) * in the marks pop-up follows the line\'s file'] = function()
+	child.setup()
+	two_c()
+	child.steps({ ':e c', "<M-'><M-'><M-a>", ':e a' })
+	child.cmd('bdelete c.txt')
+	child.settle(100)
+	child.steps({ "<M-'><M-e>" })
+	child.settle()
+	child.lua('_G.FRG_MATCH = function(l) return l:match("^a %->") ~= nil end')
+	local same_name = star_in_popup()
+	-- a No Name text marked, closed, reopened and closed again: its row follows it across its reopen
+	child.setup()
+	child.steps({ ':e a', ':enew' })
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "n" })')
+	child.settle()
+	child.steps({ "<M-'><M-'><M-a>", '<M-.>', '<M-S-w>', '<M-.>' })
+	child.settle(100)
+	child.steps({ "<M-'><M-e>" })
+	child.settle()
+	child.lua('_G.FRG_MATCH = function(l) return l:match("^a %->") ~= nil end')
+	local noname = star_in_popup()
+	eq({ same_name = same_name:find('1 move over 1 day', 1, true) ~= nil, noname = noname:find('3 moves over 1 day', 1, true) ~= nil },
+		{ same_name = true, noname = true })
+end
+
+-- The marks pop-up open with an edit not written, so it isn't drawn again, and under it a load of a
+-- session with no file, whose teardown lets every handle go: b, closed and unloaded, isn't taken in
+-- again, so the row drawn for it names a file frogman no longer knows.
+T['T920 [char] (A27, M15, DESK.md:1613) * on a marks pop-up row whose file was let go since it was drawn names nothing'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b', "<M-'><M-'><M-a>", ':e a' })
+	child.cmd('bdelete b.txt')
+	child.settle(100)
+	child.steps({ "<M-'><M-e>" })
+	child.settle()
+	local popup = child.lua([[
+		for i, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+			if l:match('^s %->') then vim.api.nvim_buf_set_lines(0, i - 1, i, false, { 's -> c.txt' }) end
+		end
+		return vim.api.nvim_get_current_win()
+	]])
+	child.settle()
+	child.lua([[
+		vim.cmd('wincmd p')
+		require('frogman').load_session('nothing')
+	]])
+	child.settle(300)
+	child.lua('vim.api.nvim_set_current_win(...)', { popup })
+	child.messages()
+	child.lua('_G.FRG_MATCH = function(l) return l:match("^a %->") ~= nil end')
+	local header = star_in_popup()
+	local errors = vim.tbl_filter(function(m) return m.level == vim.log.levels.ERROR end, child.messages())
+	eq({ header = header, errors = #errors }, { header = '', errors = 0 })
+end
+
+-- A path typed in a pop-up, a file frogman doesn't know yet: the trail opens on it by the hash of its
+-- name, named as the path names it.
+T['T921 [char] (A27, A18, M15, DESK.md:1613) * on a path typed in a pop-up that frogman doesn\'t know yet opens the trail on it'] = function()
+	-- the primary pop-up: e.txt typed on a line of its own
+	child.setup()
+	child.steps({ ':e a', '<M-;><M-c>', ':e b', '<M-;>F' })
+	child.settle()
+	child.lua('vim.api.nvim_buf_set_lines(0, -1, -1, false, { "e.txt" })')
+	child.lua('_G.FRG_MATCH = function(l) return vim.trim(l) == "e.txt" end')
+	local primary = star_in_popup()
+	-- the marks pop-up: e.txt typed on the s row
+	child.setup()
+	child.steps({ ':e a', "<M-'><M-'><M-a>", ':e b', "<M-'><M-e>" })
+	child.settle()
+	child.lua([[
+		for i, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+			if l:match('^s %->') then vim.api.nvim_buf_set_lines(0, i - 1, i, false, { 's -> e.txt' }) end
+		end
+	]])
+	child.lua('_G.FRG_MATCH = function(l) return l:match("^s %->") ~= nil end')
+	local marks = star_in_popup()
+	eq({ primary = primary:find('⌕ e.txt', 1, true) ~= nil, marks = marks:find('⌕ e.txt', 1, true) ~= nil },
+		{ primary = true, marks = true })
+end
+
 return T

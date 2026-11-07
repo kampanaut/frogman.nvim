@@ -949,6 +949,21 @@ function M.search(name, subject, mine, anchor)
 	pcall(vim.api.nvim_win_set_cursor, view.win, { math.min(3, vim.api.nvim_buf_line_count(view.buf)), 0 })
 end
 
+---Open the trail on a file's line, by its hash.
+---
+---It's what `*` on a line's file does in the pop-ups, as on a file's move in the trail: the line goes
+---back from the file's newest move, across its moves, its reopens and the copy it came from. A No Name
+---text's goes across its reopens.
+---
+---@param filehash Filehash The file's hash
+---@param filepath Filepath|nil Its path as the pop-up knows it, which names it when frogman no longer does
+---@return nil
+function M.follow(filehash, filepath)
+	local ledger = require('frogman.domains.ledger')
+	M.open()
+	M.search(ledger.name_of(filehash) or ledger.name_of_path(filepath) or filehash, filehash)
+end
+
 ---Search for what's typed: a name, or a window of the tab the trail came from.
 ---
 ---`win <N>`, or `win` alone, is that tab's window N, or the window the trail came from, followed by

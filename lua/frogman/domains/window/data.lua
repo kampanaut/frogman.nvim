@@ -43,8 +43,8 @@ local window_of = setmetatable({}, { __mode = "k" })
 
 ---Get the name of a window's place for one of its slots, as the handles' holders know it.
 ---
----@param winid WinId
----@param slot "current"|"secondary"|"ternary"|"primary"
+---@param winid WinId The window
+---@param slot "current"|"secondary"|"ternary"|"primary" Which of its places: a slot, or its primary queue
 ---@return string place Like "win:1000:ternary"
 local function place_of(winid, slot)
 	return "win:" .. winid .. ":" .. slot
@@ -52,6 +52,9 @@ end
 
 -- each field a write can change, and the place that holds what it holds
 local PLACE_OF_FIELD = { current_slot = "current", secondary_slot = "secondary", ternary_slot = "ternary", primary_buffer = "primary" }
+
+-- a window's places, one for each slot and one for its primary queue
+local SLOTS = { "current", "secondary", "ternary", "primary" }
 
 ---Hold the files a live triquetra's slots and primary queue hold now, each by its place.
 ---
@@ -74,13 +77,27 @@ end
 
 ---Let go of everything a window's places hold.
 ---
----@param winid WinId
+---@param winid WinId The window whose places go
 ---@return nil
 local function drop_places(winid)
 	local handles = history.handles
-	for _, slot in ipairs({ "current", "secondary", "ternary", "primary" }) do
+	for _, slot in ipairs(SLOTS) do
 		handles.drop_place(place_of(winid, slot))
 	end
+end
+
+---Check if a window holds a file, in one of its slots or its primary queue.
+---
+---@param winid WinId The window
+---@param id HandleId|nil The file's handle
+---@return boolean holds True if one of the window's places holds it
+function M.holds(winid, id)
+	for _, slot in ipairs(SLOTS) do
+		if vim.tbl_contains(history.handles.held_by(place_of(winid, slot)), id) then
+			return true
+		end
+	end
+	return false
 end
 
 ---Write one of the three slots.

@@ -35,6 +35,22 @@ data.started = M.now()
 -- the same microsecond still differ
 data.epoch = string.format("%.6f-%04d", data.started, vim.uv.hrtime() % 10000)
 
+---Get a path's name as the trail shows it.
+---
+---Returns its basename, or `[No Name]` for a No Name text's.
+---
+---@param path Filepath|nil The path, or a No Name text's NONAME_ name
+---@return string|nil name The name, or nil for no path
+function M.name_of_path(path)
+	if path == nil then
+		return nil
+	end
+	if path:match("^NONAME_") then
+		return "[No Name]"
+	end
+	return vim.fs.basename(path)
+end
+
 ---Get a file's name as the trail shows it.
 ---
 ---Returns its basename, or `[No Name]` for a No Name buffer.
@@ -45,14 +61,7 @@ function M.name_of(filehash)
 	if filehash == nil then
 		return nil
 	end
-	local path = require('frogman.domains.history.data').hash_filepath_registry.filepaths[filehash]
-	if path == nil then
-		return nil
-	end
-	if path:match("^NONAME_") then
-		return "[No Name]"
-	end
-	return vim.fs.basename(path)
+	return M.name_of_path(require('frogman.domains.history.data').hash_filepath_registry.filepaths[filehash])
 end
 
 ---Get a file's name as a row's slot shows it, its basename without the extension.
@@ -521,13 +530,30 @@ function M.note(map, owner, before, after, by)
 	})
 end
 
+---Get the lists of the sessions holding files, by their lists or their windows.
+---
+---@param ... HandleId The files' handles
+---@return string[]|nil ids The lists' ids, sorted, each once (nil when no session holds any)
+local function holding(...)
+	local found = {}
+	for _, id in ipairs({ ... }) do
+		for _, pool_id in ipairs(require('frogman.domains.history').routines.holding_pools(id)) do
+			found[pool_id] = true
+		end
+	end
+	local ids = vim.tbl_keys(found)
+	table.sort(ids)
+	return #ids > 0 and ids or nil
+end
+
 ---Record what a file's handle did, as a move in the trail.
 ---
 ---It's the trail's one place for a file's close, reopen, going from disk and coming back, move, copy
 ---and let-go: the handle's transitions, each carrying in its context what its caller and the hooks
 ---before this one found. A quiet one leaves no move, and so does what a load does, but for a No Name
 ---text it reopens under a new id and a file it takes off a closed list; a file opened that no list
----held, not asked for, is no reopen.
+---held, not asked for, is no reopen. A move and a copy carry the lists of the sessions holding the
+---file then, so it goes on each one's pages.
 ---
 ---@param context HandleContext The transition's context
 ---@param handle FileHandle The handle that moved
@@ -541,7 +567,9 @@ function M.handle_moved(context, handle, from, to)
 	local mode = context.mode
 	if mode == "rename" then
 		if context.kind == "move" then
-			M.move("moved", { subject = context.was, name = M.name_of(context.was), to = context.hash, words = context.words })
+			-- the windows a held name's handle had are the moved file's by now (windows_take_over)
+			M.move("moved", { subject = context.was, name = M.name_of(context.was), to = context.hash, words = context.words,
+				holding = holding(handle.id) })
 			-- a snapshot the move left holding the file twice keeps it once, and the trail says which slots let go
 			local name = M.name_of(context.hash)
 			for _, snapshot in ipairs(context.cleared or {}) do
@@ -553,7 +581,9 @@ function M.handle_moved(context, handle, from, to)
 		-- the copy's link is its handle's own: the file it was copied from, by its hash now, beside the copy's
 		local source = require('frogman.domains.history.handles').get(handle.copy_of)
 		local from = source and source.hash
-		M.move("copied", { subject = from, name = M.name_of(from), to = context.hash, words = context.words })
+		-- the file copied is the source's: the copy's new handle holds nothing much yet
+		M.move("copied", { subject = from, name = M.name_of(from), to = context.hash, words = context.words,
+			holding = holding(handle.id, handle.copy_of) })
 	elseif context.load then
 		if from == "closed" and to == "open" and context.from then
 			M.move("reopened", { subject = context.hash, name = "[No Name]", from = context.from,

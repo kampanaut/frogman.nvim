@@ -3213,6 +3213,61 @@ T['T389 [char] (S2) a line moved out of a list in the file alone lands on the li
 	eq({ in_file = child.lua(EDITOR_FILE).detached.t_DETACHED ~= nil, reopened = child.shown(w1) }, { in_file = false, reopened = 'e' })
 end
 
+-- The trail's header, from its float, or '' with none open; every float is closed after.
+local TRAIL_HEADER = [==[
+local head = ''
+for _, w in ipairs(vim.api.nvim_list_wins()) do
+	local b = vim.api.nvim_win_get_buf(w)
+	if vim.bo[b].filetype == 'frogman-trail' then head = vim.api.nvim_buf_get_lines(b, 0, 1, false)[1] or '' end
+end
+for _, w in ipairs(vim.api.nvim_list_wins()) do
+	if vim.api.nvim_win_get_config(w).relative ~= '' then vim.api.nvim_win_close(w, true) end
+end
+return head
+]==]
+
+-- How many moves a search's header counts.
+local function moves_in(header)
+	return tonumber(header:match('(%d+) moves? over')) or -1
+end
+
+-- File-only state, sub/e.txt closed in the first tab too, so e.txt names two files, and e taken off
+-- t's list, so frogman lets e go and knows its path no longer: t_DETACHED's e line, in the file alone,
+-- is followed by its hash and named by the path the file keeps.
+T['T922 [char] (A27, S2 Closed-stack picker, DESK.md:1613) * on an entry of a list in the whole editor\'s file alone follows its file'] = function()
+	local s = S2.shared()
+	local w1 = file_only_state(s)
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	child.lua([[
+		vim.fn.mkdir(_G.FRG_TEST.root .. '/sub', 'p')
+		vim.fn.writefile({ 'sub e' }, _G.FRG_TEST.root .. '/sub/e.txt')
+	]])
+	child.steps({ ':e sub/e.txt', ':e t' })
+	child.cmd('bdelete sub/e.txt')
+	child.settle()
+	local p = S2.picker(child)
+	local lines, section = {}, nil
+	for _, l in ipairs(p.lines) do
+		if l:sub(1, 3) == '≡' then section = l end
+		if not (section == '≡t' and vim.trim(l) == 'e.txt') then table.insert(lines, l) end
+	end
+	eq(#lines, #p.lines - 1)
+	S2.write_picker(child, p, lines)
+	child.settle(300)
+	local known = child.lua('return require("frogman.domains.history").get_handle_from_filepath(_G.FRG_TEST.root .. "/e.txt") ~= nil')
+	local _, e = under_detached(child.lua('return vim.api.nvim_buf_get_lines(..., 0, -1, false)', { p.buf }))
+	child.lua('local w, row = ...; vim.api.nvim_set_current_win(w); vim.api.nvim_win_set_cursor(w, { row, 0 })', { p.win, e or 1 })
+	child.steps({ '*' })
+	child.settle(100)
+	local star = child.lua(TRAIL_HEADER)
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	child.cmd('FrogmanTrail e.txt')
+	child.settle(100)
+	local typed = child.lua(TRAIL_HEADER)
+	eq({ known = known, e = e ~= nil, named = star:find('⌕ e.txt', 1, true) ~= nil, fewer = moves_in(star) >= 1 and moves_in(star) < moves_in(typed) },
+		{ known = false, e = true, named = true, fewer = true })
+end
+
 -- T574's route to t_DETACHED in the whole editor's file alone holding the text, then the text's file
 -- there made to fail its check.
 T['T609 [char] (S2 Closed-stack picker) a lost text on a list in the file alone is said once however often the lists are drawn'] = function()

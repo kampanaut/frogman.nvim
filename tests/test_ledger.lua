@@ -1104,6 +1104,107 @@ T['T424 [char] (A27) each file keeps its own moves'] = function()
 		{ t = { 'closed c.txt' }, editor = { 'closed x.txt' }, t_own = { ['saved t'] = true, ['loaded t'] = true }, editor_own = {} })
 end
 
+-- Whether any step of a page holds a move of that kind.
+local function has_kind(steps, kind)
+	for _, st in ipairs(type(steps) == 'table' and steps or {}) do
+		for _, m in ipairs(st.moves) do
+			if m:sub(1, #kind + 1) == kind .. ' ' then return true end
+		end
+	end
+	return false
+end
+
+-- c.txt moved to g.txt on disk and c's buffer given g's name, from the current window.
+local MOVE_C = [==[
+local root = _G.FRG_TEST.root
+os.rename(root .. '/c.txt', root .. '/g.txt')
+vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/c.txt'), root .. '/g.txt')
+]==]
+
+T['T916 [char] (A27, DESK.md:1613-1614) a move made in another tab goes on the pages of a tab session whose windows hold the file'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	-- t's window holds c in its ternary; the first tab, in no tab session, moves it
+	child.cmd('tabprevious')
+	child.steps({ ':e c' })
+	child.lua(MOVE_C)
+	child.settle(300)
+	-- t's pages written: its tab saved again
+	eq(child.lua([[return { pcall(require('frogman').save_session, 't', { tab = vim.api.nvim_list_tabpages()[2] }) }]]), { true })
+	eq(has_kind(page('t'), 'moved'), true)
+end
+
+-- T318's state after a whole-editor save, so the whole editor's session is the unnamed one once t
+-- is loaded: the first tab's window holds c in its ternary, and t's tab shows c.
+local function unnamed_holding_c(s)
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(S2.save(child), { true })
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.cmd('tabprevious')
+	child.steps({ ':e c', ':e x' })
+	child.cmd('tabnext')
+	child.steps({ ':e c' })
+end
+
+-- The whole editor's records written, with its pages: t.txt closed in the first tab, and their second.
+local function unnamed_records()
+	child.cmd('tabprevious')
+	child.cmd('bdelete t.txt')
+	child.settle(1500)
+end
+
+T['T917 [char] (A27, DESK.md:1613-1614) a move made in a tab session\'s tab goes on the whole editor\'s pages when a plain tab\'s window holds the file'] = function()
+	local s = S2.shared()
+	unnamed_holding_c(s)
+	child.lua(MOVE_C)
+	child.settle(300)
+	unnamed_records()
+	eq(has_kind(page(), 'moved'), true)
+end
+
+T['T918 [char] (A27, DESK.md:1613-1614) a copy made in a tab session\'s tab goes on the whole editor\'s pages when a plain tab\'s window holds the file'] = function()
+	local s = S2.shared()
+	unnamed_holding_c(s)
+	child.cmd('saveas g.txt')
+	child.settle(300)
+	unnamed_records()
+	eq(has_kind(page(), 'copied'), true)
+end
+
+T['T919 [char] (A27, DESK.md:1613) the sessions holding a file are those whose lists or windows hold it'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	-- e closed in a split of t's tab, which closes with it: t's list alone holds e, the tab's own
+	-- window never having held it
+	child.cmd('split')
+	child.steps({ ':e e' })
+	child.cmd('bdelete e.txt')
+	child.settle()
+	local got = child.lua([[
+		local history = require('frogman.domains.history')
+		local t = history.routines.current_pool().id
+		local function id_of(name)
+			return history.get_handle_from_filepath(_G.FRG_TEST.root .. '/' .. name)
+		end
+		local function of(name)
+			local out = {}
+			for _, id in ipairs(history.routines.holding_pools(id_of(name))) do
+				table.insert(out, id == t and 't' or (id == '' and 'editor' or id))
+			end
+			return out
+		end
+		local e_places = {}
+		for _, place in ipairs(history.handles.holders(id_of('e.txt'))) do
+			table.insert(e_places, place == 'pool:' .. t and 'pool:t' or place)
+		end
+		return { e = of('e.txt'), e_places = e_places, x = of('x.txt'), d = of('d.txt') }
+	]])
+	-- e by t's list, x by the first tab's window, d by t's window
+	eq(got, { e = { 't' }, e_places = { 'pool:t' }, x = { 'editor' }, d = { 't' } })
+end
+
 -- The current tab's trail today, as its reader gives it: each step's trigger and
 -- its moves, `kind name`.
 local READER = [==[

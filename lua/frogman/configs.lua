@@ -112,6 +112,7 @@
 ---@field dim boolean|nil Whether it's bookkeeping of the key's own result, shown dim
 ---@field new boolean|nil For a reopen, whether the file was never written, so it came back as a new one
 ---@field state "open"|"closed"|nil Where it left its file, when its kind doesn't say (a repair's)
+---@field holding string[]|nil For a move or a copy, the lists of the sessions whose lists or windows held the file then, by their ids
 
 
 ---Default configuration

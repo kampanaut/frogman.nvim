@@ -2366,8 +2366,10 @@ end
 ---Filter the steps a session's file keeps.
 ---
 ---The whole editor's session keeps every step made under it while it covers every tab. The unnamed
----session keeps the steps made under it in tabs in no tab session, in detached tabs, and with no
----tab. A tab session keeps the steps in its tab and those whose moves name its pool or its list.
+---session keeps the steps made under it in its tabs: those in no tab session, the detached ones, and
+---none. A tab session keeps the steps in its tab and those with a move about its list or naming it.
+---Each keeps a step with a move or a copy of a file its lists or its windows held then too, so the
+---file's line goes on there across a move made from another tab.
 ---
 ---@param owner Pool|nil The session's pool (nil for the whole editor's session)
 ---@param steps FrogmanLedgerStep[] The steps to filter
@@ -2376,21 +2378,35 @@ end
 local function steps_kept(owner, steps, session)
 	local out = {}
 	local list = owner and history.routines.list_name(owner)
+	-- a list the session's own: the unnamed session's are the editor's, the detached ones and none
+	local function its_own(id)
+		if owner.id == "" then
+			return id == nil or id == "" or id:sub(1, 10) == "\0detached\n"
+		end
+		return id == owner.id
+	end
+	-- a move or a copy of a file the session's lists or windows held, or a move about its list or naming it
+	local function moves_about_it(step)
+		for _, move in ipairs(step.moves) do
+			for _, id in ipairs(move.holding or {}) do
+				if its_own(id) then
+					return true
+				end
+			end
+			if owner.id ~= "" and (move.subject == owner.id or (move.lists and vim.tbl_contains(move.lists, list))) then
+				return true
+			end
+		end
+		return false
+	end
 	for _, step in ipairs(steps) do
 		local kept
 		if owner == nil then
 			kept = step.session == session
 		elseif owner.id == "" then
-			kept = step.session == session
-				and (step.pool == nil or step.pool == "" or step.pool:sub(1, 10) == "\0detached\n")
+			kept = step.session == session and (its_own(step.pool) or moves_about_it(step))
 		else
-			kept = step.pool == owner.id
-			for _, move in ipairs(kept and {} or step.moves) do
-				if move.subject == owner.id or (move.lists and vim.tbl_contains(move.lists, list)) then
-					kept = true
-					break
-				end
-			end
+			kept = its_own(step.pool) or moves_about_it(step)
 		end
 		if kept then
 			table.insert(out, step)

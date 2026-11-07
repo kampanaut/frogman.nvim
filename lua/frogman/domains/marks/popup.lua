@@ -501,12 +501,13 @@ end
 
 ---Get the file the row under the cursor names.
 ---@return HandleId|Filehash|nil ref The file's handle, or its hash while the registry doesn't know it
+---@return Filepath|nil filepath Its path, when the registry doesn't know it
 local function row_file()
 	local kind, _, file = read_line(vim.api.nvim_get_current_line())
 	if kind ~= "row" or file == "" then
 		return nil
 	end
-	return (resolve(file))
+	return resolve(file)
 end
 
 ---Get the row under the cursor, its alias and its file, writing the pop-up first when it was edited.
@@ -734,10 +735,15 @@ function M.map_keys(buf)
 	map(keys.add, M.add_row, "Add a mark through the picker")
 	map(keys.make_primary, M.make_primary, "Make the line's file the primary")
 	map(keys.search_word, function()
-		local ref = row_file()
-		local filepath = type(ref) == "number" and history.get_filepath_from_handle(ref) or nil
-		if filepath and not filepath:match("^NONAME_") then
-			require('frogman.domains.ui.trail').open(vim.fs.basename(filepath))
+		-- the row's file by its hash, a No Name text's too, across its moves and reopens; a row drawn for
+		-- a file let go since names nothing
+		local ref, filepath = row_file()
+		local filehash = ref
+		if type(ref) == "number" then
+			filehash = history.get_hash_from_handle(ref)
+		end
+		if filehash then
+			require('frogman.domains.ui.trail').follow(filehash, filepath)
 		end
 	end, "Search the trail for the line's file")
 end

@@ -118,16 +118,22 @@ end
 
 ---Search the trail for the file on the primary pop-up's line under the cursor.
 ---
----The line is a short name the pop-up shows, or a path as typed. The trail opens on the file's
----name, and a No Name text's line, or an empty one, searches nothing.
+---The line is a name the pop-up shows, or a path as typed. The trail follows the file by its hash, a
+---No Name text's too, across its moves and reopens; a path typed there by the hash of its name as `:e`
+---takes it. An empty line, or a No Name name the pop-up didn't draw, searches nothing.
 ---
 ---@param dbuf Bufnr The pop-up's buffer
 ---@return nil
 function M.search_primary_popup(dbuf)
 	local text = vim.trim(vim.api.nvim_get_current_line())
-	local filepath = history.get_filepath_from_handle((vim.b[dbuf].frogman_names or {})[text]) or (text ~= "" and text) or nil
-	if filepath and not filepath:match("^NONAME_") then
-		require('frogman.domains.ui.trail').open(vim.fs.basename(filepath))
+	local filehash = history.get_hash_from_handle((vim.b[dbuf].frogman_names or {})[text])
+	local filepath = filehash and history.get_filepath_from_hash(filehash)
+	if not filehash and text ~= "" and not text:match("^NONAME_") then
+		filepath = vim.fn.fnamemodify(text, ":p")
+		filehash = history.routines.get_filehash(filepath)
+	end
+	if filehash then
+		require('frogman.domains.ui.trail').follow(filehash, filepath)
 	end
 end
 
@@ -1061,7 +1067,8 @@ end
 
 ---Search the trail for the file on the closed lists' line under the cursor.
 ---
----The trail opens on the file's name. A No Name text's line, or a header, searches nothing.
+---The trail follows the file by its hash, a No Name text's too, across its moves and reopens. A
+---header searches nothing.
 ---
 ---@param dbuf Bufnr The closed-lists buffer
 ---@return nil
@@ -1069,9 +1076,8 @@ function M.search_closed_entry(dbuf)
 	local picker = closed_pickers[dbuf]
 	local ref = picker and picker.refs[vim.trim(vim.api.nvim_get_current_line())]
 	local filehash = ref and entry_hash(ref)
-	local filepath = filehash and (history.get_filepath_from_hash(filehash) or picker.paths[filehash])
-	if filepath and not filepath:match("^NONAME_") then
-		require('frogman.domains.ui.trail').open(vim.fs.basename(filepath))
+	if filehash then
+		require('frogman.domains.ui.trail').follow(filehash, history.get_filepath_from_hash(filehash) or picker.paths[filehash])
 	end
 end
 
