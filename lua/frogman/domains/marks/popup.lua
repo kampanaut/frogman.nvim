@@ -280,7 +280,12 @@ local function resolve(file)
 	return nil, nil
 end
 
----Draw the pop-up's decoration again: the mode line above it, and around each row its file's state.
+---Draw the pop-up's decoration again: the mode line above it, its lines coloured in the trail's
+---language, and around each row its file's state.
+---
+---A header takes the lists' colour; a row's alias a key's, dim when the config has none for it, its
+---arrow dim, and its file the trail's name colour, dim while the file is closed or gone from disk and
+---for a row naming no file.
 ---
 ---@return nil
 local function decorate()
@@ -305,11 +310,32 @@ local function decorate()
 	end
 	for i, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
 		local kind, alias, file = read_line(line)
+		if kind == "header" then
+			vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 0, { end_col = #line, hl_group = "FrogmanTrailList" })
+		elseif kind == "row" then
+			local start = line:find("%S")
+			local arrow = line:find("->", start + #alias, true)
+			vim.api.nvim_buf_set_extmark(buf, ns, i - 1, start - 1, {
+				end_col = start - 1 + #alias, hl_group = known[alias] and "FrogmanTrailKeyOn" or "FrogmanTrailKeyOff",
+			})
+			if arrow then
+				vim.api.nvim_buf_set_extmark(buf, ns, i - 1, arrow - 1, { end_col = arrow + 1, hl_group = "FrogmanTrailDim" })
+			end
+		end
 		if kind == "row" and file ~= "" then
 			local ref = resolve(file)
 			local handle = type(ref) == "number" and history.handles.get(ref) or nil
 			local arrow = line:find("->", 1, true)
 			local col = arrow and line:find("%S", arrow + 2) -- the name's first character, however it's spaced
+			if col then
+				-- the file in the trail's name colour, dim while it's closed or gone from disk, and for a row naming
+				-- no file; a path to a file the registry knows only at the write names one
+				local named = handle ~= nil or type(ref) == "string"
+				local dim = not named or (handle ~= nil and (history.handles.kept_closed(handle.id) or handle.tag ~= nil))
+				vim.api.nvim_buf_set_extmark(buf, ns, i - 1, col - 1, {
+					end_col = col - 1 + #file, hl_group = dim and "FrogmanTrailDim" or "FrogmanTrailName",
+				})
+			end
 			if handle and history.handles.kept_closed(handle.id) and col then
 				vim.api.nvim_buf_set_extmark(buf, ns, i - 1, col - 1, {
 					virt_text = { { glyphs.closed .. " ", "FrogmanTrailClosed" } }, virt_text_pos = "inline",

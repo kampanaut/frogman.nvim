@@ -2684,4 +2684,120 @@ T['T981 [char] (M15, S1 Records, DESK.md:1070) a saved tab no tab takes holding 
 	]]), true)
 end
 
+-- A scope's groups, each with its marks by file letter, its held flag and whether its name is a load's.
+local SCOPE_GROUPS = [[
+	local kind, id = ...
+	if kind == 'tab' then id = vim.api.nvim_get_current_tabpage() end
+	local d = require('frogman.domains.marks').data
+	local H = require('frogman.domains.history')
+	local scope = d.scopes[kind][id]
+	return vim.tbl_map(function(g)
+		local marks = {}
+		for alias, hid in pairs(g.marks) do
+			local h = H.handles.get(H.handles.resolve(hid))
+			marks[alias] = h and vim.fn.fnamemodify(H.get_filepath_from_hash(h.hash), ':t:r') or false
+		end
+		return { marks = marks, held = g.held == true, load = g.name:find(', loaded', 1, true) ~= nil }
+	end, scope and scope.groups or {})
+]]
+
+-- A whole-editor load under the pop-up's unwritten edits for the session's own marks, the load bringing
+-- marks other than the scope's: the write makes the lines the session's marks, and what the load brought
+-- stays below, held over under the load's header. The scope's own marks are made in a fresh editor, where
+-- the session isn't known yet, so they aren't written into its file as they change.
+T['T976 [char] (M15, S1 Load, DESK.md:1093-1094) a load under the pop-up\'s edits for the session\'s marks keeps both'] = function()
+	local shared = S2.shared()
+	S2.start(child, shared)
+	child.steps({ ':e b', ':e c', "<M-'><M-3>", ':e b', ADD .. 'a>', ':e e' })
+	eq(child.lua('return { pcall(require("frogman").save_session) }'), { true })
+	S2.start(child, shared)
+	Misc.restore(child, { 'b', 'c', 'e' }, 'e')
+	child.steps({ "<M-'><M-3>", ':e c', ADD .. 's>', ':e e', OPEN })
+	child.lua('vim.api.nvim_buf_set_lines(0, 3, 4, false, { "d -> d.txt" })')
+	child.cmd('wincmd p')
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").load_session) }'), { true })
+	child.settle(300)
+	child.lua('vim.api.nvim_set_current_win(vim.fn.bufwinid("frogman://marks"))')
+	child.cmd('silent! write')
+	child.settle(100)
+	eq(child.lua(SCOPE_GROUPS, { 'session', '' }), {
+		{ marks = { s = 'c', d = 'd' }, held = false, load = false }, { marks = { a = 'b' }, held = true, load = true },
+	})
+end
+
+-- The same for a plain tab's marks.
+T['T977 [char] (M15, S1 Load, DESK.md:1093-1094) a load under the pop-up\'s edits for a tab\'s marks keeps both'] = function()
+	child.steps({ ':e b', "<M-'><M-2>", ADD .. 'a>', ':e c', ':e e' })
+	eq(child.lua('return { pcall(require("frogman").save_session) }'), { true })
+	child.steps({ ':e c', ADD .. 's>', ':e e', OPEN })
+	child.lua('vim.api.nvim_buf_set_lines(0, 3, 4, false, { "d -> d.txt" })')
+	child.cmd('wincmd p')
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").load_session) }'), { true })
+	child.settle(300)
+	child.lua('vim.api.nvim_set_current_win(vim.fn.bufwinid("frogman://marks"))')
+	child.cmd('silent! write')
+	child.settle(100)
+	child.cmd('wincmd p')
+	eq(child.lua(SCOPE_GROUPS, { 'tab' }), {
+		{ marks = { a = 'b', s = 'c', d = 'd' }, held = false, load = false }, { marks = { a = 'b' }, held = true, load = true },
+	})
+end
+
+-- The pop-up's lines are coloured in the trail's language: a header in the lists' colour, an alias in a
+-- key's, dim when the config has none for it, the arrow dim, a file in the trail's name colour, a path to a
+-- file the registry doesn't know yet too, and dim while closed or for a row naming no file.
+T['T978 [char] (M15, DESK.md:1068-1069) the pop-up\'s lines are coloured in the trail\'s language'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c', ADD .. 's>', ':e e' })
+	child.cmd('bdelete c.txt')
+	child.settle()
+	child.steps({ OPEN })
+	-- typed: a path to a file the registry doesn't know yet, a name naming no file, an alias the config hasn't
+	child.lua('vim.api.nvim_buf_set_lines(0, 3, 6, false, { "d -> d.txt", "f -> nothere.txt", "z -> e.txt" })')
+	child.settle(50)
+	local colours = child.lua([[
+		local buf = vim.fn.bufnr('frogman://marks')
+		local ns = vim.api.nvim_get_namespaces()['frogman_marks_popup']
+		local out = {}
+		for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })) do
+			local d = m[4]
+			if d.hl_group and d.end_col then
+				local line = vim.api.nvim_buf_get_lines(buf, m[2], m[2] + 1, false)[1]
+				out[m[2] + 1 .. ':' .. line:sub(m[3] + 1, d.end_col)] = d.hl_group
+			end
+		end
+		return out
+	]])
+	eq({ header = colours['1:❖ main'], alias = colours['2:a'], arrow = colours['2:->'], open = colours['2:b.txt'],
+		closed = colours['3:c.txt'], typed = colours['4:d.txt'], nothing = colours['5:nothere.txt'], unassigned = colours['6:z'],
+		empty_alias = colours['7:i'] }, {
+		header = 'FrogmanTrailList', alias = 'FrogmanTrailKeyOn', arrow = 'FrogmanTrailDim', open = 'FrogmanTrailName',
+		closed = 'FrogmanTrailDim', typed = 'FrogmanTrailName', nothing = 'FrogmanTrailDim', unassigned = 'FrogmanTrailKeyOff',
+		empty_alias = 'FrogmanTrailKeyOn',
+	})
+end
+
+-- A load that changes the tab's marks while the pop-up holds the tab's draft, the screen on the window's:
+-- q writes the draft as the tab's marks, and what the load brought stays below, held over under the
+-- load's header.
+T['T987 [char] (M15, S1 Load, DESK.md:1093-1094, :1068) a load under a draft for the tab\'s marks keeps both'] = function()
+	child.steps({ ':e b', "<M-'><M-2>", ADD .. 'a>', ':e c', ':e e' })
+	eq(child.lua('return { pcall(require("frogman").save_session) }'), { true })
+	child.steps({ ':e c', ADD .. 's>', ':e e', OPEN })
+	child.lua('vim.api.nvim_buf_set_lines(0, 3, 4, false, { "d -> d.txt" })')
+	child.steps({ "<M-'><M-1>" })
+	child.cmd('wincmd p')
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").load_session) }'), { true })
+	child.settle(300)
+	child.lua('vim.api.nvim_set_current_win(vim.fn.bufwinid("frogman://marks"))')
+	child.step('q')
+	child.settle(100)
+	eq({ gone = popup() == vim.NIL, groups = child.lua(SCOPE_GROUPS, { 'tab' }) }, {
+		gone = true,
+		groups = { { marks = { a = 'b', s = 'c', d = 'd' }, held = false, load = false }, { marks = { a = 'b' }, held = true, load = true } },
+	})
+end
+
 return T

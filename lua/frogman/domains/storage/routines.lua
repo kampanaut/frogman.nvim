@@ -840,7 +840,7 @@ local function restore_tabs(saved_tabs, what)
 		end
 		if best then
 			taken[best.tabpage] = true
-			marks().restore("tab", best.tabpage, saved.groups)
+			marks().restore("tab", best.tabpage, saved.groups, what) -- named by the load, for a pop-up with edits not written
 		else
 			marks().hold_over("", type(saved.groups) == "table" and saved.groups or {}, what, true, true)
 			unclaimed[i] = marks().any_mark(saved.groups) or nil -- only marks are held over, so only they leave the file
@@ -1011,7 +1011,7 @@ end
 local function restore_marks(saved_data, taken, session_id, own, key, scratch_dir, what)
 	local gone, waited = {}, waited_on(saved_data)
 	if own then
-		marks().restore("session", session_id, saved_data.marks)
+		marks().restore("session", session_id, saved_data.marks, what) -- named by the load, for a pop-up with edits not written
 	else
 		-- memory's marks win: every file mark memory doesn't hold, alias by alias, is held over
 		local scope = marks().scope("session", session_id)
