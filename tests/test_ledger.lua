@@ -1215,4 +1215,45 @@ T['T911 [char] (A27, M5, S1 Load) a load that takes a restored file off a closed
 	eq({ cause = m and m.cause, lists = m and m.lists }, { cause = 'load', lists = { 'editor' } })
 end
 
+T['T912 [char] (M5, A20, I7) a move keeps the lists a file came off, so its next close goes back on them'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	-- c closed in t's tab: on t's list; then t's tab keeps only a window that never visited c
+	child.cmd('bdelete c.txt')
+	child.settle()
+	child.cmd('split')
+	child.settle()
+	child.cmd('wincmd j')
+	child.cmd('close')
+	child.settle()
+	-- reopened in the first tab, off t's list, then moved on disk and the buffer given its new name
+	child.cmd('tabprevious')
+	child.settle()
+	child.steps({ ':e c' })
+	child.lua('os.rename(_G.FRG_TEST.root .. "/c.txt", _G.FRG_TEST.root .. "/g.txt")')
+	child.cmd('file ' .. child.lua('return _G.FRG_TEST.root') .. '/g.txt')
+	child.settle(200)
+	local kept = child.lua([=[
+		local H = require('frogman.domains.history')
+		local id = H.get_handle_from_filepath(_G.FRG_TEST.root .. '/g.txt')
+		local names = {}
+		for pid, _ in pairs(H.data.came_from[id] or {}) do
+			table.insert(names, H.routines.list_name(H.data.pools[pid]))
+		end
+		table.sort(names)
+		return names
+	]=])
+	-- g closed in a split of the first tab, which keeps a window on x and stays open
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e x' })
+	child.cmd('bdelete g.txt')
+	child.settle()
+	local m = found('closed', 'g.txt')
+	local lists = m and vim.deepcopy(m.lists) or {}
+	table.sort(lists)
+	eq({ kept = kept, lists = lists, tabs = child.lua('return #vim.api.nvim_list_tabpages()') },
+		{ kept = { 't' }, lists = { 'editor', 't' }, tabs = 2 })
+end
+
 return T
