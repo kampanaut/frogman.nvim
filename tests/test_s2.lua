@@ -3267,7 +3267,7 @@ end
 -- File-only state, sub/e.txt closed in the first tab too, so e.txt names two files, and e taken off
 -- t's list, so frogman lets e go and knows its path no longer: t_DETACHED's e line, in the file alone,
 -- is followed by its hash and named by the path the file keeps.
-T['T922 [char] (A27, S2 Closed-stack picker, DESK.md:1613) * on an entry of a list in the whole editor\'s file alone follows its file'] = function()
+T['T922 [char] (A27, S2 Closed-stack picker, DESK.md:1622) * on an entry of a list in the whole editor\'s file alone follows its file'] = function()
 	local s = S2.shared()
 	local w1 = file_only_state(s)
 	child.lua('vim.api.nvim_set_current_win(...)', { w1 })

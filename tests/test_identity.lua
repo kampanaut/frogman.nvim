@@ -600,7 +600,7 @@ T['T699 [char] (M2 Holders) a file let go and held again in one batch is kept'] 
 	eq(after, { path = true, id = got.id })
 end
 
-T['T895 [char] (M2 Handles, DESK.md:596-597) a move and a No Name text\'s reopen leave every consumer holding what it held'] = function()
+T['T895 [char] (M2 Handles, DESK.md:647) a move and a No Name text\'s reopen leave every consumer holding what it held'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
 	local a, b = handle('a'), handle('b')
@@ -633,7 +633,7 @@ T['T895 [char] (M2 Handles, DESK.md:596-597) a move and a No Name text\'s reopen
 	eq({ after.current, after.hash ~= n.hash }, { n.id, true })
 end
 
-T['T900 [char] (M2 Handles, M11, DESK.md:617, :622-623) every handle transition runs the ledger\'s hook last, and no two of its hooks share a class'] = function()
+T['T900 [char] (M2 Handles, M11, DESK.md:673, :677) every handle transition runs the ledger\'s hook last, and no two of its hooks share a class'] = function()
 	local got = child.lua([[
 		local helpers = require('frogman.engine.helpers')
 		local model = require('frogman.domains.history.handles').model
@@ -659,7 +659,7 @@ T['T900 [char] (M2 Handles, M11, DESK.md:617, :622-623) every handle transition 
 	eq(got, want)
 end
 
-T['T901 [char] (M11, DESK.md:625-626) a handle goes by its file\'s unique name in a message'] = function()
+T['T901 [char] (M11, DESK.md:679) a handle goes by its file\'s unique name in a message'] = function()
 	child.lua([[
 		local root = _G.FRG_TEST.root
 		for _, d in ipairs({ 'sub1', 'sub2' }) do

@@ -650,7 +650,7 @@ T['T705 [char] (M6 Arrivals, I10) a current slot closed since the arrival falls 
 	eq({ child.slots(), child.closed():match('^a,') ~= nil }, { '⦉-⦊ [c] ⟦-⟧', true })
 end
 
-T['T893 [char] (M6 Arrivals, DESK.md:609, repro R1) a move since an arrival doesn\'t stop its undo'] = function()
+T['T893 [char] (M6 Arrivals, DESK.md:665, repro R1) a move since an arrival doesn\'t stop its undo'] = function()
 	child.steps({ ':e c', ':e a' })
 	eq(child.slots(), '⦉c⦊ [a] ⟦-⟧')
 	child.steps({ ':e x' })
@@ -667,7 +667,7 @@ end
 
 -- c moves onto b's name while b is closed and held by its list, so b's handle gives way to c's in the
 -- windows and in the arrival's copies alike.
-T['T897 [char] (M6 Arrivals, DESK.md:596, :608-609) a move onto a held name since an arrival doesn\'t stop its undo'] = function()
+T['T897 [char] (M6 Arrivals, DESK.md:647, :665) a move onto a held name since an arrival doesn\'t stop its undo'] = function()
 	child.steps({ ':e b', ':e c', ':e a' })
 	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/b.txt")'))
 	child.settle()
@@ -684,7 +684,7 @@ T['T897 [char] (M6 Arrivals, DESK.md:596, :608-609) a move onto a held name sinc
 	eq({ child.slots(), child.lua('return vim.bo.buftype') }, { '⦉b⦊ [a] ⟦-⟧', 'nofile' })
 end
 
-T['T894 [char] (M6 Arrivals, DESK.md:609, repro R2) a file let go and known again doesn\'t come back into an undone arrival'] = function()
+T['T894 [char] (M6 Arrivals, DESK.md:665, repro R2) a file let go and known again doesn\'t come back into an undone arrival'] = function()
 	local S2 = dofile('tests/helpers_s2.lua')
 	child.steps({ ':e c', ':e a', ':e x' })
 	child.cmd('bdelete c.txt')
@@ -714,7 +714,7 @@ T['T702 [char] (I10, A21) a cleanup pass leaves the closed file in the current s
 	eq({ child.slots(), child.lua('return vim.api.nvim_get_current_buf()') }, { '⦉c⦊ [d] ⟦b⟧', nofile })
 end
 
-T['T909 [char] (A22, DESK.md:617) a cleanup tick runs what\'s queued to settle first'] = function()
+T['T909 [char] (A22, DESK.md:673) a cleanup tick runs what\'s queued to settle first'] = function()
 	local order = child.lua([[
 		_G.FRG_ORDER = {}
 		local routines = require('frogman.domains.history.routines')

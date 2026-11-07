@@ -1121,7 +1121,7 @@ os.rename(root .. '/c.txt', root .. '/g.txt')
 vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/c.txt'), root .. '/g.txt')
 ]==]
 
-T['T916 [char] (A27, DESK.md:1613-1614) a move made in another tab goes on the pages of a tab session whose windows hold the file'] = function()
+T['T916 [char] (A27, DESK.md:1622-1623) a move made in another tab goes on the pages of a tab session whose windows hold the file'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	-- t's window holds c in its ternary; the first tab, in no tab session, moves it
@@ -1155,7 +1155,7 @@ local function unnamed_records()
 	child.settle(1500)
 end
 
-T['T917 [char] (A27, DESK.md:1613-1614) a move made in a tab session\'s tab goes on the whole editor\'s pages when a plain tab\'s window holds the file'] = function()
+T['T917 [char] (A27, DESK.md:1622-1623) a move made in a tab session\'s tab goes on the whole editor\'s pages when a plain tab\'s window holds the file'] = function()
 	local s = S2.shared()
 	unnamed_holding_c(s)
 	child.lua(MOVE_C)
@@ -1164,7 +1164,7 @@ T['T917 [char] (A27, DESK.md:1613-1614) a move made in a tab session\'s tab goes
 	eq(has_kind(page(), 'moved'), true)
 end
 
-T['T918 [char] (A27, DESK.md:1613-1614) a copy made in a tab session\'s tab goes on the whole editor\'s pages when a plain tab\'s window holds the file'] = function()
+T['T918 [char] (A27, DESK.md:1622-1623) a copy made in a tab session\'s tab goes on the whole editor\'s pages when a plain tab\'s window holds the file'] = function()
 	local s = S2.shared()
 	unnamed_holding_c(s)
 	child.cmd('saveas g.txt')
@@ -1173,7 +1173,7 @@ T['T918 [char] (A27, DESK.md:1613-1614) a copy made in a tab session\'s tab goes
 	eq(has_kind(page(), 'copied'), true)
 end
 
-T['T919 [char] (A27, DESK.md:1613) the sessions holding a file are those whose lists or windows hold it'] = function()
+T['T919 [char] (A27, DESK.md:1622) the sessions holding a file are those whose lists or windows hold it'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	-- e closed in a split of t's tab, which closes with it: t's list alone holds e, the tab's own
@@ -1263,7 +1263,7 @@ T['T516 [char] (A27, S1) each whole-editor session\'s file keeps the moves made 
 	})
 end
 
-T['T906 [char] (A27, M15, DESK.md:617, :1002) a file only a mark holds, reopened by its key, leaves a reopen in the trail'] = function()
+T['T906 [char] (A27, M15, DESK.md:673, :1097) a file only a mark holds, reopened by its key, leaves a reopen in the trail'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b', "<M-'><M-'><M-a>", ':e a' })
 	child.cmd('bdelete b.txt')
@@ -1282,7 +1282,7 @@ T['T906 [char] (A27, M15, DESK.md:617, :1002) a file only a mark holds, reopened
 end
 
 
-T['T910 [char] (A21, A27, DESK.md:617) the window pass letting go a slot\'s buffer whose path is gone writes no close'] = function()
+T['T910 [char] (A21, A27, DESK.md:673) the window pass letting go a slot\'s buffer whose path is gone writes no close'] = function()
 	child.setup()
 	child.steps({ ':e b', ':e a' })
 	-- b's path pair dropped by hand, its buffer still registered: the window pass finds its slot stale,

@@ -1823,7 +1823,7 @@ local function b_over_a()
 	child.settle(300)
 end
 
-T['T902 [char] (M16, A20, DESK.md:1607-1608) a rename onto a name a snapshot holds applies the live slots\' rule as it settles'] = function()
+T['T902 [char] (M16, A20, DESK.md:1716) a rename onto a name a snapshot holds applies the live slots\' rule as it settles'] = function()
 	child.steps({ ':e a', ':e b', '<M-f>', ':e a', TAKE, ':e c' })
 	local win = child.lua('return vim.api.nvim_get_current_win()')
 	b_over_a()
@@ -1844,7 +1844,7 @@ T['T902 [char] (M16, A20, DESK.md:1607-1608) a rename onto a name a snapshot hol
 		{ slots = '⦉-⦊ [a] ⟦-⟧', order = 'a', saved = { current = true, secondary = false, order = 1 }, cleared = true })
 end
 
-T['T903 [char] (M16, A20, DESK.md:1607) where the current doesn\'t hold the file, the slot the moved file was in keeps it'] = function()
+T['T903 [char] (M16, A20, DESK.md:1716) where the current doesn\'t hold the file, the slot the moved file was in keeps it'] = function()
 	child.steps({ ':e a', ':e x', '<M-f>', ':e b', ':e x' })
 	eq(child.slots(), '⦉b⦊ [x] ⟦a⟧')
 	child.steps({ TAKE })
@@ -1852,7 +1852,7 @@ T['T903 [char] (M16, A20, DESK.md:1607) where the current doesn\'t hold the file
 	eq(snapshots()[1].slots, '⦉a⦊ [x] ⟦-⟧')
 end
 
-T['T904 [char] (M16, S1 Load, DESK.md:1607) a saved snapshot holding one file twice gets the rule at its next load'] = function()
+T['T904 [char] (M16, S1 Load, DESK.md:1716) a saved snapshot holding one file twice gets the rule at its next load'] = function()
 	local got = {}
 	for _, twice in ipairs({ 'ternary', 'secondary' }) do
 		local s = S2.shared()
