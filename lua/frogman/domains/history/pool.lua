@@ -173,6 +173,11 @@ handles.model:on(handles.states.CLOSED, handles.states.OPEN, "off_the_lists", fu
 		and vim.fn.filereadable(filepath) == 0 or nil
 end, 2, true)
 
+-- a file let go takes with it the lists it came off, which only its next close would read
+handles.model:on("*", "*", "came_from_let_go", function(_, handle)
+	data.came_from[handle.id] = nil
+end, 6, true, handles.states.mode.FORGET)
+
 M.editor()
 
 return M

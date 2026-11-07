@@ -160,57 +160,11 @@ function M.unregister_buffer(bufnr, context, filehash)
 	-- print("Unregistered buffer: " .. bufnr .. "\n with filehash: " .. filehash .. "\n" .. debug.traceback())
 end
 
----Check if anything still references a file's handle.
----
----Asks the handle for a strong holder first, a mark among them, then looks in every window's slots,
----primary queue and notes, in the history and the pools' visits, and on every closed stack.
----
----@param id HandleId The file's handle
----@return boolean referenced True if anything still references the handle
-function M.is_handle_referenced(id)
-	if data.crux[id] or data.crux_internals.global[id] then
-		return true
-	end
-	local handle = handles.get(id)
-	if handle and next(handle.holders) ~= nil then
-		return true -- a strong holder, a mark among them, holds it
-	end
-	for _, window_crux in pairs(data.crux_internals.window) do
-		if window_crux[id] then
-			return true
-		end
-	end
-	for _, pool in pairs(M.pools()) do
-		if pool.visits[id] or vim.tbl_contains(pool.closed, id) then
-			return true
-		end
-	end
-	local window_data = require('frogman.domains.window.data')
-	for _, triquetra in pairs(window_data.crux) do
-		if
-			triquetra.current_slot == id or
-			triquetra.secondary_slot == id or
-			triquetra.ternary_slot == id or
-			vim.tbl_contains(triquetra.primary_buffer or {}, id)
-		then
-			return true
-		end
-		for _, map in ipairs({ triquetra.displacement_ternary_map, triquetra.displacement_secondary_map }) do
-			for key, value in pairs(map or {}) do
-				if value == id or window_data.note_owner(key) == id then
-					return true
-				end
-			end
-		end
-	end
-	return false
-end
-
 ---Get every file frogman still knows, as a set of its handles.
 ---
 ---A file is known while a strong holder holds its handle: an open buffer, a slot, a primary queue
----or a closed list, each by its place. Notes and history never keep a file known. They follow along
----instead. It's built once for a pass over many files.
+---or a closed list, each by its place. Notes and history never keep a file known: each drops a file
+---as it's let go. It's built once for a pass over many files.
 ---
 ---@return table<HandleId, boolean> known The handle of every known file → true
 function M.known_handles()
@@ -578,11 +532,10 @@ local mark_queue, mark_next = {}, 1
 ---
 ---@param label string|nil The label the files went missing under
 ---@param limit integer|true|nil How many other files to check at most, true for a tick's slice (nil = every file)
----@param known table<HandleId, boolean>|nil The files frogman knows, by their handles, when the caller has them already
 ---@return nil
-function M.mark_missing(label, limit, known)
+function M.mark_missing(label, limit)
 	limit = limit == true and mark_slice or limit
-	known = known or M.known_handles()
+	local known = M.known_handles()
 	local checked = {} -- a file open, in a slot and in the slice is checked once all the same
 	local function mark(id)
 		local handle = id and handles.get(id)
@@ -728,100 +681,25 @@ function M.refresh_label()
 	return checked
 end
 
----Drop the notes and history entries that point at files frogman no longer knows.
----
----A note goes when either file it names is no longer known, and a history entry (overall,
----each window's, each pool's visits) when its file isn't. Then the path of each unknown file
----is forgotten, unless something still references its handle. The trail records each file
----forgotten, by the hash it had, and the notes that went with it.
----
----@param known_set table<HandleId, boolean>|nil The known files' handles, if the caller has them
----@return integer forgotten How many files were forgotten
-function M.follow_along(known_set)
-	known_set = known_set or M.known_handles()
-	local unknown, notes = {}, {}
-	local function known(id)
-		if not known_set[id] then
-			unknown[id] = true
-		end
-		return known_set[id] == true
-	end
-	local window_data = require('frogman.domains.window.data')
-	for _, triquetra in pairs(window_data.crux) do
-		for _, map in ipairs({ triquetra.displacement_ternary_map or {}, triquetra.displacement_secondary_map or {} }) do
-			for key, value in pairs(map) do
-				local owner = window_data.note_owner(key)
-				local key_known, value_known = owner ~= nil and known(owner), known(value)
-				if not key_known or not value_known then
-					map[key] = nil
-					local gone = not key_known and owner or value
-					if gone ~= nil then
-						notes[gone] = (notes[gone] or 0) + 1
-					end
-				end
-			end
-		end
-	end
-	-- the arrivals' copies follow along too, so a note dropped from the window is dropped from its copy
-	for _, arrival in pairs(window_data.arrivals) do
-		for _, copy in ipairs({ arrival.before or {}, arrival.after or {} }) do
-			for _, map in ipairs({ copy.displacement_ternary_map or {}, copy.displacement_secondary_map or {} }) do
-				for key, value in pairs(map) do
-					if not known_set[window_data.note_owner(key)] or not known_set[value] then
-						map[key] = nil
-					end
-				end
-			end
-		end
-	end
-	local histories = { data.crux, data.crux_internals.global }
-	for _, window_crux in pairs(data.crux_internals.window) do
-		table.insert(histories, window_crux)
-	end
-	for _, pool in pairs(M.pools()) do
-		table.insert(histories, pool.visits)
-	end
-	for _, history in ipairs(histories) do
-		for id, _ in pairs(history) do
-			if not known(id) then
-				history[id] = nil
-			end
-		end
-	end
-	local forgotten = 0
-	local ledger = require('frogman.domains.ledger')
-	for id, is_unknown in pairs(unknown) do
-		local filehash = M.get_hash_from_handle(id)
-		local filepath = M.get_filepath_from_hash(filehash)
-		if is_unknown and filepath then
-			local name = ledger.name_of(filehash)
-			-- the trail gets what's forgotten from its handle's let-go, with the notes about it that went
-			M.unregister_filepath(filepath, { notes = notes[id] or 0 })
-			if M.get_filepath_from_hash(filehash) == nil then
-				forgotten = forgotten + 1
-			elseif notes[id] then
-				ledger.move("note_dropped", { subject = filehash, name = name, notes = notes[id],
-					words = "notes naming it dropped: nothing holds it any more" })
-			end
-		end
-	end
-	return forgotten
-end
-
 ---unregister a filepath from the registry
 ---
----A path is never forgotten while anything references its file's handle, so a referenced one stays.
----Its handle is let go first, while the path still names it, so the trail names what's forgotten.
+---Its file's handle is let go first, while the path still names it, so what drops the handle can
+---name it. A path is forgotten only once nothing holds its handle: the let-go's turn asks for it,
+---and so do a rename's old name, which no handle has any more, and a replay's start. One a holder
+---still holds isn't forgotten, and it dumps, since only a bug can ask that.
 ---
 ---@param filepath Filepath The path to forget, or a No Name text's NONAME_ name
----@param context HandleContext|nil What the let-go is: the notes that went with it, a load's, or quiet
+---@param context HandleContext|nil What the let-go is: a load's, or quiet
 ---@return nil
+---@error "This must not happen: a file still held was about to be forgotten." if a holder holds its handle
 function M.unregister_filepath(filepath, context)
 	local filehash = data.hash_filepath_registry.hashes[filepath]
 
 	if filehash == nil then return end
 	local handle = handles.of_hash(filehash)
-	if handle and M.is_handle_referenced(handle.id) then return end
+	if handle and next(handle.holders) ~= nil then
+		require('frogman.domains.ledger').never("This must not happen: a file still held was about to be forgotten.")
+	end
 
 	handles.let_go(filehash, context) -- forgotten, its handle goes with it
 	data.hash_filepath_registry.hashes[filepath] = nil
@@ -988,14 +866,25 @@ end
 ---@param id HandleId|nil The file's handle
 function M.untrack_handle(id)
 	if id ~= nil then
-		data.crux[id] = nil
-		data.crux_internals.global[id] = nil
-		for winid, _ in pairs(data.crux_internals.window) do
-			data.crux_internals.window[winid][id] = nil
-		end
+		M.drop_history(id)
 	end
 
 	M.update_buffer_history_ordered()
+end
+
+---Drop a file's entries from the history, by its handle.
+---
+---Removes it from the view, the global history and every window's history. The ordered list is left
+---as it is: the caller rebuilds it when the file may have an open buffer.
+---
+---@param id HandleId The file's handle
+---@return nil
+function M.drop_history(id)
+	data.crux[id] = nil
+	data.crux_internals.global[id] = nil
+	for winid, _ in pairs(data.crux_internals.window) do
+		data.crux_internals.window[winid][id] = nil
+	end
 end
 
 ---Update buffer history with the current access time for regular file buffers.
@@ -1030,9 +919,8 @@ function M.update_buffer_history(cbufnr)
 		)
 	then
 		M.untrack_buffer(cbufnr)
-		-- its close is part of its let-go, which the trail records once its path is forgotten
+		-- its close is quiet: once nothing holds it, its let-go forgets its path, which the trail records
 		M.unregister_buffer(cbufnr, { quiet = true }) -- clean this up. this buffer evolved into something we don't like.
-		M.unregister_filepath(filename)
 		return false
 	end
 
@@ -1378,10 +1266,9 @@ function M.track_closing_handle(close)
 		if #lines == 0 or (#lines == 1 and lines[1] == "") then
 			M.untrack_handle(id) -- its own history goes first, and it leaves the slots.
 			require('frogman.domains.window.data').forget_handle_in_slots(id)
-			-- its close is part of its let-go, which the trail records once its path is forgotten
+			-- its close is quiet: out of the slots and its buffer gone, nothing holds it unless a current
+			-- slot does, so its let-go forgets it once the editor settles, notes and all, which the trail records
 			M.unregister_buffer(bufnr, { quiet = true }, close.hash)
-			M.follow_along() -- the notes about it go, and then its path
-			M.unregister_filepath(filepath) -- Yes, remove it from the system entirely. We are not interested in empty no name buffers.
 			return false           -- Don't track empty [No Name] buffers
 		end
 
@@ -1781,11 +1668,7 @@ local function detach_filehash_from_crux(filepath, filehash, context)
 	end
 	local handle = handles.of_hash(filehash)
 	if handle then
-		data.crux[handle.id] = nil
-		data.crux_internals.global[handle.id] = nil
-		for winid, _ in pairs(data.crux_internals.window) do
-			data.crux_internals.window[winid][handle.id] = nil
-		end
+		M.drop_history(handle.id)
 	end
 	local bufnr = data.hash_buffer_registry.buffers[filehash]
 	if bufnr then
@@ -1824,7 +1707,6 @@ M.find_buffer_by_filepath = find_buffer_by_filepath
 ---@return table cleanup_report Summary of what was cleaned up
 function M.cleanup_system(on_tick)
 	local report = {
-		orphaned_history = 0,
 		stale_hash_entries = 0,
 	}
 
@@ -1860,24 +1742,14 @@ function M.cleanup_system(on_tick)
 		report.stale_hash_entries = report.stale_hash_entries + 1
 		::continue::
 	end
-	
-	-- 1. Follow along: the notes and history of hashes no longer known go, and then their paths. A
-	-- registered buffer stays whatever the disk says: its file may not be written yet, or may come back.
-	local known = M.known_handles()
-	for id, _ in pairs(data.crux_internals.global) do
-		if not known[id] then
-			report.orphaned_history = report.orphaned_history + 1
-		end
-	end
-	M.follow_along(known)
 
 	-- files gone from disk are marked with where you are, and back ones cleared
 	if not M.refresh_label() then
-		M.mark_missing(data.last_label, on_tick and true or nil, known)
+		M.mark_missing(data.last_label, on_tick and true or nil)
 	end
 
 	-- 5. Update ordered lists after cleanup
-	if report.orphaned_history > 0 or report.stale_hash_entries > 0 then
+	if report.stale_hash_entries > 0 then
 		require('frogman.domains.window.routines').enforce_editor_policy()
 		M.update_buffer_history_ordered()
 	end

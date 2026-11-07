@@ -764,7 +764,7 @@ T['T692 [char] (M2 Handles) the handles follow the registry over random walks'] 
 	walk('HANDLES', join(MW, CLOSING, { 'new file', 'new file', 'rm/mk', 'rm/mk' }), 16)
 end
 
-T['T694 [char] (M2 Holders) the holders are what follow-along calls known, over random walks'] = function()
+T['T694 [char] (M2 Holders) the holders are what frogman calls known, over random walks'] = function()
 	-- no file deleted on disk here: a cycle step onto one raises E211 today (T692 walks those)
 	walk('HOLDERS', join(MWY, CLOSING, { 'new file', 'new file', '<M-;><M-x>' }), 17)
 end

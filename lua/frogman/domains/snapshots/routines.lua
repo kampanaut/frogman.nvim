@@ -153,6 +153,41 @@ function M.take_over(other, moved)
 	return out
 end
 
+---Drop a file that's let go from every snapshot's notes.
+---
+---A snapshot's notes are weak, as a window's are: the notes about the file and the notes naming it go,
+---in a window's snapshots, the held-over ones and those waiting a tick to be held over. A note keeps
+---the number it was taken with, so one naming a file let go for a moved file names the moved file,
+---and goes when that one does.
+---
+---@param id HandleId The handle let go
+---@return nil
+function M.let_go_notes(id)
+	local function about(note)
+		return history.handles.resolve(note.key) == id or history.handles.resolve(note.value) == id
+	end
+	local function each(snapshot)
+		for _, field in ipairs({ "dtm", "dsm" }) do
+			snapshot[field] = vim.tbl_filter(function(note) return not about(note) end, snapshot[field])
+		end
+	end
+	for _, list in pairs(data.by_window) do
+		for _, snapshot in ipairs(list) do
+			each(snapshot)
+		end
+	end
+	for _, list in pairs(data.held) do
+		for _, snapshot in ipairs(list) do
+			each(snapshot)
+		end
+	end
+	for _, entry in ipairs(data.pending) do
+		for _, snapshot in ipairs(entry.snapshots or {}) do
+			each(snapshot)
+		end
+	end
+end
+
 ---Get a file's handle id from its hash.
 ---@param filehash Filehash|nil
 ---@return integer|nil id
@@ -163,7 +198,7 @@ end
 
 ---Get a window's note map as a snapshot keeps it, each note by its two handles.
 ---
----A note naming a handle let go since is left out.
+---A window's notes name only files that live: a file let go leaves them as it goes.
 ---
 ---@param map table<HandleId|string, HandleId>|nil The note map, as the window holds it
 ---@return SnapshotNote[] notes
@@ -171,10 +206,7 @@ local function notes_of(map)
 	local window_data = require('frogman.domains.window').data
 	local notes = {}
 	for key, value in pairs(map or {}) do
-		local k = window_data.note_owner(key)
-		if history.handles.get(k) and history.handles.get(value) then
-			table.insert(notes, { key = k, swap = window_data.is_swap_note(key), value = value })
-		end
+		table.insert(notes, { key = window_data.note_owner(key), swap = window_data.is_swap_note(key), value = value })
 	end
 	return notes
 end

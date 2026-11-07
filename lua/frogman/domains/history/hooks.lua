@@ -88,6 +88,18 @@ handles.model:on("*", "*", "visits_merge", function(context, handle)
 	end
 end, 4, true, handle_states.mode.RENAME)
 
+-- a file let go leaves the history, overall and in each window
+handles.model:on("*", "*", "history_let_go", function(_, handle)
+	routines.drop_history(handle.id)
+end, 4, true, handle_states.mode.FORGET)
+
+-- and every pool's visits
+handles.model:on("*", "*", "visits_let_go", function(_, handle)
+	for _, pool in pairs(routines.pools()) do
+		pool.visits[handle.id] = nil
+	end
+end, 5, true, handle_states.mode.FORGET)
+
 -- a load from idle starts from nothing, as at startup. a cycle left open ends with it, and nothing is picked.
 local storageSM = require('frogman.domains.storage.sm')
 local storageStates = require('frogman.domains.storage.states')

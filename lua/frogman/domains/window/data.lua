@@ -449,6 +449,82 @@ function M.take_over_handle(from, to)
 	end
 end
 
+---Drop the notes about a file, and the notes naming it, from one note map.
+---
+---@param map table<HandleId|string, HandleId>|nil The note map
+---@param id HandleId The file's handle
+---@return integer dropped How many notes went
+local function drop_notes(map, id)
+	local dropped = 0
+	for key, value in pairs(map or {}) do
+		if value == id or M.note_owner(key) == id then
+			map[key] = nil
+			dropped = dropped + 1
+		end
+	end
+	return dropped
+end
+
+---Drop a file that's let go from every window's notes.
+---
+---Notes never keep a file known, so a file let go leaves them: every note about it, plain or swap,
+---and every note naming it, on both maps.
+---
+---@param id HandleId The handle let go
+---@return integer dropped How many notes went
+function M.let_go_notes(id)
+	local dropped = 0
+	for _, triquetra in pairs(M.crux) do
+		dropped = dropped + drop_notes(triquetra.displacement_ternary_map, id)
+			+ drop_notes(triquetra.displacement_secondary_map, id)
+	end
+	return dropped
+end
+
+---Check if a triquetra, or a copy of one, holds a file in a slot or its primary queue.
+---
+---@param triquetra WindowTriquetra The triquetra or the copy
+---@param id HandleId The file's handle
+---@return boolean holds
+local function holds_in_slots(triquetra, id)
+	return triquetra.current_slot == id or triquetra.secondary_slot == id or triquetra.ternary_slot == id
+		or vim.tbl_contains(triquetra.primary_buffer or {}, id)
+end
+
+---Drop a file that's let go from the windows' arrival copies.
+---
+---The copies never keep a file known. The copy from before an arrival loses it, its slot emptied and
+---its queue entry and notes dropped, so an undo has nothing let go to put back. The copy from after
+---loses its notes, as the window does. When that copy held the file in a slot or its queue, or the
+---arrival was the file's own, the window can never be as the arrival left it again, since the number
+---is never given again, so the arrival is dropped: there's nothing left to undo.
+---
+---@param id HandleId The handle let go
+---@return nil
+function M.let_go_arrivals(id)
+	for winid, arrival in pairs(M.arrivals) do
+		if arrival.id == id or (arrival.after and holds_in_slots(arrival.after, id)) then
+			M.arrivals[winid] = nil
+		else
+			local before = arrival.before
+			for _, slot in ipairs({ "current_slot", "secondary_slot", "ternary_slot" }) do
+				if before[slot] == id then
+					before:set(slot, nil)
+				end
+			end
+			for i = #before.primary_buffer, 1, -1 do
+				if before.primary_buffer[i] == id then
+					before:queue_remove(i)
+				end
+			end
+			for _, copy in ipairs({ before, arrival.after or {} }) do
+				drop_notes(copy.displacement_ternary_map, id)
+				drop_notes(copy.displacement_secondary_map, id)
+			end
+		end
+	end
+end
+
 ---@type WinId|nil
 M.last_valid_window = vim.api.nvim_get_current_win()
 ---@type WinId

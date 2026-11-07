@@ -707,6 +707,28 @@ T['T894 [char] (M6 Arrivals, DESK.md:665, repro R2) a file let go and known agai
 	eq(child.slots(w), '⦉-⦊ [a] ⟦-⟧')
 end
 
+T['T934 [char] (M6 Arrivals, DESK.md:649, :665) an arrival whose copy after held a file let go since is dropped, and its window keeps its slots'] = function()
+	local S2 = dofile('tests/helpers_s2.lua')
+	child.steps({ ':e x', ':e a' })
+	child.cmd('bdelete x.txt')
+	child.settle()
+	eq(child.slots(), '⦉x⦊ [a] ⟦-⟧')
+	local w = child.lua('return vim.api.nvim_get_current_win()')
+	-- x's line deleted in the closed lists and written: the ternary lets x go, and x is forgotten
+	local p = S2.picker(child)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, S2.line_of(lines, 'x.txt'))
+	S2.write_picker(child, p, lines)
+	child.cmd('close')
+	child.lua('vim.api.nvim_set_current_win(...)', { w })
+	child.settle(100)
+	local kept = child.lua('return require("frogman.domains.window").data.arrivals[...] ~= nil', { w })
+	-- the window changed since a arrived, losing x, so a turning untracked undoes nothing there
+	child.cmd('setlocal buftype=nofile')
+	child.settle(300)
+	eq({ kept = kept, slots = child.slots(w) }, { kept = false, slots = '⦉-⦊ [a] ⟦-⟧' })
+end
+
 T['T702 [char] (I10, A21) a cleanup pass leaves the closed file in the current slot'] = function()
 	local nofile = untracked_d()
 	child.lua('require("frogman.domains.history").routines.cleanup_system()')

@@ -164,8 +164,8 @@ Helpers.new_child = function()
 	-- Let scheduled callbacks and short timers run. With FRG_CHECK_HOLDERS set, it then checks the
 	-- handles' holders (M2 Holders): the files held are the ones known, and each place holds what its
 	-- window's slots and queue, its list or the registered buffers hold; it fails the case where they
-	-- differ. Seven cases plant slots or list entries by hand, so they fail under it by design: T34,
-	-- T275, T276, T589 (slots), T371, T372, T676 (list entries).
+	-- differ, or once nothing waits to settle a live handle is held by nothing. Four cases plant slots by
+	-- hand, so they fail under it by design: T34, T275, T276 and T589.
 	child.settle = function(ms)
 		child.lua('vim.wait(...)', { ms or 30 })
 		if os.getenv('FRG_CHECK_HOLDERS') then

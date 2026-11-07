@@ -232,30 +232,10 @@ function M.undo_arrival(bufnr, text)
 		then
 			local before = ledger.slots(winid)
 			local restored = {}
+			-- the copy keeps no file: one let go since left it as it went (`let_go_arrivals`)
 			for _, key in ipairs({ "current_slot", "secondary_slot", "ternary_slot", "primary_buffer",
 				"primary_enabled", "displacement_ternary_map", "displacement_secondary_map" }) do
 				restored[key] = arrival.before[key] == nil and vim.NIL or arrival.before[key]
-			end
-			-- the copy keeps no file: one let go since leaves its slot, its queue entry and its notes empty
-			local function live(held)
-				return held ~= vim.NIL and held ~= nil and history.handles.get(held) ~= nil
-			end
-			for _, slot in ipairs({ "current_slot", "secondary_slot", "ternary_slot" }) do
-				if not live(restored[slot]) then
-					restored[slot] = vim.NIL
-				end
-			end
-			if restored.primary_buffer ~= vim.NIL then
-				restored.primary_buffer = vim.tbl_filter(live, restored.primary_buffer)
-			end
-			for _, map in ipairs({ "displacement_ternary_map", "displacement_secondary_map" }) do
-				if restored[map] ~= vim.NIL then
-					for key, value in pairs(restored[map]) do
-						if not live(data.note_owner(key)) or not live(value) then
-							restored[map][key] = nil
-						end
-					end
-				end
 			end
 			triquetra:update(restored)
 			-- a current slot let go or closed since falls to the next open one, as a landing does; a closed

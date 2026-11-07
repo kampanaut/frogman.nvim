@@ -1,7 +1,7 @@
 -- The handles' holders check (M2 Holders), run inside a case's child: the handles that have a
--- holder are exactly what follow-along calls known, and each place holds what its own writes say, a
--- window's slots and queue, a list's closed files, a mark's file, a snapshot's files and the
--- registered buffers. Both child.settle under FRG_CHECK_HOLDERS (tests/helpers.lua) and the walks'
+-- holder are exactly what frogman calls known, once nothing waits to settle no live handle is held by
+-- nothing, and each place holds what its own writes say, a window's slots and queue, a list's closed
+-- files, a mark's file, a snapshot's files and the registered buffers. Both child.settle under FRG_CHECK_HOLDERS (tests/helpers.lua) and the walks'
 -- HOLDERS check (tests/helpers_decisions.lua) run this one copy, which the child finds on its
 -- runtimepath.
 --
@@ -28,6 +28,16 @@ return function(name)
 	for id in pairs(held) do
 		if not known[id] then
 			return string.format('%s has a holder (%s), and is not known', name(id), table.concat(H.handles.holders(id), ', '))
+		end
+	end
+	-- once nothing waits to settle, a handle no holder holds has been let go (DESK.md:649): a let-go is
+	-- the one way a file is forgotten, so a live handle held by nothing is a route that never queued it
+	local settle = package.loaded['frogman.settle']
+	if not (settle and #settle.pending() > 0) then
+		for id, h in pairs(H.handles.live()) do
+			if next(h.holders) == nil then
+				return string.format('%s is held by nothing, and its handle lives on', name(id))
+			end
 		end
 	end
 	local W = require('frogman.domains.window')

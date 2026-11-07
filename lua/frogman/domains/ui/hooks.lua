@@ -59,6 +59,11 @@ navigation.sm:on("*", "*", "winenter_update_ui", function(context)
 	uiMachines.loop:to(states.LOOP.SELF)
 end, 4, true, navigation.states.mode.WINENTER)
 
+-- a file let go leaves the display-name cache, which nothing asks for that number again
+history.handles.model:on("*", "*", "display_name_let_go", function(_, handle)
+	data.display_name_cache[handle.id] = nil
+end, 8, true, history.handles.states.mode.FORGET)
+
 
 local M = {}
 

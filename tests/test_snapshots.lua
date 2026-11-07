@@ -1586,6 +1586,38 @@ T['T820 [char] (M2 Holders, M16) a path no holder takes is forgotten once the ed
 	]]) }, { n = 1, q = false })
 end
 
+T['T933 [char] (M16, DESK.md:650) a snapshot\'s notes let go of a file as it is let go'] = function()
+	child.steps({ ':e a', ':e b', ':e c' })
+	eq(child.notes(), 'dtm{b>a} dsm{}')
+	-- a closed first, so the order the snapshot keeps, the bufferline's, leaves it out: its notes alone name a
+	child.cmd('bdelete a.txt')
+	child.settle()
+	child.steps({ TAKE })
+	local a = child.lua('return require("frogman.domains.history").get_handle_from_filepath(_G.FRG_TEST.root .. "/a.txt")')
+	local function naming()
+		return child.lua([[
+			local id, n = ..., 0
+			for _, s in ipairs(require('frogman.domains.snapshots').routines.of_window(vim.api.nvim_get_current_win())) do
+				for _, notes in ipairs({ s.dtm, s.dsm }) do
+					for _, note in ipairs(notes) do
+						if note.key == id or note.value == id then n = n + 1 end
+					end
+				end
+			end
+			return n
+		]], { a })
+	end
+	local before = naming()
+	local p = S2.picker(child)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, S2.line_of(lines, 'a.txt'))
+	S2.write_picker(child, p, lines)
+	child.cmd('close')
+	child.settle(100)
+	local let_go = child.lua('return require("frogman.domains.history").handles.get(...) == nil', { a })
+	eq({ before = before, let_go = let_go, after = naming() }, { before = 1, let_go = true, after = 0 })
+end
+
 T['T884 [char] (M15, M16) a window gone without its WinClosed in a tab session\'s tab is held over in that session\'s scope'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 't'), { true })

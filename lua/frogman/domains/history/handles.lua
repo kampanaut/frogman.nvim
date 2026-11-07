@@ -212,10 +212,10 @@ local unheld = {}
 ---Let a handle that lost its last holder go once the editor settles.
 ---
 ---Never mid-batch: a file let go and held again by the same batch, as a swap's two writes can, is
----held when its turn comes, and stays. One turn takes every handle the batch let go, and when any is
----still held by nothing then, follow-along forgets them in one pass.
+---held when its turn comes, and stays. One turn takes every handle the batch let go, and each one
+---still held by nothing then is let go.
 ---
----@param handle FileHandle
+---@param handle FileHandle The handle that lost its last holder
 ---@return nil
 local function let_go_when_settled(handle)
 	local queued = next(unheld) ~= nil
@@ -228,34 +228,6 @@ local function let_go_when_settled(handle)
 		unheld = {}
 		M.forget_unheld(waiting)
 	end)
-end
-
----Forget the handles that nothing holds, of those given.
----
----Follow-along drops the notes and history entries naming them and forgets their paths. One that
----nothing weak names either has its path forgotten after it, its let-go a move in the trail as every
----let-go is.
----
----@param waiting table<FileHandle, true> The handles to look at
----@return nil
-function M.forget_unheld(waiting)
-	local routines = require('frogman.domains.history.routines')
-	local any = false
-	for handle, _ in pairs(waiting) do
-		if not handle.unregistered and next(handle.holders) == nil then
-			any = true
-		end
-	end
-	if not any then
-		return
-	end
-	routines.follow_along()
-	for handle, _ in pairs(waiting) do
-		local filepath = data.hash_filepath_registry.filepaths[handle.hash]
-		if not handle.unregistered and next(handle.holders) == nil and filepath then
-			routines.unregister_filepath(filepath)
-		end
-	end
 end
 
 ---Take a handle out of a place.
@@ -416,12 +388,34 @@ function M.closed(hash, context)
 	end
 end
 
+---Let a handle go: move it with the mode `forget`, then unregister it.
+---
+---It moves while its path still names it, so what reacts on the let-go can name it, and whatever holds
+---it weakly drops it there. Then it leaves the places still holding it, and its number isn't given
+---again. Its hash goes from the registry's handles unless another handle has taken that hash since.
+---
+---@param handle FileHandle The handle to let go
+---@param context HandleContext|nil Why it goes: a load's teardown, quiet
+---@return nil
+local function forget(handle, context)
+	move(handle, handle:state(), context, states.mode.FORGET)
+	if by_hash[handle.hash] == handle then
+		by_hash[handle.hash] = nil
+	end
+	live[handle.id] = nil
+	for place, _ in pairs(handle.holders) do
+		remove(handle, place, true)
+	end
+	handle:unregister()
+end
+
 ---Give a file's handle the hash of its new name.
 ---
 ---Used when a file takes a new hash: a rename that was a move, or a No Name text reopened under a
----new id. A live handle the new hash had is let go, quietly, since the moved file wins and takes its
----name, and the places that held it hold the moved file now; the rename's hooks hand it the rest
----(`context.other`). When a buffer is registered under the new hash already, the handle is open.
+---new id. A live handle the new hash had gives way, since the moved file wins and takes its name:
+---the places that held it hold the moved file, and the rename's hooks hand it the rest
+---(`context.other`). Only then is it let go, quietly, so its own let-go finds nothing of it left to
+---drop. When a buffer is registered under the new hash already, the handle is open.
 ---
 ---@param old_hash Filehash The hash it had
 ---@param new_hash Filehash The hash it takes
@@ -438,13 +432,15 @@ function M.renamed(old_hash, new_hash, context)
 		for place, _ in pairs(other.holders) do
 			add(handle, place)
 		end
-		M.let_go(new_hash, { quiet = true }) -- its name is the moved file's now, which the trail follows
 		forwards[other.id] = handle.id -- what held the other file holds the moved one now
 		context.other = other.id
 	end
 	by_hash[old_hash], by_hash[new_hash] = nil, handle
 	context.hash = new_hash
 	move(handle, handle:state(), context, states.mode.RENAME)
+	if other then
+		forget(other, { quiet = true }) -- its name is the moved file's now, which the trail follows
+	end
 	if data.hash_buffer_registry.buffers[new_hash] then
 		M.opened(new_hash)
 	end
@@ -549,23 +545,46 @@ end
 ---Let a file's handle go.
 ---
 ---Called once the path registry is about to forget the file. The handle moves with the mode `forget`,
----while its path is still known, so what reacts on it can name it; then its instance is unregistered,
----and its number isn't given again.
+---while its path is still known, so what reacts on it can name it, each weak holder dropping it;
+---then its instance is unregistered, and its number isn't given again.
 ---
 ---@param hash Filehash The hash of the file being forgotten
----@param context HandleContext|nil Why it goes: a load's teardown, quiet, and the notes that went with it
+---@param context HandleContext|nil Why it goes: a load's, or quiet
 ---@return nil
 function M.let_go(hash, context)
 	local handle = by_hash[hash]
 	if handle == nil then
 		return
 	end
-	move(handle, handle:state(), context, states.mode.FORGET)
-	by_hash[hash], live[handle.id] = nil, nil
-	for place, _ in pairs(handle.holders) do
-		remove(handle, place, true)
+	forget(handle, context)
+end
+
+---Forget the handles that nothing holds, of those given.
+---
+---Each one's path is forgotten, its handle let go first, so whatever names it weakly, a note, the
+---history, a pool's visits, an arrival's copy, a snapshot's note, drops it on its own hook. One whose
+---path is gone already, which only a bug leaves, is let go all the same. They go by number, the
+---oldest first, so a note naming two of them counts for the older one in the trail.
+---
+---@param waiting table<FileHandle, true> The handles to look at
+---@return nil
+function M.forget_unheld(waiting)
+	local routines = require('frogman.domains.history.routines')
+	local unheld_now = {}
+	for handle, _ in pairs(waiting) do
+		if not handle.unregistered and next(handle.holders) == nil then
+			table.insert(unheld_now, handle)
+		end
 	end
-	handle:unregister()
+	table.sort(unheld_now, function(a, b) return a.id < b.id end)
+	for _, handle in ipairs(unheld_now) do
+		local filepath = data.hash_filepath_registry.filepaths[handle.hash]
+		if filepath then
+			routines.unregister_filepath(filepath)
+		else
+			forget(handle)
+		end
+	end
 end
 
 ---Let every handle go, as a teardown starts from nothing.

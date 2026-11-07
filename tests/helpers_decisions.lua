@@ -111,8 +111,9 @@ checks.HANDLES = { post = function()
 	end
 end }
 
--- Holders (M2 Holders): the hashes whose handles have a holder are exactly what follow-along calls
--- known, and each place holds what its own writes say; the one copy of the check, which child.settle
+-- Holders (M2 Holders): the hashes whose handles have a holder are exactly what frogman calls known,
+-- once nothing waits to settle no live handle is held by nothing, and each place holds what its own
+-- writes say; the one copy of the check, which child.settle
 -- runs too under FRG_CHECK_HOLDERS (tests/holders_check.lua).
 checks.HOLDERS = { post = function()
 	local file = vim.api.nvim_get_runtime_file('tests/holders_check.lua', false)[1]

@@ -40,6 +40,14 @@ history.handles.model:on("*", "*", "snapshots_take_over", function(context, hand
 	end
 end, 5, true, history.handles.states.mode.RENAME)
 
+-- a file let go leaves every snapshot's notes; one let go for a moved file isn't gone, its notes naming
+-- the moved file now
+history.handles.model:on("*", "*", "snapshot_notes_let_go", function(_, handle)
+	if history.handles.resolve(handle.id) == handle.id then
+		routines.let_go_notes(handle.id)
+	end
+end, 7, true, history.handles.states.mode.FORGET)
+
 -- a load from idle starts from nothing, as at startup: no snapshot, before the handles go
 local storageSM = require('frogman.domains.storage.sm')
 local storageStates = require('frogman.domains.storage.states')

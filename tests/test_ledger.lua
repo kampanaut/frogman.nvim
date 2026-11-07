@@ -512,7 +512,7 @@ T['T409 [char] (A27, A1) navigation\'s own check is a move, and its pop-up stays
 		{ warned = true, trigger = 'BufEnter b.txt', by = 'navigation', note = 'b.txt>a.txt → b.txt>c.txt' })
 end
 
-T['T410 [char] (A27, P10) a file forgotten by follow along is a move, with the notes that went'] = function()
+T['T410 [char] (A27, P10) a file let go is a move, with the notes that went'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b', ':e c', ':enew' })
 	local n = child.lua('return vim.api.nvim_get_current_buf()')

@@ -94,8 +94,8 @@ T['T207 [char] (P5) a nofile scratch entered in a tracked window is not register
 end
 
 -- N is an empty No Name buffer that ends up only in the notes: a key (N>c) and
--- a value (b>N). Wiping it pushes nothing (M5); its path stays only because the
--- notes still name it (I2), so once the notes follow along, nothing names it.
+-- a value (b>N). Wiping it pushes nothing (M5), so nothing holds it, and once the
+-- editor settles it's let go, its notes going with it (M2 Holders).
 T['T208 [char] (P10, I17) the notes about an empty No Name buffer go once it is wiped'] = function()
 	child.steps({ ':e a', ':e b', ':e c', ':enew' })
 	local n = child.lua('return vim.api.nvim_get_current_buf()')

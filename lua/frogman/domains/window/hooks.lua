@@ -166,6 +166,16 @@ history.handles.model:on("*", "*", "windows_take_over", function(context, handle
 	end
 end, 3, true, history.handles.states.mode.RENAME)
 
+-- a file let go leaves every window's notes, and the trail's forgotten move says how many went
+history.handles.model:on("*", "*", "notes_let_go", function(context, handle)
+	context.notes = data.let_go_notes(handle.id)
+end, 2, true, history.handles.states.mode.FORGET)
+
+-- and the windows' arrival copies, an arrival it can no longer match dropped
+history.handles.model:on("*", "*", "arrivals_let_go", function(_, handle)
+	data.let_go_arrivals(handle.id)
+end, 3, true, history.handles.states.mode.FORGET)
+
 local M = {}
 
 ---Create the window domain's autocmds in frogman's augroup.

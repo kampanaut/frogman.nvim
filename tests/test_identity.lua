@@ -291,6 +291,39 @@ T['T688 [char] (M2 Handles, A20) a move onto a name a live handle has: the moved
 	eq(child.lua('return require("frogman.domains.history").handles.get(...) == nil', { a.id }), true)
 end
 
+T['T936 [char] (M2 Handles, A20, DESK.md:649) a move onto a held name hands its notes, its snapshot notes and its visits over before its handle is let go'] = function()
+	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
+	child.steps({ ':e c', ':e b', ':e a', ':e d' })
+	eq({ child.slots(), child.notes() }, { '⦉a⦊ [d] ⟦-⟧', 'dtm{a>b b>c} dsm{}' })
+	child.steps({ '<M-;><M-s>' })
+	local a, c = handle('a'), handle('c')
+	local a_time = child.lua('return require("frogman.domains.history").data.crux_internals.global[...]', { a.id })
+	child.cmd('bwipeout ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/a.txt")'))
+	child.settle(300)
+	-- c moved over a.txt on disk, and its buffer, shown nowhere, given a.txt's name
+	child.lua([[
+		local root = _G.FRG_TEST.root
+		os.rename(root .. '/c.txt', root .. '/a.txt')
+		vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/c.txt'), root .. '/a.txt')
+	]])
+	child.settle(300)
+	local got = child.lua([[
+		local H = require('frogman.domains.history')
+		local S = require('frogman.domains.snapshots').routines
+		local a, c, a_time = ...
+		local snapshot_notes = 0
+		for _, s in ipairs(S.of_window(vim.api.nvim_get_current_win())) do
+			for _, note in ipairs(s.dtm) do
+				local key = S.handle(note.key)
+				if key and key.id == c then snapshot_notes = snapshot_notes + 1 end
+			end
+		end
+		return { let_go = H.handles.get(a) == nil, visit = H.data.crux_internals.global[c] == a_time, snapshot_notes = snapshot_notes }
+	]], { a.id, c.id, a_time })
+	eq({ got = got, notes = child.notes() },
+		{ got = { let_go = true, visit = true, snapshot_notes = 1 }, notes = 'dtm{a>b b>a} dsm{}' })
+end
+
 T['T689 [char] (M2 Handles, A20) a copy makes a new handle linked to the old'] = function()
 	child.steps({ ':e a', ':e b' })
 	local b = handle('b')
@@ -467,6 +500,30 @@ T['T925 [char] (M5, DESK.md:654-655) every write to a list goes through the Pool
 	eq({ module = vim.uv.fs_stat('lua/frogman/domains/history/pool.lua') ~= nil, writes = found }, { module = true, writes = {} })
 end
 
+T['T935 [char] (M2 Holders, A22, DESK.md:649-650, :675-676) the scan is gone: nothing names follow_along or is_handle_referenced, and the cleanup pass forgets nothing'] = function()
+	local found = {}
+	for _, path in ipairs(vim.fs.find(function(name) return name:match('%.lua$') ~= nil end,
+			{ path = 'lua/frogman', type = 'file', limit = math.huge })) do
+		local rel = path:match('(lua/frogman/.*)$')
+		local n = 0
+		for line in io.lines(path) do
+			n = n + 1
+			local code = line:gsub('%-%-.*$', '')
+			for _, name in ipairs({ 'follow_along', 'is_handle_referenced' }) do
+				if code:find(name, 1, true) then table.insert(found, rel .. ':' .. n .. ' ' .. name) end
+			end
+		end
+	end
+	-- the cleanup pass forgets nothing: a file is forgotten by its let-go alone
+	local routines = table.concat(vim.fn.readfile('lua/frogman/domains/history/routines.lua'), '\n')
+	local cleanup = routines:match('\nfunction M%.cleanup_system%(.-\nend\n') or ''
+	for _, name in ipairs({ 'unregister_filepath', 'let_go', 'orphaned' }) do
+		if cleanup:gsub('%-%-[^\n]*', ''):find(name, 1, true) then table.insert(found, 'cleanup_system ' .. name) end
+	end
+	table.sort(found)
+	eq({ cleanup = cleanup ~= '', found = found }, { cleanup = true, found = {} })
+end
+
 T['T927 [char] (M5, DESK.md:654) clear_closed_buffers() empties the editor\'s list in place'] = function()
 	child.steps({ ':e c', ':e a', ':e b', ':bdelete c.txt' })
 	local got = child.lua([[
@@ -478,6 +535,31 @@ T['T927 [char] (M5, DESK.md:654) clear_closed_buffers() empties the editor\'s li
 			read = #H.get_closed_buffers() }
 	]])
 	eq(got, { same = true, empty = true, field = true, read = 0 })
+end
+
+T['T932 [char] (M5, DESK.md:650) a file let go takes what it remembers of its lists with it'] = function()
+	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
+	child.steps({ ':e a' })
+	child.cmd('enew')
+	local n = child.lua('return vim.api.nvim_get_current_buf()')
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "draft" })')
+	child.settle()
+	child.steps({ ':e b' })
+	-- the text closed onto the editor's list, then reopened off it, which remembers the list for its next close
+	child.cmd('bdelete! ' .. n)
+	child.settle(100)
+	child.steps({ '<M-S-w>' })
+	local id = child.lua('return require("frogman.domains.history").get_handle_from_buffer(vim.api.nvim_get_current_buf())')
+	local remembered = child.lua('return require("frogman.domains.history").data.came_from[...] ~= nil', { id })
+	-- emptied and closed: an empty text goes on no list, so no close clears what it remembers, and nothing holds it
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, {})')
+	child.cmd('bdelete!')
+	child.settle(300)
+	local got = child.lua([[
+		local H = require('frogman.domains.history')
+		return { live = H.handles.get(...) ~= nil, remembers = H.data.came_from[...] ~= nil }
+	]], { id })
+	eq({ remembered = remembered, got = got }, { remembered = true, got = { live = false, remembers = false } })
 end
 
 T['T696 [char] (M6 Triquetra) a copy of a triquetra holds nothing'] = function()
@@ -577,6 +659,22 @@ T['T880 [char] (M6 Triquetra) a slot\'s write holds its own place alone'] = func
 	eq(writes, 1)
 end
 
+T['T937 [char] (M2 Holders, DESK.md:649) a handle held by nothing is let go even when its path is gone already'] = function()
+	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
+	child.steps({ ':e b', ':e a' })
+	local b = handle('b')
+	-- b's path pair dropped by hand, as only a bug drops it, its buffer still registered: the window pass
+	-- empties its slot and unregisters its buffer, so nothing holds it any more (T910's route)
+	child.lua([=[
+		local reg = require('frogman.domains.history').data.hash_filepath_registry
+		reg.hashes[reg.filepaths[...]] = nil
+		reg.filepaths[...] = nil
+		require('frogman.domains.window.routines').enforce_editor_policy()
+	]=], { b.hash })
+	child.settle(100)
+	eq(child.lua('return require("frogman.domains.history").handles.get(...) == nil', { b.id }), true)
+end
+
 T['T699 [char] (M2 Holders) a file let go and held again in one batch is kept'] = function()
 	child.steps({ ':e a' })
 	local got = child.lua([[
@@ -657,6 +755,27 @@ T['T900 [char] (M2 Handles, M11, DESK.md:673, :677) every handle transition runs
 	]])
 	local want = vim.tbl_map(function(line) return (line:gsub(': .*$', ': trail_move')) end, got)
 	eq(got, want)
+end
+
+T['T931 [char] (M2 Holders, M11, DESK.md:649) a let-go runs one hook for each weak holder, each in a class of its own, between the fields and the trail'] = function()
+	local got = child.lua([[
+		local helpers = require('frogman.engine.helpers')
+		local model = require('frogman.domains.history.handles').model
+		local out = {}
+		for _, state in ipairs({ 'open', 'closed' }) do
+			out[state] = {}
+			for _, hook in ipairs(helpers.compute_transition_pipeline(state, state, 'forget', model)) do
+				table.insert(out[state], hook.name .. ':' .. hook.class)
+			end
+		end
+		return out
+	]])
+	local weak = { 'notes_let_go:2', 'arrivals_let_go:3', 'history_let_go:4', 'visits_let_go:5', 'came_from_let_go:6',
+		'snapshot_notes_let_go:7', 'display_name_let_go:8', 'trail_move:9' }
+	eq(got, {
+		open = vim.list_extend({ 'keep_fields_while_open:1' }, vim.deepcopy(weak)),
+		closed = vim.list_extend({ 'keep_fields_while_closed:1' }, vim.deepcopy(weak)),
+	})
 end
 
 T['T901 [char] (M11, DESK.md:679) a handle goes by its file\'s unique name in a message'] = function()
