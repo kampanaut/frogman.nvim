@@ -890,8 +890,10 @@ end
 ---Update buffer history with the current access time for regular file buffers.
 ---
 ---Records buffer access in the history system if it's a valid file buffer.
----Only takes in buffers that pass `M.is_trackable()`, and drops a registered one that has
----turned into a directory, or into a non-file buffer with nothing on disk.
+---Only takes in buffers that pass `M.is_trackable()`. A registered one whose buftype turned it
+---untracked isn't taken in either: the buftype undo queued behind it closes its file, a No Name
+---text with the copy made as it turned. One that has turned into a directory, or whose name now
+---holds a `://` with nothing on disk, is dropped.
 ---
 ---@param cbufnr number|nil Buffer number (defaults to current buffer)
 ---@return boolean history_modified True if the buffer was successfully registered and tracked
@@ -907,6 +909,9 @@ function M.update_buffer_history(cbufnr)
 		else
 			return false
 		end
+	elseif vim.bo[cbufnr].buftype ~= "" and not M.is_nowrite_file(cbufnr) then
+		-- judged as it is now, untracked, it's no arrival: its close is the buftype undo's, which runs next
+		return false
 	elseif
 		not is_no_name_buffer(cbufnr) and
 		not (
@@ -914,7 +919,7 @@ function M.update_buffer_history(cbufnr)
 			(
 				vim.fn.filereadable(filename) == 1 or
 				-- a missing file says nothing, it's not written yet or it's gone for now.
-				(vim.bo[cbufnr].buftype == "" and not filename:match("://"))
+				not filename:match("://")
 			)
 		)
 	then

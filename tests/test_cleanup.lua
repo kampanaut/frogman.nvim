@@ -568,6 +568,62 @@ T['T700 [char] (I10, M5) a No Name text whose buffer turns untracked is copied a
 	eq(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), { 'draft' })
 end
 
+-- R4: the draft shown again and turned nofile on one command line, so its arrival waits in the queue
+-- ahead of the buftype undo, and is judged with the buffer already untracked.
+T['T938 [char] (I10, M5, DESK.md:668-669, repro R4) a No Name text turned untracked in its arrival\'s batch is closed with its text'] = function()
+	child.cmd('set hidden')
+	child.steps({ ':e a', ':enew' })
+	local d = child.lua('return vim.api.nvim_get_current_buf()')
+	child.lua('vim.api.nvim_buf_set_lines(0, 0, -1, false, { "draft" })')
+	child.steps({ ':enew' })
+	local name_of = 'return require("frogman.domains.history").routines.noname_name(...)'
+	local dname, ename = child.lua(name_of, { d }), child.lua(name_of, { child.lua('return vim.api.nvim_get_current_buf()') })
+	eq(child.slots(), string.format('⦉%s⦊ [%s] ⟦-⟧', dname, ename))
+	local dumps = child.dump_files()
+	child.cmd('buffer ' .. d .. ' | setlocal buftype=nofile')
+	child.settle(300)
+	eq({ slots = child.slots(), closed = child.closed(), dump = child.dumped_since(dumps),
+		shows = child.lua('return { vim.api.nvim_get_current_buf(), vim.bo.buftype }') },
+		{ slots = string.format('⦉%s⦊ [%s] ⟦-⟧', dname, ename), closed = dname, shows = { d, 'nofile' } })
+	child.steps({ ':e a', '<M-S-w>' })
+	eq(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), { 'draft' })
+end
+
+-- T938's race with a file: a shown again and turned nofile on one command line. Judged once the
+-- editor settles, the window shows something untracked, so nothing is slotted or recorded (P2).
+T['T939 [char] (I10, P2, DESK.md:668-669) a file turned untracked in its arrival\'s batch is no arrival, and is closed'] = function()
+	child.steps({ ':e a', ':e b' })
+	local a = child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/a.txt")')
+	local visit = [[
+		local H = require('frogman.domains.history')
+		return H.data.crux_internals.global[H.get_handle_from_buffer(...) or H.get_handle_from_filepath(_G.FRG_TEST.root .. '/a.txt')]
+	]]
+	local before = child.lua(visit, { a })
+	child.cmd('buffer ' .. a .. ' | setlocal buftype=nofile')
+	child.settle(300)
+	eq({ slots = child.slots(), closed = child.closed(), visit = child.lua(visit, { a }),
+		shows = child.lua('return { vim.api.nvim_get_current_buf(), vim.bo.buftype }') },
+		{ slots = '⦉a⦊ [b] ⟦-⟧', closed = 'a', visit = before, shows = { a, 'nofile' } })
+end
+
+-- T938's race with an empty No Name buffer, which only the window's ternary holds.
+T['T940 [char] (I10, M5, DESK.md:668-669) an empty No Name buffer turned untracked in its arrival\'s batch is let go'] = function()
+	child.cmd('set hidden')
+	child.steps({ ':e a', ':enew' })
+	local e = child.lua('return vim.api.nvim_get_current_buf()')
+	local ename = child.lua('return require("frogman.domains.history").routines.noname_name(...)', { e })
+	child.cmd('buffer ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/a.txt")'))
+	child.settle()
+	eq(child.slots(), string.format('⦉%s⦊ [a] ⟦-⟧', ename))
+	local dumps = child.dump_files()
+	child.cmd('buffer ' .. e .. ' | setlocal buftype=nofile')
+	child.settle(300)
+	local known = child.lua('return require("frogman.domains.history").get_handle_from_filepath(...) ~= nil', { ename })
+	eq({ slots = child.slots(), closed = child.closed(), known = known, dump = child.dumped_since(dumps),
+		shows = child.lua('return { vim.api.nvim_get_current_buf(), vim.bo.buftype }') },
+		{ slots = '⦉-⦊ [a] ⟦-⟧', closed = '', known = false, shows = { e, 'nofile' } })
+end
+
 T['T701 [char] (I10) a file whose name an untracked buffer holds is not reopened until that buffer goes'] = function()
 	local nofile = untracked_d()
 	child.messages()
