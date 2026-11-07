@@ -383,20 +383,22 @@ end
 
 ---Jump to the file an alias marks, in the first group of the current mode's scope.
 ---
----It goes there as a primary jump goes to the primary. An alias that marks nothing does nothing,
----and so does every jump while a cycle runs, which says so, and while the marks pop-up has edits not
----written yet. From the pop-up, it leaves it and jumps in the window it was opened from.
+---It goes there as a primary jump goes to the primary. An alias that marks nothing does nothing, and
+---so does every jump while the marks pop-up has edits not written yet. While a cycle runs, the jump
+---cancels it as a cancel ends it, its window back on its start, and jumps from there. From the pop-up,
+---it leaves it and jumps in the window it was opened from.
 ---
 ---@param alias string The alias whose file to jump to
 ---@return nil
 function M.jump(alias)
-	if require('frogman.domains.navigation').is_cycling() then
-		vim.notify("frogman: pick or cancel the cycle first.", vim.log.levels.WARN)
-		return
-	end
 	local popup = require('frogman.domains.marks.popup')
 	if popup.refuse_if_dirty() then
-		return
+		return -- refused, it changes nothing, a cycle running included
+	end
+	local navigation = require('frogman.domains.navigation')
+	if navigation.is_cycling() then
+		-- a cycle in another window was cancelled before this ran; this is the window it runs in
+		navigation.routines.cancel_cycle(navigation.data.cycling_window)
 	end
 	if popup.is_current() then
 		-- from the pop-up, the jump goes in the window it was opened from
@@ -455,17 +457,26 @@ end
 
 ---Check that the alias table maps one alias to one index, and back.
 ---
+---An index is a number or a string, so 1 and "1" are two. An alias can't be a glyph a group's header
+---opens with in the marks pop-up, the set in use's or one of one's own, nor either set's: a row under
+---it would read as a header.
+---
 ---@param aliases table<string, any> Alias → index
 ---@return nil
 ---@error "frogman: marks.aliases maps ... to one index" if two aliases share an index
+---@error "frogman: ... opens a group's header" if an alias is a header's glyph
 function M.check_aliases(aliases)
+	local glyph = require('frogman.domains.ui').routines.glyphs().group
 	local seen = {}
 	for alias, index in pairs(aliases or {}) do
-		local key = tostring(index)
+		if alias == glyph or alias == "❖" or alias == "*" then
+			error("frogman: marks.aliases can't have " .. alias .. ": it opens a group's header in the marks pop-up.", 0)
+		end
+		local key = type(index) .. ":" .. tostring(index)
 		if seen[key] then
 			local pair = { seen[key], alias }
 			table.sort(pair)
-			error("frogman: marks.aliases maps " .. pair[1] .. " and " .. pair[2] .. " to one index, " .. key .. ".", 0)
+			error("frogman: marks.aliases maps " .. pair[1] .. " and " .. pair[2] .. " to one index, " .. vim.inspect(index) .. ".", 0)
 		end
 		seen[key] = alias
 	end
@@ -715,15 +726,19 @@ function M.drop_pending(tabpage, after)
 end
 
 ---Hold over the marks of the windows and tabs that closed without their events, by noautocmd or while
----frogman was off: in the scope of the session a window was last seen in, or the whole editor's.
+---frogman was off: in the scope of the session a window was last seen in, or the whole editor's. A
+---split's copy no one changed holds nothing over, as at a close with its events.
 ---
 ---@return nil
 function M.hold_over_gone()
 	local held = require('frogman.held')
 	for winid, scope in pairs(data.scopes.window) do
 		if not vim.api.nvim_win_is_valid(winid) and not held.closing(winid) then
-			M.hold_over(held.last_session(winid) or "", scope.groups, "window") -- where it was last seen
+			if not M.unchanged_copy(winid) then
+				M.hold_over(held.last_session(winid) or "", scope.groups, "window") -- where it was last seen
+			end
 			M.drop_scope("window", winid)
+			data.copies[winid] = nil
 		end
 	end
 	for tabpage, scope in pairs(data.scopes.tab) do

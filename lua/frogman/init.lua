@@ -200,11 +200,8 @@ function M.setup(user_config)
 		settings.marks.aliases = vim.deepcopy(user_config.marks.aliases)
 	end
 	marks.routines.check_aliases(settings.marks.aliases)
-	-- the marks are frogman's own: a config that still names a provider is told so
-	if settings.marks_provider ~= nil then
-		settings.marks_provider = nil
-		vim.notify("frogman: marks_provider is gone: frogman has marks of its own.", vim.log.levels.WARN)
-	end
+	-- the marks are frogman's own: a config that still names a provider is ignored, nothing said
+	settings.marks_provider = nil
 	-- the primary pop-up's picker is telescope's: a config that still names its own is told so
 	if settings.primary_picker ~= nil then
 		settings.primary_picker = nil

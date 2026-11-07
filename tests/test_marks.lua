@@ -48,8 +48,9 @@ T['T711 [char] (M15) harpoon is gone'] = function()
 	local refused = vim.tbl_filter(function(m) return m:find('roles or marks', 1, true) ~= nil end, said())
 	local colors = child.lua('local c = require("frogman.configs").colors; return { c.marked ~= nil, c.harpooned == nil }')
 	local readme = table.concat(vim.fn.readfile('README.md'), '\n')
+	-- a config that still sets it is ignored, nothing said (decided 2026-11-05, "Setup ignores it silently")
 	eq({ warned = #warned, refused = #refused, colors = colors, readme = readme:find('- harpoon', 1, true) == nil },
-		{ warned = 1, refused = 1, colors = { true, true }, readme = true })
+		{ warned = 0, refused = 1, colors = { true, true }, readme = true })
 end
 
 T['T712 [char] (M15) the modes'] = function()
@@ -152,13 +153,17 @@ T['T718 [char] (M15) the jump'] = function()
 	said()
 	child.steps({ JUMP .. 's>' })
 	local gone = said()
+	local before = child.slots()
 	child.steps({ '<M-m>' })
 	said()
+	-- while a cycle runs, the jump cancels it as a cancel ends it, then jumps from its start
 	child.steps({ JUMP .. 'a>' })
 	local cycling = said()
 	eq({ jumped = jumped[1], slots = jumped[2], reopened = reopened, gone = gone[1] and gone[1]:find("isn't on disk right now; the mark keeps it", 1, true) ~= nil,
-		cycling = cycling },
-		{ jumped = 'a', slots = '⦉b⦊ [a] ⟦-⟧', reopened = 'c', gone = true, cycling = { 'frogman: pick or cancel the cycle first.' } })
+		cancelled = #vim.tbl_filter(function(m) return m:find('Cycling cancelled.', 1, true) ~= nil end, cycling),
+		refused = #vim.tbl_filter(function(m) return m:find('pick or cancel the cycle first', 1, true) ~= nil end, cycling),
+		after = { child.shown(), child.lua('return require("frogman.domains.navigation").sm:state()'), child.slots() == before } },
+		{ jumped = 'a', slots = '⦉b⦊ [a] ⟦-⟧', reopened = 'c', gone = true, cancelled = 1, refused = 0, after = { 'a', 'normal', true } })
 end
 
 T['T719 [char] (M15) the bufferline shows a file\'s aliases in the mode\'s scope'] = function()
@@ -709,7 +714,8 @@ T['T741 [char] (M15) two groups of one name are asked about, and Yes keeps both'
 		{ asked = 1, second = true, groups = { 'main', 'main' } })
 end
 
--- Telescope stubbed as far as the pop-up uses it: each picker picks the next of _G.FRG_PICKS.
+-- Telescope stubbed as far as the pop-up uses it: each picker picks the next of _G.FRG_PICKS, and its
+-- attach_mappings gets a map that maps nothing, as telescope's own gives it one.
 local function stub_pickers()
 	child.lua([[
 		for _, m in ipairs({ 'telescope.builtin', 'telescope.actions', 'telescope.actions.state', 'telescope.pickers', 'telescope.finders', 'telescope.config' }) do
@@ -728,10 +734,10 @@ local function stub_pickers()
 		package.preload['telescope.finders'] = function() return { new_table = function(t) return t end } end
 		package.preload['telescope.config'] = function() return { values = { generic_sorter = function() end } } end
 		package.preload['telescope.pickers'] = function()
-			return { new = function(_, opts) return { find = function() opts.attach_mappings(1); chosen() end } end }
+			return { new = function(_, opts) return { find = function() opts.attach_mappings(1, function() end); chosen() end } end }
 		end
 		package.preload['telescope.builtin'] = function()
-			return { find_files = function(opts) opts.attach_mappings(1); chosen() end }
+			return { find_files = function(opts) opts.attach_mappings(1, function() end); chosen() end }
 		end
 	]])
 end
@@ -1823,6 +1829,119 @@ T['T832 [char] (M15, S1 Records) the records write takes off only the entry the 
 	child.settle(300)
 	local held = vim.tbl_filter(function(g) return g.held and vim.deep_equal(g.marks, { a = 'd' }) end, session_groups(''))
 	eq({ kept = kept, held = #held }, { kept = true, held = 1 })
+end
+
+-- An index can be a number or a string, and 1 and "1" are two (DESK.md:1058).
+T['T950 [char] (M15, DESK.md:1058-1059) 1 and "1" are two indices'] = function()
+	local ok = child.lua([[return (pcall(_G.FRG_TEST.setup, { marks = { aliases = { a = 1, s = '1' } } }))]])
+	child.steps({ ':e b', ADD .. 'a>', ':e c', ADD .. 's>', ':e d', JUMP .. 'a>' })
+	local a = child.shown()
+	child.steps({ JUMP .. 's>' })
+	local s = child.shown()
+	eq({ ok = ok, a = a, s = s }, { ok = true, a = 'b', s = 'c' })
+end
+
+-- A row "* -> b.txt" would read as a header named "-> b.txt": the glyphs a header opens with, either
+-- set's and one of one's own, can't be aliases.
+T['T951 [char] (M15, DESK.md:1058-1059) an alias that\'s a group header\'s glyph is refused at setup'] = function()
+	local got = child.lua([[
+		local out = {}
+		for _, case in ipairs({ { alias = '*' }, { alias = '❖' }, { alias = '▸', glyphs = { group = '▸' } } }) do
+			local ok, err = pcall(require('frogman').setup, { marks = { aliases = { [case.alias] = 9, a = 1 } }, glyphs = case.glyphs })
+			table.insert(out, { ok, tostring(err):find(case.alias, 1, true) ~= nil and tostring(err):find('header', 1, true) ~= nil })
+		end
+		return out
+	]])
+	eq(got, { { false, true }, { false, true }, { false, true } })
+end
+
+-- A copy no one changed holds nothing over when its window goes without its WinClosed either.
+T['T952 [char] (M15, DESK.md:1063-1064) a split\'s copy no one changed, closed without its events, holds nothing over'] = function()
+	child.lua('_G.FRG_TEST.setup({ marks = { split_copies = true } })')
+	local held = [[
+		local groups = (require('frogman.domains.marks').data.scopes.session[''] or { groups = {} }).groups
+		return #vim.tbl_filter(function(g) return g.held end, groups)
+	]]
+	local function gone()
+		child.cmd('noautocmd close')
+		child.settle()
+		child.lua('require("frogman.domains.history").routines.cleanup_system()')
+		child.settle(100)
+		return child.lua(held)
+	end
+	child.steps({ ':e b', ADD .. 'a>' })
+	local first = child.lua('return vim.api.nvim_get_current_win()')
+	child.cmd('split')
+	child.settle()
+	local copy = gone() -- the copy, unchanged
+	child.cmd('split')
+	child.settle()
+	child.lua('vim.api.nvim_set_current_win(...)', { first })
+	child.settle()
+	local original = gone() -- the window the copy came from, the copy alive and unchanged
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e c', ADD .. 's>' })
+	local changed = gone() -- a copy changed since: held over
+	eq({ copy = copy, original = original, changed = changed }, { copy = 0, original = 0, changed = 1 })
+end
+
+-- Telescope stubbed, each map() an attach_mappings makes recorded: the marks' two pickers switch
+-- <Tab> and <S-Tab> off, in insert and normal mode, so one entry is picked; the primary pop-up's keeps
+-- them, picking several.
+T['T953 [char] (M15, DESK.md:1068-1069, :1104-1105) the marks\' pickers pick one entry, the primary pop-up\'s several'] = function()
+	child.steps({ ':e b', ':e e', OPEN })
+	stub_pickers()
+	child.lua([[
+		-- the primary pop-up's picker reads the selection, which the stub keeps empty
+		require('telescope.actions.state').get_current_picker = function() return { get_multi_selection = function() return {} end } end
+		_G.FRG_MAPPED = {}
+		local pickers, builtin = require('telescope.pickers'), require('telescope.builtin')
+		local function recording(attach)
+			return function(prompt) return attach(prompt, function(modes, key, fn)
+				for _, mode in ipairs(type(modes) == 'table' and modes or { modes }) do
+					table.insert(_G.FRG_MAPPED, { picker = _G.FRG_PICKER, mode = mode, key = key, off = fn == false })
+				end
+			end) end
+		end
+		local new, find_files = pickers.new, builtin.find_files
+		pickers.new = function(a, opts) opts.attach_mappings = recording(opts.attach_mappings); return new(a, opts) end
+		builtin.find_files = function(opts) opts.attach_mappings = recording(opts.attach_mappings); return find_files(opts) end
+		_G.FRG_PICKS = { 's', _G.FRG_TEST.root .. '/c.txt' }
+		vim.api.nvim_win_set_cursor(0, { 2, 0 })
+		_G.FRG_PICKER = 'marks'
+	]])
+	child.step('a')
+	child.settle()
+	child.lua([[
+		_G.FRG_PICKER = 'primary'
+		_G.FRG_PICKS = { _G.FRG_TEST.root .. '/d.txt' }
+		require('frogman.domains.ui').routines.pick_files(true, function() end)
+	]])
+	local mapped = child.lua('return _G.FRG_MAPPED')
+	local off = {}
+	for _, m in ipairs(mapped) do
+		if m.off then table.insert(off, m.picker .. ' ' .. m.mode .. ' ' .. m.key) end
+	end
+	table.sort(off)
+	-- (the README's telescope line naming the marks pop-up is D27's to pin, in tests/test_docs.lua)
+	eq(off, { 'marks i <S-Tab>', 'marks i <S-Tab>', 'marks i <Tab>', 'marks i <Tab>', 'marks n <S-Tab>', 'marks n <S-Tab>', 'marks n <Tab>', 'marks n <Tab>' })
+end
+
+-- A jump the unwritten pop-up refuses changes nothing: the cycle running in its window goes on.
+T['T954 [char] (M15, DESK.md:1061, :1093) a jump refused for the pop-up\'s unwritten edits leaves a cycle running'] = function()
+	child.steps({ ':e a', ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.lua('vim.api.nvim_buf_set_lines(0, 2, 3, false, { "s -> d.txt" })')
+	child.cmd('wincmd p')
+	child.settle()
+	child.steps({ '<M-m>' })
+	local stepped = child.shown()
+	child.messages()
+	child.steps({ JUMP .. 'a>' })
+	local said = vim.tbl_map(function(m) return m.msg end, child.messages())
+	local dirty = 'frogman: the marks pop-up has edits not written yet: write them with :w, or leave them, first.'
+	eq({ said = said, shown = child.shown(), nav = child.lua('return require("frogman.domains.navigation").sm:state()') },
+		{ said = { dirty }, shown = stepped, nav = 'cycling' })
 end
 
 return T

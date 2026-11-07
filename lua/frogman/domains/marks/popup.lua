@@ -603,7 +603,8 @@ local function pick_one(title, items, done)
 		prompt_title = title,
 		finder = finders.new_table({ results = items }),
 		sorter = sorters.generic_sorter({}),
-		attach_mappings = function(prompt_bufnr)
+		attach_mappings = function(prompt_bufnr, map)
+			require('frogman.domains.ui').routines.pick_one_only(map) -- one alias, single-select
 			actions.select_default:replace(function()
 				local entry = state.get_selected_entry()
 				actions.close(prompt_bufnr)

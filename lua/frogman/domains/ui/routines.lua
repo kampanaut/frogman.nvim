@@ -71,17 +71,30 @@ end
 -- the primary pop-up's decoration: the switch, a closed entry's glyph, a missing file's tag
 local primary_ns = vim.api.nvim_create_namespace("frogman_primary_popup")
 
+---Switch off telescope's keys that select several entries, `<Tab>` and `<S-Tab>`, for a picker that
+---picks one.
+---
+---@param map fun(modes: string|string[], key: string, fn: function|false) The picker's own map, from its attach_mappings
+---@return nil
+function M.pick_one_only(map)
+	map({ "i", "n" }, "<Tab>", false)
+	map({ "i", "n" }, "<S-Tab>", false)
+end
+
 ---Pick files through telescope's find_files: the selected entries when `multi`, or else the entry
----under the cursor, as each pop-up picks.
+---under the cursor, as each pop-up picks. A picker for one entry can't select several.
 ---
 ---@param multi boolean Whether the entries selected are the ones picked
 ---@param done fun(paths: string[]) Called with the paths picked, none when nothing was
 ---@return nil
 function M.pick_files(multi, done)
 	require("telescope.builtin").find_files({
-		attach_mappings = function(prompt_bufnr)
+		attach_mappings = function(prompt_bufnr, map)
 			local actions = require("telescope.actions")
 			local state = require("telescope.actions.state")
+			if not multi then
+				M.pick_one_only(map)
+			end
 			actions.select_default:replace(function()
 				local picked = {}
 				for _, entry in ipairs(multi and state.get_current_picker(prompt_bufnr):get_multi_selection() or {}) do

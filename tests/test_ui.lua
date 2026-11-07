@@ -337,7 +337,8 @@ T['T450 [char] (M12, M15) marked buffers are frogman\'s own marks'] = function()
 	for _, m in ipairs(warned) do
 		if m.msg:find('marks_provider is gone', 1, true) then said = said + 1 end
 	end
-	eq({ marked = marked, said = said }, { marked = { a = false, b = { true, 'a' }, c = false }, said = 1 })
+	-- a config that still sets marks_provider is ignored, nothing said (decided 2026-11-05)
+	eq({ marked = marked, said = said }, { marked = { a = false, b = { true, 'a' }, c = false }, said = 0 })
 end
 
 
