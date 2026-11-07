@@ -253,6 +253,7 @@ local function joined(names)
 	end
 	return table.concat(names, ", ", 1, #names - 1) .. " and " .. names[#names]
 end
+M.joined = joined
 
 ---Say the messages a step queued.
 ---

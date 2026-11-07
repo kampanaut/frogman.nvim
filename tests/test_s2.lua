@@ -4392,6 +4392,67 @@ T['T926 [char] (S2 Closed-stack picker, I7, DESK.md:654) the write asks about a 
 	eq({ asked = open_now, closed = child.closed() }, { asked = true, closed = 'b' })
 end
 
+-- b and c closed, the lists open with a line no list names added, so :w asks. c is opened in the window the
+-- lists came from in the same call as the :w, its arrival queued, and that arrival runs while the prompt
+-- waits, as queued work can under a typed :w: the write leaves c's line off, and says so once it's done.
+T['T929 [char] (S2 Closed-stack picker, I7) a line whose file opened while the write was asking is left off, and said'] = function()
+	two_closed()
+	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
+	local p = S2.picker(child)
+	local lines = vim.deepcopy(p.lines)
+	table.insert(lines, 'typo.txt')
+	child.lua('vim.api.nvim_buf_set_lines(..., 0, -1, false, select(2, ...))', { p.buf, lines })
+	child.messages()
+	local dumps = child.dump_files()
+	child.lua([[
+		vim.fn.confirm = function()
+			require('frogman.settle').drain() -- what was queued runs while the prompt waits: c's arrival
+			return 1
+		end
+	]])
+	child.lua([[
+		local from, buf = ...
+		vim.api.nvim_win_call(from, function() vim.cmd('edit c.txt') end) -- its arrival queued, not run yet
+		vim.api.nvim_buf_call(buf, function() vim.cmd('write') end)
+	]], { p.came_from, p.buf })
+	child.settle()
+	local said = vim.tbl_filter(function(m) return m.msg:find('c.txt', 1, true) ~= nil and m.msg:find('open', 1, true) ~= nil end,
+		child.messages())
+	eq({ closed = child.closed(), said = #said, dump = child.dumped_since(dumps) }, { closed = 'b', said = 1, dump = nil })
+end
+
+-- T929's race with two files: c opened in the window the lists came from, b in a split of it, both arrivals
+-- queued, both running while the prompt waits: one message names both, joined as natural English.
+T['T930 [char] (S2 Closed-stack picker, I7) two lines whose files opened while the write was asking are said in one message'] = function()
+	two_closed()
+	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
+	local p = S2.picker(child)
+	local lines = vim.deepcopy(p.lines)
+	table.insert(lines, 'typo.txt')
+	child.lua('vim.api.nvim_buf_set_lines(..., 0, -1, false, select(2, ...))', { p.buf, lines })
+	child.messages()
+	local dumps = child.dump_files()
+	child.lua([[
+		vim.fn.confirm = function()
+			require('frogman.settle').drain() -- what was queued runs while the prompt waits: b's and c's arrivals
+			return 1
+		end
+	]])
+	child.lua([[
+		local from, buf = ...
+		vim.api.nvim_win_call(from, function()
+			vim.cmd('edit c.txt')
+			vim.cmd('split b.txt') -- b in a window of its own, its arrival queued beside c's
+		end)
+		vim.api.nvim_buf_call(buf, function() vim.cmd('write') end)
+	]], { p.came_from, p.buf })
+	child.settle()
+	local said = vim.tbl_map(function(m) return m.msg end, vim.tbl_filter(function(m)
+		return m.msg:find('opened while the write was asking', 1, true) ~= nil end, child.messages()))
+	eq({ closed = child.closed(), said = said, dump = child.dumped_since(dumps) },
+		{ closed = '', said = { "frogman: b.txt and c.txt opened while the write was asking, so they're open now, off the closed lists." } })
+end
+
 T['T525 [char] (S1 Load) a window entry whose maps are saved as null loads with empty ones'] = function()
 	local s = S2.shared()
 	S2.start(child, s)

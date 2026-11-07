@@ -891,6 +891,7 @@ local function write_closed_lists(dbuf, leaving)
 			end
 		end
 	end
+	local opened = {} -- files opened while the prompt waited, left out of the lists in memory
 	for _, pool in ipairs(picker.order) do
 		-- a list a load tore down while the window was open is left alone
 		if not pool.file_only and history.data.pools[pool.id] == pool then
@@ -901,7 +902,7 @@ local function write_closed_lists(dbuf, leaving)
 			local closed, times = {}, {}
 			for i = #refs, 1, -1 do
 				local ref = refs[i]
-				-- one opened while the prompt waited is left out too, as an open file is
+				-- one opened while the prompt waited is left out too, as an open file is, and said below
 				if history.get_buffer_from_hash(file_of(ref)) == nil then
 					-- moved in from a list in the file alone: memory takes it in, by its handle
 					local id = type(ref) == "number" and ref or storage.adopt_file_entry(ref)
@@ -909,6 +910,8 @@ local function write_closed_lists(dbuf, leaving)
 						table.insert(closed, id)
 						times[id] = closed_entry_time(picker, pool, ref, count[pool][file_of(ref)] == 1)
 					end
+				else
+					opened[file_of(ref)] = true
 				end
 			end
 			-- closed onto it since it was drawn: kept, as the newest
@@ -922,6 +925,19 @@ local function write_closed_lists(dbuf, leaving)
 				pool:replace(closed, times)
 			end
 		end
+	end
+	-- nothing to answer about those: they're open, and no list holds an open file
+	local names = {}
+	for text, ref in pairs(picker.refs) do
+		if opened[file_of(ref)] then
+			opened[file_of(ref)] = nil -- each file once, however many lines drew it
+			table.insert(names, text)
+		end
+	end
+	if #names > 0 then
+		table.sort(names)
+		vim.notify("frogman: " .. require('frogman.domains.ledger').joined(names) .. " opened while the write was asking, so " ..
+			(#names == 1 and "it's" or "they're") .. " open now, off the closed lists.", vim.log.levels.INFO)
 	end
 	local written = true
 	if file_changes then

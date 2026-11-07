@@ -49,6 +49,7 @@ M.tell = routines.tell
 M.drop_batch = routines.drop_batch
 M.name_of = routines.name_of
 M.name_of_path = routines.name_of_path
+M.joined = routines.joined
 M.steps = routines.steps
 M.trail = routines.trail
 M.trail_days = routines.trail_days
