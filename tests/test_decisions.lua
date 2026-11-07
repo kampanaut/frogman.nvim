@@ -765,8 +765,9 @@ T['T692 [char] (M2 Handles) the handles follow the registry over random walks'] 
 end
 
 T['T694 [char] (M2 Holders) the holders are what frogman calls known, over random walks'] = function()
-	-- no file deleted on disk here: a cycle step onto one raises E211 today (T692 walks those)
-	walk('HOLDERS', join(MWY, CLOSING, { 'new file', 'new file', '<M-;><M-x>' }), 17)
+	-- files deleted on disk and written back too, as T692 walks them: a cycle step onto one lets Vim's E211
+	-- through since the engine split's gaps were built (T948)
+	walk('HOLDERS', join(MWY, CLOSING, { 'new file', 'new file', '<M-;><M-x>', 'rm/mk', 'rm/mk' }), 17)
 end
 
 T['T284 [char] (I9) :file onto a name not on disk in a split leaves no triquetra for a dead window'] = function()

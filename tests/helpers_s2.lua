@@ -134,11 +134,13 @@ S2.has = function(msgs, text)
 	return false
 end
 
--- The messages that aren't a hook failure.
+-- The messages that aren't a hook failure's own ERROR. The dump's WARN about one quotes it, and counts.
 S2.notices = function(msgs)
 	local out = {}
 	for _, m in ipairs(msgs) do
-		if not m.msg:find('failed during transition', 1, true) then table.insert(out, m.msg) end
+		if not (m.level == vim.log.levels.ERROR and m.msg:find('failed during transition', 1, true)) then
+			table.insert(out, m.msg)
+		end
 	end
 	return out
 end
