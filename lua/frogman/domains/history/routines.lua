@@ -541,6 +541,37 @@ end
 local mark_slice = 500
 local mark_queue, mark_next = {}, 1
 
+---Tag a file gone from disk when it is, or clear its tag when it's back: a file never written isn't
+---gone, and its mark goes once it's on disk. The trail records each from the handle's own vanish and
+---return.
+---
+---@param id HandleId The file's handle
+---@param label string|nil The label it went missing under (nil = the time)
+---@return nil
+local function check_disk(id, label)
+	local handle = handles.get(id)
+	local filepath = handle and M.get_filepath_from_hash(handle.hash)
+	if not filepath or filepath:match("^NONAME_") then
+		return
+	end
+	if vim.fn.filereadable(filepath) == 1 then
+		handles.set_tag(id, nil)
+		handle.unwritten = nil
+	elseif handle.unwritten then
+		return -- never written, so it didn't go missing
+	elseif handle.tag == nil then
+		handles.set_tag(id, label or os.date("%H:%M"))
+	end
+end
+
+---Tag one file gone from disk now, or clear its tag, under the label in use, as the next check would.
+---
+---@param id HandleId The file's handle
+---@return nil
+function M.check_on_disk(id)
+	check_disk(id, data.last_label)
+end
+
 ---Mark the known files that are gone from disk, and clear the marks of files that are back.
 ---
 ---Each missing file is tagged with where you were when it went missing (the label), or the
@@ -558,21 +589,11 @@ function M.mark_missing(label, limit)
 	local known = M.known_handles()
 	local checked = {} -- a file open, in a slot and in the slice is checked once all the same
 	local function mark(id)
-		local handle = id and handles.get(id)
-		local filepath = handle and M.get_filepath_from_hash(handle.hash)
-		if not filepath or not known[id] or filepath:match("^NONAME_") or checked[id] then
+		if not id or not known[id] or checked[id] then
 			return
 		end
 		checked[id] = true
-		-- the trail gets each tag put on and taken off from the handle's own vanish and return
-		if vim.fn.filereadable(filepath) == 1 then
-			handles.set_tag(id, nil)
-			handle.unwritten = nil
-		elseif handle.unwritten then
-			return -- never written, so it didn't go missing
-		elseif handle.tag == nil then
-			handles.set_tag(id, label or os.date("%H:%M"))
-		end
+		check_disk(id, label)
 	end
 	if limit then
 		-- what the winbar and the bufferline show, every time

@@ -1263,7 +1263,7 @@ T['T834 [char] (M16) a held-over line moved up among the window\'s own makes it 
 	child.settle(100)
 	local got = snapshots(win)
 	eq({ n = #got, slots = got[1] and got[1].slots, other = got[1] and got[1].id ~= id, held = #held('') },
-		{ n = 1, slots = '⦉b⦊ [x] ⟦-⟧', other = true, held = 0 })
+		{ n = 1, slots = '⦉b⦊ [x] ⟦-⟧', other = true, held = 1 })
 end
 
 -- The same snapshot as window `win`'s first line, sealed as an editor started in `dir` draws it, under a
@@ -2753,6 +2753,191 @@ T['T1198 [char] (M16, DESK.md:1947, :1948) a cancel whose earlier buffer is gone
 	local told = #vim.tbl_filter(function(m) return m:find('was edited while the snapshot showed it', 1, true) ~= nil end, said())
 	eq({ shown = child.shown(win), a = state('a'), slots = child.slots(win), told = told },
 		{ shown = 'a', a = { taken = true, listed = false }, slots = '⦉d⦊ [a] ⟦-⟧', told = 0 })
+end
+
+-- The list's row: the order by the snapshot's roles, and +N past the window's edge (DESK.md:1941, :1942, repro R19) -
+
+-- The open list's first line as drawn: each chunk's text and highlight.
+local function row_chunks()
+	return child.lua([[
+		local buf = vim.fn.bufnr('frogman://snapshots')
+		local ns = vim.api.nvim_get_namespaces()['frogman_snapshots']
+		for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, ns, { 0, 0 }, { 0, -1 }, { details = true })) do
+			if m[4].virt_text then
+				return vim.tbl_map(function(c) return { c[1], c[2] } end, m[4].virt_text)
+			end
+		end
+		return {}
+	]])
+end
+
+T['T1184 [char] (M16, DESK.md:1941, :1942) the list draws the stored order in the snapshot\'s own roles, the primary first as cokeline has it'] = function()
+	child.lua('vim.o.columns = 200') -- room for the whole row
+	taken()
+	child.steps({ LIST })
+	child.settle(100)
+	local groups = {}
+	for _, chunk in ipairs(row_chunks()) do
+		local name = chunk[1]:match('(%a)%.txt')
+		if name and chunk[1]:match('^  %d') then groups[name] = chunk[2] end
+	end
+	local defined = child.lua([[
+		local out = {}
+		for _, g in ipairs({ ... }) do out[g] = next(vim.api.nvim_get_hl(0, { name = g })) ~= nil end
+		return out
+	]], { groups.d, groups.c, groups.b, groups.a })
+	eq({ groups = groups, defined = defined },
+		{ groups = { d = 'FrogmanOrderPrimary', c = 'FrogmanOrderTernary', b = 'FrogmanOrderSecondary', a = 'FrogmanOrderOpen' },
+			defined = { FrogmanOrderPrimary = true, FrogmanOrderTernary = true, FrogmanOrderSecondary = true, FrogmanOrderOpen = true } })
+end
+
+T['T1185 [char] (M16, DESK.md:1941, :1942, repro R19) a long row draws whole entries, then +N'] = function()
+	child.lua([[
+		for i = 1, 25 do
+			local f = io.open(string.format('%s/f%02d.txt', _G.FRG_TEST.root, i), 'w'); f:write('x\n'); f:close()
+		end
+	]])
+	for i = 1, 25 do
+		child.cmd(string.format('edit f%02d.txt', i)) -- each settled, so each is a visit
+		child.settle()
+	end
+	child.steps({ TAKE, LIST })
+	child.settle(100)
+	local text = table.concat(vim.tbl_map(function(c) return c[1] end, row_chunks()))
+	local fit = child.lua([[
+		local text = ...
+		local win = vim.fn.bufwinid(vim.fn.bufnr('frogman://snapshots'))
+		local info = vim.fn.getwininfo(win)[1]
+		return vim.api.nvim_strwidth(text) <= info.width - info.textoff
+	]], { text })
+	local more = tonumber(text:match('  %+(%d+)$'))
+	local whole = true
+	for entry in text:gmatch('  %d+ ([^ ]+)') do
+		if not entry:match('^f%d%d%.txt$') and not entry:match('^%a%.txt$') then whole = false end
+	end
+	eq({ fit = fit, more = more ~= nil and more > 0, whole = whole }, { fit = true, more = true, whole = true })
+end
+
+-- Copying between windows (DESK.md:1943, :1944, repro R20) --------------------------------------------------------
+
+T['T1186 [char] (M16, DESK.md:1943, :1944) a window\'s own line moved under a held-over header is copied there, the original staying'] = function()
+	split_held_over()
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ TAKE })
+	local own = snapshots(win)[1].id
+	child.steps({ LIST })
+	keys('gg', 'dd', 'G', 'p')
+	child.step('q')
+	child.settle(100)
+	local got, h = snapshots(win), held('')
+	local copied = 0
+	for _, s in ipairs(h) do if s.id ~= own and s.slots == '⦉a⦊ [b] ⟦-⟧' then copied = copied + 1 end end
+	eq({ own = #got, kept = got[1] and got[1].id == own, held = #h, copied = copied }, { own = 1, kept = true, held = 2, copied = 1 })
+end
+
+T['T1187 [char] (M16, DESK.md:1943, :1944) two entries of a rebuilt line that resolve to one file keep it once'] = function()
+	local one, split = two_windows()
+	local line = changed_line(one, 'd.editor = "another editor"; d.id = "elsewhere"; for i, f in ipairs(d.files) do f.handle = 90000 + i end; '
+		.. 'table.insert(d.files, { path = d.files[d.c].path, handle = 99998 }); d.s = #d.files')
+	put_line(split, line)
+	local got = snapshots(split)
+	eq({ n = #got, slots = got[1] and got[1].slots }, { n = 1, slots = '⦉c⦊ [d] ⟦-⟧' })
+end
+
+T['T1188 [char] (M16, M14, DESK.md:1943, :1944, repro R20) a rebuilt line naming a file not on disk tags it gone at once'] = function()
+	local one, split = two_windows()
+	local line = changed_line(one, 'd.editor = "another editor"; d.id = "elsewhere"; for i, f in ipairs(d.files) do f.handle = 90000 + i; '
+		.. 'if f.path:match("/a%.txt$") then f.path = f.path:gsub("/a%.txt$", "/nowhere.txt") end end')
+	put_line(split, line)
+	eq(child.lua([[
+		local H = require('frogman.domains.history')
+		local id = H.get_handle_from_filepath(_G.FRG_TEST.root .. '/nowhere.txt')
+		return { known = id ~= nil, tagged = id ~= nil and H.handles.get(id).tag ~= nil }
+	]]), { known = true, tagged = true })
+end
+
+-- A snapshot whose current is gone falls back (DESK.md:1936, :1937) -----------------------------------------------
+
+-- A saved session holding a snapshot whose current is a No Name text, ternary a; a fresh editor loads it, and the
+-- text's file is deleted. Returns the shared project.
+local function text_current_lost()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	S2.noname(child, { 'draft' })
+	child.steps({ TAKE })
+	local n = child.lua('return vim.api.nvim_get_current_buf()')
+	child.cmd('buffer a.txt')
+	child.settle()
+	child.cmd('bwipeout! ' .. n)
+	child.settle(100)
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a' }, 'a')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	for _, dir in ipairs(vim.fn.globpath(s.session_dir, '*.d', true, true)) do
+		for _, f in ipairs(vim.fn.globpath(dir, '*', true, true)) do
+			if not f:match('%.trail$') then os.remove(f) end
+		end
+	end
+	return s
+end
+
+T['T1189 [char] (M16, DESK.md:1936, :1937) a preview of a snapshot whose current text is lost falls back to its ternary'] = function()
+	text_current_lost()
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	eq({ active = child.lua('return require("frogman.domains.snapshots").preview.active()'), shown = child.shown(win),
+		slots = snapshots(win)[1].slots }, { active = true, shown = 'a', slots = '⦉-⦊ [a] ⟦-⟧' })
+end
+
+T['T1190 [char] (M16, S1, DESK.md:1936, :1937) a save keeps a snapshot whose current text is lost, its current fallen back'] = function()
+	local s = text_current_lost()
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a' }, 'a')
+	child.messages()
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	local got = snapshots(win)
+	local broke = #vim.tbl_filter(function(m) return m.msg:find('broke its own rules', 1, true) ~= nil end, child.messages())
+	eq({ n = #got, slots = got[1] and got[1].slots, broke = broke }, { n = 1, slots = '⦉-⦊ [a] ⟦-⟧', broke = 0 })
+end
+
+T['T1191 [char] (M16, S1 Load, DESK.md:1936, :1937) a file written elsewhere with a snapshot whose current names no path keeps it, fallen back, with no warning'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	taken()
+	eq(Misc.save(child), { true })
+	S2.start(child, s)
+	child.lua([[
+		local crypto = require('frogman.domains.storage.crypto')
+		local dir, name = vim.fn.getcwd(-1, -1), vim.fn.getcwd()
+		local path = require('frogman.configs').session_dir .. vim.fn.sha256(dir .. "\n" .. name)
+		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
+		local salt = bytes:sub(5, 4 + crypto.salt_length)
+		local data = require('frogman.domains.storage.routines').read_session(dir, name)
+		for _, entry in ipairs(data.windows) do
+			for _, saved in ipairs(type(entry[11]) == 'table' and entry[11] or {}) do
+				saved.current = 'deadbeefdeadbeef' -- a current no path names
+			end
+		end
+		local header = "CDV1" .. salt
+		local out = header .. crypto.seal(crypto.derive_key(dir, salt), vim.json.encode(data), header)
+		fh = assert(io.open(path, 'wb')); fh:write(out); fh:close()
+	]])
+	Misc.restore(child, { 'a', 'b', 'c', 'd' }, 'd')
+	child.messages()
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	local got = snapshots(win)
+	local broke = #vim.tbl_filter(function(m) return m.msg:find('broke its own rules', 1, true) ~= nil end, child.messages())
+	eq({ n = #got, slots = got[1] and got[1].slots, broke = broke }, { n = 1, slots = '⦉-⦊ [c] ⟦b⟧', broke = 0 })
 end
 
 return T

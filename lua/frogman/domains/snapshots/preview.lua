@@ -132,7 +132,7 @@ end
 ---
 ---@param id HandleId The file's handle
 ---@return Bufnr|nil bufnr
----@return string|nil why "taken" when another buffer has its name
+---@return string|nil why "taken" when another buffer has its name, "lost" when it's a text that's lost
 local function buffer_for(id)
 	local bufnr = history.get_buffer_from_handle(id)
 	if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
@@ -166,7 +166,7 @@ local function buffer_for(id)
 			end
 		end
 		if text == nil or text.lines == nil then
-			return nil
+			return nil, "lost"
 		end
 		bufnr = vim.api.nvim_create_buf(true, false)
 		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, text.lines)
@@ -385,6 +385,16 @@ function M.start(snapshot, winid)
 	local found, bufnr, why = true, nil, nil
 	if c then
 		found, bufnr, why = pcall(buffer_for, c)
+	end
+	if found and not bufnr and why == "lost" then
+		-- its current gone, the snapshot falls back, keeping its place
+		local shown = nil
+		routines.fall_back(snapshot, function(id)
+			local ok, made = pcall(buffer_for, id)
+			shown = ok and made or nil
+			return shown ~= nil
+		end)
+		bufnr = shown
 	end
 	if not found then
 		-- the world's: a swap file's prompt answered Abort, an autocmd of the user's raising

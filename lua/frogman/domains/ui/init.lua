@@ -91,6 +91,14 @@ function M.init_trail_highlights()
 		vim.api.nvim_set_hl(0, "FrogmanTrail" .. name, { fg = spec[1], bold = spec[2] })
 	end
 	vim.api.nvim_set_hl(0, "FrogmanTrailTrigger", { fg = trail.trigger, italic = true })
+	-- the snapshot list's stored order, coloured by the snapshot's own roles as cokeline colours a buffer
+	local colors = configs.colors
+	vim.api.nvim_set_hl(0, "FrogmanOrderPrimary", { fg = colors.primary.active })
+	vim.api.nvim_set_hl(0, "FrogmanOrderSecondary", { fg = colors.secondary.focused.bufnr })
+	vim.api.nvim_set_hl(0, "FrogmanOrderCurrent", { fg = colors.current.focused.bufnr, bold = true })
+	vim.api.nvim_set_hl(0, "FrogmanOrderTernary", { fg = colors.ternary.focused.bufnr })
+	vim.api.nvim_set_hl(0, "FrogmanOrderMarked", { fg = colors.marked.unfocused.fg })
+	vim.api.nvim_set_hl(0, "FrogmanOrderOpen", { fg = colors.cokeline.fg.unfocused })
 end
 
 local periodic_timer = nil

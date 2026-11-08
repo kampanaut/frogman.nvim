@@ -893,6 +893,37 @@ local function carried_hash(file, here, register)
 	return filehash
 end
 
+---Let a snapshot whose current is gone fall back: its ternary, its secondary, then the first of its order
+---that can stand takes the current's place, the slot it came from emptied; the snapshot keeps its place.
+---
+---@param snapshot Snapshot The snapshot whose current is gone
+---@param can fun(id: HandleId): boolean Whether a file can stand as its current
+---@return HandleId|nil current The file now its current, nil when none can
+function M.fall_back(snapshot, can)
+	local gone = M.handle(snapshot.current)
+	local function take(id)
+		local handle = M.handle(id)
+		return handle and (gone == nil or handle.id ~= gone.id) and can(handle.id) and handle or nil
+	end
+	for _, slot in ipairs({ "ternary", "secondary" }) do
+		local handle = take(snapshot[slot])
+		if handle then
+			snapshot.current, snapshot[slot] = snapshot[slot], nil
+			hold(snapshot)
+			return handle.id
+		end
+	end
+	for _, id in ipairs(snapshot.order) do
+		local handle = take(id)
+		if handle then
+			snapshot.current = id
+			hold(snapshot)
+			return handle.id
+		end
+	end
+	return nil
+end
+
 ---Rebuild a snapshot a list line carries, where the line sits.
 ---
 ---Each file comes back by its handle while that lives in this editor, otherwise by its path. Repeats in
@@ -952,6 +983,14 @@ function M.rebuild(into, carried, dry)
 	local snapshot = from_saved(saved)
 	if snapshot then
 		put(into, snapshot)
+		-- a file it names that isn't on disk is tagged gone now, not at the next check
+		for _, i in ipairs(vim.list_extend({ snapshot.current, snapshot.secondary or false, snapshot.ternary or false },
+				vim.list_extend(vim.list_slice(snapshot.queue), snapshot.order))) do
+			local handle = i and M.handle(i)
+			if handle then
+				history.routines.check_on_disk(handle.id)
+			end
+		end
 	end
 	return snapshot
 end

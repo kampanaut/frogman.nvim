@@ -218,12 +218,15 @@ local function drawing_of_carried(carried)
 	}
 end
 
----Draw a snapshot's line as it shows: the time, the triquetra, then the stored order.
+---Draw a snapshot's line as it shows: the time, the triquetra, then the stored order as cokeline draws
+---it, each open file in the snapshot's own role as cokeline colours a buffer by the window's, as many
+---whole entries as fit the width, then `+N`.
 ---
 ---@param snapshot Snapshot The snapshot to draw
 ---@param labels table<HandleId, string> The marks' aliases, as `marks.labels` gives them
+---@param width integer|nil The columns the line has to draw in, none for no limit
 ---@return table chunks The `{text, highlight}` chunks
-local function drawing(snapshot, labels)
+local function drawing(snapshot, labels, width)
 	local ui = require('frogman.domains.ui').routines
 	local glyphs = ui.glyphs()
 	local function name(id)
@@ -235,6 +238,14 @@ local function drawing(snapshot, labels)
 	table.insert(chunks, { "⦉" .. (snapshot.ternary and name(snapshot.ternary) or "-") .. "⦊ ", "WinbarBufnrTernary" })
 	table.insert(chunks, { "[" .. name(snapshot.current) .. "] ", "WinbarBufnrCurrent" })
 	table.insert(chunks, { "⟦" .. (snapshot.secondary and name(snapshot.secondary) or "-") .. "⟧", "WinbarBufnrSecondary" })
+	local function live(id)
+		local handle = id and routines.handle(id)
+		return handle and handle.id or nil
+	end
+	local primary = snapshot.primary_enabled and live(snapshot.queue[1]) or nil
+	local roles = { [live(snapshot.ternary) or false] = "FrogmanOrderTernary", [live(snapshot.current) or false] = "FrogmanOrderCurrent",
+		[live(snapshot.secondary) or false] = "FrogmanOrderSecondary", [primary or false] = "FrogmanOrderPrimary" }
+	local entries = {}
 	for _, id in ipairs(snapshot.order) do
 		local handle = routines.handle(id)
 		if handle then
@@ -242,14 +253,34 @@ local function drawing(snapshot, labels)
 			local label = labels[handle.id]
 			local text = name(id) .. (label and (" ⟨" .. label .. "⟩") or "")
 			if handle.tag then
-				table.insert(chunks, { "  ✗ ", "DiagnosticError" })
-				table.insert(chunks, { text .. " " .. glyphs.tag .. handle.tag, "FrogmanTrailDim" })
+				table.insert(entries, { { "  ✗ ", "DiagnosticError" }, { text .. " " .. glyphs.tag .. handle.tag, "FrogmanTrailDim" } })
 			elseif bufnr == nil then
-				table.insert(chunks, { "  " .. glyphs.closed .. " " .. text, "FrogmanTrailDim" })
+				table.insert(entries, { { "  " .. glyphs.closed .. " " .. text, "FrogmanTrailDim" } })
 			else
-				table.insert(chunks, { "  " .. bufnr .. " " .. text, "FrogmanTrail" })
+				-- the primary first, then the secondary, the current and the ternary, then a mark, as cokeline has it
+				local role = roles[handle.id] or (label and "FrogmanOrderMarked") or "FrogmanOrderOpen"
+				table.insert(entries, { { "  " .. bufnr .. " " .. text, role } })
 			end
 		end
+	end
+	local function width_of(parts)
+		local n = 0
+		for _, part in ipairs(parts) do
+			n = n + vim.api.nvim_strwidth(part[1])
+		end
+		return n
+	end
+	local room = width and (width - width_of(chunks)) or math.huge
+	for i, entry in ipairs(entries) do
+		local after = #entries - i
+		local more = after > 0 and vim.api.nvim_strwidth("  +" .. after) or 0
+		local wide = width_of(entry)
+		if wide + more > room then
+			table.insert(chunks, { "  +" .. (#entries - i + 1), "FrogmanTrailDim" })
+			break
+		end
+		room = room - wide
+		vim.list_extend(chunks, entry)
 	end
 	return chunks
 end
@@ -263,6 +294,12 @@ local function decorate()
 	end
 	vim.api.nvim_buf_clear_namespace(open.buf, ns, 0, -1)
 	local labels = require('frogman.domains.marks').labels(M.origin())
+	-- the columns a line draws in, its text concealed; none while the window isn't open yet
+	local width
+	if open.win and vim.api.nvim_win_is_valid(open.win) then
+		local info = vim.fn.getwininfo(open.win)[1]
+		width = info.width - info.textoff
+	end
 	for i, line in ipairs(vim.api.nvim_buf_get_lines(open.buf, 0, -1, false)) do
 		if open.headers[vim.trim(line)] then
 			vim.api.nvim_buf_set_extmark(open.buf, ns, i - 1, 0, { end_col = #line, hl_group = "FrogmanTrailDim" })
@@ -273,7 +310,7 @@ local function decorate()
 				-- the encoding hidden, and the drawing after it, so the cursor at the line's start stays there
 				vim.api.nvim_buf_set_extmark(open.buf, ns, i - 1, 0, { end_col = #line, conceal = "" })
 				vim.api.nvim_buf_set_extmark(open.buf, ns, i - 1, #line,
-					{ virt_text = snapshot and drawing(snapshot, labels) or drawing_of_carried(carried), virt_text_pos = "inline" })
+					{ virt_text = snapshot and drawing(snapshot, labels, width) or drawing_of_carried(carried), virt_text_pos = "inline" })
 			end
 		end
 	end
@@ -363,7 +400,8 @@ local function write()
 		return false
 	end
 	open_shut(lines)
-	local kept, copies, rebuilt, items, first = {}, {}, {}, {}, nil
+	-- named: a snapshot some line names, which stays, a line of it moved being a copy
+	local kept, named, copies, rebuilt, items, first = {}, {}, {}, {}, {}, nil
 	local into = { winid = open.origin } -- above the first header, the window's own
 	for row, line in ipairs(lines) do
 		line = vim.trim(line)
@@ -378,6 +416,7 @@ local function write()
 			local snapshot, winid, held_in = nil, nil, nil
 			if carried then
 				snapshot, winid, held_in = routines.find(carried.id)
+				named[carried.id] = snapshot ~= nil or nil
 			end
 			local here = snapshot ~= nil and (into.held == nil and winid == open.origin
 				or (into.held ~= nil and held_in == session() and snapshot.held == into.held))
@@ -403,7 +442,7 @@ local function write()
 	end
 	for _, list in ipairs({ routines.of_window(open.origin), routines.held_in(session()) }) do
 		for _, snapshot in ipairs(vim.list_slice(list)) do
-			if open.drawn[snapshot.id] and not kept[snapshot.id] then
+			if open.drawn[snapshot.id] and not kept[snapshot.id] and not named[snapshot.id] then
 				routines.delete(snapshot.id)
 			end
 		end
@@ -485,6 +524,7 @@ function M.open()
 		window = { conceallevel = 2, concealcursor = "nvic" },
 	})
 	open.win = win
+	decorate() -- the rows drawn again to the window's width
 	for i, line in ipairs(open.intact) do
 		if not open.headers[line] then
 			vim.api.nvim_win_set_cursor(win, { i, 0 }) -- the first snapshot's line (mine)

@@ -1592,8 +1592,9 @@ local function enforce_session_file_policy(storage)
 	for _, list in ipairs(storage.detached or {}) do
 		clean(list.marks)
 	end
-	-- a snapshot keeps its files as a mark does: one whose current file no path names, or that's a No
-	-- Name text with no text, is left out, and so is any other file of it like that; its notes are weak
+	-- a snapshot keeps its files as a mark does: a file of it no path names, or a No Name text with no text,
+	-- is left out; its notes are weak; and one whose current is gone so keeps its place, its current falling
+	-- to the ternary, the secondary, then the first of its order, quietly, left out only with none left
 	local function usable(filehash)
 		local filepath = type(filehash) == "string" and paths[filehash]
 		return filepath and not (filepath:match("^NONAME_") and (storage.noname_content or {})[filehash] == nil) or false
@@ -1604,7 +1605,7 @@ local function enforce_session_file_policy(storage)
 		end
 		local kept = {}
 		for _, saved in ipairs(list) do
-			if type(saved) == "table" and usable(saved.current) then
+			if type(saved) == "table" then
 				for _, slot in ipairs({ "secondary", "ternary" }) do
 					if saved[slot] ~= nil and not usable(saved[slot]) then
 						broke("a snapshot's file no path names, or a No Name one with no text, was left out")
@@ -1627,12 +1628,24 @@ local function enforce_session_file_policy(storage)
 					end
 					saved[key] = map
 				end
-				for filehash, _ in pairs(snapshots().named_by({ saved })) do
-					marked[filehash] = true
+				if not usable(saved.current) then
+					saved.current = saved.ternary or saved.secondary or saved.order[1]
+					for _, slot in ipairs({ "ternary", "secondary" }) do
+						if saved[slot] == saved.current then
+							saved[slot] = nil
+						end
+					end
 				end
-				table.insert(kept, saved)
+				if saved.current ~= nil then
+					for filehash, _ in pairs(snapshots().named_by({ saved })) do
+						marked[filehash] = true
+					end
+					table.insert(kept, saved)
+				else
+					broke("a snapshot with no file left to stand as its current was left out")
+				end
 			else
-				broke("a snapshot whose current file no path names, or a No Name one with no text, was left out")
+				broke("a snapshot that isn't one was left out")
 			end
 		end
 		return #kept > 0 and kept or nil
