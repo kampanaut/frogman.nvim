@@ -630,11 +630,16 @@ for _, export in ipairs({ "mark_mode", "mark_jump", "mark_add", "mark_popup" }) 
 end
 
 -- while a snapshot shows, the cycle keys step through its order and take it, opening the list leaves it,
--- and every other key says so: here, so a user's own mapping that calls an export does the same
+-- <M-,> leaves it and goes to the window before, as any window jump leaves it, and every other key says so:
+-- here, so a user's own mapping that calls an export does the same. Each gets the key's own export.
 local while_previewing = {
 	cycle_left = function() snapshots.preview.step(1) end,
 	cycle_right = function() snapshots.preview.step(2) end,
 	cycle_select = function() snapshots.preview.commit() end,
+	toggle_window = function(export, ...)
+		snapshots.preview.cancel()
+		return export(...)
+	end,
 }
 -- Each key's export runs once frogman has settled: keys in one batch (a macro, a mapping,
 -- frogman's own or a user's) can come before the settle work their events queued. A cycle still
@@ -646,7 +651,7 @@ for _, action in ipairs(keymap_actions) do
 		return settle.now(function(...)
 			if snapshots.preview.active() and name ~= "open_snapshots" then
 				if while_previewing[name] then
-					return while_previewing[name]()
+					return while_previewing[name](export, ...)
 				end
 				vim.notify(snapshots.preview.REFUSED, vim.log.levels.WARN)
 				return

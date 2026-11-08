@@ -600,13 +600,18 @@ end
 ---Cleanup all the triquetras. Remove any triquetra that references
 ---to unregistered buffers.
 ---
----@param bufnr_ondelete nil | Bufnr
+---A window a snapshot shows in, or a snapshot's commit lands in, is left alone: what it shows isn't
+---its slots' yet, and the preview's end or the commit's pick settles them.
+---
+---@param bufnr_ondelete nil | Bufnr The buffer being deleted, whose windows land once the delete is over
+---@param committing WinId|nil The window a snapshot's commit lands in
 ---@return nil
-function M.enforce_editor_policy(bufnr_ondelete)
+function M.enforce_editor_policy(bufnr_ondelete, committing)
 	-- a buffer the screen shows deleted already is judged gone: its close, still to settle, runs first
 	history.routines.run_closes()
 	local set_cache_from_window_triquetra = require("frogman").ui.routines.set_cache_from_window_triquetra
 	local ledger = require('frogman.domains.ledger')
+	local preview = package.loaded['frogman.domains.snapshots.preview']
 	local slots_before, rows_before = {}, {}
 	for winid, triquetra in pairs(data.crux) do
 		slots_before[winid] = { triquetra.current_slot, triquetra.secondary_slot, triquetra.ternary_slot }
@@ -620,6 +625,9 @@ function M.enforce_editor_policy(bufnr_ondelete)
 		end
 		if data.landing[winid] then
 			goto continue -- its buffer is being deleted: it lands by itself once the delete is over
+		end
+		if winid == committing or (preview and preview.window() == winid) then
+			goto continue -- a snapshot showing leaves its slots as they are, and a commit's pick slots them
 		end
 		local current_bufnr = history.get_buffer_from_handle(triquetra.current_slot)
 		local filepath, bufnr

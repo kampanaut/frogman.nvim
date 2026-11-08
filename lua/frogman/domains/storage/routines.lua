@@ -2236,7 +2236,7 @@ function M.load_history(cwd, name)
 		local preview = require('frogman.domains.snapshots').preview
 		local shown_in = preview.window()
 		if shown_in and vim.api.nvim_win_is_valid(shown_in) and vim.api.nvim_win_get_tabpage(shown_in) == tabpage then
-			preview.teardown()
+			preview.teardown(false)
 			history.sm:force_state(history.states.ATTACHED)
 		elseif shown_in then
 			preview.cancel()

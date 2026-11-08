@@ -11,9 +11,15 @@ local history = require('frogman.domains.history')
 
 local M = {}
 
----The snapshot showing: its window, the snapshot, the buffer the window showed before it, and the
----buffers it made or borrowed to show closed files, by their files' handles, each with what it was before.
----@type {window: WinId, snapshot: Snapshot, before: Bufnr, made: table<HandleId, {buf: Bufnr, was: "made"|"unloaded"|"loaded"|"placeholder", text: boolean|nil, tick: integer|nil}>}|nil
+---What the preview made or borrowed for one file: its buffer, what that buffer was before (made by the
+---preview, there unloaded, there loaded, or a placeholder), whether it was listed then, whether it holds
+---a No Name text, and whether it was written while borrowed.
+---@alias Borrowed {buf: Bufnr, was: "made"|"unloaded"|"loaded"|"placeholder", listed: boolean|nil, text: boolean|nil, written: boolean|nil}
+
+---The snapshot showing: its window, the snapshot, the buffer the window showed before it, every buffer
+---there as it began, loaded or not and listed or not, and the buffers it made or borrowed, by their
+---files' handles, or by `new:<bufnr>` for a file frogman doesn't know.
+---@type {window: WinId, snapshot: Snapshot, before: Bufnr, known: table<Bufnr, {loaded: boolean, listed: boolean}>, made: table<HandleId|string, Borrowed>}|nil
 local showing = nil
 
 ---The words a placeholder holds
@@ -117,11 +123,12 @@ end
 
 ---Get the buffer the preview shows a snapshot's file in, making or borrowing one when it has to.
 ---
----An open file shows in its own buffer. A closed one is borrowed: loaded into an unlisted buffer that
----frogman doesn't take in, so it's still counted closed, a No Name text from its text, read first when
----a load left it unread. A file the slot keys call gone from disk shows as a placeholder. Each is made
----once while the snapshot shows. A file whose name another buffer has, one that turned untracked,
----can't be shown, and nor can a text that's lost.
+---An open file shows in its own buffer. A closed one is borrowed: loaded into a buffer frogman doesn't
+---take in, so it's still counted closed, a No Name text from its text, read first when a load left it
+---unread; it's listed while it's borrowed, so the bufferline gives it a tab. A file the slot keys call
+---gone from disk shows as a placeholder, unlisted. Each is made once while the snapshot shows. A file
+---whose name another buffer has, one that turned untracked, can't be shown, and nor can a text that's
+---lost.
 ---
 ---@param id HandleId The file's handle
 ---@return Bufnr|nil bufnr
@@ -151,22 +158,21 @@ local function buffer_for(id)
 	if filepath:match("^NONAME_") then
 		local text = handle.text
 		if text and text.lines == nil and text.read then
-			-- held unread from a session file: read now and kept read; one that's lost leaves every list,
-			-- as a reopen that can't read it finds it
+			-- held unread from a session file: read now and kept read; one that's lost stays as it is, the
+			-- preview writing nothing, and leaves the lists when a reopen can't read it
 			text = text.read()
-			handle.text = text
-			if text == nil then
-				history.routines.discard_from_pools(id)
+			if text ~= nil then
+				handle.text = text
 			end
 		end
 		if text == nil or text.lines == nil then
 			return nil
 		end
-		bufnr = vim.api.nvim_create_buf(false, false)
+		bufnr = vim.api.nvim_create_buf(true, false)
 		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, text.lines)
 		vim.bo[bufnr].filetype = text.filetype or ""
 		vim.bo[bufnr].modified = false -- setting its lines marked it
-		showing.made[id] = { buf = bufnr, was = "made", text = true, tick = vim.b[bufnr].changedtick }
+		showing.made[id] = { buf = bufnr, was = "made", text = true }
 		return bufnr
 	end
 	local holder = history.routines.find_buffer_by_filepath(filepath)
@@ -175,23 +181,36 @@ local function buffer_for(id)
 	end
 	local was = holder == nil and "made" or (vim.api.nvim_buf_is_loaded(holder) and "loaded" or "unloaded")
 	bufnr = holder or vim.fn.bufadd(filepath)
+	local listed = vim.bo[bufnr].buflisted
 	if was ~= "loaded" then
 		vim.fn.bufload(bufnr)
 	end
-	-- its changes counted from here, so one written since, no longer modified, is still edited
-	showing.made[id] = { buf = bufnr, was = was, tick = vim.b[bufnr].changedtick }
+	vim.bo[bufnr].buflisted = true -- its tab while it's borrowed
+	showing.made[id] = { buf = bufnr, was = was, listed = listed }
 	return bufnr
 end
 
 ---Open a borrowed file for real: taken in and off the closed lists, as a reopen opens it. A No Name
 ---text comes back holding what its borrowed buffer holds, in a buffer of its own, which takes the
----borrowed one's place in any window showing it.
+---borrowed one's place in any window showing it, and a file frogman didn't know is taken in as an
+---arrival takes one in.
 ---
----@param id HandleId The file's handle
----@param made table What the preview borrowed for it
+---@param id HandleId|string The file's handle, or `new:<bufnr>` for a file frogman didn't know
+---@param made Borrowed What the preview borrowed for it
 ---@param say boolean Whether to say so: it was edited, not landed on
 ---@return nil
 local function open_for_real(id, made, say)
+	if type(id) == "string" then
+		vim.bo[made.buf].buflisted = true
+		if history.get_hash_from_buffer(made.buf) == nil and history.routines.is_trackable(made.buf) then
+			history.routines.register_buffer(made.buf)
+		end
+		if say then
+			vim.notify("frogman: " .. vim.fs.basename(vim.api.nvim_buf_get_name(made.buf)) ..
+				" was edited while the snapshot showed it, so it's open now.", vim.log.levels.INFO)
+		end
+		return
+	end
 	local name = require('frogman.domains.ui').routines.get_smart_basename(id)
 	if made.text then
 		history.handles.get(id).text = { lines = vim.api.nvim_buf_get_lines(made.buf, 0, -1, false),
@@ -214,25 +233,60 @@ local function open_for_real(id, made, say)
 	end
 end
 
+---Give one buffer the preview made or borrowed back to what it was: a placeholder or one the borrow
+---made is wiped, one that was there unloaded is unloaded again, as a file closed with :bdelete leaves
+---its buffer, and one already loaded is left; each listed again only if it was. One a window still
+---shows stays.
+---
+---@param made Borrowed What the preview made or borrowed
+---@return nil
+local function give_back(made)
+	local buf = made.buf
+	if not vim.api.nvim_buf_is_valid(buf) then
+		return
+	end
+	if made.was == "placeholder" then
+		vim.api.nvim_buf_delete(buf, { force = true })
+		return
+	end
+	if vim.bo[buf].buflisted ~= (made.listed == true) then
+		-- quietly: unlisting fires BufDelete, which would land a window still showing it elsewhere
+		vim.api.nvim_buf_call(buf, function()
+			vim.cmd(made.listed and "noautocmd setlocal buflisted" or "noautocmd setlocal nobuflisted")
+		end)
+	end
+	if #vim.fn.win_findbuf(buf) > 0 then
+		return
+	end
+	if made.was == "made" then
+		vim.api.nvim_buf_delete(buf, { force = true })
+	elseif made.was == "unloaded" then
+		vim.api.nvim_buf_delete(buf, { unload = true })
+	end
+end
+
+---Check if a buffer the preview borrowed was edited while it showed: unsaved changes in it, or a write
+---made since it was borrowed. A rewrite that leaves it unmodified, or a reload, is no edit.
+---
+---@param made Borrowed What the preview borrowed
+---@return boolean edited
+local function edited(made)
+	return vim.bo[made.buf].modified or made.written == true or history.get_hash_from_buffer(made.buf) ~= nil
+end
+
 ---Give back what the preview made or borrowed, as the snapshot stops showing.
 ---
----A placeholder is wiped. A borrowed buffer goes back to what it was: one the borrow made is wiped, one
----that was there unloaded is unloaded again, as a file closed with :bdelete leaves its buffer, and one
----already loaded is left; one a window still shows stays. One you edited since it was borrowed, written
----or not, stays open instead, and so does the one a commit lands on: both are opened for real, a
----reopen's visit recorded in the window the snapshot showed in.
+---Each goes back to what it was (`give_back`). One you edited since it was borrowed stays open
+---instead, and so does the one a commit lands on: both are opened for real, a reopen's visit recorded
+---in the window the snapshot showed in.
 ---
 ---@param was table The preview that showed
----@param keep HandleId|nil The handle of the file a commit lands on
+---@param keep HandleId|string|nil The key of the file a commit lands on
 ---@return nil
 local function release(was, keep)
 	for id, made in pairs(was.made) do
-		local buf = made.buf
-		if vim.api.nvim_buf_is_valid(buf) then
-			local edited = vim.bo[buf].modified or vim.b[buf].changedtick ~= made.tick or history.get_hash_from_buffer(buf) ~= nil
-			if made.was == "placeholder" then
-				vim.api.nvim_buf_delete(buf, { force = true })
-			elseif id == keep or edited then
+		if vim.api.nvim_buf_is_valid(made.buf) then
+			if made.was ~= "placeholder" and (id == keep or edited(made)) then
 				if vim.api.nvim_win_is_valid(was.window) then
 					vim.api.nvim_win_call(was.window, function()
 						open_for_real(id, made, id ~= keep)
@@ -240,28 +294,58 @@ local function release(was, keep)
 				else
 					open_for_real(id, made, id ~= keep)
 				end
-			elseif made.was == "made" and #vim.fn.win_findbuf(buf) == 0 then
-				vim.api.nvim_buf_delete(buf, { force = true })
-			elseif made.was == "unloaded" and #vim.fn.win_findbuf(buf) == 0 then
-				vim.api.nvim_buf_delete(buf, { unload = true })
+			else
+				give_back(made)
 			end
 		end
 	end
 	was.made = {}
 end
 
----Get the open buffers of the snapshot's stored order, the first drawn first.
+---Get the buffers the bufferline draws while a snapshot shows: the open and borrowed ones of its stored
+---order, the first drawn first, then the ones `:e` borrowed outside it. A closed file not stepped onto
+---yet has no buffer, and a placeholder no tab.
 ---@return Bufnr[] buffers
 function M.order()
-	local buffers = {}
-	for _, id in ipairs(showing and showing.snapshot.order or {}) do
-		local handle = routines.handle(id)
-		local bufnr = handle and history.get_buffer_from_handle(handle.id)
-		if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+	local buffers, seen = {}, {}
+	if not showing then
+		return buffers
+	end
+	local function add(bufnr)
+		if bufnr and vim.api.nvim_buf_is_valid(bufnr) and not seen[bufnr] then
+			seen[bufnr] = true
 			table.insert(buffers, bufnr)
 		end
 	end
+	for _, id in ipairs(showing.snapshot.order) do
+		local handle = routines.handle(id)
+		local made = handle and showing.made[handle.id]
+		add(handle and (history.get_buffer_from_handle(handle.id) or (made and made.was ~= "placeholder" and made.buf or nil)))
+	end
+	local outside = {}
+	for _, made in pairs(showing.made) do
+		if made.was ~= "placeholder" and not seen[made.buf] then
+			table.insert(outside, made.buf)
+		end
+	end
+	table.sort(outside)
+	for _, bufnr in ipairs(outside) do
+		add(bufnr)
+	end
 	return buffers
+end
+
+---Check if a buffer is one the preview borrowed, which the bufferline draws dimmed, as a closed file.
+---
+---@param bufnr Bufnr The buffer
+---@return boolean borrowed
+function M.borrowed(bufnr)
+	for _, made in pairs(showing and showing.made or {}) do
+		if made.buf == bufnr and made.was ~= "placeholder" then
+			return true
+		end
+	end
+	return false
 end
 
 ---Redraw the UI once what shows changed.
@@ -275,8 +359,8 @@ end
 ---A cycle running shows nothing, and says so, and so does a current file whose name another buffer
 ---has; a text that's lost shows nothing, its reader having said so.
 ---
----@param snapshot Snapshot
----@param winid WinId
+---@param snapshot Snapshot The snapshot to show
+---@param winid WinId The window to show it in
 ---@return boolean shown
 function M.start(snapshot, winid)
 	if require('frogman.domains.navigation').is_cycling() then
@@ -292,7 +376,11 @@ function M.start(snapshot, winid)
 		M.cancel()
 	end
 	local c = slots_of(snapshot)
-	showing = { window = winid, snapshot = snapshot, before = vim.api.nvim_win_get_buf(winid), made = {},
+	local known = {}
+	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+		known[bufnr] = { loaded = vim.api.nvim_buf_is_loaded(bufnr), listed = vim.bo[bufnr].buflisted }
+	end
+	showing = { window = winid, snapshot = snapshot, before = vim.api.nvim_win_get_buf(winid), made = {}, known = known,
 		tracked = require('frogman.domains.window').data.crux[winid] ~= nil }
 	local found, bufnr, why = true, nil, nil
 	if c then
@@ -357,8 +445,97 @@ function M.step(direction)
 	end
 end
 
----Leave the snapshot: its window goes back to what it showed, its slots untouched, and history
----attaches again on the window you're in, as a cycle's cancel attaches it (`attach_on_landing`).
+---Borrow a buffer `:e` opened in the snapshot's window, as a step borrows a closed file: a file frogman
+---knows by its handle, one it doesn't know by its buffer, and a file the slot keys call gone from disk as
+---its placeholder while the window still shows it, the buffer `:e` opened going back. An open file, one
+---the preview made or borrowed already, and something frogman doesn't track are left as they are.
+---
+---@param bufnr Bufnr The buffer `:e` opened there, which a later `:e` in the same batch may have replaced
+---@return nil
+function M.borrow(bufnr)
+	if not showing or not vim.api.nvim_win_is_valid(showing.window) or not vim.api.nvim_buf_is_valid(bufnr) then
+		return
+	end
+	for _, made in pairs(showing.made) do
+		if made.buf == bufnr then
+			return
+		end
+	end
+	if history.get_hash_from_buffer(bufnr) ~= nil or not history.routines.is_trackable(bufnr) then
+		return
+	end
+	local before = showing.known[bufnr]
+	local made = { buf = bufnr, was = before == nil and "made" or (before.loaded and "loaded" or "unloaded"),
+		listed = before ~= nil and before.listed }
+	local name = vim.api.nvim_buf_get_name(bufnr)
+	local id = name ~= "" and history.get_handle_from_filepath(name) or nil
+	if id and require('frogman.domains.window').routines.is_missing(id) then
+		if vim.api.nvim_win_get_buf(showing.window) == bufnr then
+			vim.api.nvim_win_set_buf(showing.window, buffer_for(id))
+		end
+		vim.b[bufnr].frogman_unwritten = nil -- :e's new-file mark, which an unloaded buffer would keep for its reopen
+		give_back(made)
+	else
+		showing.made[id or ("new:" .. bufnr)] = made -- listed by the :e, its tab while it's borrowed
+	end
+	repaint()
+end
+
+---Note a write of a buffer the preview borrowed, which counts as an edit once the preview ends.
+---
+---@param bufnr Bufnr The buffer written
+---@return nil
+function M.written(bufnr)
+	for _, made in pairs(showing and showing.made or {}) do
+		if made.buf == bufnr then
+			made.written = true
+		end
+	end
+end
+
+---Put the snapshot's window back on what it showed before it. When that buffer can't come back, wiped
+---or deleted since, the window shows its current slot, the file reopened when it's closed, its visit in
+---that window, or, with none, an empty buffer. A borrowed file it reopens is opened for real, as a
+---commit opens the one it lands on.
+---
+---@param was table The preview that showed
+---@return nil
+local function show_earlier(was)
+	if not vim.api.nvim_win_is_valid(was.window) then
+		return
+	end
+	local before = was.known[was.before]
+	if vim.api.nvim_buf_is_valid(was.before) and (vim.api.nvim_buf_is_loaded(was.before) or not (before and before.loaded)) then
+		vim.api.nvim_win_set_buf(was.window, was.before)
+		return
+	end
+	-- a window frogman never took in has only what the preview showed it, which the cancel takes back
+	local triquetra = was.tracked and require('frogman.domains.window').data.crux[was.window] or nil
+	local id = triquetra and triquetra.current_slot
+	local bufnr = id and history.get_buffer_from_handle(id)
+	if id and bufnr == nil then
+		local made = was.made[id]
+		if made and made.was ~= "placeholder" and vim.api.nvim_buf_is_valid(made.buf) then
+			was.made[id] = nil
+			vim.api.nvim_win_call(was.window, function()
+				open_for_real(id, made, edited(made))
+			end)
+			bufnr = history.get_buffer_from_handle(id)
+		else
+			vim.api.nvim_win_call(was.window, function()
+				bufnr = history.routines.reopen_handle(id)
+			end)
+		end
+	end
+	if bufnr == nil or not vim.api.nvim_buf_is_valid(bufnr) then
+		bufnr = vim.api.nvim_create_buf(true, false) -- a new buffer, as :enew shows one
+	end
+	vim.api.nvim_win_set_buf(was.window, bufnr)
+end
+
+---Leave the snapshot: its window goes back to what it showed (`show_earlier`), its slots untouched,
+---and history attaches again on the window you're in, as a cycle's cancel attaches it
+---(`attach_on_landing`).
 ---
 ---@return nil
 function M.cancel()
@@ -367,11 +544,9 @@ function M.cancel()
 	end
 	local was = showing
 	showing = nil
-	if vim.api.nvim_win_is_valid(was.window) and vim.api.nvim_buf_is_valid(was.before) then
-		vim.api.nvim_win_set_buf(was.window, was.before)
-	end
+	show_earlier(was)
+	release(was, nil) -- before history attaches, so a window still showing a borrow doesn't take it in
 	require('frogman.domains.navigation.routines').attach_on_landing()
-	release(was, nil)
 	-- a window frogman never took in got a triquetra from what the preview showed it; the cancel takes it back
 	local window = require('frogman.domains.window')
 	if not was.tracked and vim.api.nvim_win_is_valid(was.window) and window.data.crux[was.window] then
@@ -394,6 +569,8 @@ function M.commit()
 		return
 	end
 	local winid, snapshot = showing.window, showing.snapshot
+	local ledger = require('frogman.domains.ledger')
+	local before = ledger.slots(winid)
 	local shown, landing = vim.api.nvim_win_get_buf(winid), nil
 	for id, made in pairs(showing.made) do
 		if made.buf == shown and made.was == "placeholder" then
@@ -421,8 +598,9 @@ function M.commit()
 	for key, value in pairs(map_of(snapshot.dsm)) do
 		triquetra.displacement_secondary_map[key] = value
 	end
-	if left and left ~= c then
-		-- the way back: the arrangement the preview replaced, as swap notes on the buffer it left
+	if left then
+		-- the way back: the arrangement the preview replaced, as swap notes on the buffer it left, the
+		-- snapshot's own current too
 		if old_t and old_t ~= left then
 			triquetra.displacement_ternary_map[left .. "-swap"] = old_t
 		end
@@ -448,8 +626,6 @@ function M.commit()
 	triquetra.primary_enabled = snapshot.primary_enabled
 	if require('frogman.configs').bufferline.history_view == "window" then
 		-- the stored order into the window's own history, the first drawn the newest
-		local own = history.data.crux_internals.window[winid] or {}
-		history.data.crux_internals.window[winid] = own
 		local order = {}
 		for _, id in ipairs(snapshot.order) do
 			local handle = routines.handle(id)
@@ -457,37 +633,34 @@ function M.commit()
 				table.insert(order, handle.id)
 			end
 		end
-		for i = #order, 1, -1 do
-			own[order[i]] = history.data.history_index
-			history.data.history_index = history.data.history_index + 1
-		end
+		history.routines.lay_in_order(winid, order)
 	end
 	showing = nil
 	vim.api.nvim_set_current_win(winid)
-	history.sm:to(history.states.ATTACHED, { buf = vim.api.nvim_win_get_buf(winid), pick = true }, history.states.mode.UPDATE)
+	history.sm:to(history.states.ATTACHED, { buf = vim.api.nvim_win_get_buf(winid), pick = true, commit = true },
+		history.states.mode.UPDATE)
 	window.routines.enforce_note_maps_policy(triquetra)
+	ledger.slots_moved("committed", winid, before, { words = "snapshot committed" })
 	repaint()
 end
 
----Forget a snapshot showing, with no window switched, as a whole-editor load starts from nothing.
+---End a snapshot showing as a load starts over: what it made or borrowed goes back, and what you
+---edited is opened for real, as a cancel releases them. At a whole-editor load its window goes back to
+---what it showed, as a cancel puts it back (`show_earlier`), history attaching with the load; at a tab
+---session's load into its tab, the window is the load's to lay out.
 ---
----What it made or borrowed and no window shows goes back as a release gives it back, but one you
----edited, which keeps its buffer.
----
+---@param whole boolean Whether it's a whole-editor load, before the windows' own teardown
 ---@return nil
-function M.teardown()
+function M.teardown(whole)
 	local was = showing
 	showing = nil
-	for _, made in pairs(was and was.made or {}) do
-		local buf = made.buf
-		if vim.api.nvim_buf_is_valid(buf) and #vim.fn.win_findbuf(buf) == 0 and not vim.bo[buf].modified then
-			if made.was == "unloaded" then
-				vim.api.nvim_buf_delete(buf, { unload = true })
-			elseif made.was ~= "loaded" then
-				vim.api.nvim_buf_delete(buf, { force = true })
-			end
-		end
+	if not was then
+		return
 	end
+	if whole then
+		show_earlier(was)
+	end
+	release(was, nil)
 end
 
 return M

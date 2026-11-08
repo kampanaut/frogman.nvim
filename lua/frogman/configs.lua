@@ -165,7 +165,7 @@ local defaults = {
 			reopened = "↑", forgotten = "∅", note_dropped = "⌫", gone = "✗", back = "✓", repair = "⚒", repointed = "⟲",
 			landed = "⤳", undone = "↶", dropped = "⊘", cleared = "⊘", rewritten = "✎", cancelled = "⇤", loaded = "◆",
 			fresh = "◆", saved = "◇", refreshed = "◇", tab_closed = "◇", copied = "⧉", moved = "⇢", detached = "≡",
-			detached_left = "≡",
+			detached_left = "≡", taken = "⊡", committed = "⊞",
 		},
 		ascii = {
 			list = "#", closed = "v", tag = "@", more = "...", group = "*",
@@ -177,7 +177,7 @@ local defaults = {
 			reopened = "^", forgotten = "0", note_dropped = "x", gone = "X", back = "+", repair = "!", repointed = "~",
 			landed = ">", undone = "<", dropped = "/", cleared = "/", rewritten = "*", cancelled = "|", loaded = "L",
 			fresh = "L", saved = "S", refreshed = "S", tab_closed = "S", copied = "=", moved = ">", detached = "#",
-			detached_left = "#",
+			detached_left = "#", taken = "o", committed = "O",
 		},
 	},
 	formatters = {}, -- closed_entry, trail_step, trail_move, trail_header: each gives {text, highlight} chunks, or nil for frogman's own

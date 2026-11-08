@@ -20,7 +20,8 @@ local M = {
 ---Save current session to file.
 ---
 ---The session's directory is read here, the global one for the whole editor or the tab's for a
----tab session. Throws when the editor replayed a dump, since its state isn't a session.
+---tab session. Throws when the editor replayed a dump, since its state isn't a session. While a
+---snapshot shows it's refused, with a WARN, but as the editor quits, when the preview ends first.
 ---
 ---@param name string|nil The session's name as the session manager passes it (nil for a nameless save)
 ---@param opts {tab: integer|nil}|nil Options (`tab` is the tabpage of a tab session)
@@ -29,6 +30,16 @@ function M.save_session(name, opts)
 	if data.replayed then
 		-- a replay planted another editor's state: it isn't this project's session, and it isn't saved
 		error("frogman: this editor replayed a dump, so its state isn't a session, and it isn't saved.", 0)
+	end
+	local preview = package.loaded['frogman.domains.snapshots.preview']
+	if preview and preview.active() then
+		if vim.v.exiting == vim.NIL then
+			-- what the preview shows isn't the window's: nothing's saved until it's taken or left
+			vim.notify("frogman: a snapshot is showing, so the session isn't saved: <M-v> takes it, and opening " ..
+				"the snapshot list or going to another window leaves it.", vim.log.levels.WARN)
+			return
+		end
+		preview.cancel() -- the editor quits: the window as it was is what's saved
 	end
 	require('frogman.settle').drain() -- the editor as it stands, with nothing still settling
 	local directory = vim.fn.getcwd(-1, -1)
@@ -188,10 +199,15 @@ function M.init_autocmds(group)
 	})
 
 	-- Records frogman writes itself: every known session's, as the editor quits (nothing scheduled
-	-- runs after this), and an open No Name text's, as it's edited.
+	-- runs after this), and an open No Name text's, as it's edited. A snapshot showing ends first, so
+	-- the records, and a session manager's save after them, have the window as it was.
 	vim.api.nvim_create_autocmd("VimLeavePre", {
 		group = group,
 		callback = function()
+			local preview = package.loaded['frogman.domains.snapshots.preview']
+			if preview and preview.active() then
+				preview.cancel()
+			end
 			require('frogman.settle').drain() -- a write still settling, `:wq name`, is a move by then
 			routines.write_records(true)
 		end,

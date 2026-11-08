@@ -11,6 +11,14 @@ local history = require('frogman.domains.history')
 
 local bufferline_state = data.bufferline_state
 
+---Check if a buffer is one a snapshot showing borrowed, which the bufferline draws dimmed, as a closed file.
+---@param bufnr Bufnr The buffer cokeline draws
+---@return boolean borrowed
+local function borrowed(bufnr)
+	local preview = package.loaded['frogman.domains.snapshots.preview']
+	return preview ~= nil and preview.borrowed(bufnr)
+end
+
 local configs = require("frogman.configs")
 
 -- Load hooks to extend other domains' state machines
@@ -305,15 +313,17 @@ function M.bufferline.get_mark_labels(bufnr)
 end
 
 ---Get buffer foreground theme color.
----@param bufnr Bufnr
----@param is_focused boolean
+---@param bufnr Bufnr The buffer cokeline draws
+---@param is_focused boolean Whether it's the focused buffer
 ---@return HexColor color Hex color code for buffer
 function M.bufferline.get_theme_fg_color(bufnr, is_focused)
 	local ctriquetra = bufferline_state.current_window_triquetra
 	if not ctriquetra then
 		require('frogman.domains.ledger').never("This should not happen: No current triquetra found.")
 	end
-	if bufnr == ctriquetra.primary_bufnr then
+	if borrowed(bufnr) then
+		return configs.colors.trail.dim -- dimmed, as a closed file
+	elseif bufnr == ctriquetra.primary_bufnr then
 		return configs.colors.primary.active
 	elseif bufnr == ctriquetra.secondary_bufnr then
 		return configs.colors.secondary.focused.bufnr
@@ -350,14 +360,16 @@ function M.bufferline.get_theme_bg_color(is_focused)
 end
 
 ---Get buffer foreground theme color by buffer slot.
----@param bufnr Bufnr
+---@param bufnr Bufnr The buffer cokeline draws
 ---@return HexColor
 local function get_theme_fg_by_slot(bufnr)
 	local ctriquetra = bufferline_state.current_window_triquetra
 	if not ctriquetra then
 		require('frogman.domains.ledger').never("This should not happen: No current triquetra found.")
 	end
-	if bufnr == ctriquetra.secondary_bufnr then
+	if borrowed(bufnr) then
+		return configs.colors.trail.dim -- dimmed, as a closed file
+	elseif bufnr == ctriquetra.secondary_bufnr then
 		return configs.colors.secondary.focused.bufnr
 	elseif bufnr == ctriquetra.primary_bufnr and bufnr == ctriquetra.current_bufnr then
 		return configs.colors.primary.active
@@ -420,9 +432,13 @@ function M.bufferline.cokeline.create_buffer_components()
 			fg = colors.base.focused.fg,
 			truncation = { priority = 1 }
 		},
-		-- a file gone from disk shows, dimmed, where it went missing
+		-- a file gone from disk shows, dimmed, where it went missing, and one a snapshot showing borrowed the
+		-- closed glyph
 		missing = {
 			text = function(buffer)
+				if borrowed(buffer.number) then
+					return routines.glyphs().closed .. ' '
+				end
 				local id = history.get_handle_from_buffer(buffer.number)
 				local handle = id and history.handles.get(id)
 				local tag = handle and handle.tag

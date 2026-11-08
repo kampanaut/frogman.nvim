@@ -21,7 +21,7 @@ local FAMILY = {
 	gone = "Gone", back = "Back", repair = "Repair", repointed = "Slot", landed = "Slot", undone = "Slot",
 	dropped = "Slot", cleared = "Slot", cancelled = "Cycle", loaded = "Session", fresh = "Session", saved = "Session",
 	refreshed = "Session", tab_closed = "Session", copied = "Rename", moved = "Rename", detached = "List",
-	detached_left = "List",
+	detached_left = "List", taken = "Slot", committed = "Slot",
 }
 
 -- The moves whose subject is a list, which gf shows in the closed lists.
@@ -36,7 +36,7 @@ local PLURAL = {
 	closed = "closed", reopened = "reopened", forgotten = "forgotten", note_dropped = "notes dropped",
 	rewritten = "notes rewritten", gone = "gone from disk", back = "back on disk", repair = "repairs",
 	repointed = "repointed", landed = "landed", undone = "undone", dropped = "dropped", cleared = "cleared",
-	cancelled = "cancelled", copied = "copied", moved = "moved",
+	cancelled = "cancelled", copied = "copied", moved = "moved", taken = "snapshots taken", committed = "snapshots committed",
 }
 
 -- The tally: each family, in order, with the kind whose glyph stands for it.

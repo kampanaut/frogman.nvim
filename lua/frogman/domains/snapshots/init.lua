@@ -52,6 +52,10 @@ end, 7, true, history.handles.states.mode.FORGET)
 -- a load from idle starts from nothing, as at startup: no snapshot, before the handles go
 local storageSM = require('frogman.domains.storage.sm')
 local storageStates = require('frogman.domains.storage.states')
+-- a snapshot showing ends first, while the windows still have their slots for its window to go back by
+storageSM:on(storageStates.IDLE, storageStates.BARE, "preview_teardown", function()
+	M.preview.teardown(true)
+end, 1.5, true)
 storageSM:on(storageStates.IDLE, storageStates.BARE, "snapshots_teardown", function()
 	routines.teardown()
 end, 2.6, true)
@@ -59,7 +63,8 @@ end, 2.6, true)
 ---Create the snapshots domain's autocmds in frogman's augroup.
 ---
 ---Called by setup(), so nothing runs at require. A closed window's snapshots are held over in its
----session's scope once the editor settles, and the list's keys are mapped on its buffer.
+---session's scope once the editor settles, the list's keys are mapped on its buffer, and while a
+---snapshot shows, what `:e` opens in its window is borrowed and a write of a borrowed buffer noted.
 ---
 ---@param group integer The frogman augroup
 ---@return nil
@@ -77,6 +82,26 @@ function M.init_autocmds(group)
 			local onto = require('frogman.domains.storage').routines.close_onto_entry("window", winid, session, what)
 			if data.by_window[winid] then
 				routines.queue_hold_over(winid, onto)
+			end
+		end,
+	})
+	-- :e in the window a snapshot shows in is a step: what it opens is borrowed once the editor settles
+	vim.api.nvim_create_autocmd("BufEnter", {
+		group = group,
+		callback = function(args)
+			if M.preview.window() == vim.api.nvim_get_current_win() then
+				require('frogman.settle').later("preview borrow", function()
+					M.preview.borrow(args.buf)
+				end)
+			end
+		end,
+	})
+	-- a write of a borrowed buffer is an edit, kept open when the preview ends
+	vim.api.nvim_create_autocmd("BufWritePost", {
+		group = group,
+		callback = function(args)
+			if M.preview.active() then
+				M.preview.written(args.buf)
 			end
 		end,
 	})

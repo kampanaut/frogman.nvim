@@ -829,6 +829,23 @@ function M.construct_crux(winid)
 	data.crux = global_copy
 end
 
+---Lay an order into a window's own history, each file with a fresh time, the first the newest, and
+---draw the window's view from it again.
+---
+---@param winid WinId The window
+---@param ids HandleId[] The files in the order drawn, the first the newest
+---@return nil
+function M.lay_in_order(winid, ids)
+	local own = data.crux_internals.window[winid] or {}
+	data.crux_internals.window[winid] = own
+	for i = #ids, 1, -1 do
+		own[ids[i]] = data.history_index
+		data.history_index = data.history_index + 1
+	end
+	previous_window_constructed = nil -- the view it built for this window is stale now
+	M.construct_crux(winid)
+end
+
 ---Track buffer access in the history timeline.
 ---
 ---Adds or updates buffer access time in the history crux. If no time is provided,

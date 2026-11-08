@@ -40,7 +40,8 @@ history.sm:on("*", "*", "enforce_editor_policy", function(context, _, _)
 	if (context.mode == history.states.mode.DELETE) and context.buf then
 		routines.enforce_editor_policy(context.buf)
 	else
-		routines.enforce_editor_policy()
+		-- a snapshot's commit lands in the window you're in, and its pick's reconcile (2) slots it
+		routines.enforce_editor_policy(nil, context.commit and vim.api.nvim_get_current_win() or nil)
 	end
 end, 1.8, true)
 

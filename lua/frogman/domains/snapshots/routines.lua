@@ -260,6 +260,8 @@ function M.take(winid)
 	table.insert(data.by_window[winid], snapshot)
 	require('frogman.held').note_session(winid)
 	hold(snapshot)
+	local ledger = require('frogman.domains.ledger')
+	ledger.move("taken", { subject = tostring(winid), name = ledger.window_name(winid), words = "snapshot taken" })
 	vim.notify("frogman: snapshot taken: window " .. vim.api.nvim_win_get_number(winid) .. " has " ..
 		#data.by_window[winid] .. ".", vim.log.levels.INFO)
 	return snapshot
@@ -527,7 +529,7 @@ function M.teardown()
 	data.by_window, data.held, data.pending = {}, {}, {}
 	local preview = package.loaded['frogman.domains.snapshots.preview']
 	if preview then
-		preview.teardown()
+		preview.teardown(true) -- a load from bare and a fresh start; from idle it's ended before the windows' teardown
 	end
 end
 
