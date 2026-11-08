@@ -43,7 +43,7 @@ This works for all plugin managers.
 
 ```lua
 {
-    "kampanaut/frogman",
+    "kampanaut/frogman.nvim",
     -- dir = "~/Projects/nvim/cavediver",
     config = true,
     dependencies = {
@@ -110,7 +110,7 @@ It doesn't care which session manager you use, it just needs these to happen:
         })
     end,
     dependencies = {
-        "kampanaut/frogman"
+        "kampanaut/frogman.nvim"
     }
 },
 ```
@@ -190,7 +190,7 @@ to your current buffer.
     dependencies = {
         "nvim-lua/plenary.nvim", -- Required for v0.4.0+
         "nvim-tree/nvim-web-devicons", -- If you want devicons
-        "kampanaut/frogman"
+        "kampanaut/frogman.nvim"
     },
 }
 ```

@@ -442,4 +442,16 @@ T['T907 [char] (A19, P2, DESK.md:766) a delete\'s close runs once the editor set
 	eq({ during = during, after = child.closed(), trigger = trigger }, { during = '', after = 'b', trigger = 'BufDelete b.txt' })
 end
 
+T['T1193 [char] (A16, P9, DESK.md:2391, :2392) <M-S-w> past a newest entry gone from disk opens the next one that\'s there'] = function()
+	child.steps({ ':e d', ':e e', ':e f', '<M-.>' })
+	child.cmd('bdelete e.txt')
+	child.settle()
+	eq(child.closed(), 'f,e')
+	child.lua('os.remove(_G.FRG_TEST.root .. "/e.txt")')
+	child.messages()
+	child.step('<M-S-w>')
+	child.settle()
+	eq({ shown = child.shown(), closed = child.closed() }, { shown = 'f', closed = 'e' })
+end
+
 return T

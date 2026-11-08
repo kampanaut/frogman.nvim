@@ -5383,4 +5383,78 @@ T['T1151 [char] (S2 Closed-stack picker, DESK.md:1730, :1733) a header\'s copy p
 	eq({ prompts = #child.prompts(), cursor = child.lua('return vim.api.nvim_win_get_cursor(0)[1]') }, { prompts = 1, cursor = t })
 end
 
+T['T1194 [char] (M5, S1, DESK.md:2391, :2392) the lists a file came off when it was opened again are saved with the session'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	child.cmd('bdelete a.txt')
+	child.settle()
+	child.steps({ ':e a' })
+	local before = child.lua([[
+		local H = require('frogman.domains.history')
+		return vim.tbl_keys(H.data.came_from[H.get_handle_from_filepath(_G.FRG_TEST.root .. '/a.txt')] or {})
+	]])
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'a')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	eq({ before = before, after = child.lua([[
+		local H = require('frogman.domains.history')
+		return vim.tbl_keys(H.data.came_from[H.get_handle_from_filepath(_G.FRG_TEST.root .. '/a.txt')] or {})
+	]]) }, { before = { '' }, after = { '' } })
+end
+
+T['T1196 [char] (S2, DESK.md:2391, :2392) after Neovim\'s :restart session, frogman runs every load of the startup again, each tab session into its own tab'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(Misc.save(child), { true })
+	child.cmd('tabnew')
+	child.steps({ ':e c', ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	local dir = vim.fn.tempname()
+	vim.fn.mkdir(dir, 'p')
+	local session = dir .. '/restart_session_T1196xy'
+	child.cmd('mksession! ' .. vim.fn.fnameescape(session))
+
+	S2.start_restarted(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	child.lua('pcall(require("frogman").load_session, vim.fn.getcwd())')
+	child.cmd('noautocmd tabnew')
+	child.cmd('noautocmd edit d.txt')
+	child.lua([[
+		pcall(require('frogman').load_session, 'u', { tab = vim.api.nvim_get_current_tabpage() })
+		vim.cmd('source ' .. vim.fn.fnameescape(...))
+	]], { session })
+	child.settle(300)
+	local tabs = child.lua('return vim.api.nvim_list_tabpages()')
+	local second = child.lua('return vim.api.nvim_tabpage_get_win(...)', { tabs[2] })
+	eq({ loads = S2.loads(child), tabs = #tabs, slots = child.slots(second) }, { loads = 4, tabs = 2, slots = '⦉c⦊ [d] ⟦-⟧' })
+end
+
+T['T1200 [char] (S2, DESK.md:2391, :2392) after Neovim\'s :restart session, a whole-editor load the startup made before another isn\'t run again'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child, 'one'), { true })
+	child.steps({ ':e c', ':e d' })
+	eq(S2.save(child, 'two'), { true })
+	local dir = vim.fn.tempname()
+	vim.fn.mkdir(dir, 'p')
+	local session = dir .. '/restart_session_T1200xy'
+	child.cmd('mksession! ' .. vim.fn.fnameescape(session))
+
+	S2.start_restarted(child, s)
+	Misc.restore(child, { 'a', 'b', 'c', 'd' }, 'd')
+	child.lua([[
+		pcall(require('frogman').load_session, 'one')
+		pcall(require('frogman').load_session, 'two')
+		vim.cmd('source ' .. vim.fn.fnameescape(...))
+	]], { session })
+	child.settle(300)
+	eq({ loads = S2.loads(child), session = child.lua('local s = require("frogman.domains.storage").data.editor_session; return s and s.name') },
+		{ loads = 3, session = 'two' })
+end
+
 return T

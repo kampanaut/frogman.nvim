@@ -1448,4 +1448,36 @@ T['T1153 [char] (A27, DESK.md:1859) an editor\'s own steps keep the order it mad
 	eq(got, { 'a.txt', 'b.txt' })
 end
 
+T['T1197 [char] (A27, DESK.md:2391, :2392) the trail\'s view reads its page list again when another write adds a day while it\'s open'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e x' })
+	child.cmd('bdelete a.txt')
+	child.settle(300)
+	eq(S2.save(child), { true })
+	child.cmd('FrogmanTrail')
+	child.settle(100)
+	-- another editor's write: a page for an earlier day, listed in the main file
+	child.lua([[
+		local st, crypto = require('frogman.domains.storage').routines, require('frogman.domains.storage.crypto')
+		local dir = vim.fn.getcwd(-1, -1)
+		local main = require('frogman.configs').session_dir .. vim.fn.sha256(dir)
+		local f = io.open(main, 'rb'); local bytes = f:read('*a'); f:close()
+		local salt = bytes:sub(5, 4 + crypto.salt_length)
+		local key = st.key_for(dir, salt)
+		local day = '2026-01-02'
+		local page = { steps = { { seq = 1, time = os.time({ year = 2026, month = 1, day = 2, hour = 10 }), epoch = '1.000000-0001',
+			cause = 'keymap', trigger = 'earlier', names = {}, events = {}, moves = { { kind = 'closed', name = 'old.txt', lists = { 'editor' } } } } } }
+		st.write_atomic(main .. '.d/planted.trail', crypto.seal(key, vim.json.encode(page), 'CDV1trail\n' .. day))
+		local data = st.read_session(dir, nil)
+		data.trail[day] = 'planted.trail'
+		local header = 'CDV1' .. salt
+		st.write_atomic(main, header .. crypto.seal(key, vim.json.encode(data), header))
+	]])
+	child.type_keys('H')
+	child.settle(100)
+	local text = table.concat(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), '\n')
+	eq({ day = text:find('02 Jan 2026', 1, true) ~= nil, step = text:find('old.txt', 1, true) ~= nil }, { day = true, step = true }) -- the header's date
+end
+
 return T

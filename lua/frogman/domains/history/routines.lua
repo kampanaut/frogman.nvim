@@ -442,6 +442,43 @@ function M.open_out_of_pools(id)
 	return named_lists(left)
 end
 
+---Get the lists each file came off when it was opened again, by the files' hashes, as a session file
+---keeps them: a list's id for each.
+---
+---@return table<Filehash, string[]>|nil came_from None when no file has any
+function M.came_from_by_hash()
+	local out = {}
+	for id, pools in pairs(data.came_from) do
+		local filehash = M.get_hash_from_handle(id)
+		if filehash and next(pools) then
+			local ids = vim.tbl_keys(pools)
+			table.sort(ids)
+			out[filehash] = ids
+		end
+	end
+	return next(out) and out or nil
+end
+
+---Read back the lists the files came off as a session file keeps them, for the files whose handles
+---the load made, beside what memory holds of them.
+---
+---@param saved table<Filehash, string[]>|nil The file's `came_from`
+---@return nil
+function M.restore_came_from(saved)
+	for filehash, ids in pairs(type(saved) == "table" and saved or {}) do
+		local handle = handles.of_hash(filehash)
+		if handle and type(ids) == "table" then
+			local into = data.came_from[handle.id] or {}
+			for _, pool_id in ipairs(ids) do
+				if type(pool_id) == "string" then
+					into[pool_id] = true
+				end
+			end
+			data.came_from[handle.id] = next(into) and into or nil
+		end
+	end
+end
+
 ---Take a file off every pool's closed stack, remembering nothing.
 ---
 ---Used for a file that's gone rather than opened again, so no pool is kept for its next close.
@@ -1388,7 +1425,7 @@ end
 ---@return Bufnr|nil bufnr Buffer number of the reopened buffer, or nil if no closed buffers exist
 function M.reopen_last_closed()
 	local closed = M.current_pool().closed -- the pool of the tab you're in
-	if #closed == 0 then
+	local function none_here()
 		-- the other lists may hold some, in memory or in the whole editor's file alone: say where they are
 		local files = require('frogman.domains.storage').routines.file_only_closed()
 		for _, pool in pairs(M.pools()) do
@@ -1406,16 +1443,28 @@ function M.reopen_last_closed()
 		else
 			vim.notify("No closed buffers to reopen.", vim.log.levels.WARN)
 		end
+	end
+	if #closed == 0 then
+		none_here()
 		return nil
 	end
 
-	local id = closed[#closed]
-	local bufnr, reason = M.reopen_handle(id)
-	if bufnr then
-		vim.api.nvim_set_current_buf(bufnr)
-	elseif closed[#closed] == id and reason ~= "taken" then
-		vim.notify(require('frogman.domains.ui').routines.get_smart_basename(id) ..
+	-- the newest first: one gone from disk stays on the list, and the next one that's there opens
+	local ids = vim.list_slice(closed)
+	for i = #ids, 1, -1 do
+		local bufnr, reason = M.reopen_handle(ids[i])
+		if bufnr then
+			vim.api.nvim_set_current_buf(bufnr)
+			return
+		elseif reason == "taken" then
+			return -- another buffer has its name, which the reopen said
+		end
+	end
+	if #closed > 0 then
+		vim.notify(require('frogman.domains.ui').routines.get_smart_basename(closed[#closed]) ..
 			" isn't on disk right now; it stays on the closed stack.", vim.log.levels.WARN)
+	else
+		none_here() -- every entry a text that's lost, gone from the list as it was tried
 	end
 end
 

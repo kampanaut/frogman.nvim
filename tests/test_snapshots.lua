@@ -2638,7 +2638,7 @@ T['T1177 [char] (M16, M5, DESK.md:1945, :1946) a borrowed No Name text whose rea
 	eq({ before = before, after = texts_on_list(), lost = lost }, { before = 1, after = 1, lost = 1 })
 end
 
-T['T1178 [char] (M16, M14, DESK.md:1945) :e onto a file gone from disk during a preview leaves no never-written mark behind'] = function()
+T['T1178 [char] (M16, M14, DESK.md:1945) :e onto a file gone from disk during a preview leaves nothing counting the file never written'] = function()
 	shown_with_closed('c')
 	child.lua('os.remove(_G.FRG_TEST.root .. "/c.txt")')
 	child.lua('require("frogman.domains.history").routines.cleanup_system()')
@@ -2938,6 +2938,19 @@ T['T1191 [char] (M16, S1 Load, DESK.md:1936, :1937) a file written elsewhere wit
 	local got = snapshots(win)
 	local broke = #vim.tbl_filter(function(m) return m.msg:find('broke its own rules', 1, true) ~= nil end, child.messages())
 	eq({ n = #got, slots = got[1] and got[1].slots, broke = broke }, { n = 1, slots = '⦉-⦊ [c] ⟦b⟧', broke = 0 })
+end
+
+T['T1199 [char] (M16, DESK.md:1941, :1942) the list draws the queue\'s head in the primary\'s colour with the switch off, as cokeline does'] = function()
+	child.lua('vim.o.columns = 200')
+	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d', '<M-;><M-c>', '<M-;><M-x>' })
+	eq(child.primary(), '[d]off')
+	child.steps({ TAKE, LIST })
+	child.settle(100)
+	local d
+	for _, chunk in ipairs(row_chunks()) do
+		if chunk[1]:match('^  %d+ d%.txt') then d = chunk[2] end
+	end
+	eq(d, 'FrogmanOrderPrimary')
 end
 
 return T

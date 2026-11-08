@@ -97,7 +97,6 @@ local function load(name, opts, restart)
 	end
 	data.loading_batch = data.loading_batch or {}
 	table.insert(data.loading_batch, session)
-	data.last_loaded = { name = name, tab = hint }
 	-- once the batch is over, the window the restore left focused is taken in too. Only that is settle
 	-- work: a key may take the window in sooner, but the flag must wait for the batch to be over, or a
 	-- native restore loads twice.
@@ -126,6 +125,15 @@ local function load(name, opts, restart)
 	if not tab_session then
 		-- a write still waiting would hold the teardown's closes: their lists stay as the files have them
 		routines.drop_pending_records()
+	end
+	if not restart then
+		-- a whole-editor load stands in for every load before it, which its teardown undid; a tab session's
+		-- goes after it, into its tab
+		if tab_session then
+			table.insert(data.loads, { name = name, tab = vim.api.nvim_tabpage_get_number(into or vim.api.nvim_get_current_tabpage()) })
+		else
+			data.loads = { { name = name } }
+		end
 	end
 	local step = ledger.begin(restart and "restart" or "load", vim.fn.fnamemodify(name or directory, ":t"))
 	if tab_session then
@@ -160,20 +168,28 @@ end
 ---@return nil
 function M.init_autocmds(group)
 	-- Neovim's :restart restores its own session after the startup's, and rebuilds the windows, so
-	-- whatever was loaded in this startup is loaded again once that settles, repeat or not.
+	-- the loads this startup made that still stand run again once that settles, in their order, repeat
+	-- or not: the last whole-editor load, and each tab session's after it into its tab of that number.
 	vim.api.nvim_create_autocmd("SourcePost", {
 		group = group,
 		callback = function(args)
 			if
 				vim.v.startreason ~= "restart" or
-				data.last_loaded == nil or
+				#data.loads == 0 or
 				not vim.fn.fnamemodify(args.file or "", ":t"):match("^restart_session_")
 			then
 				return
 			end
-			local name, tab = data.last_loaded.name, data.last_loaded.tab
+			local loads = vim.deepcopy(data.loads)
 			vim.schedule(function()
-				load(name, tab and { tab = vim.api.nvim_get_current_tabpage() } or nil, true)
+				for _, made in ipairs(loads) do
+					local tabpage = nil
+					if made.tab then
+						local tabs = vim.api.nvim_list_tabpages()
+						tabpage = tabs[made.tab] or vim.api.nvim_get_current_tabpage()
+					end
+					load(made.name, tabpage and { tab = tabpage } or nil, true)
+				end
 			end)
 		end,
 	})

@@ -630,4 +630,15 @@ T['T502 [char] (M12) after a load with an untracked window focused, the bufferli
 	eq({ errors = errors(), dump = child.dumped_since(dumps) }, { errors = {}, dump = nil })
 end
 
+T['T1192 [char] (Bug 2, DESK.md:2328, :2329, repro R22) the bufferline toggled off and on brings the tabline back'] = function()
+	child.lua('vim.o.showtabline = 2')
+	child.cmd('FrogmanBufferline')
+	child.settle()
+	child.lua('vim.o.showtabline = 0') -- cokeline zeroes it, having nothing to draw
+	child.cmd('FrogmanBufferline')
+	child.settle()
+	eq({ shown = child.lua('return vim.o.showtabline'), hidden = child.lua('return require("frogman.domains.ui").is_hidden("bufferline")') },
+		{ shown = 2, hidden = false })
+end
+
 return T

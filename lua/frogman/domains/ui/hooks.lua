@@ -22,6 +22,18 @@ storageSM:on(storageStates.IDLE, storageStates.BARE, "ui_teardown", function()
 	data.clear_bufferline_cache()
 end, 4, true)
 
+-- the bufferline's hide notes 'showtabline', and its show sets it back: cokeline zeroes it while it has
+-- nothing to draw and turns it on again only at BufAdd or VimEnter, so a show alone would leave it hidden
+local tabline_shown = nil
+uiMachines.bufferline:on(states.BUFFERLINE.VISIBLE, states.BUFFERLINE.HIDDEN, "note_showtabline", function()
+	tabline_shown = vim.o.showtabline
+end, 0.5, true)
+uiMachines.bufferline:on(states.BUFFERLINE.HIDDEN, states.BUFFERLINE.VISIBLE, "restore_showtabline", function()
+	if vim.o.showtabline == 0 then
+		vim.o.showtabline = (tabline_shown ~= nil and tabline_shown ~= 0) and tabline_shown or 2
+	end
+end, 0.5, true)
+
 -- The toggles: the winbar, the indicators and the bufferline, each drawn again once its new state is set
 for _, machine in ipairs({ uiMachines.winbar, uiMachines.indicators, uiMachines.bufferline }) do
 	machine:on("*", "*", "redraw_toggled", function()

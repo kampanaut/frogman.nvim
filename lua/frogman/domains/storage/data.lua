@@ -11,10 +11,11 @@ local M = {}
 ---@type {name: string|nil, directory: string}[]|false
 M.loading_batch = false
 
----What the last load in this startup loaded, so frogman can load it again after Neovim's own
----:restart session (`name` is nil for a nameless load, `tab` is true when the load had the hint)
----@type {name: string|nil, tab: boolean}|nil
-M.last_loaded = nil
+---The loads this startup made that still stand, in order, so frogman can run each again after Neovim's
+---own :restart session: the last whole-editor load and the tab sessions' loads after it (`name` is nil for
+---a nameless load, `tab` the number of the tab a tab session went into)
+---@type {name: string|nil, tab: integer|nil}[]
+M.loads = {}
 
 ---Whether this editor replayed a flight recorder's dump (its state is then no session's, and
 ---isn't saved)

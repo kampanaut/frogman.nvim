@@ -2142,6 +2142,7 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 			handle.unwritten = true
 		end
 	end
+	history.routines.restore_came_from(saved_data.came_from)
 	-- the tab's windows' histories and the pool's visits were replaced in place, so the next view is
 	-- built afresh, even for the window the last one was built for.
 	history.routines.construct_crux(nil)
@@ -2328,6 +2329,7 @@ function M.load_history(cwd, name)
 				handle.unwritten = true
 			end
 		end
+		history.routines.restore_came_from(saved_data.came_from)
 		if type(saved_data.label) == "string" then
 			history.data.last_label = saved_data.label
 			history.data.label_seen = true
@@ -2540,6 +2542,10 @@ local function narrow(storage)
 	storage.unwritten = storage.unwritten and vim.tbl_filter(function(filehash) return referenced[filehash] end, storage.unwritten)
 	if storage.unwritten and #storage.unwritten == 0 then
 		storage.unwritten = nil
+	end
+	storage.came_from = storage.came_from and only(storage.came_from)
+	if storage.came_from and next(storage.came_from) == nil then
+		storage.came_from = nil
 	end
 end
 
@@ -3958,6 +3964,7 @@ function M.save_history(cwd, name, tab)
 		missing = history.tags_by_hash(), -- where each file gone from disk went missing
 		label = history.data.last_label, -- where you were at this save: the label being left at the next load
 		unwritten = #unwritten > 0 and unwritten or nil, -- files never written
+		came_from = history.routines.came_from_by_hash(), -- the lists each file came off when it was opened again
 		marks = marks().serialise("session", pool and pool.id or ""), -- the session's own marks, when it has some
 		snapshots = snapshots().serialise_held(pool and pool.id or ""), -- the snapshots held over in its scope, when there are some
 		tabs = saved_tabs, -- the plain tabs' marks, when there are some
@@ -4049,17 +4056,37 @@ end
 function M.trail_reader()
 	local ledger = require('frogman.domains.ledger')
 	local session, owner = M.trail_session()
-	local file_path, saved, key
-	if session then
-		file_path = get_session_filepath(session.directory, session.name)
-		saved, key = read_session_file(file_path, session.directory)
-	end
-	local trail = saved and saved.trail or {}
+	local file_path = session and get_session_filepath(session.directory, session.name)
+	local key, trail, stamp = nil, {}, nil
 	local whole = session and ledger.session_of(session.name, session.directory)
 	local pages = {}
+	-- the main file's list of pages, read again whenever the file changed since: another write adds a day,
+	-- and writes a day's page again under a new name, which is read from there
+	local function read_list()
+		if not file_path then
+			return
+		end
+		local stat = vim.uv.fs_stat(file_path)
+		local now = stat and (stat.mtime.sec .. "." .. stat.mtime.nsec .. "/" .. stat.size) or "none"
+		if now == stamp then
+			return
+		end
+		stamp = now
+		local saved
+		saved, key = read_session_file(file_path, session.directory)
+		local fresh = saved and saved.trail or {}
+		for day, page in pairs(fresh) do
+			if trail[day] ~= page then
+				pages[day] = nil
+			end
+		end
+		trail = fresh
+	end
+	read_list()
 	local reader = {}
 	---Get the days the trail has steps of, from its pages and this editor's ledger, oldest first.
 	function reader.days()
+		read_list()
 		local days = {}
 		for day, _ in pairs(trail) do
 			days[day] = true
@@ -4079,6 +4106,7 @@ function M.trail_reader()
 	---reorder them; the editors' are merged by time, a tie going to the editor that started first. Steps
 	---from a page written before steps carried their editor go by their time alone.
 	function reader.steps(day)
+		read_list()
 		if pages[day] == nil then
 			pages[day] = trail[day] and key and read_page(file_path .. ".d/" .. trail[day], key, day) or {}
 		end

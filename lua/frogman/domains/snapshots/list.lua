@@ -242,7 +242,7 @@ local function drawing(snapshot, labels, width)
 		local handle = id and routines.handle(id)
 		return handle and handle.id or nil
 	end
-	local primary = snapshot.primary_enabled and live(snapshot.queue[1]) or nil
+	local primary = live(snapshot.queue[1]) -- the queue's head, whatever the switch, as cokeline colours it
 	local roles = { [live(snapshot.ternary) or false] = "FrogmanOrderTernary", [live(snapshot.current) or false] = "FrogmanOrderCurrent",
 		[live(snapshot.secondary) or false] = "FrogmanOrderSecondary", [primary or false] = "FrogmanOrderPrimary" }
 	local entries = {}
