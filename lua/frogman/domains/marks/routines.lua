@@ -600,6 +600,23 @@ function M.copy_scope(kind, id, to_id)
 	M.hold_scope(kind, to_id)
 end
 
+---Carry a copy of one session's marks into another's, below the groups it has, its held-over groups
+---among them, the two going their own ways after: a tab session's, as its tab is saved as another.
+---
+---@param id string The session's pool id carried from
+---@param to_id string The session's pool id carried into
+---@return nil
+function M.carry_scope(id, to_id)
+	local scope = data.scopes.session[id]
+	if scope == nil then
+		return
+	end
+	local into = data.scopes.session[to_id] or { groups = {} }
+	vim.list_extend(into.groups, vim.deepcopy(scope.groups))
+	data.scopes.session[to_id] = into
+	M.hold_scope("session", to_id)
+end
+
 ---Get what a window shows, as a held-over group names it: its file's name, or its buffer's.
 ---
 ---@param winid WinId The window

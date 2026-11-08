@@ -3263,4 +3263,171 @@ T['T1017 [char] (M16, S1 Load, DESK.md:1697, :1086) a window noted as a load giv
 	eq(child.lua(HELD_WHAT, { '' }), { marks = {}, snapshots = { 'window on c.txt' } })
 end
 
+-- A session file's own marks and held-over snapshots, by file and header: { marks = { "a=c" ... }, held = { ... } }
+local FILE_MARKS = [[
+	local name = ...
+	local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), name) or {}
+	local out = { marks = {}, held = {}, snapshots = #(saved.snapshots or {}) }
+	for _, g in ipairs(saved.marks or {}) do
+		for alias, h in pairs(g.marks or {}) do
+			table.insert(g.held and out.held or out.marks, alias .. '=' .. vim.fn.fnamemodify((saved.paths or {})[h] or h, ':t:r'))
+		end
+	end
+	table.sort(out.marks)
+	table.sort(out.held)
+	return out
+]]
+
+-- A session's scope in memory, the same way: its marks, its held-over groups' marks, and how many held-over
+-- snapshots it has with the ids they carry.
+local SCOPE_MARKS = [[
+	local id = ...
+	local H = require('frogman.domains.history')
+	local out = { marks = {}, held = {}, snapshots = {} }
+	for _, g in ipairs((require('frogman.domains.marks').data.scopes.session[id] or { groups = {} }).groups) do
+		for alias, handle in pairs(g.marks) do
+			local path = H.get_filepath_from_handle(H.handles.resolve(handle))
+			table.insert(g.held and out.held or out.marks, alias .. '=' .. vim.fn.fnamemodify(path or '?', ':t:r'))
+		end
+	end
+	for _, snap in ipairs(require('frogman.domains.snapshots').routines.held_in(id)) do
+		table.insert(out.snapshots, snap.id)
+	end
+	table.sort(out.marks)
+	table.sort(out.held)
+	return out
+]]
+
+-- P3: a tab session saved as another carries a copy of its session's marks; the old keeps its own, in its file.
+T['T1018 [char] (M15, S1 Save, DESK.md:1076-1077, repro P3) a tab session saved as another carries a copy of its session\'s marks'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	child.steps({ "<M-'><M-3>", ':e c', ADD .. 'a>', "<M-'><M-1>" })
+	child.settle(1200) -- t's records written, its mark in t's file
+	eq(child.lua('return { pcall(require("frogman").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local u = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	eq({ u = child.lua(SCOPE_MARKS, { u }), u_file = child.lua(FILE_MARKS, { 'u' }).marks, t_file = child.lua(FILE_MARKS, { 't' }).marks },
+		{ u = { marks = { 'a=c' }, held = {}, snapshots = {} }, u_file = { 'a=c' }, t_file = { 'a=c' } })
+end
+
+-- A tab session saved as another carries a copy of its held-over groups and held-over snapshots too: a split in
+-- t's tab, with no saved entry, marking c under `a` and with a snapshot, closed, so both are held over in t's
+-- scope; the tab saved as u: u's scope holds the held-over group and a copy of the snapshot, under another id,
+-- and t's file keeps its own.
+T['T1019 [char] (M15, M16, S1 Save, DESK.md:1076-1077, :1697) a tab session saved as another carries a copy of its held-over groups and snapshots'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local t = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e c', ADD .. 'a>', '<M-;><M-s>' })
+	child.cmd('close')
+	child.settle(1200) -- held over in t's scope, and written into t's file
+	local before = child.lua(SCOPE_MARKS, { t })
+	eq(child.lua('return { pcall(require("frogman").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local u = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	local got = child.lua(SCOPE_MARKS, { u })
+	local t_file = child.lua(FILE_MARKS, { 't' })
+	local u_file = child.lua(FILE_MARKS, { 'u' })
+	eq({ before = { held = before.held, snapshots = #before.snapshots }, held = got.held, snapshots = #got.snapshots,
+		new_id = got.snapshots[1] ~= before.snapshots[1], t_file = { held = t_file.held, snapshots = t_file.snapshots },
+		u_file = { held = u_file.held, snapshots = u_file.snapshots } },
+		{ before = { held = { 'a=c' }, snapshots = 1 }, held = { 'a=c' }, snapshots = 1, new_id = true, t_file = { held = { 'a=c' }, snapshots = 1 },
+			u_file = { held = { 'a=c' }, snapshots = 1 } })
+end
+
+-- A session's groups in order, each as its name and its marks: { "main a=x", ... }.
+local GROUPS_IN_ORDER = [[
+	local id = ...
+	local H = require('frogman.domains.history')
+	local out = {}
+	for _, g in ipairs((require('frogman.domains.marks').data.scopes.session[id] or { groups = {} }).groups) do
+		local marks = {}
+		for alias, handle in pairs(g.marks) do
+			local path = H.get_filepath_from_handle(H.handles.resolve(handle))
+			table.insert(marks, alias .. '=' .. vim.fn.fnamemodify(path or '?', ':t:r'))
+		end
+		table.sort(marks)
+		table.insert(out, (g.held and 'held ' or '') .. g.name .. ' ' .. table.concat(marks, ','))
+	end
+	return out
+]]
+
+-- A tab session saved as a session that's in memory with marks of its own: what it carries goes below that
+-- session's own, as it is, so its first group still drives the keys; and the tab that held it keeps its own.
+T['T1020 [char] (M15, S1 Save, DESK.md:1076-1077) a tab session saved as a session with marks of its own carries its marks below them'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	child.steps({ "<M-'><M-3>", ':e c', ADD .. 'a>', "<M-'><M-1>" })
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e e' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	child.steps({ "<M-'><M-3>", ':e x', ADD .. 'a>', "<M-'><M-1>" })
+	child.cmd('tabprevious')
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local u = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	local pushed = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_list_tabpages()[2]]')
+	eq({ u = child.lua(GROUPS_IN_ORDER, { u }), pushed = child.lua(GROUPS_IN_ORDER, { pushed }) },
+		{ u = { 'main a=x', 'main a=c' }, pushed = { 'main a=x' } })
+end
+
+-- A detached list's tab saved as another session carries its copy of the marks, as its closed files are.
+T['T1021 [char] (M15, S1 Save, DESK.md:1076-1077) a detached list\'s tab saved as another session carries its copy of the marks'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	child.steps({ "<M-'><M-3>", ':e c', ADD .. 'a>', "<M-'><M-1>" })
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.cmd('tabnext 1')
+	child.settle()
+	local detached = child.lua('return require("frogman.domains.history").data.pools[require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]].detached == true')
+	eq(child.lua('return { pcall(require("frogman").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local u = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	local kept = child.lua([[
+		for id, pool in pairs(require('frogman.domains.history').data.pools) do
+			if pool.detached then return id end
+		end
+	]])
+	eq({ detached = detached, u = child.lua(GROUPS_IN_ORDER, { u }), kept = kept and child.lua(GROUPS_IN_ORDER, { kept }) },
+		{ detached = true, u = { 'main a=c' }, kept = { 'main a=c' } })
+end
+
+-- A plain tab saved as a tab session carries none of the whole editor's marks, and a tab session's tab saved
+-- under its own name again carries nothing twice: the carry is a tab session's, saved as another.
+T['T1022 [char] (M15, S1 Save, DESK.md:1076-1077) only a tab session saved as another carries: a plain tab saved as one carries none of the whole editor\'s marks, and a save under its own name carries nothing twice'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', "<M-'><M-3>", ADD .. 'a>', "<M-'><M-1>" })
+	eq(child.lua('return { pcall(require("frogman").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local u = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	child.steps({ "<M-'><M-3>", ':e c', ADD .. 's>', "<M-'><M-1>" })
+	eq(child.lua('return { pcall(require("frogman").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	eq({ editor = child.lua(GROUPS_IN_ORDER, { '' }), u = child.lua(GROUPS_IN_ORDER, { u }) },
+		{ editor = { 'main a=a' }, u = { 'main s=c' } })
+end
+
 return T

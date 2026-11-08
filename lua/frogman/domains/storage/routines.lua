@@ -3261,6 +3261,12 @@ function M.save_history(cwd, name, tab)
 					end
 				end
 			end
+			if before.id ~= "" then
+				-- a tab session saved as another: the new one gets a copy of its marks, its held-over groups
+				-- among them, and of its held-over snapshots, as its closed files are carried; the old keeps its own
+				marks().carry_scope(before.id, pool.id)
+				snapshots().copy_held(before.id, pool.id)
+			end
 			if before.id ~= "" and next(before.tabs) == nil then
 				M.close_tab_pool(before) -- the session it leaves, with no tab left, is written and goes
 			end
