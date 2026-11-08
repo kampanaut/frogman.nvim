@@ -685,7 +685,30 @@ end
 ---@return nil
 function M.hold_over(session_id, groups, what, saved, once)
 	local scope = M.scope("session", session_id, true)
-	local several = #groups > 1
+	-- each group's marks by the handles they still have: a mark whose file nothing knows goes
+	local kept = {}
+	for i, group in ipairs(groups) do
+		kept[i] = {}
+		for alias, value in pairs(group.marks or {}) do
+			local handle
+			if saved then
+				handle = history.handles.of_hash(value)
+			else
+				handle = M.handle_of(group, alias)
+			end
+			if handle then
+				kept[i][alias] = handle.id
+			end
+		end
+	end
+	-- a group's name goes in its header when another of them keeps marks too: an empty group isn't counted
+	local marked = 0
+	for i, _ in ipairs(groups) do
+		if next(kept[i]) then
+			marked = marked + 1
+		end
+	end
+	local several = marked > 1
 	-- the groups held over before this call: two groups of one entry with the same marks are both kept
 	local before = vim.tbl_filter(function(g) return g.held end, scope.groups)
 	local function held_already(marks)
@@ -696,19 +719,8 @@ function M.hold_over(session_id, groups, what, saved, once)
 		end
 		return false
 	end
-	for _, group in ipairs(groups) do
-		local marks = {}
-		for alias, value in pairs(group.marks or {}) do
-			local handle
-			if saved then
-				handle = history.handles.of_hash(value)
-			else
-				handle = M.handle_of(group, alias)
-			end
-			if handle then
-				marks[alias] = handle.id
-			end
-		end
+	for i, group in ipairs(groups) do
+		local marks = kept[i]
 		if next(marks) and not (once and held_already(marks)) then
 			if not M.first_group(scope) then
 				M.first_group(scope, true) -- the keys keep a group of their own, ahead of what's held over

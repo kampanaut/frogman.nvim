@@ -2972,4 +2972,79 @@ T['T1002 [char] (M15, S1 Load, DESK.md:1087) what a load holds over of an entry 
 	eq(child.lua(C_HELD, { '', win }), { held = 1, held_snapshots = 0, window = 1, window_snapshots = 0 })
 end
 
+-- The names of the held-over groups in a session's scope.
+local HELD_NAMES = [[
+	local out = {}
+	for _, g in ipairs((require('frogman.domains.marks').data.scopes.session[...] or { groups = {} }).groups) do
+		if g.held then table.insert(out, g.name) end
+	end
+	return out
+]]
+
+-- A plain tab's own tab marks held over as a tab session loads into it name the load, not what the tab
+-- showed.
+T['T1005 [char] (M15, S1 Load, DESK.md:1085-1086) a plain tab\'s marks held over as a tab session loads into it name the load'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	child.steps({ ':e b', "<M-'><M-2>", ADD .. 'a>', ':e e', "<M-'><M-1>" })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local pool = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	local names = child.lua(HELD_NAMES, { pool })
+	eq({ n = #names, load = (names[1] or ''):find('^held over · t, loaded into tab 1 · ') ~= nil,
+		tab = (names[1] or ''):find('tab on ', 1, true) ~= nil }, { n = 1, load = true, tab = false })
+end
+
+-- A window entry no window takes, holding one marked group and a group typed in with none: held over at
+-- the load under the load's header alone, the empty group not counted toward naming the group.
+T['T1006 [char] (M15, S1 Load, DESK.md:1085-1086) an entry with one marked group and an empty one is held over under the load\'s header alone'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', ADD .. 'a>', ':e d', OPEN })
+	write_lines(vim.list_extend({ '❖ main', 'a -> c.txt', '❖ feature' }, rows({})))
+	child.cmd('close')
+	child.settle()
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'x' }, 'x')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local names = child.lua(HELD_NAMES, { '' })
+	eq({ n = #names, plain = (names[1] or ''):find(', loaded · ', 1, true) ~= nil, named = (names[1] or ''):find(', main', 1, true) ~= nil },
+		{ n = 1, plain = true, named = false })
+end
+
+-- A window with two marked groups closed while you work leaves one held-over group for each, its group's
+-- name after what the window showed.
+T['T1007 [char] (M15, DESK.md:1085) a window closed with two marked groups leaves one held-over group per group, each named'] = function()
+	child.steps({ ':e a' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e c', ADD .. 'a>', ':e d', OPEN })
+	write_lines(vim.list_extend({ '❖ main', 'a -> c.txt', '❖ feature', 's -> e.txt' }, {}))
+	child.cmd('close')
+	child.settle()
+	child.cmd('close')
+	child.settle(300)
+	local names = child.lua(HELD_NAMES, { '' })
+	table.sort(names)
+	eq({ n = #names, main = (names[2] or ''):find('^held over · window on d%.txt, main · ') ~= nil,
+		feature = (names[1] or ''):find('^held over · window on d%.txt, feature · ') ~= nil }, { n = 2, main = true, feature = true })
+end
+
+-- A plain tab's own tab marks held over as the hint load starts a tab session fresh there name the load too,
+-- the session having no file yet.
+T['T1008 [char] (M15, S1 Load, DESK.md:1085-1086) a plain tab\'s marks held over as the hint load starts a tab session fresh there name the load'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e b', "<M-'><M-2>", ADD .. 'a>', ':e e', "<M-'><M-1>" })
+	eq(child.lua('return { pcall(require("frogman").load_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local pool = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	local names = child.lua(HELD_NAMES, { pool })
+	eq({ n = #names, load = (names[1] or ''):find('^held over · u, loaded into tab 1 · ') ~= nil,
+		tab = (names[1] or ''):find('tab on ', 1, true) ~= nil }, { n = 1, load = true, tab = false })
+end
+
 return T

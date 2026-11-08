@@ -913,15 +913,17 @@ end
 
 ---Hold a tab's tab marks over in a session's scope, as the tab becomes that session's tab.
 ---
----A tab session's tab has no tab marks of its own: its tab mode is its session's.
+---A tab session's tab has no tab marks of its own: its tab mode is its session's. Held over at a load,
+---they name the load; at a save as the session, which isn't a load, what the tab showed.
 ---
----@param tabpage integer
+---@param tabpage integer The tab becoming the session's
 ---@param session_id string The session's pool id
+---@param what string|nil The load, like "proj, loaded into tab 2" (nil at a save)
 ---@return nil
-local function tab_marks_held_over(tabpage, session_id)
+local function tab_marks_held_over(tabpage, session_id, what)
 	local scope = marks().scope("tab", tabpage)
 	if scope then
-		marks().hold_over(session_id, scope.groups, "tab on " .. marks().shows(vim.api.nvim_tabpage_get_win(tabpage)))
+		marks().hold_over(session_id, scope.groups, what or ("tab on " .. marks().shows(vim.api.nvim_tabpage_get_win(tabpage))))
 		marks().drop_scope("tab", tabpage)
 	end
 end
@@ -1847,7 +1849,7 @@ local function start_tab_fresh(directory, name, tabpage)
 	snapshots().drop_pending(tabpage)
 	load_pool = join_for_load(tabpage, name, directory)
 	push_out(load_pool, tabpage)
-	tab_marks_held_over(tabpage, load_pool.id)
+	tab_marks_held_over(tabpage, load_pool.id, vim.fn.fnamemodify(name or directory, ":t") .. ", loaded into tab " .. vim.api.nvim_tabpage_get_number(tabpage))
 	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
 		local bufnr = vim.api.nvim_win_get_buf(winid)
 		if vim.api.nvim_win_get_config(winid).relative == "" and history.routines.is_trackable(bufnr) then
@@ -1910,7 +1912,7 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 	local what = vim.fn.fnamemodify(name or directory, ":t") .. ", loaded into tab " .. vim.api.nvim_tabpage_get_number(tabpage)
 	local gone = restore_snapshots(saved_data, taken, load_pool.id, not open, what)
 	remember_unclaimed(file_path, saved_data, gone, restore_marks(saved_data, taken, load_pool.id, not open, key, scratch_dir, what)) -- before the texts reopen under new hashes
-	tab_marks_held_over(tabpage, load_pool.id)
+	tab_marks_held_over(tabpage, load_pool.id, what)
 	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
 		if window.data.crux[winid] then
 			history.routines.ensure_window_entry(winid)
