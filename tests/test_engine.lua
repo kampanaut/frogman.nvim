@@ -359,7 +359,7 @@ end
 -- R13: a hook on a->b asks for c, which isn't registered (or is disabled), then for a. The failed ask
 -- drops the one queued after it, so a later to('a') runs b->a alone, once a->a is registered for a
 -- stale ask to have something to run.
-T['T941 [char] (M11, DESK.md:919-920, repro R13) a nested ask that fails drops the asks queued after it'] = function()
+T['T941 [char] (M11, DESK.md:1047, repro R13) a nested ask that fails drops the asks queued after it'] = function()
 	local got = child.lua([[
 		local E = require('frogman.engine')
 		local out = {}
@@ -387,7 +387,7 @@ end
 
 -- R14: twelve hooks of one class, registered in an order no sort by name gives, and two general
 -- hooks that run before the rest.
-T['T942 [char] (M11, DESK.md:919-920, repro R14) hooks of one class run in the order they were registered'] = function()
+T['T942 [char] (M11, DESK.md:1047, repro R14) hooks of one class run in the order they were registered'] = function()
 	local got = child.lua(model_with('t942') .. [[
 		local names = { 'k', 'c', 'h', 'a', 'l', 'e', 'j', 'b', 'g', 'd', 'i', 'f' }
 		local ran = {}
@@ -403,10 +403,10 @@ T['T942 [char] (M11, DESK.md:919-920, repro R14) hooks of one class run in the o
 	eq(got, { 'first', 'second', 'k', 'c', 'h', 'a', 'l', 'e', 'j', 'b', 'g', 'd', 'i', 'f' })
 end
 
--- The ties DESK.md:920 lists, each in the order what its hooks read and write needs: the history
+-- The ties DESK.md:1047 lists, each in the order what its hooks read and write needs: the history
 -- registered before the window looks for its triquetra, the window kept before the jump's cancels, and
 -- the save before the hook that only registers the way back to idle.
-T['T943 [char] (M11, DESK.md:919-920, repro R14) each tie of the built-in machines runs in its given order'] = function()
+T['T943 [char] (M11, DESK.md:1047, repro R14) each tie of the built-in machines runs in its given order'] = function()
 	local got = child.lua([[
 		local helpers = require('frogman.engine.helpers')
 		local history = require('frogman.domains.history')
@@ -442,7 +442,7 @@ T['T943 [char] (M11, DESK.md:919-920, repro R14) each tie of the built-in machin
 	})
 end
 
-T['T944 [char] (M11, DESK.md:919-920) enable_transition switches a disabled transition back on'] = function()
+T['T944 [char] (M11, DESK.md:1047) enable_transition switches a disabled transition back on'] = function()
 	local got = child.lua(model_with('t944') .. [[
 		m:on('a', 'b', 'noop', function() end, 1, true)
 		local one = m:instantiate('a')
@@ -457,7 +457,7 @@ end
 
 -- A machine the factory makes starts on an empty table, no state, so the entry for its first state
 -- has nothing before the arrow.
-T['T945 [char] (M11, DESK.md:919-920) a factory machine\'s first force_state leaves its forced entry'] = function()
+T['T945 [char] (M11, DESK.md:1047) a factory machine\'s first force_state leaves its forced entry'] = function()
 	local got = child.lua([[
 		local E = require('frogman.engine')
 		local m = E:create('t945')
@@ -478,7 +478,7 @@ T['T945 [char] (M11, DESK.md:919-920) a factory machine\'s first force_state lea
 	end
 end
 
-T['T946 [char] (M11, DESK.md:919-920) a hook\'s failure names its transition with its link'] = function()
+T['T946 [char] (M11, DESK.md:1047) a hook\'s failure names its transition with its link'] = function()
 	child.messages()
 	child.lua(model_with('t946') .. [[
 		m:set_labeler(function() return 'x.txt' end)
@@ -492,7 +492,7 @@ T['T946 [char] (M11, DESK.md:919-920) a hook\'s failure names its transition wit
 	eq(#said, 1)
 end
 
-T['T947 [char] (M11, A26, DESK.md:922-923) a hook\'s failure hands on its instance, and the dump names the handle'] = function()
+T['T947 [char] (M11, A26, DESK.md:1049) a hook\'s failure hands on its instance, and the dump names the handle'] = function()
 	local got = child.lua(model_with('t947') .. [[
 		m:set_labeler(function() return 'x.txt' end)
 		m:on('a', 'b', 'breaks', function() error('boom') end, 1, true)

@@ -728,7 +728,7 @@ T['T739 [char] (M15) a header typed makes a group, and the first group drives th
 	eq({ groups = groups, jumped = child.shown(), c = label('c') }, { groups = { 'main', 'feature' }, jumped = 'b', c = false })
 end
 
-T['T740 [char] (M15, DESK.md:1072-1073) a header deleted is asked about, and its rows join the group above; the first one deleted refuses'] = function()
+T['T740 [char] (M15, DESK.md:1198) a header deleted is asked about, and its rows join the group above; the first one deleted refuses'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
 	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
 	table.insert(lines, '❖ feature')
@@ -901,7 +901,7 @@ T['T747 [char] (M15) q writes and leaves, :q refuses, and :q! discards'] = funct
 		{ e37 = true, still = true, discarded = false, gone = true, c = 's' })
 end
 
-T['T748 [char] (M15, DESK.md:1068-1069) a mode key in the pop-up keeps the edits as a draft, :w writes the screen\'s scope, q every draft'] = function()
+T['T748 [char] (M15, DESK.md:1193) a mode key in the pop-up keeps the edits as a draft, :w writes the screen\'s scope, q every draft'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
 	-- the window's scope edited, then the tab's shown: nothing written yet
 	child.lua('vim.api.nvim_buf_set_lines(0, 2, 3, false, { "s -> c.txt" })')
@@ -1230,7 +1230,7 @@ end
 
 -- A window of a tab session's tab closed while another window keeps the tab open: its marks and its snapshot
 -- go onto its entry in t's file, nothing held over.
-T['T892 [char] (M15, M16, DESK.md:1079, :1697) a tab session\'s window closed while another keeps its tab open puts its marks and snapshots onto its entry in t\'s file'] = function()
+T['T892 [char] (M15, M16, DESK.md:1203, :1938) a tab session\'s window closed while another keeps its tab open puts its marks and snapshots onto its entry in t\'s file'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	local id = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
@@ -1289,7 +1289,7 @@ T['T752 [char] (M15) a closed tab leaves one group for its tab marks and one for
 	eq(names, { 'tab', 'window', 'window' })
 end
 
-T['T753 [char] (M15, DESK.md:1082) a reload in the same call as a close holds nothing over'] = function()
+T['T753 [char] (M15, DESK.md:1205) a reload in the same call as a close holds nothing over'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.cmd('split')
 	child.settle()
@@ -1725,7 +1725,7 @@ T['T864 [char] (M15, S1 Records) an entry a list in the file alone names keeps i
 	eq(child.shown(), 'c')
 end
 
-T['T761 [char] (M15, DESK.md:1082) a tab session\'s load keeps what its own tab\'s closes queued, held over as the rest are'] = function()
+T['T761 [char] (M15, DESK.md:1205) a tab session\'s load keeps what its own tab\'s closes queued, held over as the rest are'] = function()
 	child.steps({ ':e a' })
 	child.cmd('split')
 	child.settle()
@@ -1830,7 +1830,7 @@ end
 
 -- T823's route, the list emptied before its tab closes: it goes as an emptied list does, the mark that alone holds
 -- e held over in the whole editor's scope under the list's name, which the next save keeps.
-T['T823 [char] (M15, M5, DESK.md:1090) a detached list whose tab closes with only a mark holding its file gives the mark to the whole editor\'s scope through the next save'] = function()
+T['T823 [char] (M15, M5, DESK.md:1214) a detached list whose tab closes with only a mark holding its file gives the mark to the whole editor\'s scope through the next save'] = function()
 	local s = S2.shared()
 	detached_into_file(s)
 	local written = detached_marks()
@@ -1949,8 +1949,8 @@ T['T832 [char] (M15, S1 Records) the records write takes off only the entry the 
 	eq({ kept = kept, held = #held }, { kept = true, held = 1 })
 end
 
--- An index can be a number or a string, and 1 and "1" are two (DESK.md:1058).
-T['T950 [char] (M15, DESK.md:1058-1059) 1 and "1" are two indices'] = function()
+-- An index can be a number or a string, and 1 and "1" are two (DESK.md:1186).
+T['T950 [char] (M15, DESK.md:1186) 1 and "1" are two indices'] = function()
 	local ok = child.lua([[return (pcall(_G.FRG_TEST.setup, { marks = { aliases = { a = 1, s = '1' } } }))]])
 	child.steps({ ':e b', ADD .. 'a>', ':e c', ADD .. 's>', ':e d', JUMP .. 'a>' })
 	local a = child.shown()
@@ -1961,7 +1961,7 @@ end
 
 -- A row "* -> b.txt" would read as a header named "-> b.txt": the glyphs a header opens with, either
 -- set's and one of one's own, can't be aliases.
-T['T951 [char] (M15, DESK.md:1058-1059) an alias that\'s a group header\'s glyph is refused at setup'] = function()
+T['T951 [char] (M15, DESK.md:1186) an alias that\'s a group header\'s glyph is refused at setup'] = function()
 	local got = child.lua([[
 		local out = {}
 		for _, case in ipairs({ { alias = '*' }, { alias = '❖' }, { alias = '▸', glyphs = { group = '▸' } } }) do
@@ -1974,7 +1974,7 @@ T['T951 [char] (M15, DESK.md:1058-1059) an alias that\'s a group header\'s glyph
 end
 
 -- A copy no one changed holds nothing over when its window goes without its WinClosed either.
-T['T952 [char] (M15, DESK.md:1063-1064) a split\'s copy no one changed, closed without its events, holds nothing over'] = function()
+T['T952 [char] (M15, DESK.md:1189) a split\'s copy no one changed, closed without its events, holds nothing over'] = function()
 	child.lua('_G.FRG_TEST.setup({ marks = { split_copies = true } })')
 	local held = [[
 		local groups = (require('frogman.domains.marks').data.scopes.session[''] or { groups = {} }).groups
@@ -2007,7 +2007,7 @@ end
 -- Telescope stubbed, each map() an attach_mappings makes recorded: the marks' two pickers switch
 -- <Tab> and <S-Tab> off, in insert and normal mode, so one entry is picked; the primary pop-up's keeps
 -- them, picking several.
-T['T953 [char] (M15, DESK.md:1068-1069, :1104-1105) the marks\' pickers pick one entry, the primary pop-up\'s several'] = function()
+T['T953 [char] (M15, DESK.md:1193, :1228) the marks\' pickers pick one entry, the primary pop-up\'s several'] = function()
 	child.steps({ ':e b', ':e e', OPEN })
 	stub_pickers()
 	child.lua([[
@@ -2047,7 +2047,7 @@ T['T953 [char] (M15, DESK.md:1068-1069, :1104-1105) the marks\' pickers pick one
 end
 
 -- A jump the unwritten pop-up refuses changes nothing: the cycle running in its window goes on.
-T['T954 [char] (M15, DESK.md:1061, :1093) a jump refused for the pop-up\'s unwritten edits leaves a cycle running'] = function()
+T['T954 [char] (M15, DESK.md:1188, :1217) a jump refused for the pop-up\'s unwritten edits leaves a cycle running'] = function()
 	child.steps({ ':e a', ':e b', ADD .. 'a>', ':e c', OPEN })
 	child.lua('vim.api.nvim_buf_set_lines(0, 2, 3, false, { "s -> d.txt" })')
 	child.cmd('wincmd p')
@@ -2086,7 +2086,7 @@ local SESSION_FLAGS = [[
 
 -- A group typed under a held-over group's name, below it: each keeps its own flag, by its place among
 -- the groups of that name, not by the name alone.
-T['T955 [char] (M15, DESK.md:1066-1067) two groups of one name keep their own held flags, by their place'] = function()
+T['T955 [char] (M15, DESK.md:1192) two groups of one name keep their own held flags, by their place'] = function()
 	local lines, held = held_session_popup()
 	table.insert(lines, lines[held])
 	table.insert(lines, 's -> c.txt')
@@ -2098,7 +2098,7 @@ T['T955 [char] (M15, DESK.md:1066-1067) two groups of one name keep their own he
 end
 
 -- Renaming a held-over group's header leaves it held over: it's the same group, in its place.
-T['T956 [char] (M15, DESK.md:1085-1086) a held-over group whose header is renamed stays held over'] = function()
+T['T956 [char] (M15, DESK.md:1208) a held-over group whose header is renamed stays held over'] = function()
 	local lines, held = held_session_popup()
 	lines[held] = '❖ kept'
 	write_lines(lines)
@@ -2107,7 +2107,7 @@ end
 
 -- The default group's header renamed in place makes a typed group: saved, empty, it stays first across
 -- a restart.
-T['T957 [char] (M15, DESK.md:1070-1071, :1065) a typed group is saved even while it\'s empty'] = function()
+T['T957 [char] (M15, DESK.md:1197, :1190) a typed group is saved even while it\'s empty'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e b', OPEN })
@@ -2128,7 +2128,7 @@ T['T957 [char] (M15, DESK.md:1070-1071, :1065) a typed group is saved even while
 end
 
 -- The default group a mark's add made, emptied again: saved, it comes back empty.
-T['T958 [char] (M15, DESK.md:1065) the default group emptied again is saved, and comes back empty'] = function()
+T['T958 [char] (M15, DESK.md:1190) the default group emptied again is saved, and comes back empty'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e b', ADD .. 'a>', OPEN })
@@ -2163,7 +2163,7 @@ local WINDOW_GROUPS = [[
 
 -- A tab session's window entry bringing a typed group with no marks: a window with marks of its own
 -- keeps them and takes the group below them, nothing held over, and a window with none takes the group.
-T['T959 [char] (M15, S1 Load, DESK.md:1102, :1070) an entry bringing only an empty typed group leaves a window\'s own marks, the group below them, and gives a window with none the group'] = function()
+T['T959 [char] (M15, S1 Load, DESK.md:1226, :1197) an entry bringing only an empty typed group leaves a window\'s own marks, the group below them, and gives a window with none the group'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', OPEN })
@@ -2194,7 +2194,7 @@ end
 
 -- Deleting a held-over group's header and rows, the way to clear it, asks nothing: no row of it is left
 -- to join another group.
-T['T960 [char] (M15, DESK.md:1072, :1085) a held-over group deleted with its rows is cleared with nothing asked'] = function()
+T['T960 [char] (M15, DESK.md:1198, :1208) a held-over group deleted with its rows is cleared with nothing asked'] = function()
 	local lines, held = held_session_popup()
 	local kept = {}
 	for i, line in ipairs(lines) do
@@ -2210,7 +2210,7 @@ end
 
 -- The first of two groups of one name deleted, its rows under the group above: that group is asked
 -- about, and the second keeps its own.
-T['T961 [char] (M15, DESK.md:1066, :1072) the first of two groups of one name deleted is asked about as the one gone'] = function()
+T['T961 [char] (M15, DESK.md:1192, :1198) the first of two groups of one name deleted is asked about as the one gone'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
 	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
 	vim.list_extend(lines, { '❖ x', 's -> c.txt', '❖ x', 'd -> d.txt' })
@@ -2230,7 +2230,7 @@ end
 
 -- A header deleted, its rows under the group above, and a group typed where it was: the deleted one is
 -- still asked about, and the typed one is a group of its own.
-T['T962 [char] (M15, DESK.md:1072) a header deleted is asked about though a group is typed in its place'] = function()
+T['T962 [char] (M15, DESK.md:1198) a header deleted is asked about though a group is typed in its place'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
 	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
 	vim.list_extend(lines, { '❖ feature', 's -> c.txt' })
@@ -2246,7 +2246,7 @@ T['T962 [char] (M15, DESK.md:1072) a header deleted is asked about though a grou
 end
 
 -- A held-over group deleted whole asks nothing, though the first group holds the same mark.
-T['T963 [char] (M15, DESK.md:1072, :1085) a held-over group deleted whole asks nothing though the first group holds the same mark'] = function()
+T['T963 [char] (M15, DESK.md:1198, :1208) a held-over group deleted whole asks nothing though the first group holds the same mark'] = function()
 	child.steps({ ':e a', "<M-'><M-3>", ':e b', ADD .. 'a>', "<M-'><M-1>" })
 	child.cmd('split')
 	child.settle()
@@ -2272,7 +2272,7 @@ local DEFAULTS = [[
 ]]
 
 -- A header deleted under an empty default group: asked about, and the default group stays the default.
-T['T964 [char] (M15, DESK.md:1072, :1065) a header deleted under an empty default group is asked about, and the default stays'] = function()
+T['T964 [char] (M15, DESK.md:1198, :1190) a header deleted under an empty default group is asked about, and the default stays'] = function()
 	child.steps({ ':e e', OPEN })
 	local lines = vim.list_extend({ '❖ main' }, rows({}))
 	vim.list_extend(lines, { '❖ dev', 'a -> b.txt' })
@@ -2288,7 +2288,7 @@ T['T964 [char] (M15, DESK.md:1072, :1065) a header deleted under an empty defaul
 end
 
 -- A group typed where a held-over group was deleted whole is a group of its own, not held over.
-T['T965 [char] (M15, DESK.md:1072, :1085) a group typed where a held-over group was deleted whole isn\'t held over'] = function()
+T['T965 [char] (M15, DESK.md:1198, :1208) a group typed where a held-over group was deleted whole isn\'t held over'] = function()
 	local lines, held = held_session_popup()
 	local kept = vim.list_slice(lines, 1, held - 1)
 	vim.list_extend(kept, { '❖ new', 's -> c.txt' })
@@ -2300,7 +2300,7 @@ end
 
 -- Of two groups of one name, the second's header deleted: the first, whose header stands, keeps what it
 -- was, though the second had more marks.
-T['T966 [char] (M15, DESK.md:1066, :1072) of two groups of one name, the one whose header stands keeps what it was'] = function()
+T['T966 [char] (M15, DESK.md:1192, :1198) of two groups of one name, the one whose header stands keeps what it was'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
 	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
 	vim.list_extend(lines, { '❖ main', 's -> c.txt', 'd -> d.txt' })
@@ -2323,7 +2323,7 @@ end
 
 -- A held-over group whose header is renamed and every mark changed is a group of its own: what it was
 -- is known by its marks, and none is left (mine).
-T['T967 [char] (M15, DESK.md:1072, :1085) a held-over group renamed with every mark changed is a group of its own'] = function()
+T['T967 [char] (M15, DESK.md:1198, :1208) a held-over group renamed with every mark changed is a group of its own'] = function()
 	local lines, held = held_session_popup()
 	lines[held] = '❖ kept'
 	for i = held + 1, #lines do
@@ -2335,7 +2335,7 @@ end
 
 -- The first group's header deleted while it has no marks: its empty rows name nothing, so the write goes
 -- through and the next group is the first.
-T['T971 [char] (M15, DESK.md:1072) the first group\'s header deleted while it has no marks writes, the next group first'] = function()
+T['T971 [char] (M15, DESK.md:1198) the first group\'s header deleted while it has no marks writes, the next group first'] = function()
 	child.steps({ ':e e', OPEN })
 	local lines = vim.list_extend({ '❖ main' }, rows({}))
 	vim.list_extend(lines, { '❖ dev', 'a -> b.txt' })
@@ -2351,7 +2351,7 @@ end
 
 -- A header renamed and the next one deleted in one write: the deleted one is asked about, though it had
 -- more marks than the renamed one.
-T['T972 [char] (M15, DESK.md:1072) a header renamed and the next one deleted: the deleted one is asked about'] = function()
+T['T972 [char] (M15, DESK.md:1198) a header renamed and the next one deleted: the deleted one is asked about'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
 	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
 	vim.list_extend(lines, { '❖ feature', 's -> c.txt', 'd -> d.txt', 'f -> f.txt' })
@@ -2369,7 +2369,7 @@ end
 
 -- A header renamed with another group's rows moved under it, that group's header standing: nothing is
 -- asked, and each group is the one it was.
-T['T973 [char] (M15, DESK.md:1072) a header renamed with another group\'s rows moved under it asks nothing'] = function()
+T['T973 [char] (M15, DESK.md:1198) a header renamed with another group\'s rows moved under it asks nothing'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
 	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
 	vim.list_extend(lines, { '❖ feature', 's -> c.txt', 'd -> d.txt' })
@@ -2382,7 +2382,7 @@ end
 
 -- A header renamed with another group's row pasted first under it, that group's header standing:
 -- nothing is asked, and each group is the one it was.
-T['T974 [char] (M15, DESK.md:1066, :1072) a renamed group with another group\'s row pasted first under it asks nothing'] = function()
+T['T974 [char] (M15, DESK.md:1192, :1198) a renamed group with another group\'s row pasted first under it asks nothing'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
 	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
 	vim.list_extend(lines, { '❖ feature', 's -> c.txt' })
@@ -2395,7 +2395,7 @@ end
 
 -- Two groups of one name whose rows swap places: each group is the one at its place, so the first stays
 -- the default ("we distinguish them by which comes first").
-T['T975 [char] (M15, DESK.md:1066) two groups of one name keep their places when their rows swap'] = function()
+T['T975 [char] (M15, DESK.md:1192) two groups of one name keep their places when their rows swap'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
 	local lines = vim.list_extend({ '❖ main' }, rows({ a = 'b.txt' }))
 	vim.list_extend(lines, { '❖ main', 's -> c.txt' })
@@ -2411,7 +2411,7 @@ T['T975 [char] (M15, DESK.md:1066) two groups of one name keep their places when
 end
 
 -- A mode switch with an alias holding two files on the screen is refused.
-T['T968 [char] (M15, DESK.md:1068-1069) a mode switch is refused while an alias holds two files on the screen'] = function()
+T['T968 [char] (M15, DESK.md:1193) a mode switch is refused while an alias holds two files on the screen'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
 	local lines = popup().lines
 	table.insert(lines, 3, 'a -> c.txt')
@@ -2424,7 +2424,7 @@ T['T968 [char] (M15, DESK.md:1068-1069) a mode switch is refused while an alias 
 end
 
 -- :q refuses while another scope holds a draft, the mark keys refuse too, and :q! drops every draft.
-T['T969 [char] (M15, DESK.md:1068-1069, :1093) :q refuses while a draft is held, the mark keys refuse, and :q! drops every draft'] = function()
+T['T969 [char] (M15, DESK.md:1193, :1217) :q refuses while a draft is held, the mark keys refuse, and :q! drops every draft'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
 	child.lua('vim.api.nvim_buf_set_lines(0, 2, 3, false, { "s -> c.txt" })')
 	child.steps({ "<M-'><M-2>" })
@@ -2448,7 +2448,7 @@ T['T969 [char] (M15, DESK.md:1068-1069, :1093) :q refuses while a draft is held,
 end
 
 -- q stops at a draft its checks refuse, showing that draft.
-T['T970 [char] (M15, DESK.md:1068-1069) q stops at a draft its checks refuse, and shows it'] = function()
+T['T970 [char] (M15, DESK.md:1193) q stops at a draft its checks refuse, and shows it'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
 	-- the window's header deleted: its rows have no group
 	child.lua('vim.api.nvim_buf_set_lines(0, 0, 1, false, {})')
@@ -2467,7 +2467,7 @@ T['T970 [char] (M15, DESK.md:1068-1069) q stops at a draft its checks refuse, an
 end
 
 -- A draft held keeps the pop-up modified through an undo on the screen, so :q still refuses.
-T['T982 [char] (M15, DESK.md:1068-1069) a draft held keeps the pop-up modified through an undo on the screen'] = function()
+T['T982 [char] (M15, DESK.md:1193) a draft held keeps the pop-up modified through an undo on the screen'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
 	child.lua('vim.api.nvim_buf_set_lines(0, 2, 3, false, { "s -> c.txt" })')
 	child.steps({ "<M-'><M-2>" })
@@ -2481,7 +2481,7 @@ end
 
 -- An edit undone leaves the screen holding none: the pop-up follows its scope again, and q writes
 -- nothing over a mark added meanwhile.
-T['T983 [char] (M15, DESK.md:1068) an edit undone leaves the pop-up following its scope, and q writes nothing over it'] = function()
+T['T983 [char] (M15, DESK.md:1193) an edit undone leaves the pop-up following its scope, and q writes nothing over it'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
 	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>', 'u')
 	local undone = popup().modified
@@ -2498,7 +2498,7 @@ end
 
 -- An undo on a screen a mode switch drew takes back what was typed there and goes no further, and so on
 -- a draft brought back: the screen before it never comes back.
-T['T984 [char] (M15, DESK.md:1068) an undo on a screen a mode switch drew takes back what was typed there, and no further'] = function()
+T['T984 [char] (M15, DESK.md:1193) an undo on a screen a mode switch drew takes back what was typed there, and no further'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
 	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>')
 	local typed = popup().lines
@@ -2517,7 +2517,7 @@ end
 
 -- A row typed back as it was drawn holds nothing: the pop-up is unmodified at once, :q closes it, and the
 -- mark keys work.
-T['T985 [char] (M15, DESK.md:1068, :1093) a row typed back as it was drawn leaves the pop-up unmodified at once'] = function()
+T['T985 [char] (M15, DESK.md:1193, :1217) a row typed back as it was drawn leaves the pop-up unmodified at once'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
 	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>')
 	local typed = popup().modified
@@ -2534,7 +2534,7 @@ end
 
 -- An undo right after the pop-up opens takes nothing back: its draw starts the undo history, so the lines
 -- stay as drawn, unmodified, and q writes nothing.
-T['T986 [char] (M15, DESK.md:1068) an undo right after the pop-up opens takes nothing back'] = function()
+T['T986 [char] (M15, DESK.md:1193) an undo right after the pop-up opens takes nothing back'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', ADD .. 's>', OPEN })
 	local drawn = popup().lines
 	child.type_keys('u')
@@ -2546,7 +2546,7 @@ T['T986 [char] (M15, DESK.md:1068) an undo right after the pop-up opens takes no
 end
 
 -- The flag set by hand over lines as drawn: :w finds nothing to write and clears it, and :q then closes.
-T['T988 [char] (M15, DESK.md:1068) :w over lines as drawn clears a flag set by hand, and :q then closes the pop-up'] = function()
+T['T988 [char] (M15, DESK.md:1193) :w over lines as drawn clears a flag set by hand, and :q then closes the pop-up'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
 	child.cmd('set modified')
 	child.cmd('silent! write')
@@ -2560,7 +2560,7 @@ end
 
 -- :set nomodified leaves nothing on the screen to write, so q writes none of its edits; a draft held keeps
 -- the mark keys refusing all the same, and q writes it.
-T['T989 [char] (M15, DESK.md:1068, :1093) :set nomodified leaves the screen\'s edits unwritten, and a draft held still keeps the mark keys refusing'] = function()
+T['T989 [char] (M15, DESK.md:1193, :1217) :set nomodified leaves the screen\'s edits unwritten, and a draft held still keeps the mark keys refusing'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
 	-- a draft of the window's marks: s -> c.txt typed, then the tab's screen
 	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>')
@@ -2586,7 +2586,7 @@ end
 
 -- q writing a draft of another mode leaves the editor in the mode the screen was in, and repaints it
 -- then, not at the UI's next timed refresh.
-T['T990 [char] (M15, DESK.md:1068) q writing a draft of another mode repaints once the mode is back'] = function()
+T['T990 [char] (M15, DESK.md:1193) q writing a draft of another mode repaints once the mode is back'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
 	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>')
 	child.steps({ "<M-'><M-2>" })
@@ -2610,7 +2610,7 @@ T['T990 [char] (M15, DESK.md:1068) q writing a draft of another mode repaints on
 end
 
 -- :e! throws the pop-up's edits away, leaving it empty and unmodified: q writes nothing.
-T['T991 [char] (M15, DESK.md:1068) :e! throws the pop-up\'s edits away, and q writes nothing'] = function()
+T['T991 [char] (M15, DESK.md:1193) :e! throws the pop-up\'s edits away, and q writes nothing'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
 	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>')
 	child.cmd('edit!')
@@ -2624,7 +2624,7 @@ end
 
 -- :wq with a draft held writes the screen's scope and leaves the pop-up open: Vim takes a write that
 -- leaves the buffer modified as not done, so the draft stays for q.
-T['T992 [char] (M15, DESK.md:1068) :wq with a draft held writes the screen\'s scope and leaves the pop-up open'] = function()
+T['T992 [char] (M15, DESK.md:1193) :wq with a draft held writes the screen\'s scope and leaves the pop-up open'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
 	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>')
 	child.steps({ "<M-'><M-2>" })
@@ -2642,7 +2642,7 @@ end
 
 -- The flag reset by hand over an alias holding two files: the lines hold nothing a draft would keep, so a
 -- mode key switches, saying nothing.
-T['T993 [char] (M15, DESK.md:1068) a mode key after :set nomodified switches over an alias holding two files, keeping no draft'] = function()
+T['T993 [char] (M15, DESK.md:1193) a mode key after :set nomodified switches over an alias holding two files, keeping no draft'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
 	local lines = popup().lines
 	table.insert(lines, 3, 'a -> c.txt')
@@ -2655,7 +2655,7 @@ end
 
 -- :e! with a draft held throws the screen away, leaving it empty and unmodified: q writes the draft, and
 -- the screen's scope keeps its marks.
-T['T994 [char] (M15, DESK.md:1068) :e! with a draft held throws the screen away: q writes the draft, the screen\'s scope as it was'] = function()
+T['T994 [char] (M15, DESK.md:1193) :e! with a draft held throws the screen away: q writes the draft, the screen\'s scope as it was'] = function()
 	child.steps({ ':e b', ADD .. 'a>', "<M-'><M-2>", ':e c', ADD .. 's>', "<M-'><M-1>", OPEN })
 	child.type_keys('4G', 'cc', 'd -> b.txt', '<Esc>')
 	child.steps({ "<M-'><M-2>" })
@@ -2673,7 +2673,7 @@ end
 
 -- An undo after :w takes nothing back: the write's draw starts the undo history, so the lines stay as the
 -- write drew them, and a later edit written keeps what the first write wrote.
-T['T995 [char] (M15, DESK.md:1068) an undo after :w takes nothing back, so a later write keeps what the first wrote'] = function()
+T['T995 [char] (M15, DESK.md:1193) an undo after :w takes nothing back, so a later write keeps what the first wrote'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
 	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>')
 	child.cmd('silent! write')
@@ -2691,7 +2691,7 @@ end
 -- A pop-up drawn again for a mark added from the window it came from: an undo there takes nothing back,
 -- the draw starting the undo history though another window was the current one, and a later write keeps
 -- the mark.
-T['T996 [char] (M15, DESK.md:1068) an undo after the scope changed under a clean pop-up takes nothing back, so a later write keeps the mark'] = function()
+T['T996 [char] (M15, DESK.md:1193) an undo after the scope changed under a clean pop-up takes nothing back, so a later write keeps the mark'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
 	child.cmd('wincmd p')
 	child.settle()
@@ -2710,7 +2710,7 @@ T['T996 [char] (M15, DESK.md:1068) an undo after the scope changed under a clean
 end
 
 -- An empty typed group above a marked one: saved, it comes back first, and the keys then do nothing.
-T['T979 [char] (M15, DESK.md:1070) an empty typed group first is saved, comes back first, and the keys then do nothing'] = function()
+T['T979 [char] (M15, DESK.md:1197) an empty typed group first is saved, comes back first, and the keys then do nothing'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e b', ADD .. 'a>', ':e e', OPEN })
@@ -2751,7 +2751,7 @@ local SCOPE_GROUPS = [[
 -- marks other than the scope's: the write makes the lines the session's marks, and what the load brought
 -- stays below, held over under the load's header. The scope's own marks are made in a fresh editor, where
 -- the session isn't known yet, so they aren't written into its file as they change.
-T['T976 [char] (M15, S1 Load, DESK.md:1093-1094) a load under the pop-up\'s edits for the session\'s marks keeps both'] = function()
+T['T976 [char] (M15, S1 Load, DESK.md:1217) a load under the pop-up\'s edits for the session\'s marks keeps both'] = function()
 	local shared = S2.shared()
 	S2.start(child, shared)
 	child.steps({ ':e b', ':e c', "<M-'><M-3>", ':e b', ADD .. 'a>', ':e e' })
@@ -2774,7 +2774,7 @@ end
 
 -- The same for a plain tab's marks: the tab's own made in a fresh editor, as T976's are, so the load brings
 -- the file's tab marks in their place.
-T['T977 [char] (M15, S1 Load, DESK.md:1093-1094) a load under the pop-up\'s edits for a tab\'s marks keeps both'] = function()
+T['T977 [char] (M15, S1 Load, DESK.md:1217) a load under the pop-up\'s edits for a tab\'s marks keeps both'] = function()
 	local shared = S2.shared()
 	S2.start(child, shared)
 	child.steps({ ':e b', "<M-'><M-2>", ADD .. 'a>', ':e c', ':e e' })
@@ -2799,7 +2799,7 @@ end
 -- The pop-up's lines are coloured in the trail's language: a header in the lists' colour, an alias in a
 -- key's, dim when the config has none for it, the arrow dim, a file in the trail's name colour, a path to a
 -- file the registry doesn't know yet too, and dim while closed or for a row naming no file.
-T['T978 [char] (M15, DESK.md:1068-1069) the pop-up\'s lines are coloured in the trail\'s language'] = function()
+T['T978 [char] (M15, DESK.md:1193) the pop-up\'s lines are coloured in the trail\'s language'] = function()
 	child.steps({ ':e b', ADD .. 'a>', ':e c', ADD .. 's>', ':e e' })
 	child.cmd('bdelete c.txt')
 	child.settle()
@@ -2832,7 +2832,7 @@ end
 -- A load that changes the tab's marks while the pop-up holds the tab's draft, the screen on the window's: q
 -- writes the draft as the tab's marks, and what the load brought stays below, held over under the load's
 -- header. The tab's own marks are made in a fresh editor, as T977's are.
-T['T987 [char] (M15, S1 Load, DESK.md:1093-1094, :1068) a load under a draft for the tab\'s marks keeps both'] = function()
+T['T987 [char] (M15, S1 Load, DESK.md:1217, :1193) a load under a draft for the tab\'s marks keeps both'] = function()
 	local shared = S2.shared()
 	S2.start(child, shared)
 	child.steps({ ':e b', "<M-'><M-2>", ADD .. 'a>', ':e c', ':e e' })
@@ -2881,7 +2881,7 @@ local C_HELD = [[
 
 -- P1: a tab session loaded twice, first into a tab its entries don't match, then into one they do: the
 -- window takes its mark and its snapshot back, and the copies the first load held over go.
-T['T997 [char] (M15, M16, S1 Load, DESK.md:1087-1088) a tab session loaded twice, first where no entry matches, gives the window its mark and snapshot once'] = function()
+T['T997 [char] (M15, M16, S1 Load, DESK.md:1211) a tab session loaded twice, first where no entry matches, gives the window its mark and snapshot once'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.cmd('tabnew')
@@ -2903,7 +2903,7 @@ end
 -- P2: a plain tab closed after the whole editor's save, its window's mark and snapshot held over and written
 -- with the records; a fresh editor restores both tabs and loads: the window takes them back from its entry,
 -- and the copies the close held over go.
-T['T998 [char] (M15, M16, S1 Load, DESK.md:1087-1088) a plain tab restored before any save takes its window\'s mark and snapshot back once'] = function()
+T['T998 [char] (M15, M16, S1 Load, DESK.md:1211) a plain tab restored before any save takes its window\'s mark and snapshot back once'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e x' })
@@ -2924,7 +2924,7 @@ T['T998 [char] (M15, M16, S1 Load, DESK.md:1087-1088) a plain tab restored befor
 end
 
 -- A copy the first load held over that you edited stays at the second load, beside the window's own mark.
-T['T999 [char] (M15, S1 Load, DESK.md:1087) a held-over copy you edited stays when the window takes its entry back'] = function()
+T['T999 [char] (M15, S1 Load, DESK.md:1211) a held-over copy you edited stays when the window takes its entry back'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.cmd('tabnew')
@@ -2952,7 +2952,7 @@ end
 
 -- A copy the first load held over that you moved up first is a group of your own, as the pop-up's write
 -- leaves a held-over group it finds first, so it stays at the second load, beside the window's own mark.
-T['T1000 [char] (M15, S1 Load, DESK.md:1087, :1085) a held-over copy you moved up first stays when the window takes its entry back'] = function()
+T['T1000 [char] (M15, S1 Load, DESK.md:1211, :1208) a held-over copy you moved up first stays when the window takes its entry back'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.cmd('tabnew')
@@ -2987,7 +2987,7 @@ end
 
 -- A group of your own typed below a copy the first load held over doesn't keep it: the copy goes at the
 -- second load all the same.
-T['T1001 [char] (M15, S1 Load, DESK.md:1087) a group typed below a held-over copy doesn\'t keep it when the window takes its entry back'] = function()
+T['T1001 [char] (M15, S1 Load, DESK.md:1211) a group typed below a held-over copy doesn\'t keep it when the window takes its entry back'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.cmd('tabnew')
@@ -3011,7 +3011,7 @@ end
 
 -- Two windows marking c under a, one entry no window takes and one a window takes, the untaken first:
 -- what this load holds over of the untaken entry stays, though the other window brings the same marks back.
-T['T1002 [char] (M15, S1 Load, DESK.md:1087) what a load holds over of an entry no window takes stays, though another window brings the same marks back'] = function()
+T['T1002 [char] (M15, S1 Load, DESK.md:1211) what a load holds over of an entry no window takes stays, though another window brings the same marks back'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ADD .. 'a>', ':e d' })
@@ -3038,7 +3038,7 @@ local HELD_NAMES = [[
 
 -- A plain tab's own tab marks held over as a tab session loads into it name the load, not what the tab
 -- showed.
-T['T1005 [char] (M15, S1 Load, DESK.md:1085-1086) a plain tab\'s marks held over as a tab session loads into it name the load'] = function()
+T['T1005 [char] (M15, S1 Load, DESK.md:1208) a plain tab\'s marks held over as a tab session loads into it name the load'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 't'), { true })
 	S2.start(child, s)
@@ -3053,7 +3053,7 @@ end
 
 -- A window entry no window takes, holding one marked group and a group typed in with none: both held over
 -- at the load, each under the load's header with its group's name.
-T['T1006 [char] (M15, S1 Load, DESK.md:1085-1086, :1079) an entry with one marked group and an empty one has both held over, each named'] = function()
+T['T1006 [char] (M15, S1 Load, DESK.md:1208, :1203) an entry with one marked group and an empty one has both held over, each named'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ADD .. 'a>', ':e d', OPEN })
@@ -3073,7 +3073,7 @@ end
 
 -- A window with two marked groups closed while you work leaves one held-over group for each, its group's
 -- name after what the window showed.
-T['T1007 [char] (M15, DESK.md:1085) a window closed with two marked groups leaves one held-over group per group, each named'] = function()
+T['T1007 [char] (M15, DESK.md:1208) a window closed with two marked groups leaves one held-over group per group, each named'] = function()
 	child.steps({ ':e a' })
 	child.cmd('split')
 	child.settle()
@@ -3091,7 +3091,7 @@ end
 
 -- A plain tab's own tab marks held over as the hint load starts a tab session fresh there name the load too,
 -- the session having no file yet.
-T['T1008 [char] (M15, S1 Load, DESK.md:1085-1086) a plain tab\'s marks held over as the hint load starts a tab session fresh there name the load'] = function()
+T['T1008 [char] (M15, S1 Load, DESK.md:1208) a plain tab\'s marks held over as the hint load starts a tab session fresh there name the load'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e b', "<M-'><M-2>", ADD .. 'a>', ':e e', "<M-'><M-1>" })
@@ -3130,7 +3130,7 @@ end
 
 -- A window closed without its events: its marks and its snapshot held over under what it showed when frogman
 -- last saw it, its buffer changed since the mark and the snapshot were made.
-T['T1009 [char] (M15, M16, DESK.md:1079, :1086, :1697) a window closed without its events is headed by what it showed last, marks and snapshots alike'] = function()
+T['T1009 [char] (M15, M16, DESK.md:1203, :1208, :1938) a window closed without its events is headed by what it showed last, marks and snapshots alike'] = function()
 	child.steps({ ':e a' })
 	child.cmd('vsplit')
 	child.settle()
@@ -3144,7 +3144,7 @@ end
 
 -- A plain tab closed without its events: its tab marks held over under what its window showed when frogman
 -- last saw it.
-T['T1010 [char] (M15, DESK.md:1086) a tab closed without its events is headed by what it showed'] = function()
+T['T1010 [char] (M15, DESK.md:1208) a tab closed without its events is headed by what it showed'] = function()
 	child.steps({ ':e a' })
 	child.cmd('tabnew')
 	child.settle()
@@ -3160,7 +3160,7 @@ end
 -- A split marked, and given a snapshot, before its tab starts the tab session u by the hint load, and never
 -- entered after; u has no file, so the split has no saved entry: closed without its events, it's held over in
 -- u's scope, where its tab went.
-T['T1011 [char] (M15, M16, DESK.md:1079, :1697) a window last seen before its tab started a tab session is held over in that session\'s scope'] = function()
+T['T1011 [char] (M15, M16, DESK.md:1203, :1938) a window last seen before its tab started a tab session is held over in that session\'s scope'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e x' })
@@ -3181,7 +3181,7 @@ end
 -- A split made in t's tab, marked and given a snapshot, then t loaded into a new tab, so the first tab keeps a
 -- detached list; the split, never entered after and with no saved entry, closed without its events: held over
 -- in the detached list's scope, where its tab went, not t's.
-T['T1012 [char] (M15, M16, DESK.md:1079, :1697) a window last seen before its tab session moved to another tab is held over in the detached list\'s scope'] = function()
+T['T1012 [char] (M15, M16, DESK.md:1203, :1938) a window last seen before its tab session moved to another tab is held over in the detached list\'s scope'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 't'), { true })
 	S2.start(child, s)
@@ -3206,7 +3206,7 @@ end
 -- A tab whose window is never entered with its events, its tab marks restored by a whole-editor load, then
 -- closed without its events: its marks go onto its tab entry, and a save that writes the tabs anew without it
 -- holds them over, headed by what it showed, noted as its marks came back.
-T['T1013 [char] (M15, S1 Load, DESK.md:1086) a tab whose marks a load restored, closed without its events, is headed by what it showed'] = function()
+T['T1013 [char] (M15, S1 Load, DESK.md:1208) a tab whose marks a load restored, closed without its events, is headed by what it showed'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -3232,7 +3232,7 @@ end
 -- A note whose name can't be looked up keeps what was noted before, and fails neither the event that takes it
 -- nor a save: the lookup made to raise, then `:e d` in a split last noted on c, and the tab saved as t, whose
 -- join notes every window of the tab.
-T['T1014 [char] (M15, DESK.md:1079, :1086) a note whose name can\'t be looked up fails no event or save, and keeps what was seen before'] = function()
+T['T1014 [char] (M15, DESK.md:1203, :1208) a note whose name can\'t be looked up fails no event or save, and keeps what was seen before'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -3258,7 +3258,7 @@ end
 -- A window closed without its events is named as a close names it, by its file's unique name: a split on
 -- c, then on sub/c.txt, which frogman takes in only once its arrival settles, after the note its BufEnter
 -- took; with c.txt open too, a close would name it sub/c.txt.
-T['T1015 [char] (M15, DESK.md:1085-1086) a window closed without its events is named by its file\'s unique name, as a close names it'] = function()
+T['T1015 [char] (M15, DESK.md:1208) a window closed without its events is named by its file\'s unique name, as a close names it'] = function()
 	child.lua([[
 		vim.fn.mkdir(_G.FRG_TEST.root .. '/sub', 'p')
 		vim.fn.writefile({ 'sub c' }, _G.FRG_TEST.root .. '/sub/c.txt')
@@ -3277,7 +3277,7 @@ end
 -- A window a load gives its marks, never entered with its events, closed without them: its marks go onto its
 -- entry, and a save that writes the windows anew without it holds them over, headed by what it showed, noted
 -- as its marks came back.
-T['T1016 [char] (M15, S1 Load, DESK.md:1079, :1086) a window noted as a load gives it its marks is headed by what it showed'] = function()
+T['T1016 [char] (M15, S1 Load, DESK.md:1203, :1208) a window noted as a load gives it its marks is headed by what it showed'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -3304,7 +3304,7 @@ T['T1016 [char] (M15, S1 Load, DESK.md:1079, :1086) a window noted as a load giv
 end
 
 -- The same for a window a load gives its snapshot, and no marks.
-T['T1017 [char] (M16, S1 Load, DESK.md:1697, :1086) a window noted as a load gives it its snapshot is headed by what it showed'] = function()
+T['T1017 [char] (M16, S1 Load, DESK.md:1938, :1208) a window noted as a load gives it its snapshot is headed by what it showed'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -3366,7 +3366,7 @@ local SCOPE_MARKS = [[
 ]]
 
 -- P3: a tab session saved as another carries a copy of its session's marks; the old keeps its own, in its file.
-T['T1018 [char] (M15, S1 Save, DESK.md:1076-1077, repro P3) a tab session saved as another carries a copy of its session\'s marks'] = function()
+T['T1018 [char] (M15, S1 Save, DESK.md:1201, repro P3) a tab session saved as another carries a copy of its session\'s marks'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 't'), { true })
 	S2.start(child, s)
@@ -3386,7 +3386,7 @@ end
 -- t's tab, with no saved entry, marking c under `a` and with a snapshot, closed, so both are held over in t's
 -- scope; the tab saved as u: u's scope holds the held-over group and a copy of the snapshot, under another id,
 -- and t's file keeps its own.
-T['T1019 [char] (M15, M16, S1 Save, DESK.md:1076-1077, :1697) a tab session saved as another carries a copy of its held-over groups and snapshots'] = function()
+T['T1019 [char] (M15, M16, S1 Save, DESK.md:1201, :1938) a tab session saved as another carries a copy of its held-over groups and snapshots'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 't'), { true })
 	S2.start(child, s)
@@ -3432,7 +3432,7 @@ local GROUPS_IN_ORDER = [[
 
 -- A tab session saved as a session that's in memory with marks of its own: what it carries goes below that
 -- session's own, as it is, so its first group still drives the keys; and the tab that held it keeps its own.
-T['T1020 [char] (M15, S1 Save, DESK.md:1076-1077) a tab session saved as a session with marks of its own carries its marks below them'] = function()
+T['T1020 [char] (M15, S1 Save, DESK.md:1201) a tab session saved as a session with marks of its own carries its marks below them'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 't'), { true })
 	S2.start(child, s)
@@ -3457,7 +3457,7 @@ T['T1020 [char] (M15, S1 Save, DESK.md:1076-1077) a tab session saved as a sessi
 end
 
 -- A detached list's tab saved as another session carries its copy of the marks, as its closed files are.
-T['T1021 [char] (M15, S1 Save, DESK.md:1076-1077) a detached list\'s tab saved as another session carries its copy of the marks'] = function()
+T['T1021 [char] (M15, S1 Save, DESK.md:1201) a detached list\'s tab saved as another session carries its copy of the marks'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 't'), { true })
 	S2.start(child, s)
@@ -3485,7 +3485,7 @@ end
 
 -- A plain tab saved as a tab session carries none of the whole editor's marks, and a tab session's tab saved
 -- under its own name again carries nothing twice: the carry is a tab session's, saved as another.
-T['T1022 [char] (M15, S1 Save, DESK.md:1076-1077) only a tab session saved as another carries: a plain tab saved as one carries none of the whole editor\'s marks, and a save under its own name carries nothing twice'] = function()
+T['T1022 [char] (M15, S1 Save, DESK.md:1201) only a tab session saved as another carries: a plain tab saved as one carries none of the whole editor\'s marks, and a save under its own name carries nothing twice'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', "<M-'><M-3>", ADD .. 'a>', "<M-'><M-1>" })
@@ -3521,7 +3521,7 @@ local WIN_GROUPS = [[
 
 -- A held-over group whose rows are all emptied, its header kept, is saved and loaded back empty, and so is
 -- the empty default group the hold-over made ahead of it.
-T['T1023 [char] (M15, DESK.md:1085, :1065) a held-over group emptied in the pop-up is saved and loaded back'] = function()
+T['T1023 [char] (M15, DESK.md:1208, :1190) a held-over group emptied in the pop-up is saved and loaded back'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	local lines, held = held_session_popup()
@@ -3539,7 +3539,7 @@ T['T1023 [char] (M15, DESK.md:1085, :1065) a held-over group emptied in the pop-
 end
 
 -- An empty default group beside a typed one is saved, and comes back first.
-T['T1024 [char] (M15, DESK.md:1065, :1070) an empty default group beside a typed one is saved and comes back first'] = function()
+T['T1024 [char] (M15, DESK.md:1190, :1197) an empty default group beside a typed one is saved and comes back first'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e b', OPEN })
@@ -3558,7 +3558,7 @@ T['T1024 [char] (M15, DESK.md:1065, :1070) an empty default group beside a typed
 end
 
 -- A window closed with a marked group and an empty typed one leaves both held over, each named.
-T['T1025 [char] (M15, DESK.md:1079, :1085) a window closed with a marked group and an empty typed one leaves both held over, each named'] = function()
+T['T1025 [char] (M15, DESK.md:1203, :1208) a window closed with a marked group and an empty typed one leaves both held over, each named'] = function()
 	child.steps({ ':e a' })
 	child.cmd('split')
 	child.settle()
@@ -3573,7 +3573,7 @@ T['T1025 [char] (M15, DESK.md:1079, :1085) a window closed with a marked group a
 end
 
 -- A window whose only group is a typed one with no marks holds it over, empty, as it closes.
-T['T1026 [char] (M15, DESK.md:1079) a window closed with only an empty typed group holds it over, empty'] = function()
+T['T1026 [char] (M15, DESK.md:1203) a window closed with only an empty typed group holds it over, empty'] = function()
 	child.steps({ ':e a' })
 	child.cmd('split')
 	child.settle()
@@ -3589,7 +3589,7 @@ T['T1026 [char] (M15, DESK.md:1079) a window closed with only an empty typed gro
 end
 
 -- The same window closed without its events: the cleanup pass holds its empty group over too.
-T['T1027 [char] (M15, DESK.md:1079) a window closed without its events holds its empty typed group over'] = function()
+T['T1027 [char] (M15, DESK.md:1203) a window closed without its events holds its empty typed group over'] = function()
 	child.steps({ ':e a' })
 	child.cmd('split')
 	child.settle()
@@ -3607,7 +3607,7 @@ T['T1027 [char] (M15, DESK.md:1079) a window closed without its events holds its
 end
 
 -- A plain tab whose only tab group is a typed one with no marks holds it over, empty, as it closes.
-T['T1028 [char] (M15, DESK.md:1079) a plain tab closed with only an empty typed group holds it over, empty'] = function()
+T['T1028 [char] (M15, DESK.md:1203) a plain tab closed with only an empty typed group holds it over, empty'] = function()
 	child.steps({ ':e a' })
 	child.cmd('tabnew')
 	child.settle()
@@ -3625,7 +3625,7 @@ end
 
 -- A window entry no window takes, holding only a typed group with no marks: held over at the load, empty, and
 -- the entry gives it up at the records write, as one with marks does.
-T['T1029 [char] (M15, S1 Load, DESK.md:1079, :1085) an entry no window takes holds its empty typed group over, and gives it up in the file'] = function()
+T['T1029 [char] (M15, S1 Load, DESK.md:1203, :1208) an entry no window takes holds its empty typed group over, and gives it up in the file'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -3658,7 +3658,7 @@ end
 
 -- A load's clearing of held-over copies leaves an empty held-over group alone: two empty groups carry
 -- nothing to tell them apart by.
-T['T1030 [char] (M15, S1 Load, DESK.md:1087) a load\'s clearing leaves an empty held-over group alone'] = function()
+T['T1030 [char] (M15, S1 Load, DESK.md:1211) a load\'s clearing leaves an empty held-over group alone'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', OPEN })
@@ -3684,7 +3684,7 @@ T['T1030 [char] (M15, S1 Load, DESK.md:1087) a load\'s clearing leaves an empty 
 end
 
 -- The pop-up's write keeps an empty group held over while it held edits, below its lines.
-T['T1031 [char] (M15, DESK.md:1093, :1079) the marks pop-up keeps an empty group held over meanwhile below its lines'] = function()
+T['T1031 [char] (M15, DESK.md:1217, :1203) the marks pop-up keeps an empty group held over meanwhile below its lines'] = function()
 	child.steps({ ':e a' })
 	child.cmd('split')
 	child.settle()
@@ -3710,7 +3710,7 @@ end
 
 -- A load bringing a window the marks it has already, under the pop-up's edits: the write keeps nothing of it
 -- below, a drawn group having the same name and marks.
-T['T1032 [char] (M15, S1 Load, DESK.md:1093) an unchanged load under the pop-up\'s edits leaves nothing below'] = function()
+T['T1032 [char] (M15, S1 Load, DESK.md:1217) an unchanged load under the pop-up\'s edits leaves nothing below'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e b', ADD .. 'a>', ':e a' })
@@ -3732,7 +3732,7 @@ end
 
 -- A load that holds a matched window's own groups over leaves out an empty one its entry brings back, by
 -- its name, having no marks to be known by, and holds over an empty one the entry doesn't name.
-T['T1033 [char] (M15, S1 Load, DESK.md:1102, :1079) a load holding a window\'s own groups over knows an empty one by its name'] = function()
+T['T1033 [char] (M15, S1 Load, DESK.md:1226, :1203) a load holding a window\'s own groups over knows an empty one by its name'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ADD .. 'a>', ':e a', OPEN })
@@ -3758,7 +3758,7 @@ end
 
 -- A saved plain tab no tab takes at a load, holding only a typed tab group with no marks: held over, empty,
 -- and the tab leaves the file at the records write.
-T['T1034 [char] (M15, S1 Load, DESK.md:1079, :1085) a saved tab no tab takes holds its empty typed group over, and leaves the file'] = function()
+T['T1034 [char] (M15, S1 Load, DESK.md:1203, :1208) a saved tab no tab takes holds its empty typed group over, and leaves the file'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -3788,7 +3788,7 @@ end
 
 -- A window closed with an empty default group and a marked typed one: the default goes with the window,
 -- the typed one is held over alone, unnamed.
-T['T1035 [char] (M15, DESK.md:1079, :1065) a window closed with an empty default group holds over only its other groups'] = function()
+T['T1035 [char] (M15, DESK.md:1203, :1190) a window closed with an empty default group holds over only its other groups'] = function()
 	child.steps({ ':e a' })
 	child.cmd('split')
 	child.settle()
@@ -3805,7 +3805,7 @@ end
 
 -- A window entry no window takes, holding an empty default group and a marked typed one: the load holds the
 -- typed one over alone, the default going.
-T['T1036 [char] (M15, S1 Load, DESK.md:1079, :1065) an entry no window takes holds over only its groups but an empty default'] = function()
+T['T1036 [char] (M15, S1 Load, DESK.md:1203, :1190) an entry no window takes holds over only its groups but an empty default'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -3828,7 +3828,7 @@ T['T1036 [char] (M15, S1 Load, DESK.md:1079, :1065) an entry no window takes hol
 end
 
 -- A tab session's load replacing a matched window's own groups: its empty default isn't held over.
-T['T1037 [char] (M15, S1 Load, DESK.md:1102, :1065) a load replacing a window\'s own groups holds over none of its empty default'] = function()
+T['T1037 [char] (M15, S1 Load, DESK.md:1226, :1190) a load replacing a window\'s own groups holds over none of its empty default'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ADD .. 'a>', ':e a' })
@@ -3848,7 +3848,7 @@ end
 
 -- A window keeping its own marks at a tab session's load, its entry bringing an empty default group and an
 -- empty typed one: it takes the typed one below its own, not the default.
-T['T1038 [char] (M15, S1 Load, DESK.md:1102, :1065) a window keeping its own marks takes its entry\'s empty typed group, not its empty default'] = function()
+T['T1038 [char] (M15, S1 Load, DESK.md:1226, :1190) a window keeping its own marks takes its entry\'s empty typed group, not its empty default'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', OPEN })
@@ -3875,7 +3875,7 @@ end
 -- P1 with an empty group: a tab session loaded twice, first into a tab its entries don't match, then into one
 -- they do: the window takes its empty group back, and the empty copy the first load held over goes, known by
 -- the name of the group it came from.
-T['T1039 [char] (M15, S1 Load, DESK.md:1087) a tab session loaded twice, first where no entry matches, gives the window its empty group once'] = function()
+T['T1039 [char] (M15, S1 Load, DESK.md:1211) a tab session loaded twice, first where no entry matches, gives the window its empty group once'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.cmd('tabnew')
@@ -3901,7 +3901,7 @@ end
 
 -- A tab session loaded again where it's open, before any records write: an entry no window takes holds its
 -- empty group over once, not again.
-T['T1040 [char] (M15, S1 Load, DESK.md:1079, :1101) a tab session loaded again holds no repeat of an untaken entry\'s empty group over'] = function()
+T['T1040 [char] (M15, S1 Load, DESK.md:1203, :1225) a tab session loaded again holds no repeat of an untaken entry\'s empty group over'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.cmd('tabnew')
@@ -3928,7 +3928,7 @@ T['T1040 [char] (M15, S1 Load, DESK.md:1079, :1101) a tab session loaded again h
 end
 
 -- Two entries no window takes in one load, each with an empty group of one name: both are held over.
-T['T1041 [char] (M15, S1 Load, DESK.md:1079) two entries no window takes, each with an empty group of one name, have both held over'] = function()
+T['T1041 [char] (M15, S1 Load, DESK.md:1203) two entries no window takes, each with an empty group of one name, have both held over'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.cmd('tabnew')
@@ -3955,7 +3955,7 @@ end
 
 -- Another editor's save stands in: t's file gains an empty group of its own, notes, that memory doesn't have.
 -- Loaded again where it's open, memory winning: notes is held over, once, and not again at the next load.
-T['T1042 [char] (M15, S1 Load, DESK.md:1101) a load where the session is open holds an empty group only its file has over, once'] = function()
+T['T1042 [char] (M15, S1 Load, DESK.md:1225) a load where the session is open holds an empty group only its file has over, once'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.cmd('tabnew')
@@ -3990,7 +3990,7 @@ end
 
 -- A load bringing a window its entry under the pop-up's edits, the entry holding an empty default group: the
 -- write keeps nothing of the default below its lines, it going as a load's empty default goes.
-T['T1044 [char] (M15, S1 Load, DESK.md:1093, :1065) an empty default a load brings under the pop-up\'s edits isn\'t kept below them'] = function()
+T['T1044 [char] (M15, S1 Load, DESK.md:1217, :1190) an empty default a load brings under the pop-up\'s edits isn\'t kept below them'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', OPEN })
@@ -4026,7 +4026,7 @@ end
 -- P2 with an empty group: a plain tab closed after the whole editor's save, its window's empty group held over
 -- and written with the records; a fresh editor restores both tabs and loads: the window takes the group back
 -- from its entry, and the copy the close held over goes, known by the name it came from, read from the file.
-T['T1045 [char] (M15, S1 Load, DESK.md:1087) a plain tab restored before any save takes its window\'s empty group back once'] = function()
+T['T1045 [char] (M15, S1 Load, DESK.md:1211) a plain tab restored before any save takes its window\'s empty group back once'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e x' })
@@ -4054,7 +4054,7 @@ end
 
 -- A default group with marks a load brings under the pop-up's edits: kept below them, held over, as no
 -- default; the pop-up's own first group stays the default.
-T['T1046 [char] (M15, S1 Load, DESK.md:1093, :1065) a default group a load brings under the pop-up\'s edits is held over below them as no default'] = function()
+T['T1046 [char] (M15, S1 Load, DESK.md:1217, :1190) a default group a load brings under the pop-up\'s edits is held over below them as no default'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ADD .. 'a>', ':e a' })
@@ -4079,7 +4079,7 @@ end
 
 -- A load whose taken entry clears an empty copy holds over another entry's empty group of the same name: the
 -- copy cleared isn't there to be it.
-T['T1048 [char] (M15, S1 Load, DESK.md:1087, :1079) a copy a load clears doesn\'t keep another entry\'s same-named empty group from being held over'] = function()
+T['T1048 [char] (M15, S1 Load, DESK.md:1211, :1203) a copy a load clears doesn\'t keep another entry\'s same-named empty group from being held over'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.cmd('tabnew')
@@ -4120,7 +4120,7 @@ end
 -- A tab session's first load into a tab on e holds the c window's empty group over; its second, into a tab on c
 -- alone, gives the c window its group back, clearing that copy, and holds the e window's empty group of the same
 -- name over: the cleared copy isn't there to be it, whatever order the file keeps the two windows in.
-T['T1049 [char] (M15, S1 Load, DESK.md:1087, :1079) a window taking its empty group back leaves another window\'s same-named empty group to be held over'] = function()
+T['T1049 [char] (M15, S1 Load, DESK.md:1211, :1203) a window taking its empty group back leaves another window\'s same-named empty group to be held over'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.cmd('tabnew')
@@ -4158,7 +4158,7 @@ end
 
 -- Two windows with no saved entry, each with an empty todo, closed: two copies held over. A window whose entry
 -- brings an empty todo takes it back at a load: one copy goes, the other window's stays.
-T['T1050 [char] (M15, S1 Load, DESK.md:1087) a window taking its empty group back clears one copy of it, another window\'s staying'] = function()
+T['T1050 [char] (M15, S1 Load, DESK.md:1211) a window taking its empty group back clears one copy of it, another window\'s staying'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e d', OPEN })
@@ -4190,7 +4190,7 @@ end
 
 -- A window closed with a saved entry: its groups go onto the entry as they stand, a group deleted since the
 -- save gone from it and an empty one typed since on it, nothing held over; the next load gives them back once.
-T['T1051 [char] (M15, DESK.md:1079) a window closed with a saved entry puts its groups onto it as they stand, nothing held over'] = function()
+T['T1051 [char] (M15, DESK.md:1203) a window closed with a saved entry puts its groups onto it as they stand, nothing held over'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -4221,7 +4221,7 @@ end
 
 -- A save after a close, the windows written anew without the closed one: what the close put onto its entry
 -- is held over then, once, under what the window showed; the next load: once.
-T['T1052 [char] (M15, DESK.md:1079) a save after a close holds what the close put onto its entry over, once'] = function()
+T['T1052 [char] (M15, DESK.md:1203) a save after a close holds what the close put onto its entry over, once'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -4244,7 +4244,7 @@ end
 -- The README's save at TabClosedPre, `:q` closing a tab session's last window: the save writes that window,
 -- still in its tab, so nothing is held over, t's file holding no held-over group, and the load gives the mark
 -- back once.
-T['T1053 [char] (M15, DESK.md:1079) a save at TabClosedPre writes the window its last close closes, and holds nothing over'] = function()
+T['T1053 [char] (M15, DESK.md:1203) a save at TabClosedPre writes the window its last close closes, and holds nothing over'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	local id = pool_here()
@@ -4264,7 +4264,7 @@ end
 
 -- Another editor's save rewrites the entry between the close and frogman's records write: the close's groups
 -- are held over instead, and the file keeps the other editor's entry.
-T['T1054 [char] (M15, S1 Records, DESK.md:1079) a close whose entry another editor rewrote meanwhile is held over instead'] = function()
+T['T1054 [char] (M15, S1 Records, DESK.md:1203) a close whose entry another editor rewrote meanwhile is held over instead'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -4296,7 +4296,7 @@ T['T1054 [char] (M15, S1 Records, DESK.md:1079) a close whose entry another edit
 end
 
 -- A plain tab closed with a saved tab entry: its groups go onto it as they stand, nothing held over.
-T['T1055 [char] (M15, DESK.md:1079) a plain tab closed with a saved tab entry puts its groups onto it'] = function()
+T['T1055 [char] (M15, DESK.md:1203) a plain tab closed with a saved tab entry puts its groups onto it'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -4315,7 +4315,7 @@ T['T1055 [char] (M15, DESK.md:1079) a plain tab closed with a saved tab entry pu
 end
 
 -- A plain tab whose groups are all gone, closed: its tab entry comes off the file, nothing held over.
-T['T1056 [char] (M15, DESK.md:1079) a plain tab closed with no groups left takes its tab entry off'] = function()
+T['T1056 [char] (M15, DESK.md:1203) a plain tab closed with no groups left takes its tab entry off'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -4335,7 +4335,7 @@ end
 
 -- R9: a mark made after a tab session's last save, its tab closed with nothing saving at the close: the mark
 -- goes onto its window's entry in t's file, and the next load gives it back.
-T['T1057 [char] (M15, DESK.md:1079, repro R9) a mark made after a tab session\'s last save comes back after its tab closes'] = function()
+T['T1057 [char] (M15, DESK.md:1203, repro R9) a mark made after a tab session\'s last save comes back after its tab closes'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	local id = pool_here()
@@ -4349,7 +4349,7 @@ T['T1057 [char] (M15, DESK.md:1079, repro R9) a mark made after a tab session\'s
 end
 
 -- R9c: two marked windows in the tab, both marks made after t's last save, the tab closed: both come back.
-T['T1058 [char] (M15, DESK.md:1079, repro R9c) the marks of two windows made after a tab session\'s last save come back after its tab closes'] = function()
+T['T1058 [char] (M15, DESK.md:1203, repro R9c) the marks of two windows made after a tab session\'s last save come back after its tab closes'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	local id = pool_here()
@@ -4388,7 +4388,7 @@ end
 
 -- P2: a plain tab closed after the whole editor's save: the close puts its window's mark onto its entry,
 -- nothing held over.
-T['T1060 [char] (M15, DESK.md:1079, repro P2) a plain tab closed after a save puts its window\'s mark onto its entry, nothing held over'] = function()
+T['T1060 [char] (M15, DESK.md:1203, repro P2) a plain tab closed after a save puts its window\'s mark onto its entry, nothing held over'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e x' })
@@ -4403,7 +4403,7 @@ end
 
 -- P6: a window with a saved entry in t's file, closed without its events: the cleanup pass puts its mark onto
 -- that entry, nothing held over anywhere.
-T['T1061 [char] (M15, DESK.md:1079, repro P6) a window closed without its events puts its mark onto its entry in its session\'s file'] = function()
+T['T1061 [char] (M15, DESK.md:1203, repro P6) a window closed without its events puts its mark onto its entry in its session\'s file'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e x' })
@@ -4425,7 +4425,7 @@ end
 
 -- A tab session's tab closed while its file can't be written: the pool is kept with no tab, and its window's
 -- close, its mark among it, is kept in memory with it, not written and not lost.
-T['T1062 [char] (M15, DESK.md:1079) a tab session\'s close whose write fails keeps its window\'s close in memory with the list'] = function()
+T['T1062 [char] (M15, DESK.md:1203) a tab session\'s close whose write fails keeps its window\'s close in memory with the list'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	eq(save_t(), { true })
@@ -4465,7 +4465,7 @@ end
 
 -- A window with no saved entry in t's file, at t's tab's close: its mark is held over in t's scope and written
 -- into t's file with its closed list, and comes back held over at the next load.
-T['T1064 [char] (M15, DESK.md:1079) a window with no entry at a tab session\'s close is held over in its scope and written into its file'] = function()
+T['T1064 [char] (M15, DESK.md:1203) a window with no entry at a tab session\'s close is held over in its scope and written into its file'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	eq(save_t(), { true })
@@ -4480,7 +4480,7 @@ end
 
 -- P6 at a save: a window with a saved entry closed without its events, then a save, whose cleanup pass puts
 -- the mark onto the entry and whose windows, written anew without it, hold it over: once.
-T['T1065 [char] (M15, DESK.md:1079, repro P6) a window closed without its events, then a save, is held over once'] = function()
+T['T1065 [char] (M15, DESK.md:1203, repro P6) a window closed without its events, then a save, is held over once'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -4500,7 +4500,7 @@ end
 -- A tab session's last close while a key's job waits, as it does at a prompt: the event loop runs the close's
 -- write before the hold-over its entry-less split queued, so the close holds that over into t's scope first,
 -- and t's file takes it, its mark and its snapshot.
-T['T1067 [char] (M15, M16, DESK.md:1079, :1697) a tab session\'s last close holds over what its windows still have queued as its records are written'] = function()
+T['T1067 [char] (M15, M16, DESK.md:1203, :1938) a tab session\'s last close holds over what its windows still have queued as its records are written'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	eq(save_t(), { true })
@@ -4520,7 +4520,7 @@ end
 
 -- A window closing while its name can't be looked up: the close fails nothing, and what it holds over is headed
 -- by what was noted of it before.
-T['T1068 [char] (M15, DESK.md:1079, :1086) a close whose name can\'t be looked up fails nothing and names what was seen before'] = function()
+T['T1068 [char] (M15, DESK.md:1203, :1208) a close whose name can\'t be looked up fails nothing and names what was seen before'] = function()
 	child.steps({ ':e a' })
 	child.cmd('vsplit')
 	child.settle()
@@ -4580,7 +4580,7 @@ local PAGES_THERE = [[
 -- A switch with nothing wired to save at it: a mark made since the session's last save, its window closed by
 -- the switch's teardown with the load in the same call: the session left's file holds it on the window's
 -- entry, nothing held over.
-T['T1069 [char] (M15, DESK.md:1082) a switch keeps a window\'s mark made since the last save on its entry in the session left\'s file'] = function()
+T['T1069 [char] (M15, DESK.md:1205) a switch keeps a window\'s mark made since the last save on its entry in the session left\'s file'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -4598,7 +4598,7 @@ end
 
 -- A window with no saved entry at a switch: its mark is held over in the session left's scope and written
 -- into its file, and none of it reaches the session loaded next.
-T['T1071 [char] (M15, DESK.md:1082) a window with no saved entry at a switch is held over in the session left\'s file, not in the next'] = function()
+T['T1071 [char] (M15, DESK.md:1205) a window with no saved entry at a switch is held over in the session left\'s file, not in the next'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -4615,7 +4615,7 @@ end
 -- The switch's write leaves the session left's closed list as its file has it: a close settled into the list
 -- in the same call as the switch, so no records write runs before it; the switch's write doesn't write the
 -- close, which goes with the pending write the load drops.
-T['T1072 [char] (M5, M15, DESK.md:1082) the switch\'s write leaves the session left\'s closed list as its file has it'] = function()
+T['T1072 [char] (M5, M15, DESK.md:1205) the switch\'s write leaves the session left\'s closed list as its file has it'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b', ':e a' }) -- b hidden, so deleting it closes no window
@@ -4642,7 +4642,7 @@ end
 
 -- A tab session's tab torn down at a whole-editor switch: its window's mark made since t's last save goes onto
 -- its entry in t's file, and t's closed list stays as the file had it.
-T['T1073 [char] (M15, DESK.md:1082) a tab session\'s tab torn down at a switch keeps its window\'s mark on t\'s entry, t\'s list as it was'] = function()
+T['T1073 [char] (M15, DESK.md:1205) a tab session\'s tab torn down at a switch keeps its window\'s mark on t\'s entry, t\'s list as it was'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	eq(save_t(), { true })
@@ -4660,7 +4660,7 @@ end
 
 -- A load of the same session right after a close, before the close's write lands: the window restored as
 -- the load runs takes its entry with the close's groups on it.
-T['T1074 [char] (M15, DESK.md:1079, :1082) a load of the same session right after a close gives the restored window the close\'s groups'] = function()
+T['T1074 [char] (M15, DESK.md:1203, :1205) a load of the same session right after a close gives the restored window the close\'s groups'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -4683,7 +4683,7 @@ end
 
 -- After a switch, a save under the session left's name, from the session loaded next, holds none of the session
 -- left's closes over: the switch wrote them, and the load let its entries go.
-T['T1075 [char] (M15, DESK.md:1082, :1079) a save under the session left\'s name after a switch holds none of its closes over'] = function()
+T['T1075 [char] (M15, DESK.md:1205, :1203) a save under the session left\'s name after a switch holds none of its closes over'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -4700,7 +4700,7 @@ end
 
 -- An open No Name text the session left's last save wrote, no mark naming it: the switch's write keeps its
 -- text, and the session loaded back reopens it.
-T['T1076 [char] (M15, S1 Records, DESK.md:1082) an open No Name text of the session left survives the switch\'s write'] = function()
+T['T1076 [char] (M15, S1 Records, DESK.md:1205) an open No Name text of the session left survives the switch\'s write'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -4721,7 +4721,7 @@ end
 -- A No Name text made and marked in a split, the split closed by the switch's teardown and the load, all in one
 -- batch, so no records write has written the text: the switch's write takes it from its buffer, open still,
 -- its window gone, and the window restored at the next load opens it from its mark.
-T['T1077 [char] (M15, S1 Records, DESK.md:1082, :1075) a marked No Name text made in the switch\'s batch survives it, its mark opening it'] = function()
+T['T1077 [char] (M15, S1 Records, DESK.md:1205, :1200) a marked No Name text made in the switch\'s batch survives it, its mark opening it'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -4751,7 +4751,7 @@ end
 
 -- A split closed in a detached list's tab by the switch's teardown: the switch's write carries the list's
 -- held-over group onto the list in the whole editor's file.
-T['T1078 [char] (M15, S2, DESK.md:1082, :1090) a switch writes a detached list\'s held-over group onto the list in the whole editor\'s file'] = function()
+T['T1078 [char] (M15, S2, DESK.md:1205, :1214) a switch writes a detached list\'s held-over group onto the list in the whole editor\'s file'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	eq(S2.save(child), { true }) -- the whole editor's file, before t moves
@@ -4786,7 +4786,7 @@ end
 
 -- The switch's write keeps the session left's trail pages: its file names today's page, written by the save
 -- after a close, and the page is still on disk after the switch.
-T['T1079 [char] (A27, M15, DESK.md:1082) the switch\'s write keeps the session left\'s trail pages'] = function()
+T['T1079 [char] (A27, M15, DESK.md:1205) the switch\'s write keeps the session left\'s trail pages'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
@@ -4804,7 +4804,7 @@ end
 
 -- A tab session loaded into its own tab right after a close there, before the close's write lands: the window
 -- restored as the load runs takes its entry with the close's groups.
-T['T1080 [char] (M15, DESK.md:1079, :1082) a tab session loaded into its own tab right after a close gives the restored window the close\'s groups'] = function()
+T['T1080 [char] (M15, DESK.md:1203, :1205) a tab session loaded into its own tab right after a close gives the restored window the close\'s groups'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	child.cmd('vsplit')
@@ -4827,7 +4827,7 @@ end
 -- A No Name text marked since the session's last save, its records written, then edited and the window that
 -- marked it closed by the switch in one call, the text still open in another window: the switch's write takes
 -- the text from the buffer over the file's copy, and the restored window's mark opens it as edited.
-T['T1081 [char] (M15, S1 Records, DESK.md:1082, :1075) a marked No Name text edited since its last write keeps its edits at the switch'] = function()
+T['T1081 [char] (M15, S1 Records, DESK.md:1205, :1200) a marked No Name text edited since its last write keeps its edits at the switch'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -4858,7 +4858,7 @@ end
 
 -- A window the switch's teardown leaves standing: its mark made since the session's last save goes onto its
 -- entry in the session left's file as it stands, as a closed window's does.
-T['T1082 [char] (M15, DESK.md:1082) a window the switch leaves standing keeps its mark made since the last save on its entry'] = function()
+T['T1082 [char] (M15, DESK.md:1205) a window the switch leaves standing keeps its mark made since the last save on its entry'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -4878,7 +4878,7 @@ T['T1082 [char] (M15, DESK.md:1082) a window the switch leaves standing keeps it
 end
 
 -- A plain tab the switch leaves standing: its tab marks made since the session's last save go onto its tab entry.
-T['T1083 [char] (M15, DESK.md:1082) a plain tab the switch leaves standing keeps its tab marks made since the last save on its tab entry'] = function()
+T['T1083 [char] (M15, DESK.md:1205) a plain tab the switch leaves standing keeps its tab marks made since the last save on its tab entry'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e x' })
@@ -4895,7 +4895,7 @@ end
 -- An open No Name text the session left's last save wrote, edited since, in a window the switch leaves standing:
 -- the switch's write takes its lines from the buffer, open as the file has it, and the session loaded back
 -- reopens it as edited.
-T['T1084 [char] (M15, S1 Records, DESK.md:1082, :442) an open No Name text edited since the last write keeps its edits at the switch'] = function()
+T['T1084 [char] (M15, S1 Records, DESK.md:1205, :541) an open No Name text edited since the last write keeps its edits at the switch'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -4931,7 +4931,7 @@ local PAGE_HAS = [[
 
 -- The switch writes today's trail page with the session left's own steps: a cycle cancelled by a window jump since
 -- the last save is on the session left's page, and a close made in the switch's own batch, the teardown's, isn't.
-T['T1085 [char] (A27, DESK.md:1082, :442) the switch writes the session left\'s trail page, its teardown\'s moves left out'] = function()
+T['T1085 [char] (A27, DESK.md:1205, :541) the switch writes the session left\'s trail page, its teardown\'s moves left out'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b', ':e a' })
@@ -4957,7 +4957,7 @@ end
 -- A switch whose teardown closes a window without its events (noautocmd), the load in the same call: the window's
 -- mark made since the session's last save goes onto its entry in the session left's file as a closed window's
 -- does, nothing held over.
-T['T1087 [char] (M15, DESK.md:1082, :1079) a window the switch closes without its events keeps its mark made since the last save on its entry'] = function()
+T['T1087 [char] (M15, DESK.md:1205, :1203) a window the switch closes without its events keeps its mark made since the last save on its entry'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -4980,7 +4980,7 @@ end
 -- A window with no saved entry closed without its events by the switch's teardown: its mark is held over in the
 -- session left's scope and written into its file, and none of it reaches the session loaded next, a cleanup
 -- tick after the load included.
-T['T1088 [char] (M15, DESK.md:1082, :1079) a window with no saved entry the switch closes without its events is held over in the session left\'s file'] = function()
+T['T1088 [char] (M15, DESK.md:1205, :1203) a window with no saved entry the switch closes without its events is held over in the session left\'s file'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -5004,7 +5004,7 @@ end
 -- A tab session loaded into its own tab right after a split there closed without its events, before any cleanup
 -- tick: the window restored as the load runs takes its entry with what the split held, and nothing is held
 -- over, a cleanup tick after the load included.
-T['T1089 [char] (M15, DESK.md:1079, :1082) a tab session loaded into its own tab right after a split there closed without its events gives the restored window its groups'] = function()
+T['T1089 [char] (M15, DESK.md:1203, :1205) a tab session loaded into its own tab right after a split there closed without its events gives the restored window its groups'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	child.cmd('vsplit')
@@ -5030,7 +5030,7 @@ end
 -- A marked No Name text open at the session left's last write, wiped by the switch's teardown, its close settled
 -- before the load: the switch's write keeps it open in the file, as the file has it, and the session loaded back
 -- reopens it with no mark jump.
-T['T1092 [char] (M15, S1 Records, DESK.md:1082, :442) a marked No Name text the switch\'s teardown wipes stays open in the session left\'s file'] = function()
+T['T1092 [char] (M15, S1 Records, DESK.md:1205, :541) a marked No Name text the switch\'s teardown wipes stays open in the session left\'s file'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -5058,7 +5058,7 @@ end
 
 -- A plain tab with no saved entry closed with its events in the switch's own call: its tab marks are held over
 -- once in the session left's file, the pass for tabs gone without their events not taking them again.
-T['T1093 [char] (M15, DESK.md:1082, :1079) a plain tab the switch closes with its events is held over once in the session left\'s file'] = function()
+T['T1093 [char] (M15, DESK.md:1205, :1203) a plain tab the switch closes with its events is held over once in the session left\'s file'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e x' })
@@ -5078,7 +5078,7 @@ end
 -- the session left, let go as its last tab becomes the other's, keeps the split's mark made since its last save
 -- on its entry in its file, nothing held over in the whole editor's scope, a cleanup tick after the load
 -- included.
-T['T1094 [char] (M15, DESK.md:1082, :1079) a tab session loaded into another\'s only tab keeps a split closed there without its events on its entry'] = function()
+T['T1094 [char] (M15, DESK.md:1205, :1203) a tab session loaded into another\'s only tab keeps a split closed there without its events on its entry'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 'u'), { true })
 	tab_session(s)

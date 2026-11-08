@@ -1233,7 +1233,7 @@ end
 
 -- A file another writer left holding a closed hash twice, as a hand edit could: the load places it once,
 -- since a list holds a file once (I22), and nothing dumps.
-T['T928 [char] (S1 Load, M5, I22, DESK.md:660) a session file holding a closed hash twice loads it once'] = function()
+T['T928 [char] (S1 Load, M5, I22, DESK.md:758) a session file holding a closed hash twice loads it once'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b', ':e c', ':e b', ':bdelete c.txt' })
@@ -3267,7 +3267,7 @@ end
 -- File-only state, sub/e.txt closed in the first tab too, so e.txt names two files, and e taken off
 -- t's list, so frogman lets e go and knows its path no longer: t_DETACHED's e line, in the file alone,
 -- is followed by its hash and named by the path the file keeps.
-T['T922 [char] (A27, S2 Closed-stack picker, DESK.md:1622) * on an entry of a list in the whole editor\'s file alone follows its file'] = function()
+T['T922 [char] (A27, S2 Closed-stack picker, DESK.md:1861) * on an entry of a list in the whole editor\'s file alone follows its file'] = function()
 	local s = S2.shared()
 	local w1 = file_only_state(s)
 	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
@@ -4370,7 +4370,7 @@ end
 -- b and c closed, the lists open with an edit not written (their lines swapped), then c reopened in the
 -- window they came from, as from another window: c's line, drawn closed, is open by the write. The
 -- cleanup tick waits an hour, so nothing else takes c off a list between.
-T['T926 [char] (S2 Closed-stack picker, I7, DESK.md:654) the write asks about a line whose file is open now, and Yes leaves it off'] = function()
+T['T926 [char] (S2 Closed-stack picker, I7, DESK.md:758) the write asks about a line whose file is open now, and Yes leaves it off'] = function()
 	two_closed()
 	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
 	local p = S2.picker(child)
@@ -4504,7 +4504,7 @@ local function empty_held_in_split(win)
 	child.settle(300)
 end
 
-T['T1043 [char] (S2, M15, DESK.md:1090-1091) a list in the file alone emptied gives its empty held-over group to the whole editor\'s scope'] = function()
+T['T1043 [char] (S2, M15, DESK.md:1214) a list in the file alone emptied gives its empty held-over group to the whole editor\'s scope'] = function()
 	local s = S2.shared()
 	local w1, w2 = tab_session(s)
 	eq(S2.save(child), { true })
@@ -4528,7 +4528,7 @@ end
 
 -- T860's route with the split holding only an empty typed group: the list merged away gives the group to the
 -- whole editor's scope, empty, still known by the name it was held over from.
-T['T1047 [char] (S2, M15, DESK.md:1090-1091, :1087) a detached list merged away gives its empty held-over group to the whole editor\'s scope, known as before'] = function()
+T['T1047 [char] (S2, M15, DESK.md:1214, :1211) a detached list merged away gives its empty held-over group to the whole editor\'s scope, known as before'] = function()
 	local s = S2.shared()
 	local _, w2 = tab_session(s)
 	eq(S2.save(child), { true })
@@ -4642,7 +4642,7 @@ end
 
 -- A list in the whole editor's file alone, emptied in the closed lists: its copy of its session's marks goes to
 -- the whole editor's scope, held over under the list's name, and the list leaves the file.
-T['T1095 [char] (S2, M15, DESK.md:1090-1091) a list in the file alone emptied in the closed lists gives its copy of the session\'s marks to the whole editor\'s scope'] = function()
+T['T1095 [char] (S2, M15, DESK.md:1214) a list in the file alone emptied in the closed lists gives its copy of the session\'s marks to the whole editor\'s scope'] = function()
 	local s = S2.shared()
 	local w1, w2 = tab_session(s)
 	child.steps({ "<M-'><M-3>", ':e c', "<M-'><M-'><M-a>", ':e d', "<M-'><M-1>" }) -- t's session mark, made in t's tab
@@ -4669,7 +4669,7 @@ end
 
 -- A detached list merged away in the closed lists: it leaves memory and the file, and its copy of its session's
 -- marks goes to the whole editor's scope, held over under its name.
-T['T1096 [char] (S2, M15, DESK.md:1090-1091) a detached list merged away gives its copy of the session\'s marks to the whole editor\'s scope'] = function()
+T['T1096 [char] (S2, M15, DESK.md:1214) a detached list merged away gives its copy of the session\'s marks to the whole editor\'s scope'] = function()
 	local s = S2.shared()
 	local _, w2 = tab_session(s)
 	child.steps({ "<M-'><M-3>", ':e c', "<M-'><M-'><M-a>", ':e d', "<M-'><M-1>" })
@@ -4712,7 +4712,7 @@ end
 
 -- A detached list whose last tab closes with nothing in its closed list goes as an emptied one does: its copy of
 -- its session's marks goes to the whole editor's scope, held over under its name, and the list leaves the file.
-T['T1097 [char] (S2, M15, DESK.md:1090-1091) a detached list whose tab closes with nothing in its list gives its copy of the session\'s marks to the whole editor\'s scope'] = function()
+T['T1097 [char] (S2, M15, DESK.md:1214) a detached list whose tab closes with nothing in its list gives its copy of the session\'s marks to the whole editor\'s scope'] = function()
 	local s = S2.shared()
 	local w2 = detached_with_copy(s, true)
 	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
@@ -4724,7 +4724,7 @@ end
 
 -- A detached list whose last tab closes with nothing left in it at all, no closed file, no mark, no held-over
 -- snapshot, leaves the whole editor's file.
-T['T1098 [char] (S2, M15, DESK.md:1090) a detached list whose tab closes with nothing left in it leaves the whole editor\'s file'] = function()
+T['T1098 [char] (S2, M15, DESK.md:1214) a detached list whose tab closes with nothing left in it leaves the whole editor\'s file'] = function()
 	local s = S2.shared()
 	local w2 = detached_with_copy(s, false)
 	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
@@ -4735,7 +4735,7 @@ T['T1098 [char] (S2, M15, DESK.md:1090) a detached list whose tab closes with no
 end
 
 -- T1097's list with a second group typed into its copy: each group is held over under the list's name and its own.
-T['T1099 [char] (S2, M15, DESK.md:1090, :1085) a detached list leaving with two groups names each group after the list'] = function()
+T['T1099 [char] (S2, M15, DESK.md:1214, :1208) a detached list leaving with two groups names each group after the list'] = function()
 	local s = S2.shared()
 	local w2 = detached_with_copy(s, true)
 	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
@@ -4772,7 +4772,7 @@ end
 
 -- A detached list whose tab is still open stays in the whole editor's file, nothing in its closed list and no
 -- marks: its tab keeps it, and the next load finds the tab by it.
-T['T1100 [char] (S2, DESK.md:1090) a detached list whose tab is open stays in the whole editor\'s file, empty'] = function()
+T['T1100 [char] (S2, DESK.md:1214) a detached list whose tab is open stays in the whole editor\'s file, empty'] = function()
 	local s = S2.shared()
 	detached_with_copy(s, false)
 	eq(S2.save(child), { true })
@@ -4783,7 +4783,7 @@ end
 
 -- A detached list whose tab closes with nothing in its closed list gives what its tab's windows left held over, a
 -- group and a snapshot, to the whole editor's scope, and leaves the file.
-T['T1102 [char] (S2, M15, M16, DESK.md:1090) a detached list whose tab closes with nothing in its list gives its held-over group and snapshot to the whole editor\'s scope'] = function()
+T['T1102 [char] (S2, M15, M16, DESK.md:1214) a detached list whose tab closes with nothing in its list gives its held-over group and snapshot to the whole editor\'s scope'] = function()
 	local s = S2.shared()
 	local w2 = detached_with_copy(s, false)
 	held_in_split(w2) -- in the second tab, now t_DETACHED's
@@ -4796,7 +4796,7 @@ end
 
 -- T1095's write failing once, the session directory read-only, then written again: the list's copy is held over
 -- once in the whole editor's scope, the retried write not moving it a second time.
-T['T1103 [char] (S2, M15, DESK.md:1090-1091) a list in the file alone emptied by a write that fails and is retried gives its copy once'] = function()
+T['T1103 [char] (S2, M15, DESK.md:1214) a list in the file alone emptied by a write that fails and is retried gives its copy once'] = function()
 	local s = S2.shared()
 	local w1, w2 = tab_session(s)
 	child.steps({ "<M-'><M-3>", ':e c', "<M-'><M-'><M-a>", ':e d', "<M-'><M-1>" }) -- t's session mark, made in t's tab
@@ -4832,7 +4832,7 @@ end
 -- can't be written: the list stays in memory with no tab and nothing in it, so the next records write, once the
 -- file can be written, leaves it out rather than taking the file's own entry for it, and lets it go from memory;
 -- its copy is held over once.
-T['T1104 [char] (S2, M15, DESK.md:1090) a detached list whose tab closes empty while the whole editor\'s file can\'t be written leaves it at the next write'] = function()
+T['T1104 [char] (S2, M15, DESK.md:1214) a detached list whose tab closes empty while the whole editor\'s file can\'t be written leaves it at the next write'] = function()
 	local s = S2.shared()
 	local w2 = detached_with_copy(s, true)
 	eq(S2.save(child), { true }) -- the whole editor's file holds t_DETACHED with its copy
@@ -4859,7 +4859,7 @@ end
 -- T1096's merge, the whole editor's file holding the list, settled while that file can't be written: the list stays
 -- in memory with no tab and nothing in it, so the next write, a save, leaves it out of the file and lets it go from
 -- memory; its copy is held over once.
-T['T1105 [char] (S2, M15, DESK.md:1090-1091) a detached list merged away while the whole editor\'s file can\'t be written leaves it at the next write'] = function()
+T['T1105 [char] (S2, M15, DESK.md:1214) a detached list merged away while the whole editor\'s file can\'t be written leaves it at the next write'] = function()
 	local s = S2.shared()
 	local _, w2 = tab_session(s)
 	child.steps({ "<M-'><M-3>", ':e c', "<M-'><M-'><M-a>", ':e d', "<M-'><M-1>" })
@@ -4915,7 +4915,7 @@ end
 -- T1102's list, its tab's last window a split with a window mark on d, the tab closed while a records write queued
 -- before the close waits: the write doesn't let the list go ahead of its close, so the window's group still reaches
 -- the whole editor's scope as T1102's does.
-T['T1106 [char] (S2, M15, DESK.md:1090) a detached list whose tab closes empty while a records write waits still gives its last window\'s group to the whole editor\'s scope'] = function()
+T['T1106 [char] (S2, M15, DESK.md:1214) a detached list whose tab closes empty while a records write waits still gives its last window\'s group to the whole editor\'s scope'] = function()
 	local s = S2.shared()
 	local w2 = detached_with_copy(s, false)
 	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
@@ -4963,7 +4963,7 @@ end
 -- A detached list kept with no tab after a failed write, its last line deleted in the closed lists once the file can
 -- be written: it goes as an emptied list does, its copy held over in the whole editor's scope, and it leaves
 -- memory and the file.
-T['T1107 [char] (S2, M15, DESK.md:1090-1091) a detached list kept with no tab after a failed write, emptied in the closed lists, gives its copy to the whole editor\'s scope and leaves'] = function()
+T['T1107 [char] (S2, M15, DESK.md:1214) a detached list kept with no tab after a failed write, emptied in the closed lists, gives its copy to the whole editor\'s scope and leaves'] = function()
 	local s = S2.shared()
 	local kept = kept_with_e(s)
 	local p = S2.picker(child)
@@ -4979,7 +4979,7 @@ T['T1107 [char] (S2, M15, DESK.md:1090-1091) a detached list kept with no tab af
 end
 
 -- The same list emptied by opening its last file again: it goes the same way.
-T['T1108 [char] (S2, M15, DESK.md:1090-1091) a detached list kept with no tab after a failed write, emptied by opening its file, gives its copy to the whole editor\'s scope and leaves'] = function()
+T['T1108 [char] (S2, M15, DESK.md:1214) a detached list kept with no tab after a failed write, emptied by opening its file, gives its copy to the whole editor\'s scope and leaves'] = function()
 	local s = S2.shared()
 	local kept = kept_with_e(s)
 	child.steps({ ':e e' }) -- e off every list
@@ -4992,7 +4992,7 @@ end
 
 -- The same list emptied by opening its file and the whole editor saved at once, before any records write: the save
 -- leaves the list out and holds its copy over in the whole editor's scope.
-T['T1109 [char] (S2, M15, DESK.md:1090-1091) a detached list kept with no tab after a failed write, emptied and saved at once, leaves the file through the save'] = function()
+T['T1109 [char] (S2, M15, DESK.md:1214) a detached list kept with no tab after a failed write, emptied and saved at once, leaves the file through the save'] = function()
 	local s = S2.shared()
 	local kept = kept_with_e(s)
 	local saved = child.lua([[
@@ -5045,7 +5045,7 @@ local LOAD_CLOSES = [[
 -- A tab session's load into another tab session's tab, the teardown deleting that tab's buffers in the same call:
 -- the session left keeps its closed list as its file had it, as at a whole-editor switch, while the trail still
 -- records the closes onto its list.
-T['T1101 [char] (S2, M5, DESK.md:1082) a tab session\'s load into a tab session\'s tab leaves the teardown\'s closes off the session left\'s closed list'] = function()
+T['T1101 [char] (S2, M5, DESK.md:1205) a tab session\'s load into a tab session\'s tab leaves the teardown\'s closes off the session left\'s closed list'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 'u'), { true })
 	tab_session(s) -- t in the second tab, on d, c in its history
@@ -5062,7 +5062,7 @@ T['T1101 [char] (S2, M5, DESK.md:1082) a tab session\'s load into a tab session\
 end
 
 -- The same teardown in a plain tab: the files it closes go onto the whole editor's list, which its file takes.
-T['T1110 [char] (S2, M5, DESK.md:1082) a tab session\'s load into a plain tab puts the teardown\'s closes onto the whole editor\'s list'] = function()
+T['T1110 [char] (S2, M5, DESK.md:1205) a tab session\'s load into a plain tab puts the teardown\'s closes onto the whole editor\'s list'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 'u'), { true })
 	S2.start(child, s)
@@ -5084,7 +5084,7 @@ end
 
 -- The same teardown in a detached list's tab: the files it closes go onto that list, which goes into the whole
 -- editor's file with them as its tab goes.
-T['T1111 [char] (S2, M5, DESK.md:1082) a tab session\'s load into a detached list\'s tab puts the teardown\'s closes onto that list in the whole editor\'s file'] = function()
+T['T1111 [char] (S2, M5, DESK.md:1205) a tab session\'s load into a detached list\'s tab puts the teardown\'s closes onto that list in the whole editor\'s file'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 'u'), { true })
 	local w2 = detached_with_copy(s, false) -- the second tab keeps t_DETACHED, after a whole-editor save
@@ -5104,7 +5104,7 @@ end
 
 -- t reloaded into its own tab, the teardown closing a file opened there since t's save in the same call: the file
 -- stays off t's list, as t's file has it, while the trail records its close onto t.
-T['T1112 [char] (S2, M5, DESK.md:1082) a tab session reloaded into its own tab leaves the teardown\'s closes off its closed list'] = function()
+T['T1112 [char] (S2, M5, DESK.md:1205) a tab session reloaded into its own tab leaves the teardown\'s closes off its closed list'] = function()
 	local s = S2.shared()
 	local _, w2 = tab_session(s) -- t in the second tab, its file with nothing closed
 	child.steps({ ':e e', ':e d' }) -- e opened in t's tab since t's save
@@ -5130,7 +5130,7 @@ end
 
 -- A file t's tab visited, closed from the first tab in the same call as u's load into t's tab: a close made in
 -- another tab isn't the teardown's, so it goes onto t's list as a visitor's does, and into t's file as t goes.
-T['T1113 [char] (S2, M5, DESK.md:1082) a close made in another tab just before a tab session\'s load still goes onto the session left\'s list'] = function()
+T['T1113 [char] (S2, M5, DESK.md:1205) a close made in another tab just before a tab session\'s load still goes onto the session left\'s list'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 'u'), { true })
 	local w1, w2 = tab_session(s) -- t in the second tab, c in its history

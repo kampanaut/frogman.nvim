@@ -196,8 +196,8 @@ end
 
 -- A whole-editor load from idle starts with the file's snapshots alone, each once: reloading the session left,
 -- whose write as the load began put the window's snapshots onto its entry as they stood, the one taken since
--- the save among them (DESK.md:1082).
-T['T768 [char] (M16, S1, DESK.md:1082) a whole-editor load from idle starts with the file\'s snapshots alone, the session left\'s written first'] = function()
+-- the save among them (DESK.md:1205).
+T['T768 [char] (M16, S1, DESK.md:1205) a whole-editor load from idle starts with the file\'s snapshots alone, the session left\'s written first'] = function()
 	taken()
 	eq(S2.save(child), { true })
 	child.steps({ ':e e', TAKE, ':e d' }) -- back on d, so the window takes its entry
@@ -695,7 +695,7 @@ end
 -- Saved on its window, then held over before the quit's records: one snapshot comes back, the window's
 -- when the window left takes the split's entry (the split back on b), the held copy going as the window
 -- takes it, or held over when it doesn't (on x).
-T['T797 [char] (M16, S1 Load, DESK.md:1087) a snapshot held over after its save comes back once'] = function()
+T['T797 [char] (M16, S1 Load, DESK.md:1211) a snapshot held over after its save comes back once'] = function()
 	local got = {}
 	for _, last in ipairs({ ':e b', ':e x' }) do
 		local s = S2.shared()
@@ -1596,7 +1596,7 @@ T['T820 [char] (M2 Holders, M16) a path no holder takes is forgotten once the ed
 	]]) }, { n = 1, q = false })
 end
 
-T['T933 [char] (M16, DESK.md:650) a snapshot\'s notes let go of a file as it is let go'] = function()
+T['T933 [char] (M16, DESK.md:754) a snapshot\'s notes let go of a file as it is let go'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	eq(child.notes(), 'dtm{b>a} dsm{}')
 	-- a closed first, so the order the snapshot keeps, the bufferline's, leaves it out: its notes alone name a
@@ -1628,7 +1628,7 @@ T['T933 [char] (M16, DESK.md:650) a snapshot\'s notes let go of a file as it is 
 	eq({ before = before, let_go = let_go, after = naming() }, { before = 1, let_go = true, after = 0 })
 end
 
-T['T884 [char] (M15, M16, DESK.md:1086) a window gone without its WinClosed in a tab session\'s tab is held over in that session\'s scope, under what it showed'] = function()
+T['T884 [char] (M15, M16, DESK.md:1208) a window gone without its WinClosed in a tab session\'s tab is held over in that session\'s scope, under what it showed'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 't'), { true })
 	S2.start(child, s)
@@ -1657,7 +1657,7 @@ T['T884 [char] (M15, M16, DESK.md:1086) a window gone without its WinClosed in a
 	]], { id }), { t = { groups = 1, snapshots = 1 }, editor = { groups = 0, snapshots = 0 } })
 end
 
-T['T821 [char] (M15, M16, DESK.md:1086) a window closed without its WinClosed has its marks and snapshots held over at the next cleanup pass, under what it showed'] = function()
+T['T821 [char] (M15, M16, DESK.md:1208) a window closed without its WinClosed has its marks and snapshots held over at the next cleanup pass, under what it showed'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.cmd('split')
 	child.settle()
@@ -1865,7 +1865,7 @@ local function b_over_a()
 	child.settle(300)
 end
 
-T['T902 [char] (M16, A20, DESK.md:1716) a rename onto a name a snapshot holds applies the live slots\' rule as it settles'] = function()
+T['T902 [char] (M16, A20, DESK.md:1956) a rename onto a name a snapshot holds applies the live slots\' rule as it settles'] = function()
 	child.steps({ ':e a', ':e b', '<M-f>', ':e a', TAKE, ':e c' })
 	local win = child.lua('return vim.api.nvim_get_current_win()')
 	b_over_a()
@@ -1886,7 +1886,7 @@ T['T902 [char] (M16, A20, DESK.md:1716) a rename onto a name a snapshot holds ap
 		{ slots = '⦉-⦊ [a] ⟦-⟧', order = 'a', saved = { current = true, secondary = false, order = 1 }, cleared = true })
 end
 
-T['T903 [char] (M16, A20, DESK.md:1716) where the current doesn\'t hold the file, the slot the moved file was in keeps it'] = function()
+T['T903 [char] (M16, A20, DESK.md:1956) where the current doesn\'t hold the file, the slot the moved file was in keeps it'] = function()
 	child.steps({ ':e a', ':e x', '<M-f>', ':e b', ':e x' })
 	eq(child.slots(), '⦉b⦊ [x] ⟦a⟧')
 	child.steps({ TAKE })
@@ -1894,7 +1894,7 @@ T['T903 [char] (M16, A20, DESK.md:1716) where the current doesn\'t hold the file
 	eq(snapshots()[1].slots, '⦉a⦊ [x] ⟦-⟧')
 end
 
-T['T904 [char] (M16, S1 Load, DESK.md:1716) a saved snapshot holding one file twice gets the rule at its next load'] = function()
+T['T904 [char] (M16, S1 Load, DESK.md:1956) a saved snapshot holding one file twice gets the rule at its next load'] = function()
 	local got = {}
 	for _, twice in ipairs({ 'ternary', 'secondary' }) do
 		local s = S2.shared()
@@ -1929,7 +1929,7 @@ end
 
 -- R9s: a snapshot taken in a tab session's tab after its last save, the tab closed with nothing saving at
 -- the close: it goes onto its window's entry in t's file, and the next load gives it back to the window.
-T['T1059 [char] (M16, DESK.md:1697, repro R9s) a snapshot taken after a tab session\'s last save comes back after its tab closes'] = function()
+T['T1059 [char] (M16, DESK.md:1938, repro R9s) a snapshot taken after a tab session\'s last save comes back after its tab closes'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	local id = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
@@ -1945,7 +1945,7 @@ T['T1059 [char] (M16, DESK.md:1697, repro R9s) a snapshot taken after a tab sess
 end
 
 -- A snapshot pasted into a window frogman never took in, not committed, goes with the window at its close.
-T['T1063 [char] (M16, DESK.md:1694, :1696) a snapshot pasted into a window frogman never took in goes at its close'] = function()
+T['T1063 [char] (M16, DESK.md:1936) a snapshot pasted into a window frogman never took in goes at its close'] = function()
 	local one = two_windows()
 	in_list(one, 'yy')
 	child.cmd('help')
@@ -1961,7 +1961,7 @@ end
 -- A window with snapshots and no marks, closed after a save: its snapshots go onto its entry as they stand, one
 -- taken since the save among them, nothing held over; the entry, `[10]` null in the file, is known again as the
 -- file holds it.
-T['T1066 [char] (M16, DESK.md:1697) a window closed with a saved entry puts its snapshots onto it as they stand, nothing held over'] = function()
+T['T1066 [char] (M16, DESK.md:1938) a window closed with a saved entry puts its snapshots onto it as they stand, nothing held over'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -1986,7 +1986,7 @@ end
 -- A switch with nothing wired to save at it: a snapshot taken since the session's last save, its window closed
 -- by the switch's teardown with the load in the same call: the session left's file holds it on the window's
 -- entry, none held over.
-T['T1070 [char] (M16, DESK.md:1082) a switch keeps a window\'s snapshot taken since the last save on its entry in the session left\'s file'] = function()
+T['T1070 [char] (M16, DESK.md:1205) a switch keeps a window\'s snapshot taken since the last save on its entry in the session left\'s file'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -2013,7 +2013,7 @@ end
 
 -- A window the switch's teardown leaves standing: its snapshot taken since the session's last save goes onto its
 -- entry in the session left's file as it stands, as a closed window's does.
-T['T1086 [char] (M16, DESK.md:1082) a window the switch leaves standing keeps its snapshot taken since the last save on its entry'] = function()
+T['T1086 [char] (M16, DESK.md:1205) a window the switch leaves standing keeps its snapshot taken since the last save on its entry'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -2044,7 +2044,7 @@ end
 -- A switch whose teardown closes a window without its events (noautocmd), the load in the same call: the window's
 -- snapshot taken since the session's last save goes onto its entry in the session left's file as a closed
 -- window's does, none held over.
-T['T1090 [char] (M16, DESK.md:1082, :1697) a switch keeps the snapshot of a window it closes without its events on its entry'] = function()
+T['T1090 [char] (M16, DESK.md:1205, :1938) a switch keeps the snapshot of a window it closes without its events on its entry'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })

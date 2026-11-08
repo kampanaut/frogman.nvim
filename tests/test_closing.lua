@@ -402,7 +402,7 @@ T['T167 [char] <M-.> on a running terminal refuses with a message'] = function()
 	eq(child.lua('return vim.api.nvim_buf_is_valid(...) and vim.api.nvim_get_current_buf() == ...', { term }), true)
 end
 
-T['T905 [char] (M5, DESK.md:654-655, repro R24) a file written without a visit leaves its list at once'] = function()
+T['T905 [char] (M5, DESK.md:758, repro R24) a file written without a visit leaves its list at once'] = function()
 	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
 	child.steps({ ':e a', ':e b' })
 	child.cmd('bdelete a.txt')
@@ -427,7 +427,7 @@ T['T905 [char] (M5, DESK.md:654-655, repro R24) a file written without a visit l
 	eq({ closed = child.closed(), reopened = reopened }, { closed = '', reopened = { 'editor' } })
 end
 
-T['T907 [char] (A19, P2, DESK.md:673) a delete\'s close runs once the editor settles'] = function()
+T['T907 [char] (A19, P2, DESK.md:766) a delete\'s close runs once the editor settles'] = function()
 	child.steps({ ':e a', ':e b' })
 	local during = child.lua([[vim.cmd('bdelete b.txt'); return _G.FRG_TEST.closed()]])
 	child.settle(100)

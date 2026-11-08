@@ -30,7 +30,7 @@ return function(name)
 			return string.format('%s has a holder (%s), and is not known', name(id), table.concat(H.handles.holders(id), ', '))
 		end
 	end
-	-- once nothing waits to settle, a handle no holder holds has been let go (DESK.md:649): a let-go is
+	-- once nothing waits to settle, a handle no holder holds has been let go (DESK.md:754): a let-go is
 	-- the one way a file is forgotten, so a live handle held by nothing is a route that never queued it
 	local settle = package.loaded['frogman.settle']
 	if not (settle and #settle.pending() > 0) then

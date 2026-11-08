@@ -1084,7 +1084,7 @@ local function two_c()
 	child.settle(100)
 end
 
-T['T913 [char] (A27, S2 Closed-stack picker, DESK.md:1622-1623) * in the closed lists follows the line\'s file'] = function()
+T['T913 [char] (A27, S2 Closed-stack picker, DESK.md:1861) * in the closed lists follows the line\'s file'] = function()
 	-- two files of one name: c.txt's own close, not sub/c.txt's too
 	child.setup()
 	two_c()
@@ -1116,7 +1116,7 @@ T['T913 [char] (A27, S2 Closed-stack picker, DESK.md:1622-1623) * in the closed 
 		{ same_name = true, moved = true, noname = true })
 end
 
-T['T914 [char] (A27, A18, DESK.md:1622-1623) * in the primary pop-up follows the line\'s file'] = function()
+T['T914 [char] (A27, A18, DESK.md:1861) * in the primary pop-up follows the line\'s file'] = function()
 	child.setup()
 	two_c()
 	child.steps({ ':e c', '<M-;><M-c>', ':e a' })
@@ -1142,7 +1142,7 @@ T['T914 [char] (A27, A18, DESK.md:1622-1623) * in the primary pop-up follows the
 		{ same_name = true, noname = true })
 end
 
-T['T915 [char] (A27, M15, DESK.md:1622-1623) * in the marks pop-up follows the line\'s file'] = function()
+T['T915 [char] (A27, M15, DESK.md:1861) * in the marks pop-up follows the line\'s file'] = function()
 	child.setup()
 	two_c()
 	child.steps({ ':e c', "<M-'><M-'><M-a>", ':e a' })
@@ -1170,7 +1170,7 @@ end
 -- The marks pop-up open with an edit not written, so it isn't drawn again, and under it a load of a
 -- session with no file, whose teardown lets every handle go: b, closed and unloaded, isn't taken in
 -- again, so the row drawn for it names a file frogman no longer knows.
-T['T920 [char] (A27, M15, DESK.md:1622) * on a marks pop-up row whose file was let go since it was drawn names nothing'] = function()
+T['T920 [char] (A27, M15, DESK.md:1861) * on a marks pop-up row whose file was let go since it was drawn names nothing'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b', "<M-'><M-'><M-a>", ':e a' })
 	child.cmd('bdelete b.txt')
@@ -1199,7 +1199,7 @@ end
 
 -- A path typed in a pop-up, a file frogman doesn't know yet: the trail opens on it by the hash of its
 -- name, named as the path names it.
-T['T921 [char] (A27, A18, M15, DESK.md:1622) * on a path typed in a pop-up that frogman doesn\'t know yet opens the trail on it'] = function()
+T['T921 [char] (A27, A18, M15, DESK.md:1861) * on a path typed in a pop-up that frogman doesn\'t know yet opens the trail on it'] = function()
 	-- the primary pop-up: e.txt typed on a line of its own
 	child.setup()
 	child.steps({ ':e a', '<M-;><M-c>', ':e b', '<M-;>F' })
