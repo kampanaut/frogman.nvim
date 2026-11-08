@@ -928,7 +928,7 @@ end
 ---noautocmd or while frogman was off, under what each showed when it was last seen: a window's onto its saved
 ---entry in the session it was last seen in, or held over in that session's scope, or the whole editor's, with
 ---none, and a plain tab's the same in the whole editor's. A split's copy no one changed holds nothing over,
----as at a close with its events.
+---as at a close with its events. Their buffers in the marks pop-up go too.
 ---
 ---@return nil
 function M.hold_over_gone()
@@ -952,6 +952,10 @@ function M.hold_over_gone()
 			end
 			M.drop_scope("tab", tabpage)
 		end
+	end
+	local popup = package.loaded['frogman.domains.marks.popup']
+	if popup then
+		popup.let_go_gone()
 	end
 end
 

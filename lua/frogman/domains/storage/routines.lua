@@ -3987,8 +3987,10 @@ function M.save_history(cwd, name, tab)
 		refresh_unnamed()
 	else
 		-- a whole-editor save covers every tab again: tab sessions started after it make it the unnamed one
+		local before = data.editor_session
 		data.editor_session, data.unnamed = { name = name, directory = cwd }, nil
 		require('frogman.domains.ledger').set_session(name, cwd)
+		require('frogman.domains.marks').popup.renamed(before) -- the marks pop-up's session buffer follows the name
 		dirty[""] = nil
 		let_empty_lists_go() -- the lists the file left out go from memory too
 	end

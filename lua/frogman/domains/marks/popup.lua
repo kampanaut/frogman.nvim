@@ -1,10 +1,12 @@
 ---The marks pop-up.
 ---
 ---One editable floating window on the marks of a scope: the scope the current mode reads for the
----window it's opened from. A group is a header line, `❖ main`, and its marks are rows under it,
----`a -> b.txt`, one for every alias the config has, then the group's unassigned ones. What the rows
----stand for is drawn around them as virtual text, in the trail's language. The lines are written
----back into the scope at `:w`, after the checks.
+---window it's opened from. Each scope has a buffer of its own, the window's, the tab's and the
+---session's, kept with its whole undo history as long as its scope is there, the float showing one at
+---a time. A group is a header line, `❖ main`, and its marks are rows under it, `a -> b.txt`, one for
+---every alias the config has, then the group's unassigned ones. What the rows stand for is drawn around
+---them as virtual text, in the trail's language. The lines are written back into the scope at `:w`,
+---after the checks.
 
 local data = require('frogman.domains.marks.data')
 local history = require('frogman.domains.history')
@@ -20,12 +22,39 @@ local function routines()
 	return require('frogman.domains.marks.routines')
 end
 
----The pop-up that's open: its buffer, its window, the window it was opened from, the scope it
----shows, what each drawn name stands for, the rows drawn as incoming or already set, each group
----drawn, by itself and by its key and rows, for the write to know it again, the drafts of the scopes
----a mode switch left with edits, and the lines the screen's scope was drawn as.
----@type {buf: Bufnr, win: WinId, origin: WinId, kind: string, id: any, names: table<string, HandleId>, paths: table<string, string>, states: table<string, string>, drawn: table<MarksGroup, true>, groups_drawn: {key: string, name: string, held: boolean|nil, default: boolean|nil, from: string|nil, rows: string[]}[], drafts: table[], drawn_lines: string[]|nil}|nil
+---@class MarksPopupBuffer A scope's buffer in the pop-up, and what its lines were drawn from
+---@field buf Bufnr Its buffer
+---@field kind "window"|"tab"|"session" Its scope's kind
+---@field id any Its window, tab or session's pool id
+---@field key string What it's kept by (`key_of`)
+---@field mode string The mode it was last shown in
+---@field flag boolean|nil The modified flag frogman last set on it while shown
+---@field names table<string, HandleId> Drawn name → the file's handle
+---@field paths table<string, string> Drawn name → the file's path
+---@field states table<string, string> Row (alias and the file's handle) → "incoming" or "already set"
+---@field drawn table<MarksGroup, true>|nil The scope's groups as it was drawn, so a group that came in since stays
+---@field groups_drawn {key: string, name: string, held: boolean|nil, default: boolean|nil, from: string|nil, rows: string[]}[]|nil Each group drawn, by its key and rows, for the write to know it again
+---@field drawn_lines string[]|nil The lines it was drawn as, none while a conflict waits to be settled
+
+---Each scope's buffer, by its key.
+---@type table<string, MarksPopupBuffer>
+local bufs = {}
+
+---The float that's open: its window, the window it was opened from, and the buffer it shows.
+---@type {win: WinId|nil, origin: WinId, shown: MarksPopupBuffer}|nil
 local open = nil
+
+---What a scope's buffer held as Neovim threw it away, by its key: its lines and the file its undo history
+---was written to, read back when that scope's buffer is made again.
+---@type table<string, {lines: string[], undo: string|nil, kind: string, id: any}>
+local kept = {}
+
+-- set while frogman sets a buffer's modified flag itself
+local setting = false
+-- set once Neovim exits: a buffer it throws away then keeps nothing
+local exiting = false
+-- the buffers frogman wipes itself, their scope gone: nothing kept of them
+local wiping = {}
 
 ---Get the glyph a group's header opens with, in the glyph set in use.
 ---@return string glyph
@@ -44,50 +73,119 @@ local function aliases()
 	return out
 end
 
----Check if the pop-up is open, its buffer still there.
+---Check if the pop-up's float is open.
 ---@return boolean
 local function is_open()
-	return open ~= nil and vim.api.nvim_buf_is_valid(open.buf)
+	return open ~= nil and open.win ~= nil and vim.api.nvim_win_is_valid(open.win)
 end
 
----Check if the screen holds edits: the buffer modified, and its lines not the ones their scope was
----drawn as, a conflict waiting to be settled counting as edits.
----
----The modified flag counts as much as the lines: the flag reset by hand, `:set nomodified` or `:e!`,
----leaves nothing on the screen to write, `:w`, `:q` and `q` writing none of it until it's edited again.
----
+---Get the whole editor's session's part of a key: its directory and name, nothing before it has one.
+---@param session {name: string|nil, directory: string}|nil The whole editor's session
+---@return string part
+local function editor_part(session)
+	return session and (session.directory .. "\0" .. (session.name or "")) or ""
+end
+
+---Get what a scope's buffer is kept by: its kind and id, and for the whole editor's session its directory and
+---name too, so another session gets a buffer of its own.
+---@param kind "window"|"tab"|"session" The scope's kind
+---@param id any Its window, tab or session's pool id
+---@return string key
+local function key_of(kind, id)
+	if kind == "session" and id == "" then
+		return "session\0\0" .. editor_part(require('frogman.domains.storage.data').editor_session)
+	end
+	return kind .. "\0" .. tostring(id)
+end
+
+---Check if a scope's window or tab is gone; a session's scope never is.
+---@param kind "window"|"tab"|"session" The scope's kind
+---@param id any Its window, tab or session's pool id
+---@return boolean gone
+local function scope_gone(kind, id)
+	return (kind == "window" and not vim.api.nvim_win_is_valid(id)) or (kind == "tab" and not vim.api.nvim_tabpage_is_valid(id))
+end
+
+---Check if a scope's buffer holds edits: its lines not the ones its scope was drawn as, a conflict waiting
+---to be settled counting as edits.
+---@param record MarksPopupBuffer The scope's buffer
 ---@return boolean edited
-local function screen_edited()
-	return vim.bo[open.buf].modified
-		and (open.drawn_lines == nil or not vim.deep_equal(vim.api.nvim_buf_get_lines(open.buf, 0, -1, false), open.drawn_lines))
+local function edited(record)
+	if not vim.api.nvim_buf_is_loaded(record.buf) then
+		return false
+	end
+	return record.drawn_lines == nil or not vim.deep_equal(vim.api.nvim_buf_get_lines(record.buf, 0, -1, false), record.drawn_lines)
+end
+
+---Get the drafts: the scopes' buffers holding edits that the float doesn't show, the window's first, then the
+---tab's, then the sessions'.
+---@return MarksPopupBuffer[] drafts
+local function drafts()
+	local out = {}
+	for _, record in pairs(bufs) do
+		if (open == nil or record ~= open.shown) and edited(record) then
+			table.insert(out, record)
+		end
+	end
+	local rank = { window = 1, tab = 2, session = 3 }
+	table.sort(out, function(a, b)
+		return rank[a.kind] < rank[b.kind] or (rank[a.kind] == rank[b.kind] and a.buf < b.buf)
+	end)
+	return out
 end
 
 ---Check if the pop-up holds anything not written: edits on its screen, or a draft.
 ---@return boolean holds
 local function holds_edits()
-	return screen_edited() or #open.drafts > 0
+	return (open ~= nil and edited(open.shown)) or #drafts() > 0
 end
 
----Mark the pop-up modified while it holds anything not written, so `:q` refuses until it's written or
----dropped; lines typed back as they were drawn leave it unmodified.
+---Mark each scope's buffer modified while it holds edits, and the shown one while any does, so `:q` refuses
+---until they're written or dropped. The shown one modified is wiped by a `:q!`, its history kept as it goes
+---(`keep`); otherwise a buffer is hidden as the float leaves it, its history with it. Lines typed back as they
+---were drawn hold nothing.
 ---@return nil
 local function set_modified()
-	vim.bo[open.buf].modified = holds_edits()
+	local held = #drafts() > 0
+	setting = true
+	for _, record in pairs(bufs) do
+		if vim.api.nvim_buf_is_loaded(record.buf) then
+			local shown = open ~= nil and record == open.shown
+			local modified = edited(record) or (shown and held)
+			vim.bo[record.buf].modified = modified
+			vim.bo[record.buf].bufhidden = (shown and modified) and "wipe" or "hide"
+			if shown then
+				record.flag = modified
+			end
+		end
+	end
+	setting = false
 end
 
----Put lines on the screen as frogman draws them, the undo history starting from them, so an undo takes
----back only what's typed since, never a draw: not a write's, not a scope's that changed, not another
----scope's lines a mode switch left.
+---Put lines in a scope's buffer as frogman draws them: its first draw starts its undo history, and every draw
+---after it is one undo step, so an undo takes back a redraw as it takes back a change.
+---@param record MarksPopupBuffer The scope's buffer to draw into
 ---@param lines string[] The lines to draw
+---@param first boolean|nil Whether it's the buffer's first draw
 ---@return nil
-local function put_lines(lines)
-	local levels = vim.bo[open.buf].undolevels
-	vim.bo[open.buf].undolevels = -1
-	local put, problem = pcall(vim.api.nvim_buf_set_lines, open.buf, 0, -1, false, lines)
-	vim.bo[open.buf].undolevels = levels
-	if not put then
-		error(problem, 0)
+local function put_lines(record, lines, first)
+	if first then
+		local levels = vim.bo[record.buf].undolevels
+		vim.bo[record.buf].undolevels = -1
+		local put, problem = pcall(vim.api.nvim_buf_set_lines, record.buf, 0, -1, false, lines)
+		vim.bo[record.buf].undolevels = levels
+		if not put then
+			error(problem, 0)
+		end
+		return
 	end
+	if vim.deep_equal(vim.api.nvim_buf_get_lines(record.buf, 0, -1, false), lines) then
+		return -- nothing to take back
+	end
+	vim.api.nvim_buf_call(record.buf, function()
+		vim.o.undolevels = vim.o.undolevels -- what was typed before stays a step of its own
+		vim.api.nvim_buf_set_lines(record.buf, 0, -1, false, lines)
+	end)
 end
 
 ---Redraw the UI once marks or the mode changed.
@@ -96,16 +194,10 @@ local function repaint()
 	require('frogman.domains.ui.sm').loop:to(require('frogman.domains.ui.states').LOOP.SELF)
 end
 
----Check if the marks pop-up has edits not written yet: on its screen, or in a draft.
----@return boolean dirty
-function M.dirty()
-	return is_open() and holds_edits()
-end
-
 ---Check if the marks pop-up is the window you're in.
 ---@return boolean current
 function M.is_current()
-	return is_open() and vim.api.nvim_get_current_buf() == open.buf
+	return is_open() and vim.api.nvim_get_current_buf() == open.shown.buf
 end
 
 ---The words the mark keys say while the pop-up has edits not written yet
@@ -116,7 +208,7 @@ local DRAFTS = "frogman: the marks pop-up holds drafts not written yet: write th
 ---Get what a refusal says while the pop-up has edits not written yet: the drafts' words while one is held.
 ---@return string words
 local function refusal()
-	return #open.drafts > 0 and DRAFTS or DIRTY
+	return #drafts() > 0 and DRAFTS or DIRTY
 end
 
 ---Refuse a mark key while the pop-up has edits not written yet, saying so.
@@ -267,16 +359,17 @@ end
 ---A file the registry knows is given by its handle; one it doesn't yet, by its path's hash, until the
 ---write registers the path.
 ---
+---@param record MarksPopupBuffer The buffer the row is in
 ---@param file string The row's file as written
 ---@return HandleId|Filehash|nil ref The file's handle, or its hash while the registry doesn't know it
 ---@return string|nil path A path to register as the write goes through, when the registry has none
-local function resolve(file)
+local function resolve(record, file)
 	-- a row it drew follows its file, by the file's handle, through a move since
-	local drawn = open.names[file]
+	local drawn = record.names[file]
 	if drawn then
 		-- a file let go since and known again has a handle of its own, which the row finds by its path
 		local handle = history.handles.follow(drawn)
-			or history.handles.get(history.get_handle_from_filepath(open.paths and open.paths[file]))
+			or history.handles.get(history.get_handle_from_filepath(record.paths and record.paths[file]))
 		return handle and handle.id or drawn, nil
 	end
 	local path = vim.fn.fnamemodify(file, ":p")
@@ -302,14 +395,16 @@ local function decorate()
 	if not is_open() then
 		return
 	end
-	local buf = open.buf
+	local record = open.shown
+	local buf = record.buf
 	local glyphs = require('frogman.domains.ui').routines.glyphs()
 	vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-	local mode_line = "marks" .. glyphs.dot .. open.kind
-	if #open.drafts > 0 then
+	local mode_line = "marks" .. glyphs.dot .. record.kind
+	local held = drafts()
+	if #held > 0 then
 		-- the scopes a mode switch left with edits, still to be written
-		mode_line = mode_line .. glyphs.dot .. (#open.drafts == 1 and "draft: " or "drafts: ") ..
-			table.concat(vim.tbl_map(function(draft) return draft.kind end, open.drafts), ", ")
+		mode_line = mode_line .. glyphs.dot .. (#held == 1 and "draft: " or "drafts: ") ..
+			table.concat(vim.tbl_map(function(draft) return draft.kind end, held), ", ")
 	end
 	vim.api.nvim_buf_set_extmark(buf, ns, 0, 0, {
 		virt_lines = { { { mode_line, "FrogmanTrailDim" } } }, virt_lines_above = true,
@@ -333,7 +428,7 @@ local function decorate()
 			end
 		end
 		if kind == "row" and file ~= "" then
-			local ref = resolve(file)
+			local ref = resolve(record, file)
 			local handle = type(ref) == "number" and history.handles.get(ref) or nil
 			local arrow = line:find("->", 1, true)
 			local col = arrow and line:find("%S", arrow + 2) -- the name's first character, however it's spaced
@@ -352,7 +447,7 @@ local function decorate()
 				})
 			end
 			local after = {}
-			local state = ref and open.states[alias .. "\0" .. ref]
+			local state = ref and record.states[alias .. "\0" .. ref]
 			if state then
 				table.insert(after, { "  " .. state, "FrogmanTrailDim" })
 			end
@@ -375,33 +470,39 @@ local function show_mode_line()
 	require('frogman.domains.ui.view').show_top(open and open.win)
 end
 
----Put the scope's marks in the pop-up's lines, as they are now, the undo history starting there.
+---Put a scope's marks in its buffer, as they are now: its first draw, or an undo step.
+---@param record MarksPopupBuffer The scope's buffer
 ---@param conflict {alias: string, id: HandleId}|nil
+---@param first boolean|nil Whether it's the buffer's first draw
 ---@return nil
-local function redraw(conflict)
-	local lines, names, states, drawn, paths = draw(open.kind, open.id, conflict)
-	open.names, open.states, open.groups_drawn, open.paths = names, states, drawn, paths
+local function draw_into(record, conflict, first)
+	local lines, names, states, drawn, paths = draw(record.kind, record.id, conflict)
+	record.names, record.states, record.groups_drawn, record.paths = names, states, drawn, paths
 	-- what the write rebuilds from the lines: a group that comes in after stays
-	local scope = data.scopes[open.kind][open.id]
-	open.drawn = {}
+	local scope = data.scopes[record.kind][record.id]
+	record.drawn = {}
 	for _, group in ipairs(scope and scope.groups or {}) do
-		open.drawn[group] = true
+		record.drawn[group] = true
 	end
-	put_lines(lines)
-	open.drawn_lines = conflict == nil and lines or nil -- a conflict waits to be settled and written, as edits do
+	put_lines(record, lines, first)
+	record.drawn_lines = conflict == nil and lines or nil -- a conflict waits to be settled and written, as edits do
 	set_modified()
-	decorate()
-	show_mode_line()
+	if is_open() and open.shown == record then
+		decorate()
+		show_mode_line()
+	end
 end
 
----Draw the pop-up again when its scope changed and the screen holds no edits, so it shows what's there.
+---Draw a scope's buffer again when its scope changed and it holds no edits, shown or not, so it shows what's
+---there, the draw an undo step.
 ---
 ---@param kind "window"|"tab"|"session" The kind of the scope that changed
 ---@param id any Its window, tab or session's pool id
 ---@return nil
 function M.scope_changed(kind, id)
-	if is_open() and open.kind == kind and open.id == id and not screen_edited() then
-		redraw(nil)
+	local record = bufs[key_of(kind, id)]
+	if record and vim.api.nvim_buf_is_loaded(record.buf) and not edited(record) then
+		draw_into(record, nil)
 	end
 end
 
@@ -564,9 +665,10 @@ end
 ---about. A line naming something above the first header and an alias that holds two files in one group
 ---are noted at the first of each, for the write to refuse; an empty row there names nothing, and goes.
 ---
+---@param record MarksPopupBuffer The buffer the lines are in
 ---@param lines string[] The pop-up's lines
 ---@return {groups: table[], items: {row: integer, text: string}[], fresh: table<Filehash, string>, orphan: integer|nil, two: {row: integer, words: string}|nil} read
-local function read_groups(lines)
+local function read_groups(record, lines)
 	local read = { groups = {}, items = {}, fresh = {} }
 	local current
 	local named = {}
@@ -587,7 +689,7 @@ local function read_groups(lines)
 		elseif kind == "other" and current == nil then
 			read.orphan = read.orphan or row
 		elseif kind == "row" and b ~= "" then
-			local ref, path = resolve(b)
+			local ref, path = resolve(record, b)
 			if path then
 				read.fresh[ref] = path
 			end
@@ -658,9 +760,10 @@ end
 
 ---Check if a group the pop-up drew has this group's name and its marks, alias for alias, already.
 ---
+---@param record MarksPopupBuffer The buffer the pop-up drew
 ---@param group MarksGroup A group that came into the scope since the draw
 ---@return boolean drawn
-local function drawn_already(group)
+local function drawn_already(record, group)
 	local rows = {}
 	for alias, _ in pairs(group.marks) do
 		local handle = routines().handle_of(group, alias)
@@ -668,7 +771,7 @@ local function drawn_already(group)
 			rows[alias .. "\0" .. handle.id] = true
 		end
 	end
-	for _, drawn in ipairs(open.groups_drawn or {}) do
+	for _, drawn in ipairs(record.groups_drawn or {}) do
 		local same = drawn.name == group.name and vim.tbl_count(rows) == #drawn.rows
 		for _, row in ipairs(same and drawn.rows or {}) do
 			same = same and rows[row] == true
@@ -680,7 +783,7 @@ local function drawn_already(group)
 	return false
 end
 
----Write the pop-up's lines into the scope.
+---Write a scope's buffer's lines into the scope.
 ---
 ---Lines that hold no edits write nothing. A row naming a file above the first header, or an alias that
 ---holds two files in one group, refuses the write, and so does a window or a tab the scope was for
@@ -694,30 +797,30 @@ end
 ---Each group written keeps what the drawn group it matches was (`match_groups`): held over, unless it's
 ---first or moved (`moved_groups`), and the default group while its name stands.
 ---
+---@param record MarksPopupBuffer The buffer to write
 ---@return boolean written
-local function write()
-	if not screen_edited() then
+local function write(record)
+	if not edited(record) then
 		set_modified() -- lines typed back as they were drawn leave the drafts alone to keep it modified
 		return true -- the drafts are written by leaving
 	end
-	if (open.kind == "window" and not vim.api.nvim_win_is_valid(open.id))
-		or (open.kind == "tab" and not vim.api.nvim_tabpage_is_valid(open.id)) then
-		vim.notify("frogman: the " .. open.kind .. " these marks are for is gone, so they aren't written.", vim.log.levels.WARN)
+	if scope_gone(record.kind, record.id) then
+		vim.notify("frogman: the " .. record.kind .. " these marks are for is gone, so they aren't written.", vim.log.levels.WARN)
 		return false
 	end
-	local read = read_groups(vim.api.nvim_buf_get_lines(open.buf, 0, -1, false))
+	local read = read_groups(record, vim.api.nvim_buf_get_lines(record.buf, 0, -1, false))
 	local refused = read.orphan and (read.two == nil or read.orphan < read.two.row) and {
 		row = read.orphan, words = "frogman: the marks above the first group's header have no group: put a header back above them, or delete them.",
 	} or read.two
 	if refused then
 		vim.notify(refused.words, vim.log.levels.WARN)
-		if open.win and vim.api.nvim_win_is_valid(open.win) then
+		if is_open() and open.shown == record then
 			vim.api.nvim_win_set_cursor(open.win, { refused.row, 0 })
 		end
 		return false
 	end
 	local groups, items, fresh = read.groups, read.items, read.fresh
-	local drawn_groups = open.groups_drawn or {}
+	local drawn_groups = record.groups_drawn or {}
 	local match, joined = match_groups(groups, drawn_groups)
 	local moved = moved_groups(match, #groups)
 	for _, gone in ipairs(joined) do
@@ -728,7 +831,7 @@ local function write()
 	if #items > 0 and vim.fn.confirm("frogman: before writing the marks:\n" ..
 			table.concat(vim.tbl_map(function(item) return item.text end, items), "\n") ..
 			"\nWrite as it stands?", "&Yes\n&No", 2) ~= 1 then
-		if open.win and vim.api.nvim_win_is_valid(open.win) then
+		if is_open() and open.shown == record then
 			vim.api.nvim_win_set_cursor(open.win, { items[1].row, 0 })
 		end
 		return false
@@ -736,11 +839,11 @@ local function write()
 	for _, path in pairs(fresh) do
 		history.register_filepath(path) -- a file typed by its path, known from now on
 	end
-	local scope = routines().scope(open.kind, open.id, true)
+	local scope = routines().scope(record.kind, record.id, true)
 	-- what came in since the draw: a group held over, or a load's, with marks or none, but for one the
 	-- pop-up drew already and the default with none, which goes as a load's does
 	local arrived = vim.tbl_filter(function(group)
-		return not open.drawn[group] and (group.held or group.loaded ~= nil) and not drawn_already(group)
+		return not record.drawn[group] and (group.held or group.loaded ~= nil) and not drawn_already(record, group)
 			and not (group.default and next(group.marks) == nil)
 	end, scope.groups)
 	scope.groups = {}
@@ -778,39 +881,169 @@ local function write()
 		group.default, group.loaded = nil, nil -- held over, it's no default
 		table.insert(scope.groups, group)
 	end
-	routines().hold_scope(open.kind, open.id)
-	redraw(nil)
+	routines().hold_scope(record.kind, record.id)
+	draw_into(record, nil)
 	repaint()
 	return true
 end
 
----Take a scope's draft out of the drafts held.
----@param kind string The scope's kind
----@param id any Its window, tab or session's pool id
----@return table|nil draft
-local function take_draft(kind, id)
-	for i, draft in ipairs(open.drafts) do
-		if draft.kind == kind and draft.id == id then
-			return table.remove(open.drafts, i)
-		end
+---Let a scope's buffer go, frogman wiping it itself, its scope gone: nothing is kept of it. One Neovim won't delete
+---just then stays its scope's, for the next let-go.
+---@param record MarksPopupBuffer The buffer to let go
+---@return nil
+local function wipe(record)
+	if vim.api.nvim_buf_is_valid(record.buf) then
+		wiping[record.buf] = true
+		pcall(vim.api.nvim_buf_delete, record.buf, { force = true })
+		wiping[record.buf] = nil
 	end
-	return nil
+	if not vim.api.nvim_buf_is_valid(record.buf) and bufs[record.key] == record then
+		bufs[record.key] = nil
+	end
 end
 
----Show a draft as the screen: its lines as they were left, and what they were drawn from, the undo
----history starting there.
----@param draft table A scope's lines as a mode switch left them, with its mode and what they were drawn from
+---Keep what a scope's buffer holds as Neovim throws it away, by a `:q!`, `:e!` or a forced close: its lines and
+---its undo history, written to a file of Neovim's own, for when that scope's buffer is made again; the buffer
+---itself goes once Neovim is done with it, unless it's loaded again, as `:e!` reads it back. Not while Neovim
+---exits, nor for one frogman wipes itself.
+---@param record MarksPopupBuffer The scope's buffer Neovim throws away
+---@param buf Bufnr The buffer being thrown away
 ---@return nil
-local function show_draft(draft)
-	open.names, open.paths, open.states = draft.names, draft.paths, draft.states
-	open.groups_drawn, open.drawn, open.drawn_lines = draft.groups_drawn, draft.drawn, draft.drawn_lines
-	put_lines(draft.lines)
+local function keep(record, buf)
+	if exiting or wiping[buf] or bufs[record.key] ~= record then
+		return
+	end
+	bufs[record.key] = nil
+	local undo = vim.fn.tempname()
+	local written = pcall(vim.api.nvim_buf_call, buf, function()
+		vim.cmd("silent wundo! " .. vim.fn.fnameescape(undo))
+	end)
+	kept[record.key] = { lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false), undo = written and undo or nil,
+		kind = record.kind, id = record.id }
+	vim.schedule(function()
+		if vim.api.nvim_buf_is_valid(buf) and not vim.api.nvim_buf_is_loaded(buf) then
+			wiping[buf] = true
+			pcall(vim.api.nvim_buf_delete, buf, { force = true })
+			wiping[buf] = nil
+		end
+	end)
+end
+
+---Give a scope's buffer back what was kept of it as Neovim threw it away, its lines and its undo history, then
+---draw its scope as it stands, the edits it held dropped as one undo step; or draw it for the first time.
+---@param record MarksPopupBuffer The scope's buffer, made again
+---@param conflict {alias: string, id: HandleId}|nil
+---@return nil
+local function restore(record, conflict)
+	local back = kept[record.key]
+	bufs[record.key] = record
+	if back == nil then
+		draw_into(record, conflict, true)
+		return
+	end
+	put_lines(record, back.lines, true)
+	if back.undo then
+		pcall(vim.api.nvim_buf_call, record.buf, function()
+			vim.cmd("silent rundo " .. vim.fn.fnameescape(back.undo))
+		end)
+	end
+	draw_into(record, conflict)
+	kept[record.key] = nil -- given back once drawn: a draw that raises leaves it kept for the next make
+	if back.undo then
+		os.remove(back.undo)
+	end
+end
+
+---Make a scope's buffer: drawn as its scope stands, or given back what was kept of an earlier one first.
+---A draw that raises takes the buffer with it, so nothing half made stays.
+---@param kind "window"|"tab"|"session" The scope's kind
+---@param id any Its window, tab or session's pool id
+---@param conflict {alias: string, id: HandleId}|nil
+---@return MarksPopupBuffer record
+local function make(kind, id, conflict)
+	local buf = vim.api.nvim_create_buf(false, false)
+	vim.bo[buf].buftype = "acwrite"
+	vim.bo[buf].swapfile = false
+	vim.bo[buf].bufhidden = "hide"
+	vim.api.nvim_buf_set_name(buf, NAME .. "/" .. kind .. "/" .. buf)
+	---@type MarksPopupBuffer
+	local record = { buf = buf, kind = kind, id = id, key = key_of(kind, id), mode = data.mode, names = {}, paths = {}, states = {} }
+	local drawn, problem = pcall(restore, record, conflict)
+	if not drawn then
+		wipe(record)
+		error(problem, 0)
+	end
+	vim.bo[buf].filetype = "frogman-marks" -- once drawn, so the keys its filetype maps find it drawn
+	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+		group = "frogman",
+		buffer = buf,
+		callback = function()
+			set_modified() -- lines typed back as they were drawn hold nothing
+			decorate()
+		end,
+		desc = "Draw the marks again",
+	})
+	vim.api.nvim_create_autocmd("BufWriteCmd", {
+		group = "frogman",
+		buffer = buf,
+		callback = function()
+			write(record)
+		end,
+		desc = "Write the marks",
+	})
+	vim.api.nvim_create_autocmd("BufUnload", {
+		group = "frogman",
+		buffer = buf,
+		callback = function(args)
+			keep(record, args.buf)
+		end,
+		desc = "Keep what the marks pop-up held",
+	})
+	-- `:e!`: Neovim threw its text away first (its BufUnload kept it); it comes back, and the scope is drawn
+	vim.api.nvim_create_autocmd("BufReadCmd", {
+		group = "frogman",
+		buffer = buf,
+		callback = function()
+			restore(record, nil)
+		end,
+		desc = "Draw the marks again",
+	})
+	return record
+end
+
+---Get a scope's buffer, making it when there's none.
+---@param kind "window"|"tab"|"session" The scope's kind
+---@param id any Its window, tab or session's pool id
+---@param conflict {alias: string, id: HandleId}|nil
+---@return MarksPopupBuffer record
+---@return boolean made Whether it was made now
+local function buffer_for(kind, id, conflict)
+	local record = bufs[key_of(kind, id)]
+	if record and vim.api.nvim_buf_is_loaded(record.buf) then
+		return record, false
+	end
+	if record then
+		wipe(record) -- unloaded, its text gone
+	end
+	return make(kind, id, conflict), true
+end
+
+---Show a scope's buffer in the float, the one it showed hidden, its history with it.
+---@param record MarksPopupBuffer The scope's buffer to show
+---@return nil
+local function show(record)
+	local was = open.shown
+	if was ~= record and vim.api.nvim_buf_is_loaded(was.buf) then
+		vim.bo[was.buf].bufhidden = "hide"
+	end
+	open.shown = record
+	vim.api.nvim_win_set_buf(open.win, record.buf)
 	set_modified()
 	decorate()
 	show_mode_line()
 end
 
----Write the screen when it holds edits, then every draft, each shown in turn in its mode and checked.
+---Write the shown buffer when it holds edits, then every draft, each shown in turn in its mode and checked.
 ---
 ---One that's refused or answered No stays shown, in its mode, and the drafts after it wait. With
 ---every one written, the mode is the one the screen was in.
@@ -818,14 +1051,13 @@ end
 ---@return boolean written
 local function write_all()
 	local mode = data.mode
-	if not write() then
+	if not write(open.shown) then
 		return false
 	end
-	while #open.drafts > 0 do
-		local draft = table.remove(open.drafts, 1)
-		data.mode, open.kind, open.id = draft.mode, draft.kind, draft.id
-		show_draft(draft)
-		if not write() then
+	for _, record in ipairs(drafts()) do
+		data.mode = record.mode
+		show(record)
+		if not write(record) then
 			repaint() -- its mode shows
 			return false
 		end
@@ -837,24 +1069,78 @@ local function write_all()
 	return true
 end
 
----Close the pop-up's window; its buffer goes with it.
+---Close the pop-up's float; the buffer it shows is hidden, its history with it.
 ---@return nil
 local function close()
-	if is_open() and open.win and vim.api.nvim_win_is_valid(open.win) then
-		vim.api.nvim_win_close(open.win, true)
+	if is_open() then
+		vim.api.nvim_win_close(open.win, false)
 	end
 end
 
----Get the window the pop-up acts on: the one it was opened from, or the last tracked one.
+---Let go the buffers whose window or tab is gone, and the history kept of one, once the float is closed: while
+---it's open they wait, so leaving can say whose edits it drops (`leave_gone`), and its close lets them go.
+---@return nil
+local function let_go_gone()
+	if is_open() then
+		return
+	end
+	for _, record in pairs(vim.tbl_values(bufs)) do
+		if scope_gone(record.kind, record.id) then
+			wipe(record)
+		end
+	end
+	for key, back in pairs(kept) do
+		if scope_gone(back.kind, back.id) then
+			if back.undo then
+				os.remove(back.undo)
+			end
+			kept[key] = nil
+		end
+	end
+end
+
+---Once the float has closed: the edits the drafts still hold are dropped, each as an undo step, and the
+---buffers whose scope is gone go. The buffer it showed went with it when it held edits, its history kept.
+---@return nil
+local function closed()
+	open = nil
+	for _, record in pairs(vim.tbl_values(bufs)) do
+		if scope_gone(record.kind, record.id) then
+			wipe(record)
+		elseif edited(record) then
+			draw_into(record, nil)
+		end
+	end
+	set_modified()
+end
+
+---Do what the float's close would have when it closed without its events, by `noautocmd` or while frogman was
+---off: the edits the drafts still hold dropped, each as an undo step.
+---@return nil
+local function closed_unseen()
+	if open ~= nil and not is_open() then
+		closed()
+	end
+end
+
+---Check if the marks pop-up has edits not written yet: on its screen, or in a draft.
+---@return boolean dirty
+function M.dirty()
+	closed_unseen()
+	return holds_edits()
+end
+
+---Get the window the pop-up acts on: the one it was opened from, while it's there.
 ---@return WinId|nil winid
 function M.origin()
-	if is_open() and vim.api.nvim_win_is_valid(open.origin) then
+	if open and vim.api.nvim_win_is_valid(open.origin) then
 		return open.origin
 	end
 	return nil
 end
 
----Open the marks pop-up on the scope the current mode reads for the window you're in.
+---Open the marks pop-up on the scope the current mode reads for the window you're in, showing that scope's
+---buffer, its lines and history as they were left.
 ---
 ---With edits not written yet, the pop-up stays as it is, focused, and says so. With a conflict, the
 ---alias the add was for shows the incoming file and the one already set, to settle and write.
@@ -863,9 +1149,11 @@ end
 ---@return nil
 function M.open(opts)
 	opts = opts or {}
-	local view = require('frogman.domains.ui.view')
+	closed_unseen()
 	if is_open() then
-		if view.keep_if_dirty(open.buf, open.win, refusal()) then
+		if holds_edits() then
+			vim.api.nvim_set_current_win(open.win)
+			vim.notify(refusal(), vim.log.levels.WARN)
 			return
 		end
 		close()
@@ -875,27 +1163,29 @@ function M.open(opts)
 		origin = require('frogman.domains.navigation.routines').find_most_recent_tracked_window() or origin
 	end
 	local kind, id = routines().scope_key(data.mode, origin)
-	local buf, win = view.open({
-		name = NAME, filetype = "frogman-marks", title = "Marks", size = require('frogman.configs').marks_popup,
-		fill = function(buf)
-			open = { buf = buf, origin = origin, kind = kind, id = id, names = {}, states = {}, drafts = {} }
-			redraw(opts.conflict)
-		end,
-		write = write,
-		changed = function()
-			set_modified() -- lines typed back as they were drawn hold nothing
-			decorate()
-		end,
-		closed = function(buf)
-			if open and open.buf == buf then
-				open = nil
-			end
-		end,
+	local record, made = buffer_for(kind, id, opts.conflict)
+	record.mode = data.mode
+	if not made and (opts.conflict or not edited(record)) then
+		draw_into(record, opts.conflict) -- as its scope stands now: a step when it changed while hidden
+	end
+	open = { origin = origin, shown = record }
+	local opened, win = pcall(require('frogman.domains.ui.view').float, record.buf, {
+		title = "Marks", size = require('frogman.configs').marks_popup, closed = closed,
 	})
+	if not opened then
+		open = nil
+		if made then
+			keep(record, record.buf) -- its lines and history kept, as a throw-away keeps them, for the next open
+			wipe(record) -- and the buffer made for it goes with it
+		end
+		error(win, 0)
+	end
 	open.win = win
+	set_modified()
+	decorate()
 	show_mode_line()
 	if opts.conflict then
-		for i, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+		for i, line in ipairs(vim.api.nvim_buf_get_lines(record.buf, 0, -1, false)) do
 			local kind_of, alias = read_line(line)
 			if kind_of == "row" and alias == opts.conflict.alias then
 				vim.api.nvim_win_set_cursor(win, { i, 0 })
@@ -905,13 +1195,78 @@ function M.open(opts)
 	end
 end
 
----Write the pop-up's lines when they were edited, and every draft, then leave it.
+---Leave the pop-up once the window it was opened from is gone: the buffers whose scope is still there are
+---written, each checked as usual, then the edits of those whose scope is gone are dropped with them, and one
+---WARN says what happened. A write that's refused or answered No leaves it open, showing the lines it refused,
+---nothing dropped yet.
+---@return nil
+local function leave_gone()
+	local mode = data.mode
+	local records = edited(open.shown) and { open.shown } or {}
+	vim.list_extend(records, drafts())
+	local dropped, written = {}, {}
+	for _, record in ipairs(records) do
+		if not scope_gone(record.kind, record.id) then
+			data.mode = record.mode
+			if open.shown ~= record then
+				show(record)
+			end
+			if not write(record) then
+				repaint() -- its mode shows
+				return
+			end
+			written[record.kind] = true
+		end
+	end
+	if data.mode ~= mode then
+		data.mode = mode
+		repaint() -- the mode the screen was in shows again
+	end
+	for _, record in ipairs(records) do
+		if scope_gone(record.kind, record.id) then
+			dropped[record.kind] = true
+			if record ~= open.shown then
+				wipe(record) -- its edits go with it, so nothing holds the shown buffer modified
+			end
+		end
+	end
+	local gone = vim.tbl_filter(function(kind)
+		return kind == "window" or (kind == "tab" and dropped.tab)
+	end, { "window", "tab" })
+	local parts = {}
+	if dropped.window or dropped.tab then
+		table.insert(parts, #gone == 1 and "its edits are dropped" or "their edits are dropped")
+	end
+	local names = vim.tbl_filter(function(name) return name end, {
+		written.window and "the window's" or false, written.tab and "the tab's" or false, written.session and "the session's" or false,
+	})
+	if #names > 0 then
+		table.insert(parts, require('frogman.domains.ledger').routines.joined(names) .. " are written")
+	end
+	if #parts > 0 then
+		vim.notify("frogman: the " .. table.concat(gone, " and the ") .. " these marks were for " .. (#gone == 1 and "is" or "are") ..
+			" gone: " .. table.concat(parts, "; ") .. ".", vim.log.levels.WARN)
+	end
+	if scope_gone(open.shown.kind, open.shown.id) then
+		wipe(open.shown) -- the float goes with the buffer it shows
+	else
+		set_modified()
+	end
+	close()
+end
+
+---Write the pop-up's lines when they were edited, and every draft, then leave it; once the window it was
+---opened from is gone, write what still has its scope and drop the rest (`leave_gone`).
 ---
 ---A write that's refused or answered No leaves it open, showing the lines it refused.
 ---
 ---@return nil
 function M.leave()
 	if not is_open() then
+		return
+	end
+	if M.origin() == nil then
+		leave_gone()
 		return
 	end
 	if write_all() then
@@ -927,7 +1282,7 @@ local function row_file()
 	if kind ~= "row" or file == "" then
 		return nil
 	end
-	return resolve(file)
+	return resolve(open.shown, file)
 end
 
 ---Get the row under the cursor, its alias and its file, writing the pop-up first when it was edited.
@@ -939,8 +1294,8 @@ end
 ---@return HandleId|nil id The file's handle, nil when the write was refused or answered No, or the row names no file
 local function written_row()
 	local kind, alias, file = read_line(vim.api.nvim_get_current_line())
-	local ref = (kind == "row" and file ~= "") and (resolve(file)) or nil
-	if vim.bo[open.buf].modified and not write() then
+	local ref = (kind == "row" and file ~= "") and (resolve(open.shown, file)) or nil
+	if edited(open.shown) and not write(open.shown) then
 		return nil, nil
 	end
 	-- a path typed there has its handle once the write registered it; a row the write left out has none
@@ -1059,10 +1414,11 @@ function M.add_row()
 	if not is_open() then
 		return
 	end
-	local buf, row = open.buf, vim.api.nvim_win_get_cursor(0)[1]
+	local record, row = open.shown, vim.api.nvim_win_get_cursor(0)[1]
+	local buf = record.buf
 	pick_one("Alias", aliases(), function(alias)
 		pick_file(function(path)
-			if not is_open() or open.buf ~= buf then
+			if not is_open() or open.shown ~= record then
 				return
 			end
 			local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
@@ -1084,7 +1440,7 @@ function M.add_row()
 			local filehash = history.routines.get_filehash(vim.fn.fnamemodify(path, ":p"))
 			local ref = history.get_handle_from_hash(filehash) or filehash
 			local text = vim.fn.fnamemodify(path, ":.")
-			if open.names[text] and open.names[text] ~= ref then
+			if record.names[text] and record.names[text] ~= ref then
 				text = "./" .. text
 			end
 			local at = bottom
@@ -1095,25 +1451,25 @@ function M.add_row()
 						vim.api.nvim_buf_set_lines(buf, i - 1, i, false, { alias .. " -> " .. text })
 						return
 					end
-					local held = resolve(file)
+					local held = resolve(record, file)
 					if held then
-						open.states[alias .. "\0" .. held] = "already set"
+						record.states[alias .. "\0" .. held] = "already set"
 					end
 					at = i
 					break
 				end
 			end
-			open.states[alias .. "\0" .. ref] = "incoming"
+			record.states[alias .. "\0" .. ref] = "incoming"
 			vim.api.nvim_buf_set_lines(buf, at, at, false, { alias .. " -> " .. text })
 			decorate()
 		end)
 	end)
 end
 
----Switch the mode from inside the pop-up, and show the new mode's scope.
+---Switch the mode from inside the pop-up, and show the new mode's scope's buffer.
 ---
----The scope it leaves stays a draft when the screen holds edits, and the new scope's draft comes back
----with its lines as they were left, or the scope is drawn as it is.
+---The buffer it leaves stays a draft when it holds edits, and the new scope's comes back with its lines and
+---history as they were left, or is made.
 ---A switch is refused while an alias holds two files in the edits it would keep, and with the window
 ---it was opened from gone; each says so.
 ---
@@ -1125,34 +1481,27 @@ function M.switch_mode(mode)
 		return false
 	end
 	local kind, id = routines().scope_key(mode, open.origin)
-	if kind == open.kind and id == open.id then
-		data.mode = mode -- a tab session's tab and session modes read one scope
+	local record = open.shown
+	if kind == record.kind and id == record.id then
+		data.mode, record.mode = mode, mode -- a tab session's tab and session modes read one scope
 		decorate()
 		return true
 	end
-	if screen_edited() then
+	if edited(record) then
 		-- the lines kept as a draft can't hold two files for an alias
-		local two = read_groups(vim.api.nvim_buf_get_lines(open.buf, 0, -1, false)).two
+		local two = read_groups(record, vim.api.nvim_buf_get_lines(record.buf, 0, -1, false)).two
 		if two then
 			vim.notify(two.words, vim.log.levels.WARN)
-			if open.win and vim.api.nvim_win_is_valid(open.win) then
-				vim.api.nvim_win_set_cursor(open.win, { two.row, 0 })
-			end
+			vim.api.nvim_win_set_cursor(open.win, { two.row, 0 })
 			return false
 		end
-		table.insert(open.drafts, {
-			mode = data.mode, kind = open.kind, id = open.id, lines = vim.api.nvim_buf_get_lines(open.buf, 0, -1, false),
-			names = open.names, paths = open.paths, states = open.states, groups_drawn = open.groups_drawn, drawn = open.drawn,
-			drawn_lines = open.drawn_lines,
-		})
 	end
-	data.mode, open.kind, open.id = mode, kind, id
-	local draft = take_draft(kind, id)
-	if draft then
-		show_draft(draft)
-	else
-		redraw(nil)
+	local target, made = buffer_for(kind, id)
+	if not made and not edited(target) then
+		draw_into(target, nil) -- as its scope stands now: a step when it changed while hidden
 	end
+	data.mode, target.mode = mode, mode
+	show(target)
 	return true
 end
 
@@ -1192,6 +1541,79 @@ function M.map_keys(buf)
 			require('frogman.domains.ui.trail').follow(filehash, filepath)
 		end
 	end, "Search the trail for the line's file")
+end
+
+---Keep the whole editor's session's buffer with its scope as a whole-editor save names the session anew, its first
+---save or a save as another: the marks it shows are the same, so its lines and its history go on under the name
+---saved, and a buffer kept under that name before goes, the save writing over that session's file. A load starts
+---the scope over instead: the buffer of the session it leaves stays under that session's name.
+---@param before {name: string|nil, directory: string}|nil The whole editor's session before the save
+---@return nil
+function M.renamed(before)
+	local from, to = "session\0\0" .. editor_part(before), key_of("session", "")
+	if from == to then
+		return
+	end
+	if bufs[to] then
+		wipe(bufs[to])
+	end
+	if kept[to] and kept[to].undo then
+		os.remove(kept[to].undo)
+	end
+	kept[to], kept[from] = kept[from], nil
+	local record = bufs[from]
+	if record then
+		bufs[from], bufs[to], record.key = nil, record, to
+	end
+end
+
+---Let go, once the editor is past what closed them, the buffers whose window or tab is gone, and the history kept
+---of one: at the events of their close, and at the cleanup pass that finds one closed without its events.
+---@return nil
+function M.let_go_gone()
+	vim.schedule(let_go_gone)
+end
+
+---Get the buffer the float shows, while it's open.
+---@return Bufnr|nil buf
+function M.buffer()
+	return is_open() and open.shown.buf or nil
+end
+
+---Get the float's window, while it's open.
+---@return WinId|nil win
+function M.window()
+	return is_open() and open.win or nil
+end
+
+---Create the pop-up's autocmds in frogman's augroup: a window's or tab's buffer goes with it once the float is
+---closed; `:set nomodified` on the shown buffer, which fires no event of its own, draws its scope again
+---once Neovim settles, the flag set again while a draft is held; and nothing is kept while Neovim exits.
+---
+---@param group integer The frogman augroup
+---@return nil
+function M.init_autocmds(group)
+	vim.api.nvim_create_autocmd({ "WinClosed", "TabClosed" }, {
+		group = group,
+		callback = function()
+			M.let_go_gone()
+		end,
+	})
+	vim.api.nvim_create_autocmd("SafeState", {
+		group = group,
+		callback = function()
+			local record = is_open() and open.shown or nil
+			if record and record.flag and vim.api.nvim_buf_is_loaded(record.buf) and not vim.bo[record.buf].modified then
+				draw_into(record, nil) -- a reset by hand: the screen drawn again, a step
+			end
+		end,
+	})
+	vim.api.nvim_create_autocmd("VimLeavePre", {
+		group = group,
+		callback = function()
+			exiting = true
+		end,
+	})
 end
 
 return M

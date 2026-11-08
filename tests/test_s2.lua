@@ -4492,7 +4492,7 @@ local function empty_held_in_split(win)
 	child.cmd('split')
 	child.settle()
 	child.steps({ ':e d', "<M-'><M-e>" })
-	local buf = child.lua('return vim.fn.bufnr("frogman://marks")')
+	local buf = child.lua('return (require("frogman.domains.marks.popup").buffer() or -1)')
 	local lines = child.lua('return vim.api.nvim_buf_get_lines(..., 0, -1, false)', { buf })
 	lines[1] = '❖ todo'
 	child.lua('local b, l = ...; vim.api.nvim_buf_set_lines(b, 0, -1, false, l)', { buf, lines })
@@ -4741,7 +4741,7 @@ T['T1099 [char] (S2, M15, DESK.md:1214, :1208) a detached list leaving with two 
 	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
 	child.settle()
 	child.steps({ "<M-'><M-3>", "<M-'><M-e>" }) -- the list's copy, in its tab's session mode
-	local buf = child.lua('return vim.fn.bufnr("frogman://marks")')
+	local buf = child.lua('return (require("frogman.domains.marks.popup").buffer() or -1)')
 	child.lua('local b = ...; vim.api.nvim_buf_set_lines(b, 0, -1, false, { "❖ main", "a -> c.txt", "❖ two", "s -> d.txt" })', { buf })
 	child.cmd('silent! write')
 	child.settle(100)

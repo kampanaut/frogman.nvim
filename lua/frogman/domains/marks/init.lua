@@ -31,11 +31,13 @@ end, 2.5, true)
 ---Create the marks domain's autocmds in frogman's augroup.
 ---
 ---Called by setup(), so nothing runs at require. A closed window's marks, and a closed tab's, are held
----over in its session's scope once the editor settles. The marks pop-up's keys are mapped on its buffer.
+---over in its session's scope once the editor settles. The marks pop-up's keys are mapped on its buffer,
+---and its own autocmds are made first (`popup.init_autocmds`).
 ---
 ---@param group integer The frogman augroup
 ---@return nil
 function M.init_autocmds(group)
+	M.popup.init_autocmds(group)
 	vim.api.nvim_create_autocmd("FileType", {
 		group = group,
 		pattern = "frogman-marks",

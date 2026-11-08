@@ -1,8 +1,9 @@
 ---Editable views.
 ---
 ---The floats frogman opens on a buffer you edit and then write: the marks pop-up and the snapshot
----list. Each is an `acwrite` buffer with a name of its own, written by its own write, drawn again at
----every change, and wiped with its window, however that window closes.
+---list. `open` makes the view's `acwrite` buffer, with a name of its own, written by its own write, drawn
+---again at every change, and wiped with its window, however that window closes, as the snapshot list's
+---is; `float` opens the float on a buffer its caller keeps, as the marks pop-up keeps one per scope.
 
 local M = {}
 
@@ -44,25 +45,41 @@ function M.open(opts)
 		end,
 		desc = "Write " .. opts.title,
 	})
-	local width, height, col, row = require('frogman.domains.ui').routines.resolve_float_geometry(opts.size)
-	local opened, win = pcall(vim.api.nvim_open_win, buf, true, {
-		relative = "editor", width = width, height = height, col = col, row = row,
-		style = "minimal", border = "rounded", title = " " .. opts.title .. " ", title_pos = "center",
+	local opened, win = pcall(M.float, buf, {
+		title = opts.title, size = opts.size, window = opts.window,
+		closed = function()
+			if vim.api.nvim_buf_is_valid(buf) then
+				vim.api.nvim_buf_delete(buf, { force = true })
+			end
+			opts.closed(buf)
+		end,
 	})
 	if not opened then
 		vim.api.nvim_buf_delete(buf, { force = true }) -- shown nowhere, as when fill raises
 		opts.closed(buf)
 		error(win, 0)
 	end
+	return buf, win
+end
+
+---Open a float on a buffer its caller keeps: when the float closes, `closed` runs, the buffer staying or going
+---as its 'bufhidden' says.
+---
+---@param buf Bufnr The buffer to show, kept by the caller
+---@param opts {title: string, size: table, closed: fun(), window: table|nil}
+---@return WinId win
+function M.float(buf, opts)
+	local width, height, col, row = require('frogman.domains.ui').routines.resolve_float_geometry(opts.size)
+	local win = vim.api.nvim_open_win(buf, true, {
+		relative = "editor", width = width, height = height, col = col, row = row,
+		style = "minimal", border = "rounded", title = " " .. opts.title .. " ", title_pos = "center",
+	})
 	vim.api.nvim_create_autocmd("WinClosed", {
 		group = "frogman",
 		pattern = tostring(win),
 		once = true,
 		callback = function()
-			if vim.api.nvim_buf_is_valid(buf) then
-				vim.api.nvim_buf_delete(buf, { force = true })
-			end
-			opts.closed(buf)
+			opts.closed()
 		end,
 	})
 	vim.wo[win].wrap = false
@@ -70,7 +87,7 @@ function M.open(opts)
 	for option, value in pairs(opts.window or {}) do
 		vim.wo[win][option] = value
 	end
-	return buf, win
+	return win
 end
 
 ---Keep a view that holds edits not written yet: focus it, and say so.
