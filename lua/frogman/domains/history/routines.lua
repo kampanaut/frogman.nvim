@@ -381,7 +381,8 @@ end
 ---Its pools are the ones its close read at its event, or else its pools now (see
 ---`M.close_targets()`), one gone since skipped. Its buffer's registration goes first, and its handle
 ---closes with the lists' names for the trail, a close onto lists other than the current tab's getting
----a message there; then the file goes on each list as its newest entry, with one close time.
+---a message there; then the file goes on each list as its newest entry, with one close time, but for
+---a list the close stays off (`M.keep_closes_off()`), which the trail names all the same.
 ---
 ---@param close FrogmanClose|{ id: HandleId, bufnr: Bufnr, hash: Filehash } The file's handle, and the buffer and hash it's registered under
 ---@param context HandleContext|nil What else the handle's close carries, a repair's words
@@ -399,7 +400,24 @@ function M.close_into_pools(close, context)
 	closing.lists, closing.others = named_lists(into)
 	M.unregister_buffer(close.bufnr, closing, close.hash)
 	for pool, _ in pairs(into) do
-		pool:push(close.id, time)
+		if not (close.kept_off and close.kept_off[pool.id]) then
+			pool:push(close.id, time)
+		end
+	end
+end
+
+---Keep the closes still to settle that were made in a tab off that tab's list as they land, the trail still
+---naming it on each: a load is about to take the tab, and its session manager's teardown closed those files.
+---
+---@param tabpage integer The tab
+---@return nil
+function M.keep_closes_off(tabpage)
+	local pool_id = M.pool_of_tab(tabpage).id
+	for _, close in pairs(data.closing) do
+		if close.tab == tabpage and vim.tbl_contains(close.targets or {}, pool_id) then
+			close.kept_off = close.kept_off or {}
+			close.kept_off[pool_id] = true
+		end
 	end
 end
 
@@ -1157,6 +1175,9 @@ end
 ---@field hash Filehash The hash its buffer was registered under
 ---@field bufnr Bufnr The buffer that went
 ---@field targets string[] The lists it goes on, by their pools' ids
+---@field tab integer The tab it was made in
+---@field kept_off table<string, true>|nil Of those, the ones it stays off though the trail names them, by their
+---pools' ids: a tab session's whose tab a load took, its teardown having closed the file
 ---@field text NoNameBufferContent|nil A No Name buffer's text, copied while the buffer was there
 
 -- counts the closes read, so each is told apart from a newer one of the same buffer
@@ -1179,7 +1200,8 @@ function M.closing(bufnr, text)
 	end
 	closes = closes + 1
 	local hash = M.get_hash_from_handle(id)
-	local close = { seq = closes, id = id, hash = hash, bufnr = bufnr, targets = M.close_targets(id) }
+	local close = { seq = closes, id = id, hash = hash, bufnr = bufnr, targets = M.close_targets(id),
+		tab = vim.api.nvim_get_current_tabpage() }
 	if M.get_filepath_from_hash(hash):match("^NONAME_") then
 		local winid = vim.fn.bufwinid(bufnr)
 		close.text = text or {

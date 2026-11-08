@@ -5013,4 +5013,137 @@ T['T1109 [char] (S2, M15, DESK.md:1090-1091) a detached list kept with no tab af
 		{ kept = true, saved = { ok = true, listed = false, held = 1 }, in_memory = false })
 end
 
+
+-- A session file's closed list, its files by letter, sorted: the named session's.
+local FILE_CLOSED = [[
+	local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), ...) or {}
+	local out = {}
+	for _, h in ipairs(saved.closed or {}) do
+		table.insert(out, vim.fn.fnamemodify((saved.paths or {})[h] or h, ':t:r'))
+	end
+	table.sort(out)
+	return out
+]]
+
+-- Today's closes the trail records on a load's steps, the open one included, each as "<file letter> onto <lists>",
+-- sorted.
+local LOAD_CLOSES = [[
+	local out = {}
+	for _, step in ipairs(require('frogman.domains.ledger.routines').trail()) do
+		if step.cause == 'load' then
+			for _, move in ipairs(step.moves or {}) do
+				if move.kind == 'closed' then
+					table.insert(out, vim.fn.fnamemodify(move.name or '?', ':t:r') .. ' onto ' .. table.concat(move.lists or {}, ','))
+				end
+			end
+		end
+	end
+	table.sort(out)
+	return out
+]]
+
+-- A tab session's load into another tab session's tab, the teardown deleting that tab's buffers in the same call:
+-- the session left keeps its closed list as its file had it, as at a whole-editor switch, while the trail still
+-- records the closes onto its list.
+T['T1101 [char] (S2, M5, DESK.md:1082) a tab session\'s load into a tab session\'s tab leaves the teardown\'s closes off the session left\'s closed list'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 'u'), { true })
+	tab_session(s) -- t in the second tab, on d, c in its history
+	local before = child.lua(FILE_CLOSED, { 't' })
+	local got = child.lua([[
+		vim.cmd('enew') -- the teardown keeps the tab: its window on an empty buffer, then the tab's buffers deleted
+		vim.cmd('bdelete c.txt')
+		vim.cmd('bdelete d.txt')
+		return { pcall(require('frogman').load_session, 'u', { tab = vim.api.nvim_get_current_tabpage() }) }
+	]])
+	child.settle(300)
+	eq({ before = before, got = got, after = child.lua(FILE_CLOSED, { 't' }), trail = child.lua(LOAD_CLOSES) },
+		{ before = {}, got = { true }, after = {}, trail = { 'c onto t', 'd onto t' } })
+end
+
+-- The same teardown in a plain tab: the files it closes go onto the whole editor's list, which its file takes.
+T['T1110 [char] (S2, M5, DESK.md:1082) a tab session\'s load into a plain tab puts the teardown\'s closes onto the whole editor\'s list'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 'u'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(S2.save(child), { true }) -- the whole editor's file, nothing on its list
+	child.cmd('tabnew')
+	child.steps({ ':e e', ':e f' })
+	local got = child.lua([[
+		vim.cmd('enew')
+		vim.cmd('bdelete e.txt')
+		vim.cmd('bdelete f.txt')
+		return { pcall(require('frogman').load_session, 'u', { tab = vim.api.nvim_get_current_tabpage() }) }
+	]])
+	child.settle(300)
+	child.lua('require("frogman.domains.storage").routines.write_records()') -- the records waiting, written now
+	child.settle(300)
+	eq({ got = got, closed = child.lua(EDITOR_FILE).closed }, { got = { true }, closed = 'e,f' })
+end
+
+-- The same teardown in a detached list's tab: the files it closes go onto that list, which goes into the whole
+-- editor's file with them as its tab goes.
+T['T1111 [char] (S2, M5, DESK.md:1082) a tab session\'s load into a detached list\'s tab puts the teardown\'s closes onto that list in the whole editor\'s file'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 'u'), { true })
+	local w2 = detached_with_copy(s, false) -- the second tab keeps t_DETACHED, after a whole-editor save
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.settle()
+	child.steps({ ':e e', ':e f' })
+	local got = child.lua([[
+		vim.cmd('enew')
+		vim.cmd('bdelete e.txt')
+		vim.cmd('bdelete f.txt')
+		return { pcall(require('frogman').load_session, 'u', { tab = vim.api.nvim_get_current_tabpage() }) }
+	]])
+	child.settle(300)
+	eq({ got = got, list = child.lua(EDITOR_FILE).detached.t_DETACHED, in_memory = child.lua(IN_MEMORY, { 't_DETACHED' }) },
+		{ got = { true }, list = { closed = 'e,f', windows = 0 }, in_memory = false })
+end
+
+-- t reloaded into its own tab, the teardown closing a file opened there since t's save in the same call: the file
+-- stays off t's list, as t's file has it, while the trail records its close onto t.
+T['T1112 [char] (S2, M5, DESK.md:1082) a tab session reloaded into its own tab leaves the teardown\'s closes off its closed list'] = function()
+	local s = S2.shared()
+	local _, w2 = tab_session(s) -- t in the second tab, its file with nothing closed
+	child.steps({ ':e e', ':e d' }) -- e opened in t's tab since t's save
+	local got = child.lua([[
+		vim.cmd('enew') -- the teardown keeps the tab: its window on an empty buffer, then e deleted
+		vim.cmd('bdelete e.txt')
+		return { pcall(require('frogman').load_session, 't', { tab = vim.api.nvim_get_current_tabpage() }) }
+	]])
+	child.settle(300)
+	child.lua('require("frogman.domains.storage").routines.write_records()') -- the records waiting, written now
+	child.settle(300)
+	local e_known = child.lua([==[
+		local H = require('frogman.domains.history')
+		for _, handle in pairs(H.handles.live()) do
+			if (H.get_filepath_from_hash(handle.hash) or ''):match('/e%.txt$') then return true end
+		end
+		return false
+	]==])
+	eq({ got = got, memory = child.lua(LIST_OF, { w2 }), after = child.lua(FILE_CLOSED, { 't' }), trail = child.lua(LOAD_CLOSES),
+		e_known = e_known },
+		{ got = { true }, memory = 't:', after = {}, trail = { 'e onto t' }, e_known = false })
+end
+
+-- A file t's tab visited, closed from the first tab in the same call as u's load into t's tab: a close made in
+-- another tab isn't the teardown's, so it goes onto t's list as a visitor's does, and into t's file as t goes.
+T['T1113 [char] (S2, M5, DESK.md:1082) a close made in another tab just before a tab session\'s load still goes onto the session left\'s list'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 'u'), { true })
+	local w1, w2 = tab_session(s) -- t in the second tab, c in its history
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	child.settle()
+	child.steps({ ':e c', ':e t' }) -- the first tab visits c too
+	local got = child.lua([[
+		local into = vim.api.nvim_win_get_tabpage(...)
+		vim.cmd('bdelete c.txt') -- in the first tab
+		return { pcall(require('frogman').load_session, 'u', { tab = into }) }
+	]], { w2 })
+	child.settle(300)
+	eq({ got = got, after = child.lua(FILE_CLOSED, { 't' }) }, { got = { true }, after = { 'c' } })
+end
+
 return T

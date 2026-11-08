@@ -1765,6 +1765,21 @@ function M.prepare_load(directory, name, hint)
 	return hint ~= nil
 end
 
+---Keep the teardown's closes off the list of the tab session in a tab a load is about to take, that session
+---loaded again or another: the closes still to settle that were made in that tab. The session manager's
+---teardown closed those files, not you, so the session's closed list stays as its file has it, as at a
+---whole-editor switch, the trail still naming it on each close. A plain tab's and a detached list's
+---teardown closes go onto their lists.
+---
+---@param tabpage integer The tab the load goes into
+---@return nil
+function M.keep_teardown_off(tabpage)
+	local pool = history.routines.pool_of_tab(tabpage)
+	if pool and pool.id ~= "" and not pool.detached then
+		history.routines.keep_closes_off(tabpage)
+	end
+end
+
 ---Check if a session has a file, in that directory under that name.
 ---
 ---@param directory string The session's directory

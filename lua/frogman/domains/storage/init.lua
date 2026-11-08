@@ -105,6 +105,10 @@ local function load(name, opts, restart)
 	-- session's at a whole-editor load, at a tab session's what the closes in its tab left; a file it wrote
 	-- is the one the load reads, read again
 	local into = tab_session and (hint and opts.tab or vim.api.nvim_get_current_tabpage()) or nil
+	if into then
+		-- the files the teardown closed in that tab, still to settle, stay off its tab session's list
+		routines.keep_teardown_off(into)
+	end
 	if routines.keep_session_left(into, directory, name) then
 		tab_session = routines.prepare_load(directory, name, hint and opts.tab or nil)
 	end
