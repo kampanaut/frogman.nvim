@@ -1236,16 +1236,20 @@ local function list_lines()
 	return child.lua('return vim.api.nvim_buf_get_lines(vim.fn.bufnr("frogman://snapshots"), 0, -1, false)')
 end
 
-T['T833 [char] (M16) a held-over header is a line the list keeps'] = function()
+T['T833 [char] (M16, DESK.md:1941) a held-over header is a line the list keeps, a pasted copy of it staying'] = function()
 	split_held_over()
 	child.steps({ LIST })
 	local drawn = list_lines()
 	local h = held('')
 	local got = { header = h[1] ~= nil and drawn[1] == h[1].held, under = decoded_ids()[2] == (h[1] and h[1].id) }
-	for name, seq in pairs({ delete = { 'gg', 'dd' }, clear = { 'gg', 'S', '<Esc>' }, paste = { 'gg', 'yy', 'p' } }) do
-		keys(unpack(seq))
-		got[name] = vim.deep_equal(list_lines(), drawn)
+	for _, change in ipairs({ { 'delete', 'gg', 'dd' }, { 'clear', 'gg', 'S', '<Esc>' } }) do
+		keys(unpack(change, 2))
+		got[change[1]] = vim.deep_equal(list_lines(), drawn)
 	end
+	keys('gg', 'yy', 'p')
+	local pasted = vim.deepcopy(drawn)
+	table.insert(pasted, 2, drawn[1])
+	got.paste = vim.deep_equal(list_lines(), pasted)
 	eq(got, { header = true, under = true, delete = true, clear = true, paste = true })
 end
 
@@ -2068,6 +2072,104 @@ T['T1090 [char] (M16, DESK.md:1205, :1938) a switch keeps the snapshot of a wind
 		end
 		return { windows = out, held = #(saved.snapshots or {}) }
 	]]) }, { got = { true }, filed = { windows = { 2 }, held = 0 } })
+end
+
+
+-- The list's guards (DESK.md:1941, :1733, :1739): a held-over header missing at the write refuses it, a pasted copy
+-- of one stays and is asked about, the directory question stops once an answer opens nothing new, and with its
+-- window gone q and <C-c> leave, the edits dropped.
+
+T['T1138 [char] (M16, DESK.md:1941) a held-over header deleted and written on one command line refuses the write, the cursor on its first line'] = function()
+	split_held_over()
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ LIST })
+	local drawn = list_lines()
+	local h = held('')
+	child.messages()
+	local got = child.lua([[
+		vim.cmd('1d|w')
+		return { cursor = vim.api.nvim_win_get_cursor(0)[1], modified = vim.bo.modified }
+	]])
+	child.settle()
+	local told = #vim.tbl_filter(function(m)
+		return m == 'frogman: the header "' .. (h[1] and h[1].held or '?') .. '" is missing: put it back, or :q! to discard.'
+	end, said())
+	eq({ got = got, told = told, held = #held(''), own = #snapshots(win), lines = list_lines() },
+		{ got = { cursor = 1, modified = true }, told = 1, held = 1, own = 0, lines = drawn })
+end
+
+T['T1139 [char] (M16, DESK.md:1941, :1733) a pasted copy of a held-over header is asked about at the write, and Yes leaves it out, the lines under it with the group above'] = function()
+	split_held_over()
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ TAKE })
+	local own_id, held_id = snapshots(win)[1].id, held('')[1].id
+	child.steps({ LIST })
+	local drawn = list_lines() -- the window's own, the header, the held-over one
+	keys('2G', 'yy', 'gg', 'P') -- the header's copy above the window's own line
+	local kept = list_lines()
+	child.answer('No')
+	child.cmd('silent! write')
+	child.settle(100)
+	local prompt = child.prompts()
+	local no = { prompts = #prompt, named = (prompt[1] or ''):find('a copy of a header', 1, true) ~= nil,
+		modified = list().modified, cursor = child.lua('return vim.api.nvim_win_get_cursor(0)[1]') }
+	child.answer('Yes')
+	child.cmd('silent! write')
+	child.settle(100)
+	local own, h = snapshots(win), held('')
+	eq({ kept = { n = #kept, copy = kept[1] == drawn[2] }, no = no,
+		yes = { own = #own == 1 and own[1].id == own_id, held = #h == 1 and h[1].id == held_id, modified = list().modified } },
+		{ kept = { n = #drawn + 1, copy = true }, no = { prompts = 1, named = true, modified = true, cursor = 1 },
+			yes = { own = true, held = true, modified = false } })
+end
+
+T['T1140 [char] (M16, DESK.md:1739) q and <C-c> in the list with its window gone leave, the edits dropped, saying so'] = function()
+	local got = {}
+	for _, key in ipairs({ 'q', '<C-c>' }) do
+		child.setup()
+		local split, float = list_without_its_window()
+		child.lua('vim.cmd("normal! yyp")')
+		child.type_keys(key)
+		child.settle(100)
+		got[key] = { open = child.lua('return vim.api.nvim_win_is_valid(...)', { float }),
+			told = #vim.tbl_filter(function(m) return m == 'frogman: the window these were for is gone: the edits are dropped.' end, said()),
+			split = #snapshots(split), list = child.lua('return vim.fn.bufnr("frogman://snapshots")') }
+	end
+	local left = { open = false, told = 1, split = 0, list = -1 }
+	eq(got, { q = left, ['<C-c>'] = left })
+end
+
+T['T1141 [char] (M16, DESK.md:1733) the directory question stops once an answer opens nothing new'] = function()
+	local one, split = two_windows()
+	local line = line_from(one, '/elsewhere/project', 'elsewhere')
+	local asked = written_with(split, { line }, { '/nowhere/at/all', '/nowhere/again' })
+	eq({ input = #asked.input, confirm = #asked.confirm, n = #snapshots(split) }, { input = 1, confirm = 1, n = 0 })
+end
+
+T['T1146 [char] (M16, DESK.md:1941) the one held-over header deleted with a copy of it below is taken back'] = function()
+	split_held_over()
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ LIST })
+	keys('gg', 'yy', 'G', 'p') -- the header's copy below its held-over line
+	local copied = list_lines()
+	keys('gg', 'dd') -- the header it was drawn on
+	local after = list_lines()
+	child.answer('Yes')
+	child.cmd('silent! write')
+	child.settle(100)
+	eq({ n = #copied, after = after, own = #snapshots(win), held = #held('') }, { n = 3, after = copied, own = 0, held = 1 })
+end
+
+T['T1148 [char] (M16, DESK.md:1941) keys typed ahead with the list\'s open key meet the header it drew: the header deleted past its copy refuses'] = function()
+	split_held_over()
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.messages()
+	-- in one batch: the list opened, its one held-over header yanked and put below the held line, the header deleted,
+	-- the write
+	child.lua('vim.api.nvim_feedkeys(vim.keycode("<M-;>Sggyy2Gpggdd:w<CR>"), "tx", false)')
+	child.settle(100)
+	local told = #vim.tbl_filter(function(m) return m:find('is missing: put it back, or :q! to discard.', 1, true) ~= nil end, said())
+	eq({ told = told, own = #snapshots(win), held = #held('') }, { told = 1, own = 0, held = 1 })
 end
 
 return T

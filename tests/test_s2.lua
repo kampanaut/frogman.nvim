@@ -4161,8 +4161,8 @@ T['T375 [char] (S2) <M-;>W opens the picker, named keymaps.open_closed_lists'] =
 		{ moved = true, modifiable = true, c = true, named = '<M-;>W' })
 end
 
--- vim.fn.confirm is answered by hand: the choice named Keep, then Discard.
-T['T376 [char] (S2) discarding a No Name entry in the picker asks first'] = function()
+-- vim.fn.confirm is answered by hand: the choice named No, then Yes, in the write's one prompt.
+T['T376 [char] (S2, DESK.md:1733) discarding a No Name entry in the picker asks first, in the write\'s one prompt'] = function()
 	child.setup()
 	child.steps({ ':e a' })
 	S2.noname(child, { 'draft' })
@@ -4198,10 +4198,10 @@ T['T376 [char] (S2) discarding a No Name entry in the picker asks first'] = func
 		child.lua('if vim.api.nvim_win_is_valid(...) then vim.api.nvim_win_close(..., true) end', { p.win })
 		child.settle()
 	end
-	answer('Keep')
+	answer('No')
 	delete_and_write()
 	local kept = noname_listed()
-	answer('Discard')
+	answer('Yes')
 	delete_and_write()
 	eq({ kept = kept, discarded = not noname_listed() }, { kept = true, discarded = true })
 end
@@ -4279,13 +4279,16 @@ T['T672 [char] (S2) a header can\'t be changed in insert mode, keystroke by keys
 		{ { clear = p.lines, type_over = p.lines, join = p.lines, split = p.lines }, p.lines })
 end
 
-T['T673 [char] (S2) a pasted copy of a header is taken back (mine)'] = function()
+T['T673 [char] (S2, DESK.md:1730) a pasted copy of a header stays where it\'s put'] = function()
 	local s = S2.shared()
 	two_pools(s)
 	local p = S2.picker(child)
 	on_t_header(p.lines)
 	keys('yy', 'p')
-	eq(picker_lines(), p.lines)
+	local lines = vim.deepcopy(p.lines)
+	local t = S2.line_of(p.lines, 'c.txt') - 1
+	table.insert(lines, t + 1, lines[t])
+	eq(picker_lines(), lines)
 end
 
 T['T674 [char] (S2) a redraw of frogman\'s own is the state the guard takes back to'] = function()
@@ -5144,6 +5147,240 @@ T['T1113 [char] (S2, M5, DESK.md:1205) a close made in another tab just before a
 	]], { w2 })
 	child.settle(300)
 	eq({ got = got, after = child.lua(FILE_CLOSED, { 't' }) }, { got = { true }, after = { 'c' } })
+end
+
+
+-- The guards (DESK.md:1730, :1733): a header the lists drew that's missing at the write refuses it, a pasted
+-- copy of one stays and is asked about, and the No Name texts the write would discard are in its one prompt.
+
+-- The write run on one command line with a line of the lists, before the guard can take the change back; the
+-- cursor and the flag as the write left them.
+local function on_one_line(command)
+	return child.lua([[
+		vim.cmd(...)
+		return { cursor = vim.api.nvim_win_get_cursor(0)[1], modified = vim.bo.modified }
+	]], { command })
+end
+
+T['T1133 [char] (S2 Closed-stack picker, DESK.md:1730, repro R10) a header deleted and written on one command line refuses the write, the cursor on its first entry'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	local before = child.lua(LISTS_STATE)
+	local p = S2.picker(child)
+	local t = S2.line_of(p.lines, 'c.txt') - 1
+	child.messages()
+	local got = on_one_line(t .. 'd|w')
+	child.settle()
+	eq({ got = got, told = said("frogman: ≡t's header is missing: put it back, or :q! to discard."), lists = child.lua(LISTS_STATE),
+		lines = picker_lines() }, { got = { cursor = t, modified = true }, told = 1, lists = before, lines = p.lines })
+end
+
+T['T1134 [char] (S2 Closed-stack picker, DESK.md:1730, repro R10) a header deleted and written by a macro refuses the write'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	local before = child.lua(LISTS_STATE)
+	local p = S2.picker(child)
+	on_t_header(p.lines)
+	child.lua('vim.fn.setreg("q", "dd:w\\r")')
+	child.messages()
+	-- played as typeahead, as a macro runs in a UI (repro R11): typed key by key into the child, TextChanged
+	-- would fire between its keys
+	child.lua('vim.api.nvim_feedkeys("@q", "tx", false)')
+	child.settle()
+	eq({ told = said("frogman: ≡t's header is missing: put it back, or :q! to discard."), lists = child.lua(LISTS_STATE),
+		modified = child.lua('return vim.bo[...].modified', { p.buf }), lines = picker_lines() },
+		{ told = 1, lists = before, modified = false, lines = p.lines }) -- the guard's undo, once the macro ends, takes it back as drawn
+end
+
+-- ≡t's header yanked and put under ≡editor's, above x's line: x stays with the list above the copy.
+local function copy_over_x(p)
+	on_t_header(p.lines)
+	keys('yy', 'gg', 'p')
+	local lines = vim.deepcopy(p.lines)
+	table.insert(lines, 2, lines[S2.line_of(p.lines, 'c.txt') - 1])
+	return lines
+end
+
+T['T1135 [char] (S2 Closed-stack picker, DESK.md:1730, :1733) a pasted copy of a header is asked about at the write, and Yes leaves it out, the lines under it with the list above'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	local before = child.lua(LISTS_STATE)
+	local p = S2.picker(child)
+	local pasted = copy_over_x(p)
+	local kept = picker_lines()
+	child.answer('No')
+	child.lua('vim.cmd("write")')
+	child.settle()
+	local prompt = child.prompts()
+	local no = { prompts = #prompt, named = (prompt[1] or ''):find('≡t  (a copy of a header)', 1, true) ~= nil,
+		lists = child.lua(LISTS_STATE), modified = child.lua('return vim.bo[...].modified', { p.buf }),
+		cursor = child.lua('return vim.api.nvim_win_get_cursor(...)[1]', { p.win }) }
+	child.answer('Yes')
+	child.lua('vim.cmd("write")')
+	child.settle()
+	eq({ kept = kept, no = no, yes = { lists = child.lua(LISTS_STATE), modified = child.lua('return vim.bo[...].modified', { p.buf }),
+		lines = picker_lines() } },
+		{ kept = pasted, no = { prompts = 1, named = true, lists = before, modified = true, cursor = 2 },
+			yes = { lists = before, modified = false, lines = p.lines } })
+end
+
+T['T1136 [char] (S2 Closed-stack picker, DESK.md:1730, :1738) the header a guard took a change back on is still told from a pasted copy'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	local before = child.lua(LISTS_STATE)
+	local p = S2.picker(child)
+	on_t_header(p.lines)
+	keys('dd') -- taken back by an undo
+	on_t_header(p.lines)
+	keys('A', 'z', '<Esc>') -- put back as it last stood
+	local guarded = picker_lines()
+	local pasted = copy_over_x(p)
+	child.answer('Yes')
+	child.lua('vim.cmd("write")')
+	child.settle()
+	eq({ guarded = guarded, pasted = #child.prompts(), lists = child.lua(LISTS_STATE) },
+		{ guarded = p.lines, pasted = 1, lists = before })
+	eq(pasted[2], pasted[S2.line_of(pasted, 'c.txt') - 1])
+end
+
+T['T1137 [char] (S2 Closed-stack picker, DESK.md:1733) the No Name texts a write would discard are asked about in its one prompt'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b' })
+	S2.noname(child, { 'draft' })
+	child.steps({ '<M-.>' })
+	child.cmd('bdelete b.txt')
+	child.settle()
+	local p = S2.picker(child)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, S2.line_of(lines, '[No Name]'))
+	table.insert(lines, 'typo.txt')
+	child.answer('No')
+	S2.write_picker(child, p, lines)
+	local prompt = child.prompts()
+	local closed = child.closed()
+	local no = { prompts = #prompt, typo = (prompt[1] or ''):find('typo.txt', 1, true) ~= nil,
+		text = (prompt[1] or ''):find('"draft"', 1, true) ~= nil, kept = closed:match('^NONAME_[%d]+,b$') ~= nil }
+	child.answer('Yes')
+	child.lua('vim.api.nvim_buf_call(..., function() vim.cmd("write") end)', { p.buf })
+	child.settle()
+	eq({ no = no, yes = { prompts = #child.prompts(), closed = child.closed() } },
+		{ no = { prompts = 1, typo = true, text = true, kept = true }, yes = { prompts = 1, closed = 'b' } })
+end
+
+T['T1142 [char] (S2 Closed-stack picker, DESK.md:1730) <CR> under a pasted copy of another list\'s header reopens from the list the line is under'] = function()
+	local s = S2.shared()
+	local w1 = file_only_state(s)
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	local p = S2.picker(child)
+	local header = under_detached(p.lines)
+	-- ≡editor's header yanked and put under ≡t_DETACHED's, above e's line
+	child.lua('vim.api.nvim_set_current_win(...)', { p.win })
+	child.lua('vim.api.nvim_win_set_cursor(0, { 1, 0 })')
+	keys('yy')
+	child.lua('vim.api.nvim_win_set_cursor(0, { ..., 0 })', { header })
+	keys('p')
+	-- e's line under ≡t_DETACHED's header, below the copy now, which a section read by text takes for ≡editor
+	local e
+	for i, l in ipairs(picker_lines()) do
+		if i > header and not e and l:find('e.txt', 1, true) then e = i end
+	end
+	child.answer('Yes')
+	child.lua('vim.api.nvim_win_set_cursor(0, { ..., 0 })', { e })
+	type_into(p.win, '<CR>')
+	child.settle(300)
+	eq({ in_file = child.lua(EDITOR_FILE).detached.t_DETACHED, reopened = child.shown(w1) }, { in_file = nil, reopened = 'e' })
+end
+
+T['T1143 [char] (S2 Closed-stack picker, DESK.md:1730) a header deleted with a copy of it below is taken back'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	local before = child.lua(LISTS_STATE)
+	local p = S2.picker(child)
+	on_t_header(p.lines)
+	keys('yy', 'G', 'p') -- ≡t's copy below c's line
+	local copied = picker_lines()
+	on_t_header(p.lines) -- the header ≡t was drawn on
+	keys('dd')
+	local after = picker_lines()
+	child.answer('Yes')
+	child.lua('vim.cmd("write")')
+	child.settle()
+	local lines = vim.deepcopy(p.lines)
+	table.insert(lines, lines[S2.line_of(p.lines, 'c.txt') - 1])
+	eq({ copied = copied, after = after, lists = child.lua(LISTS_STATE) }, { copied = lines, after = lines, lists = before })
+end
+
+T['T1144 [char] (S2 Closed-stack picker, DESK.md:1730) after every line is written over, the headers are told from a copy pasted later'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	local before = child.lua(LISTS_STATE)
+	local p = S2.picker(child)
+	child.lua('local buf, lines = ...; vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)', { p.buf, p.lines })
+	child.settle() -- the guard takes the rewrite in
+	copy_over_x(p)
+	child.answer('Yes')
+	child.lua('vim.cmd("write")')
+	child.settle()
+	eq({ prompts = #child.prompts(), lists = child.lua(LISTS_STATE) }, { prompts = 1, lists = before })
+end
+
+T['T1145 [char] (S2 Closed-stack picker, DESK.md:1730) the refusal puts the cursor on the list\'s own first entry, a file on two lists'] = function()
+	local s = S2.shared()
+	x_on_both(s)
+	local p = S2.picker(child)
+	local t = S2.line_of(p.lines, '≡t')
+	local got = on_one_line(t .. 'd|w')
+	child.settle()
+	eq({ first = p.lines[t + 1], cursor = got.cursor }, { first = 'x.txt', cursor = t })
+end
+
+T['T1147 [char] (S2 Closed-stack picker, DESK.md:1730) keys typed ahead with the lists\' open key meet the headers it drew: a header deleted past its copy refuses'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	local before = child.lua(LISTS_STATE)
+	child.messages()
+	-- in one batch: the lists opened, ≡t's header (line 3) yanked and put below c's line, the header deleted, the write
+	child.lua('vim.api.nvim_feedkeys(vim.keycode("<M-;>W3Gyy4Gp3Gdd:w<CR>"), "tx", false)')
+	child.settle()
+	eq({ told = said("frogman: ≡t's header is missing: put it back, or :q! to discard."), lists = child.lua(LISTS_STATE) },
+		{ told = 1, lists = before })
+end
+
+T['T1149 [char] (S2 Closed-stack picker, DESK.md:1738) an edit typed ahead with a header change the guard undoes stays through a later put-back'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	local p = S2.picker(child)
+	-- in one batch: x's line deleted, then the header that comes up to its row: the guard's undo takes back the header's
+	child.lua('vim.api.nvim_feedkeys("2Gdd2Gdd", "tx", false)')
+	child.settle()
+	local undone = picker_lines()
+	child.lua('vim.api.nvim_win_set_cursor(0, { 2, 0 })')
+	keys('A', 'z', '<Esc>') -- on ≡t's header, put back as it last stood
+	eq({ undone = undone, put_back = picker_lines() }, { undone = { '≡editor', '≡t', 'c.txt' }, put_back = { '≡editor', '≡t', 'c.txt' } })
+end
+
+T['T1150 [char] (S2 Closed-stack picker, DESK.md:1730, :1738) a line opened above a header is kept'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	local p = S2.picker(child)
+	on_t_header(p.lines)
+	keys('O', 'b', '.', 't', 'x', 't', '<Esc>')
+	local lines = vim.deepcopy(p.lines)
+	table.insert(lines, S2.line_of(p.lines, 'c.txt') - 1, 'b.txt')
+	eq(picker_lines(), lines)
+end
+
+T['T1151 [char] (S2 Closed-stack picker, DESK.md:1730, :1733) a header\'s copy put above it is the copy the write asks about'] = function()
+	local s = S2.shared()
+	two_pools(s)
+	local p = S2.picker(child)
+	local t = S2.line_of(p.lines, 'c.txt') - 1
+	on_t_header(p.lines)
+	keys('yy', 'P')
+	child.answer('No')
+	child.lua('vim.cmd("write")')
+	child.settle()
+	eq({ prompts = #child.prompts(), cursor = child.lua('return vim.api.nvim_win_get_cursor(0)[1]') }, { prompts = 1, cursor = t })
 end
 
 return T

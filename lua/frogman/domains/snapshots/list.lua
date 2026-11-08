@@ -17,8 +17,9 @@ local DIRTY = "frogman: the snapshot list has edits not written yet: write them 
 local ns = vim.api.nvim_create_namespace("frogman_snapshots")
 
 ---The list that's open: its buffer, its window, the window it was opened from, the session whose
----held-over snapshots it shows, and its headers as drawn, with the lines last intact.
----@type {buf: Bufnr, win: WinId, origin: WinId, session: string, headers: table<string, true>, header_order: string[], intact: string[]}|nil
+---held-over snapshots it shows, its headers as drawn with their marks and the snapshots drawn under each,
+---and the lines last intact.
+---@type {buf: Bufnr, win: WinId, origin: WinId, session: string, headers: table<string, true>, header_order: string[], header_marks: table<string, integer>, drawn_under: table<string, string[]>, intact: string[], intact_rows: table<string, integer>}|nil
 local open = nil
 
 ---Check if the list is open, its buffer still there.
@@ -138,9 +139,9 @@ function M.decode(line)
 	return decoded[line] and vim.deepcopy(decoded[line]) or nil
 end
 
----Ask for the directory the lines that don't open were drawn in, until each opens or the answer is
----empty: once for all of them, and again while any is still shut. A directory that opened one is
----tried from then on.
+---Ask for the directory the lines that don't open were drawn in: once for all of them, and again while
+---any is still shut, stopping once an answer opens nothing new, as an empty answer does. A directory that
+---opened one is tried from then on.
 ---
 ---@param lines string[] The list's lines
 ---@return nil
@@ -170,8 +171,11 @@ local function open_shut(lines)
 			end
 		end
 		local now = shut()
-		if #now == #left and not was then
-			answered[directory] = nil -- it opened nothing: not one to try again
+		if #now == #left then
+			if not was then
+				answered[directory] = nil -- it opened nothing: not one to try again
+			end
+			return
 		end
 		left = now
 	end
@@ -279,7 +283,7 @@ end
 ---group to a header: the group held over last first, and each group's newest first.
 ---@return nil
 local function redraw()
-	local lines, headers, header_order, drawn = {}, {}, {}, {}
+	local lines, headers, header_order, drawn, drawn_under = {}, {}, {}, {}, {}
 	local snapshots = routines.of_window(open.origin)
 	for i = #snapshots, 1, -1 do
 		table.insert(lines, line_of(snapshots[i]))
@@ -298,14 +302,18 @@ local function redraw()
 		headers[header] = true
 		table.insert(header_order, header)
 		table.insert(lines, header)
+		drawn_under[header] = {}
 		for i = #members, 1, -1 do
 			table.insert(lines, line_of(members[i]))
 			drawn[members[i].id] = true
+			table.insert(drawn_under[header], members[i].id)
 		end
 	end
 	-- what the write may delete: a snapshot taken or held over since stays
 	open.headers, open.header_order, open.intact, open.drawn = headers, header_order, lines, drawn
+	open.drawn_under = drawn_under
 	vim.api.nvim_buf_set_lines(open.buf, 0, -1, false, lines)
+	require('frogman.domains.ui').routines.mark_headers(open.buf, open)
 	vim.bo[open.buf].modified = false
 	decorate()
 end
@@ -317,9 +325,11 @@ end
 ---held-over header. A line naming a snapshot already where it sits keeps it. One naming a snapshot
 ---alive elsewhere, another window's, held over elsewhere or under another header, or a second line
 ---naming one kept here, makes a copy of it where it sits. Any other is rebuilt from what it carries,
----where it sits. A line that doesn't open, or that carries a snapshot with nothing left to come back,
----is asked about first, and No writes nothing, the cursor on the first such line. With the window the
----list was opened from gone, nothing is written, the edits kept, as the marks pop-up keeps them.
+---where it sits. A line that doesn't open, one that carries a snapshot with nothing left to come back,
+---and a pasted copy of a header are asked about first: Yes leaves them out, the lines under a copy staying
+---with the group above, and No writes nothing, the cursor on the first such line. A header it drew that
+---no line holds refuses the write, saying so, the cursor on the first snapshot drawn under it. With the
+---window the list was opened from gone, nothing is written, the edits kept, as the marks pop-up keeps them.
 ---
 ---@return boolean written
 local function write()
@@ -327,13 +337,42 @@ local function write()
 		vim.notify("frogman: the window this list was for is gone, so it isn't written.", vim.log.levels.WARN)
 		return false
 	end
-	open_shut(vim.api.nvim_buf_get_lines(open.buf, 0, -1, false))
+	local lines = vim.api.nvim_buf_get_lines(open.buf, 0, -1, false)
+	local ui = require('frogman.domains.ui').routines
+	local rows, header_copies, missing, live = ui.header_rows(open.buf, open, lines)
+	if missing then
+		-- the cursor on the first snapshot drawn under it: where the header was while the marks are live, else
+		-- that snapshot's line where it still stands
+		local row = live and ui.missing_row(open.buf, open, missing)
+		if not row then
+			local under = {}
+			for _, id in ipairs(open.drawn_under[missing] or {}) do
+				under[id] = true
+			end
+			for at, line in ipairs(lines) do
+				if under[id_in(line) or false] then
+					row = at
+					break
+				end
+			end
+		end
+		if row and open.win and vim.api.nvim_win_is_valid(open.win) then
+			vim.api.nvim_win_set_cursor(open.win, { row, 0 })
+		end
+		vim.notify('frogman: the header "' .. missing .. '" is missing: put it back, or :q! to discard.', vim.log.levels.WARN)
+		return false
+	end
+	open_shut(lines)
 	local kept, copies, rebuilt, items, first = {}, {}, {}, {}, nil
 	local into = { winid = open.origin } -- above the first header, the window's own
-	for row, line in ipairs(vim.api.nvim_buf_get_lines(open.buf, 0, -1, false)) do
+	for row, line in ipairs(lines) do
 		line = vim.trim(line)
-		if open.headers[line] then
+		if rows[row] then
 			into = { session = session(), held = line }
+		elseif header_copies[row] then
+			-- the lines under it stay with the group above
+			table.insert(items, line .. "  a copy of a header")
+			first = first or row
 		elseif line ~= "" then
 			local carried = M.decode(line)
 			local snapshot, winid, held_in = nil, nil, nil
@@ -379,10 +418,18 @@ local function write()
 	return true
 end
 
----Write the list when it was edited, then leave it; a write answered No leaves it open.
+---Write the list when it was edited, then leave it; a write answered No leaves it open. With the window it
+---was opened from gone, it leaves, the edits dropped, and says so.
 ---@return nil
 function M.leave()
 	if not is_open() then
+		return
+	end
+	if not M.origin() and vim.bo[open.buf].modified then
+		vim.notify("frogman: the window these were for is gone: the edits are dropped.", vim.log.levels.WARN)
+		if open.win and vim.api.nvim_win_is_valid(open.win) then
+			vim.api.nvim_win_close(open.win, true)
+		end
 		return
 	end
 	require('frogman.domains.ui.view').leave(open.buf, open.win, write)

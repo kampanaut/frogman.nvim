@@ -721,52 +721,206 @@ local function draw_closed_lists(dbuf)
 	end
 	vim.api.nvim_buf_set_lines(dbuf, 0, -1, false, lines)
 	picker.intact = lines -- what the header guard takes a change back to
+	M.mark_headers(dbuf, picker)
 	vim.bo[dbuf].modified = false
 	decorate_closed_lists(dbuf)
 end
 
+---The namespaces of the marks a view puts on what it draws: one on each header, so its write tells a header it drew
+---from a pasted copy of its text, and one on every line, so it tells a header deleted from a rewrite of every line.
+local header_ns = vim.api.nvim_create_namespace("frogman_headers")
+local line_ns = vim.api.nvim_create_namespace("frogman_header_lines")
+
+---A mark that goes with its line when the line is deleted, an undo bringing both back, and that a line put or
+---opened above its own moves down with it.
+local LINE_MARK = { invalidate = true }
+
+---Get the row a mark of a view stands on, while it's valid.
+---@param buf Bufnr The view's buffer
+---@param ns integer The namespace the mark is in, the headers' or the lines'
+---@param id integer|nil The mark's id, nil when there's none
+---@return integer|nil row Its row, counted from 1
+local function marked_row(buf, ns, id)
+	local mark = id and vim.api.nvim_buf_get_extmark_by_id(buf, ns, id, { details = true })
+	if mark and mark[1] and not (mark[3] and mark[3].invalid) then
+		return mark[1] + 1
+	end
+	return nil
+end
+
+---Mark a view's headers on the rows given, each by the id it was drawn with, and every line it holds.
+---@param buf Bufnr The view's buffer
+---@param view {header_marks: table<string, integer>|nil} The view
+---@param rows table<string, integer> Each header's row, counted from 1
+---@return nil
+local function place_marks(buf, view, rows)
+	view.header_marks = view.header_marks or {}
+	for header, row in pairs(rows) do
+		local id = view.header_marks[header]
+		if id then
+			-- set again where an invalid mark already stands, it stays invalid: taken off first, it comes back valid
+			vim.api.nvim_buf_del_extmark(buf, header_ns, id)
+		end
+		view.header_marks[header] = vim.api.nvim_buf_set_extmark(buf, header_ns, row - 1, 0,
+			vim.tbl_extend("force", LINE_MARK, { id = id }))
+	end
+	vim.api.nvim_buf_clear_namespace(buf, line_ns, 0, -1)
+	view.line_marks = {}
+	for row = 1, vim.api.nvim_buf_line_count(buf) do
+		table.insert(view.line_marks, vim.api.nvim_buf_set_extmark(buf, line_ns, row - 1, 0, LINE_MARK))
+	end
+end
+
+---Mark what a view drew: each header on the line it was drawn on, and every line.
+---
+---@param buf Bufnr The view's buffer, its lines as drawn
+---@param view {headers: table<string, any>, header_order: string[]} The view's headers as drawn
+---@return nil
+function M.mark_headers(buf, view)
+	vim.api.nvim_buf_clear_namespace(buf, header_ns, 0, -1)
+	view.header_marks, view.intact_rows = {}, {}
+	for row, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+		local text = vim.trim(line)
+		if view.headers[text] and not view.intact_rows[text] then
+			view.intact_rows[text] = row
+		end
+	end
+	place_marks(buf, view, view.intact_rows)
+end
+
+---Find the headers a view drew in its lines.
+---
+---While the view's marks are live, some line it drew still standing, a drawn header stands on the line carrying
+---the mark it was drawn with, and it's missing once that line is gone or no longer holds its text, whatever other
+---line holds it. Once a rewrite of every line has taken every mark, a drawn header stands on the first line of its
+---text, and it's missing when none holds it. Every other line of a drawn header's text is a pasted copy.
+---
+---@param buf Bufnr The view's buffer
+---@param view {headers: table<string, any>, header_order: string[], header_marks: table<string, integer>|nil, line_marks: integer[]|nil}
+---@param lines string[]|nil The buffer's lines, when they're read already
+---@return table<integer, string> rows Each drawn header, by the row it stands on
+---@return table<integer, string> copies Each pasted copy's header, by its row
+---@return string|nil missing The first drawn header missing, in the order drawn
+---@return boolean live Whether the view's marks are live
+function M.header_rows(buf, view, lines)
+	lines = lines or vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	local live = false
+	for _, id in ipairs(view.line_marks or {}) do
+		if marked_row(buf, line_ns, id) then
+			live = true
+			break
+		end
+	end
+	local at = {}
+	for row, line in ipairs(lines) do
+		local text = vim.trim(line)
+		if view.headers[text] then
+			at[text] = at[text] or {}
+			table.insert(at[text], row)
+		end
+	end
+	local rows, copies, missing = {}, {}, nil
+	for _, header in ipairs(view.header_order) do
+		local chosen
+		if live then
+			local row = marked_row(buf, header_ns, view.header_marks and view.header_marks[header])
+			chosen = row and vim.trim(lines[row] or "") == header and row or nil
+		else
+			chosen = at[header] and at[header][1]
+		end
+		if chosen then
+			rows[chosen] = header
+		else
+			missing = missing or header
+		end
+		for _, row in ipairs(at[header] or {}) do
+			if row ~= chosen then
+				copies[row] = header
+			end
+		end
+	end
+	return rows, copies, missing, live
+end
+
+---Find the row a missing header stood on: where the line its mark was on was deleted, which is its first line
+---now, while the view's marks are live.
+---@param buf Bufnr The view's buffer
+---@param view {header_marks: table<string, integer>|nil}
+---@param header string The missing header
+---@return integer|nil row Counted from 1, within the buffer
+function M.missing_row(buf, view, header)
+	local id = view.header_marks and view.header_marks[header]
+	local mark = id and vim.api.nvim_buf_get_extmark_by_id(buf, header_ns, id, {})
+	if mark and mark[1] then
+		return math.min(mark[1] + 1, vim.api.nvim_buf_line_count(buf))
+	end
+	return nil
+end
+
 ---Take back a change that leaves a view's headers broken: the closed lists' or the snapshot list's.
 ---
----The headers are intact when each header stands, trimmed, on a line of its own, once, in the
----order they were drawn, which is how the write reads a header. Outside insert mode the
----change is undone, so redo can't bring it back either. In insert mode an undo can't run, so the
----lines go back to how they last stood with their headers intact. A change that keeps them intact
----is what the next one is taken back to.
+---The headers are intact when none is missing, as `header_rows` finds them, and they stand in the order they were
+---drawn, which is how the write reads a header; a pasted copy of one is left in place, for the write to ask about.
+---Outside insert mode the change is undone, so redo can't bring it back either. In insert mode an undo can't run,
+---so the lines go back to how they last stood with their headers intact, the marks with them. A change that keeps
+---them intact is what the next one is taken back to, a rewrite of every line given its marks again.
 ---
 ---@param dbuf Bufnr The view's buffer
 ---@param insert boolean Whether the change was made in insert mode
----@param picker {headers: table<string, any>, header_order: string[], intact: string[]}|nil The headers as drawn, and the lines last intact
+---@param picker {headers: table<string, any>, header_order: string[], header_marks: table<string, integer>, intact: string[], intact_rows: table<string, integer>}|nil The headers as drawn and their marks, and the lines last intact with each header's row in them
 ---@return nil
 function M.guard_headers(dbuf, insert, picker)
 	if not picker or not picker.header_order then
 		return
 	end
+	-- each header's row when they're intact, and whether the marks are live
 	local function intact(lines)
-		local seen = {}
-		for _, line in ipairs(lines) do
-			local text = vim.trim(line)
-			if picker.headers[text] then
-				table.insert(seen, text)
+		local rows, _, missing, live = M.header_rows(dbuf, picker, lines)
+		if missing then
+			return nil
+		end
+		local at, last = {}, 0
+		for row, header in pairs(rows) do
+			at[header] = row
+		end
+		for _, header in ipairs(picker.header_order) do
+			if at[header] < last then
+				return nil
+			end
+			last = at[header]
+		end
+		return at, live
+	end
+	-- the lines as they stand, when intact, taken in as what the next change is taken back to
+	local function take_in()
+		local lines = vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)
+		local rows, live = intact(lines)
+		if rows then
+			picker.intact, picker.intact_rows = lines, rows
+			if not live then
+				place_marks(dbuf, picker, rows) -- every line written over: marked again as it now stands
 			end
 		end
-		return vim.deep_equal(seen, picker.header_order)
+		return rows ~= nil
 	end
-	if intact(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) then
-		picker.intact = vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)
+	if take_in() then
 		return
 	end
 	if not insert then
 		vim.api.nvim_buf_call(dbuf, function()
 			vim.cmd("silent! undo")
 		end)
-		if intact(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) then
+		-- an undo that mends it keeps what else changed in the same batch
+		if take_in() then
 			return
 		end
 	end
-	-- an undo that didn't mend it, or a keystroke in insert mode: the lines as they last stood
+	-- an undo that didn't mend it, or a keystroke in insert mode: the lines as they last stood, marked again,
+	-- since writing every line takes the marks with them
 	local win = vim.fn.bufwinid(dbuf)
 	local cursor = win ~= -1 and vim.api.nvim_win_get_cursor(win)
 	vim.api.nvim_buf_set_lines(dbuf, 0, -1, false, picker.intact)
+	place_marks(dbuf, picker, picker.intact_rows or {})
 	if cursor then
 		pcall(vim.api.nvim_win_set_cursor, win, { math.min(cursor[1], #picker.intact), cursor[2] })
 	end
@@ -777,17 +931,18 @@ end
 ---Each list becomes the lines under its header, newest first. A line moved under another header
 ---moves to that list, and a file twice in one list is kept once, with the newer close. Each list
 ---keeps its own close times for the files it held, and a file closed onto a list since it was
----drawn is kept as its newest. A deleted line is discarded, and a No Name text only once it's
+---drawn is kept as its newest. A deleted line is discarded, a No Name text only once it's
 ---confirmed, since it exists nowhere else.
 ---
----The lines it would leave out are asked about first, in one prompt: a line that names no list or
----file, a file with no list above it, a file twice under one header that no other list drew,
----which can only be a pasted copy, and a file open again since it was drawn, which no list in memory
----holds. A file twice under a header that another list drew too is a merge, and kept once without
----asking. No writes nothing, and puts the cursor on the first of those
----lines. A No Name text kept at its own question writes nothing too. When the lists in the whole
----editor's file alone can't be written, it says so and returns false, with the other lists already
----written.
+---A header it drew that no line holds refuses the write, saying so, the cursor on that list's first
+---entry. The rest is asked about first, in one prompt: a line that names no list or file, a pasted
+---copy of a header, a file with no list above it, a file twice under one header that no other list
+---drew, which can only be a pasted copy, a file open again since it was drawn, which no list in memory
+---holds, and the No Name texts the write would discard. A file twice under a header that another list
+---drew too is a merge, and kept once without asking. Yes writes the rest, a copy of a header left out
+---and the lines under it staying with the list above; No writes nothing, and puts the cursor on the
+---first of those lines. When the lists in the whole editor's file alone can't be written, it says so
+---and returns false, with the other lists already written.
 ---
 ---@param dbuf Bufnr The closed-lists buffer
 ---@param leaving boolean|nil True when the lines won't stay as edited after the write, the window left
@@ -795,9 +950,11 @@ end
 ---still on screen
 ---@return boolean written True if every list was written
 ---@return string|nil why "file" when only the write into the whole editor's file failed, "declined"
----when the prompt was answered no
+---when the prompt was answered no, "missing" when a header it drew is missing
 local function write_closed_lists(dbuf, leaving)
 	local picker = closed_pickers[dbuf]
+	local lines = vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)
+	local rows, copies, missing, live = M.header_rows(dbuf, picker, lines)
 	-- the file an entry names, whichever kind of list drew it: two entries naming one file are one
 	local function file_of(ref)
 		return entry_hash(ref) or ref
@@ -818,14 +975,45 @@ local function write_closed_lists(dbuf, leaving)
 		end
 		return false
 	end
+	if missing then
+		-- the cursor on the list's first entry: where the header was while the marks are live, else its first
+		-- drawn file's line under the header before it
+		local win, row = vim.fn.bufwinid(dbuf), live and M.missing_row(dbuf, picker, missing)
+		if not row then
+			local first, from, place = picker.drawn[picker.headers[missing]][1], 1, {}
+			for i, header in ipairs(picker.header_order) do
+				place[header] = i
+			end
+			for at, header in pairs(rows) do
+				if place[header] < place[missing] then
+					from = math.max(from, at + 1)
+				end
+			end
+			for at = from, #lines do
+				local ref = picker.refs[vim.trim(lines[at])]
+				if first and ref and file_of(ref) == file_of(first) then
+					row = at
+					break
+				end
+			end
+		end
+		if row and win ~= -1 then
+			vim.api.nvim_win_set_cursor(win, { row, 0 })
+		end
+		vim.notify("frogman: " .. missing .. "'s header is missing: put it back, or :q! to discard.", vim.log.levels.WARN)
+		return false, "missing"
+	end
 	local current, current_header, new, count, left_out, open_now = nil, nil, {}, {}, {}, {}
-	for row, line in ipairs(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) do
+	for row, line in ipairs(lines) do
 		local text = vim.trim(line)
 		if text ~= "" then
 			local ref = picker.refs[text]
-			if picker.headers[text] then
-				current, current_header = picker.headers[text], text
+			if rows[row] then
+				current, current_header = picker.headers[rows[row]], rows[row]
 				new[current], count[current] = new[current] or {}, count[current] or {}
+			elseif copies[row] then
+				-- the lines under it stay with the list above
+				table.insert(left_out, { row = row, text = text, why = "a copy of a header" })
 			elseif ref and current and not current.file_only and history.get_buffer_from_hash(file_of(ref)) then
 				-- open again since it was drawn: a list in memory holds no open file
 				open_now[file_of(ref)] = true
@@ -845,22 +1033,7 @@ local function write_closed_lists(dbuf, leaving)
 			end
 		end
 	end
-	if #left_out > 0 then
-		local listed = {}
-		for _, line in ipairs(left_out) do
-			table.insert(listed, "  " .. line.text .. "  (" .. line.why .. ")")
-		end
-		if vim.fn.confirm("frogman: these lines would be left out:\n" .. table.concat(listed, "\n") .. "\nWrite the rest?",
-				"&Yes\n&No", 2) ~= 1 then
-			local win = vim.fn.bufwinid(dbuf)
-			if win ~= -1 then
-				vim.api.nvim_win_set_cursor(win, { left_out[1].row, 0 })
-			end
-			return false, "declined"
-		end
-	end
-
-	-- what's left on no list: a No Name text goes for good, so it's asked first
+	-- what's left on no list: a No Name text goes for good, so it's asked about with the rest
 	local placed, gone, lost = {}, {}, {}
 	for _, refs in pairs(new) do
 		for _, ref in ipairs(refs) do
@@ -880,9 +1053,22 @@ local function write_closed_lists(dbuf, leaving)
 		end
 	end
 	table.sort(lost)
-	if #lost > 0 and vim.fn.confirm("Discard these No Name texts? They exist nowhere else.\n" ..
-			table.concat(lost, "\n"), "&Discard\n&Keep", 2) ~= 1 then
-		return false
+	if #left_out > 0 or #lost > 0 then
+		local listed = {}
+		for _, line in ipairs(left_out) do
+			table.insert(listed, "  " .. line.text .. "  (" .. line.why .. ")")
+		end
+		for _, text in ipairs(lost) do
+			table.insert(listed, "  " .. text .. "  (a No Name text that exists nowhere else)")
+		end
+		if vim.fn.confirm("frogman: these lines would be left out:\n" .. table.concat(listed, "\n") .. "\nWrite the rest?",
+				"&Yes\n&No", 2) ~= 1 then
+			local win = vim.fn.bufwinid(dbuf)
+			if win ~= -1 and left_out[1] then
+				vim.api.nvim_win_set_cursor(win, { left_out[1].row, 0 })
+			end
+			return false, "declined"
+		end
 	end
 
 	local storage = require('frogman.domains.storage').routines
@@ -1035,12 +1221,13 @@ function M.reopen_from_closed_lists(dbuf, stay)
 			return
 		end
 	end
-	-- the list the line is under; one in the file alone gives the entry up as it's reopened
+	-- the list the line is under, a pasted copy of a header aside; one in the file alone gives the entry up as
+	-- it's reopened
 	local section
-	local lines = vim.api.nvim_buf_get_lines(dbuf, 0, vim.api.nvim_win_get_cursor(0)[1], false)
-	for i = #lines, 1, -1 do
-		section = picker.headers[vim.trim(lines[i])]
-		if section then
+	local rows = M.header_rows(dbuf, picker)
+	for i = vim.api.nvim_win_get_cursor(0)[1], 1, -1 do
+		if rows[i] then
+			section = picker.headers[rows[i]]
 			break
 		end
 	end
