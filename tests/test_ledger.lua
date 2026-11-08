@@ -1357,4 +1357,95 @@ T['T912 [char] (M5, A20, I7) a move keeps the lists a file came off, so its next
 		{ kept = { 't' }, lists = { 'editor', 't' }, tabs = 2 })
 end
 
+-- Another editor that started before this one: its step sealed into today's page by hand, timed between two of
+-- this editor's closes.
+T['T1152 [char] (A27, DESK.md:1859, :1860, repro P8) two editors\' steps on one page come out of the reader by time, a tie by the editor that started first'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c', ':e x' })
+	eq(S2.save(child), { true })
+	child.cmd('bdelete a.txt')
+	child.settle(300)
+	child.cmd('bdelete b.txt')
+	child.settle(1500) -- today's page written with the records
+	local got = child.lua([[
+		local L, st = require('frogman').ledger, require('frogman.domains.storage').routines
+		local crypto = require('frogman.domains.storage.crypto')
+		local day = os.date('%Y-%m-%d')
+		local function closing(step, name)
+			for _, m in ipairs(step.moves or {}) do
+				if m.kind == 'closed' and m.name == name then return true end
+			end
+			return false
+		end
+		local a, b
+		for _, step in ipairs(L.trail(day)) do
+			if closing(step, 'a.txt') then a = step.time end
+			if closing(step, 'b.txt') then b = step.time end
+		end
+		local dir = vim.fn.getcwd(-1, -1)
+		local main = require('frogman.configs').session_dir .. vim.fn.sha256(dir)
+		local f = io.open(main, 'rb'); local bytes = f:read('*a'); f:close()
+		local key = st.key_for(dir, bytes:sub(5, 4 + crypto.salt_length))
+		local page = main .. '.d/' .. st.read_session(dir, nil).trail[day]
+		f = io.open(page, 'rb'); local sealed = f:read('*a'); f:close()
+		local held = vim.json.decode(crypto.open(key, sealed, 'CDV1trail\n' .. day))
+		table.insert(held.steps, { seq = 2, time = (a + b) / 2, epoch = string.format('%.6f-%04d', L.data.started - 100, 7),
+			cause = 'keymap', trigger = 'other', names = {}, events = {},
+			moves = { { kind = 'closed', name = 'other.txt', lists = { 'editor' } } } })
+		-- that editor's step before, at a's very time: the editor that started first goes first
+		table.insert(held.steps, { seq = 1, time = a, epoch = string.format('%.6f-%04d', L.data.started - 100, 7),
+			cause = 'keymap', trigger = 'tie', names = {}, events = {},
+			moves = { { kind = 'closed', name = 'tie.txt', lists = { 'editor' } } } })
+		st.write_atomic(page, crypto.seal(key, vim.json.encode(held), 'CDV1trail\n' .. day))
+		local order, rising, last = {}, true, -math.huge
+		for _, step in ipairs(st.trail_reader().steps(day)) do
+			for _, name in ipairs({ 'tie.txt', 'a.txt', 'other.txt', 'b.txt' }) do
+				if closing(step, name) then table.insert(order, name) end
+			end
+			rising = rising and step.time >= last
+			last = step.time
+		end
+		return { order = order, rising = rising }
+	]])
+	eq(got, { order = { 'tie.txt', 'a.txt', 'other.txt', 'b.txt' }, rising = true })
+end
+
+-- This editor's clock set back between its two closes: the second close's time put before the first's.
+T['T1153 [char] (A27, DESK.md:1859) an editor\'s own steps keep the order it made them through a clock set back'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c', ':e x' })
+	eq(S2.save(child), { true })
+	child.cmd('bdelete a.txt')
+	child.settle(300)
+	child.cmd('bdelete b.txt')
+	child.settle(300)
+	local got = child.lua([[
+		local L, st = require('frogman').ledger, require('frogman.domains.storage').routines
+		local day = os.date('%Y-%m-%d')
+		local function closing(step, name)
+			for _, m in ipairs(step.moves or {}) do
+				if m.kind == 'closed' and m.name == name then return true end
+			end
+			return false
+		end
+		local a
+		for _, step in ipairs(L.trail(day)) do
+			if closing(step, 'a.txt') then a = step end
+		end
+		for _, step in ipairs(L.trail(day)) do
+			if closing(step, 'b.txt') then step.time = a.time - 30 end
+		end
+		local order = {}
+		for _, step in ipairs(st.trail_reader().steps(day)) do
+			for _, name in ipairs({ 'a.txt', 'b.txt' }) do
+				if closing(step, name) then table.insert(order, name) end
+			end
+		end
+		return order
+	]])
+	eq(got, { 'a.txt', 'b.txt' })
+end
+
 return T

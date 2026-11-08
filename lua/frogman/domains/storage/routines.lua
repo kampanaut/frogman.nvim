@@ -4027,9 +4027,10 @@ end
 ---
 ---The session's main file is read once, and each page once, when it's asked for, so a view reads
 ---only the pages it shows. A day's steps are the page's steps from editors before this one and this
----editor's the ledger let go (`page_keeps`), then this editor's in memory that the session's file
----keeps, by the same rule its pages are written by. The page is kept as read, and sorted at each
----call, so a day the ledger lets go while the view is open is read from its page then.
+---editor's the ledger let go (`page_keeps`), and this editor's in memory that the session's file
+---keeps, by the same rule its pages are written by, all in the order of their time, another editor's
+---falling between this one's. The page is kept as read, and sorted at each call, so a day the ledger
+---lets go while the view is open is read from its page then.
 ---
 ---@return {days: fun(): string[], steps: fun(day: string): table[]} reader
 function M.trail_reader()
@@ -4060,6 +4061,10 @@ function M.trail_reader()
 		return list
 	end
 	---Get a day's steps, oldest first, reading its page only the first time.
+	---
+	---Each editor's steps keep the order it made them in, by their number, so a clock set back can't
+	---reorder them; the editors' are merged by time, a tie going to the editor that started first. Steps
+	---from a page written before steps carried their editor go by their time alone.
 	function reader.steps(day)
 		if pages[day] == nil then
 			pages[day] = trail[day] and key and read_page(file_path .. ".d/" .. trail[day], key, day) or {}
@@ -4074,7 +4079,48 @@ function M.trail_reader()
 				table.insert(steps, step)
 			end
 		end
-		return vim.list_extend(steps, steps_kept(owner, ledger.trail(day), whole))
+		vim.list_extend(steps, steps_kept(owner, ledger.trail(day), whole))
+		-- each editor's steps in the order it made them, the editors in the order they started
+		local of_editor, editors = {}, {}
+		for i, step in ipairs(steps) do
+			local editor = step.epoch or ""
+			if not of_editor[editor] then
+				of_editor[editor] = {}
+				table.insert(editors, editor)
+			end
+			table.insert(of_editor[editor], { step = step, place = i })
+		end
+		table.sort(editors)
+		for _, editor in ipairs(editors) do
+			table.sort(of_editor[editor], function(a, b)
+				local x, y = a.step, b.step
+				if editor == "" then
+					if x.time ~= y.time then
+						return x.time < y.time
+					end
+				elseif (x.seq or 0) ~= (y.seq or 0) then
+					return (x.seq or 0) < (y.seq or 0)
+				end
+				return a.place < b.place
+			end)
+		end
+		-- merged by time: the next of whichever editor's next step comes first
+		local merged, next_of = {}, {}
+		for _, editor in ipairs(editors) do
+			next_of[editor] = 1
+		end
+		while #merged < #steps do
+			local pick
+			for _, editor in ipairs(editors) do
+				local entry = of_editor[editor][next_of[editor]]
+				if entry and (pick == nil or entry.step.time < of_editor[pick][next_of[pick]].step.time) then
+					pick = editor
+				end
+			end
+			table.insert(merged, of_editor[pick][next_of[pick]].step)
+			next_of[pick] = next_of[pick] + 1
+		end
+		return merged
 	end
 	---Check if a step of this editor's is the trail's, by the rule its pages are written by.
 	function reader.keeps(step)
