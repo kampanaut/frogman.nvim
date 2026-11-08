@@ -2442,7 +2442,7 @@ T['T969 [char] (M15, DESK.md:1193, :1217) :q refuses while a draft is held, the 
 	eq({ e37 = (quit[2] or ''):find('E37', 1, true) ~= nil, still = still, refused = refused, gone = popup() == vim.NIL,
 		b = label('b'), c = label('c') }, {
 		e37 = true, still = true,
-		refused = { 'frogman: the marks pop-up has edits not written yet: write them with :w, or leave them, first.' },
+		refused = { 'frogman: the marks pop-up holds drafts not written yet: write them with q, or drop them with :q!, first.' },
 		gone = true, b = 'a', c = false,
 	})
 end
@@ -2579,7 +2579,7 @@ T['T989 [char] (M15, DESK.md:1193, :1217) :set nomodified leaves the screen\'s e
 	local d_in_tab = label('d')
 	child.steps({ "<M-'><M-1>" })
 	eq({ refused = refused, gone = popup() == vim.NIL, d_in_tab = d_in_tab, c = label('c') }, {
-		refused = { 'frogman: the marks pop-up has edits not written yet: write them with :w, or leave them, first.' },
+		refused = { 'frogman: the marks pop-up holds drafts not written yet: write them with q, or drop them with :q!, first.' },
 		gone = true, d_in_tab = false, c = 's',
 	})
 end
@@ -5098,6 +5098,60 @@ T['T1094 [char] (M15, DESK.md:1205, :1203) a tab session loaded into another\'s 
 	child.settle(100)
 	eq({ got = got, filed = child.lua(ENTRY_GROUPS, { 't' }), held = child.lua(HELD_NAMES, { '' }) },
 		{ got = { true }, filed = { { 'main a=c,s=c' } }, held = {} })
+end
+
+
+-- Held over in the whole editor's scope, one group per split closed: each file shown in a split of its own, marked under
+-- its alias there, and the split closed. Takes { alias, file } pairs, in order.
+local function held_overs(pairs_)
+	child.steps({ ':e a' })
+	for _, pair in ipairs(pairs_) do
+		child.cmd('split')
+		child.settle()
+		child.steps({ ':e ' .. pair[2], ADD .. pair[1] .. '>' })
+		child.cmd('close')
+		child.settle(100)
+	end
+end
+
+-- The session's pop-up lines cut into its groups, each group's header and rows.
+local function groups_of(lines)
+	local out = {}
+	for _, line in ipairs(lines) do
+		if line:sub(1, #'❖') == '❖' then
+			table.insert(out, { line })
+		elseif #out > 0 then
+			table.insert(out[#out], line)
+		end
+	end
+	return out
+end
+
+-- Two held-over groups swapped in the pop-up: both moved, so both are yours from that write, keeping their names.
+T['T1114 [char] (M15, DESK.md:1208) two held-over groups swapped in the pop-up are both yours from that write'] = function()
+	held_overs({ { 'a', 'b' }, { 's', 'c' } })
+	child.steps({ "<M-'><M-3>", OPEN })
+	local g = groups_of(popup().lines) -- ❖ main, then b's and c's held over
+	local lines = vim.list_extend(vim.list_extend(vim.deepcopy(g[1]), g[3]), g[2])
+	write_lines(lines)
+	local after = vim.tbl_map(function(group) return { held = group.held, marks = group.marks } end, session_groups(''))
+	eq(after, { { held = false, marks = {} }, { held = false, marks = { s = 'c' } }, { held = false, marks = { a = 'b' } } })
+end
+
+-- Three held-over groups, the first moved below the others: it moved, so it's yours; the two kept in their drawn order
+-- stay held over.
+T['T1115 [char] (M15, DESK.md:1208) a held-over group moved down is yours, the ones kept in order stay held over'] = function()
+	held_overs({ { 'a', 'b' }, { 's', 'c' }, { 'd', 'd' } })
+	child.steps({ "<M-'><M-3>", OPEN })
+	local g = groups_of(popup().lines) -- ❖ main, then b's, c's and d's held over
+	local lines = vim.deepcopy(g[1])
+	for _, k in ipairs({ 3, 4, 2 }) do
+		vim.list_extend(lines, g[k])
+	end
+	write_lines(lines)
+	local after = vim.tbl_map(function(group) return { held = group.held, marks = group.marks } end, session_groups(''))
+	eq(after, { { held = false, marks = {} }, { held = true, marks = { s = 'c' } }, { held = true, marks = { d = 'd' } },
+		{ held = false, marks = { a = 'b' } } })
 end
 
 return T

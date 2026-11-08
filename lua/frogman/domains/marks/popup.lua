@@ -110,12 +110,20 @@ end
 
 ---The words the mark keys say while the pop-up has edits not written yet
 local DIRTY = "frogman: the marks pop-up has edits not written yet: write them with :w, or leave them, first."
+---The words they say while it holds a draft of another scope, which `:w` doesn't write
+local DRAFTS = "frogman: the marks pop-up holds drafts not written yet: write them with q, or drop them with :q!, first."
+
+---Get what a refusal says while the pop-up has edits not written yet: the drafts' words while one is held.
+---@return string words
+local function refusal()
+	return #open.drafts > 0 and DRAFTS or DIRTY
+end
 
 ---Refuse a mark key while the pop-up has edits not written yet, saying so.
 ---@return boolean refused
 function M.refuse_if_dirty()
 	if M.dirty() then
-		vim.notify(DIRTY, vim.log.levels.WARN)
+		vim.notify(refusal(), vim.log.levels.WARN)
 		return true
 	end
 	return false
@@ -600,6 +608,54 @@ local function read_groups(lines)
 	return read
 end
 
+---Find the groups written that moved: each matched to a drawn group, and outside some longest run of them that keeps
+---the drawn order. A group in every such run stayed where it was drawn; groups swapped are each outside one.
+---
+---@param match table<integer, integer> A written group's place → the drawn group's (`match_groups`)
+---@param count integer How many groups were written
+---@return table<integer, true> moved The written groups' places that moved
+local function moved_groups(match, count)
+	local order = {}
+	for g = 1, count do
+		if match[g] then
+			table.insert(order, { g = g, d = match[g] })
+		end
+	end
+	local ending, starting, longest = {}, {}, 0
+	for i = 1, #order do
+		ending[i] = 1
+		for j = 1, i - 1 do
+			if order[j].d < order[i].d then
+				ending[i] = math.max(ending[i], ending[j] + 1)
+			end
+		end
+		longest = math.max(longest, ending[i])
+	end
+	for i = #order, 1, -1 do
+		starting[i] = 1
+		for j = i + 1, #order do
+			if order[i].d < order[j].d then
+				starting[i] = math.max(starting[i], starting[j] + 1)
+			end
+		end
+	end
+	-- on a longest run, and the only one there at its length, so on every one
+	local on, at = {}, {}
+	for i = 1, #order do
+		if ending[i] + starting[i] - 1 == longest then
+			on[i] = true
+			at[ending[i]] = (at[ending[i]] or 0) + 1
+		end
+	end
+	local moved = {}
+	for i, item in ipairs(order) do
+		if not (on[i] and at[ending[i]] == 1) then
+			moved[item.g] = true
+		end
+	end
+	return moved
+end
+
 ---Check if a group the pop-up drew has this group's name and its marks, alias for alias, already.
 ---
 ---@param group MarksGroup A group that came into the scope since the draw
@@ -635,8 +691,8 @@ end
 ---order, and what came in since the pop-up was drawn stays below them, with marks or none: a group held
 ---over meanwhile, and a load's, held over under its header, but for one a group the pop-up drew has
 ---already, by its name and its marks. A row it drew follows its file through a move.
----Each group written keeps what the drawn group it matches was (`match_groups`): held over, unless it
----was moved first, and the default group while its name stands.
+---Each group written keeps what the drawn group it matches was (`match_groups`): held over, unless it's
+---first or moved (`moved_groups`), and the default group while its name stands.
 ---
 ---@return boolean written
 local function write()
@@ -663,6 +719,7 @@ local function write()
 	local groups, items, fresh = read.groups, read.items, read.fresh
 	local drawn_groups = open.groups_drawn or {}
 	local match, joined = match_groups(groups, drawn_groups)
+	local moved = moved_groups(match, #groups)
 	for _, gone in ipairs(joined) do
 		table.insert(items, { row = gone.row,
 			text = group_glyph() .. " " .. gone.name .. "'s header is gone: its rows join " .. group_glyph() .. " " .. gone.into })
@@ -696,11 +753,11 @@ local function write()
 				marks[alias] = handle.id
 			end
 		end
-		-- a held-over group stays held over, renamed or not, unless you moved it first, keeping the name an
-		-- empty one came from; the default group stays the default while its name stands, and is one typed in
-		-- once it's renamed
+		-- a held-over group stays held over, renamed or not, unless it's first or you moved it, up or down,
+		-- keeping the name an empty one came from; the default group stays the default while its name stands,
+		-- and is one typed in once it's renamed
 		local was = match[g] and drawn_groups[match[g]] or {}
-		local held = (g > 1 and was.held) or nil
+		local held = (g > 1 and was.held and not moved[g]) or nil
 		table.insert(scope.groups, {
 			name = group.name, marks = marks, held = held, default = (was.default and was.name == group.name) or nil,
 			from = held and was.from or nil,
@@ -808,7 +865,7 @@ function M.open(opts)
 	opts = opts or {}
 	local view = require('frogman.domains.ui.view')
 	if is_open() then
-		if view.keep_if_dirty(open.buf, open.win, DIRTY) then
+		if view.keep_if_dirty(open.buf, open.win, refusal()) then
 			return
 		end
 		close()
