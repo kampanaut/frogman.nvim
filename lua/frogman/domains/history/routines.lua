@@ -307,7 +307,8 @@ end
 
 ---Join a tab to a tab session's pool, making the pool when it's first needed.
 ---
----The tab leaves the pool it was in before.
+---The tab leaves the pool it was in before, and its windows are noted as seen in the session, so one that
+---closes without its events is held over there.
 ---
 ---@param tabpage integer The tab joining
 ---@param name string|nil The tab session's name
@@ -322,6 +323,7 @@ function M.join_pool(tabpage, name, directory)
 	end
 	data.tab_pools[tabpage] = id
 	pool.tabs[tabpage] = true
+	require('frogman.held').note_tab(tabpage)
 	return pool
 end
 
@@ -1763,6 +1765,7 @@ function M.cleanup_system(on_tick)
 	-- and its snapshots are held over, as a close holds them over
 	require('frogman.domains.marks').routines.hold_over_gone()
 	require('frogman.domains.snapshots').routines.hold_over_gone()
+	require('frogman.held').forget_gone() -- what was seen of them goes once both have read it
 
 	return report
 end

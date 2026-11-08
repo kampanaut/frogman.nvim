@@ -1631,7 +1631,8 @@ local function new_detached_pool(label, of)
 	return pool_class.new({ id = "\0detached\n" .. label, name = label, detached = true, of = of })
 end
 
----Move a tab into a detached pool, out of the pool it was in.
+---Move a tab into a detached pool, out of the pool it was in, its windows noted as seen in the list, so
+---one that closes without its events is held over there.
 ---@param tabpage integer The tab that joins
 ---@param pool Pool The detached pool
 ---@return nil
@@ -1642,6 +1643,7 @@ local function join_detached(tabpage, pool)
 	end
 	history.data.tab_pools[tabpage] = pool.id
 	pool.tabs[tabpage] = true
+	require('frogman.held').note_tab(tabpage)
 end
 
 ---Get the names of the detached lists in memory.

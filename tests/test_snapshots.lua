@@ -1619,7 +1619,7 @@ T['T933 [char] (M16, DESK.md:650) a snapshot\'s notes let go of a file as it is 
 	eq({ before = before, let_go = let_go, after = naming() }, { before = 1, let_go = true, after = 0 })
 end
 
-T['T884 [char] (M15, M16) a window gone without its WinClosed in a tab session\'s tab is held over in that session\'s scope'] = function()
+T['T884 [char] (M15, M16, DESK.md:1086) a window gone without its WinClosed in a tab session\'s tab is held over in that session\'s scope, under what it showed'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 't'), { true })
 	S2.start(child, s)
@@ -1639,7 +1639,7 @@ T['T884 [char] (M15, M16) a window gone without its WinClosed in a tab session\'
 		local function groups(of)
 			local n = 0
 			for _, g in ipairs((Mk.data.scopes.session[of] or { groups = {} }).groups) do
-				if g.held and g.name:match('^held over · window · ') then n = n + 1 end
+				if g.held and g.name:match('^held over · window on c%.txt · ') then n = n + 1 end
 			end
 			return n
 		end
@@ -1648,7 +1648,7 @@ T['T884 [char] (M15, M16) a window gone without its WinClosed in a tab session\'
 	]], { id }), { t = { groups = 1, snapshots = 1 }, editor = { groups = 0, snapshots = 0 } })
 end
 
-T['T821 [char] (M15, M16) a window closed without its WinClosed has its marks and snapshots held over at the next cleanup pass'] = function()
+T['T821 [char] (M15, M16, DESK.md:1086) a window closed without its WinClosed has its marks and snapshots held over at the next cleanup pass, under what it showed'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.cmd('split')
 	child.settle()
@@ -1664,11 +1664,11 @@ T['T821 [char] (M15, M16) a window closed without its WinClosed has its marks an
 		local groups = (Mk.data.scopes.session[''] or { groups = {} }).groups
 		local held_group = false
 		for _, g in ipairs(groups) do
-			if g.held and g.name:match('^held over · window · ') then held_group = true end
+			if g.held and g.name:match('^held over · window on c%.txt · ') then held_group = true end
 		end
 		local held_snap = false
 		for _, s in ipairs(Sn.routines.held_in('')) do
-			if s.held:match('^held over · window · ') then held_snap = true end
+			if s.held:match('^held over · window on c%.txt · ') then held_snap = true end
 		end
 		return { marks = Mk.data.scopes.window[split] ~= nil, snaps = Sn.data.by_window[split] ~= nil, held_group = held_group, held_snap = held_snap }
 	]], { split }), { marks = false, snaps = false, held_group = true, held_snap = true })

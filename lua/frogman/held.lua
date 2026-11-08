@@ -14,8 +14,13 @@ local waits = 0
 -- the windows whose data waits for their close to be over, each with how many waits it has
 local closing = {}
 
--- the session each window was last seen in, for one that closes without its WinClosed
+-- the session each window was last seen in and the buffer it showed then, with that buffer's name, for
+-- one that closes without its WinClosed
 local seen = {}
+
+-- the buffer each tab's current window showed when it was last seen, with its name, for a tab that
+-- closes without its events
+local seen_tabs = {}
 
 ---Get a held-over header, a group's or a snapshot's: what it was and when, numbered on when the
 ---names where it goes have it already.
@@ -146,13 +151,37 @@ function M.records_changed(session_id)
 	end
 end
 
----Note the session a window is in now, as it's entered or its marks or snapshots change.
+---Note the session a window is in now and the buffer it shows, and the buffer its tab shows when it's the
+---tab's current window, each with its name now. A note is taken inside events and a save, so a name that
+---can't be looked up keeps what was noted before rather than failing them.
 ---
 ---@param winid WinId The window seen
 ---@return nil
 function M.note_session(winid)
 	if winid and vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_config(winid).relative == "" then
-		seen[winid] = require('frogman.domains.history').data.tab_pools[vim.api.nvim_win_get_tabpage(winid)] or ""
+		local tabpage = vim.api.nvim_win_get_tabpage(winid)
+		local bufnr = vim.api.nvim_win_get_buf(winid)
+		local found, shows = pcall(function()
+			return require('frogman.domains.marks').routines.name_of(bufnr)
+		end)
+		if not found then
+			local was = seen[winid]
+			bufnr, shows = was and was.bufnr, was and was.shows
+		end
+		seen[winid] = { session = require('frogman.domains.history').data.tab_pools[tabpage] or "", bufnr = bufnr, shows = shows }
+		if found and vim.api.nvim_tabpage_get_win(tabpage) == winid then
+			seen_tabs[tabpage] = { bufnr = bufnr, shows = shows }
+		end
+	end
+end
+
+---Note every window of a tab as it joins a session, so one not seen since goes by the tab's session.
+---
+---@param tabpage integer The tab joining
+---@return nil
+function M.note_tab(tabpage)
+	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
+		M.note_session(winid)
 	end
 end
 
@@ -161,19 +190,58 @@ end
 ---@param winid WinId The window gone
 ---@return string|nil session_id Its pool id ("" for the whole editor's), or nil when none was seen
 function M.last_session(winid)
-	local id = seen[winid]
+	local id = seen[winid] and seen[winid].session
 	if id and id ~= "" and not require('frogman.domains.history').data.pools[id] then
 		return "" -- its session went since: the whole editor's
 	end
 	return id
 end
 
----Forget the session a window was seen in, as it closes with its WinClosed.
+---Get what a window or a tab that's gone was, as a held-over header names it: the buffer it showed when
+---it was last seen, named as a close names it, by its file's unique name while frogman has it taken in,
+---or else by the name noted then.
+---
+---@param kind "window"|"tab" Whether it was a window or a tab
+---@param id WinId|integer The window or the tab gone
+---@return string what Like "window on api.lua", or "window" alone when it was never seen
+function M.last_seen_as(kind, id)
+	local last = (kind == "window" and seen or seen_tabs)[id]
+	if last == nil then
+		return kind
+	end
+	local found, name = pcall(function()
+		if last.bufnr and vim.api.nvim_buf_is_valid(last.bufnr)
+			and require('frogman.domains.history').get_handle_from_buffer(last.bufnr) then
+			return require('frogman.domains.marks').routines.name_of(last.bufnr)
+		end
+	end)
+	local shows = found and name or last.shows
+	return shows and (kind .. " on " .. shows) or kind
+end
+
+---Forget where a window was seen and what it showed, as it closes with its WinClosed.
 ---
 ---@param winid WinId The window closing
 ---@return nil
 function M.forget_session(winid)
 	seen[winid] = nil
+end
+
+---Forget what was seen of the windows and tabs that are gone, once the passes that hold over what those
+---closed without their events left have read it.
+---
+---@return nil
+function M.forget_gone()
+	for winid, _ in pairs(seen) do
+		if not vim.api.nvim_win_is_valid(winid) then
+			seen[winid] = nil
+		end
+	end
+	for tabpage, _ in pairs(seen_tabs) do
+		if not vim.api.nvim_tabpage_is_valid(tabpage) then
+			seen_tabs[tabpage] = nil
+		end
+	end
 end
 
 ---Check if a session owns a scope of marks or snapshots: with no session, every scope; a window or a

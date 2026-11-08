@@ -420,7 +420,8 @@ function M.queue_hold_over(winid)
 end
 
 ---Hold over the snapshots of the windows that closed without their WinClosed, by noautocmd or while
----frogman was off: in the scope of the session a window was last seen in, or the whole editor's.
+---frogman was off: in the scope of the session a window was last seen in, or the whole editor's, under
+---what it showed then.
 ---
 ---@return nil
 function M.hold_over_gone()
@@ -428,7 +429,7 @@ function M.hold_over_gone()
 	for winid, snapshots in pairs(data.by_window) do
 		if not vim.api.nvim_win_is_valid(winid) and not held.closing(winid) then
 			data.by_window[winid] = nil
-			M.hold_over(held.last_session(winid) or "", snapshots, "window")
+			M.hold_over(held.last_session(winid) or "", snapshots, held.last_seen_as("window", winid))
 		end
 	end
 end

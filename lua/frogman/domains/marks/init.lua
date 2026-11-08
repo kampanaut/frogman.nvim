@@ -69,8 +69,8 @@ function M.init_autocmds(group)
 			data.copies[winid or -1] = nil
 		end,
 	})
-	-- the session each window is seen in, for one that closes without its WinClosed
-	vim.api.nvim_create_autocmd("WinEnter", {
+	-- the session each window is seen in and what it shows, for one that closes without its WinClosed
+	vim.api.nvim_create_autocmd({ "WinEnter", "BufEnter" }, {
 		group = group,
 		callback = function()
 			require('frogman.held').note_session(vim.api.nvim_get_current_win())

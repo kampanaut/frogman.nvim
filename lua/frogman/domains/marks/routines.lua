@@ -150,6 +150,8 @@ function M.hold_scope(kind, id)
 		require('frogman.held').records_changed(id) -- a session's own marks are records
 	elseif kind == "window" then
 		require('frogman.held').note_session(id)
+	elseif vim.api.nvim_tabpage_is_valid(id) then
+		require('frogman.held').note_session(vim.api.nvim_tabpage_get_win(id)) -- what the tab shows
 	end
 	local popup = package.loaded['frogman.domains.marks.popup']
 	if popup then
@@ -606,7 +608,15 @@ function M.shows(winid)
 	if not vim.api.nvim_win_is_valid(winid) then
 		return "[No Name]"
 	end
-	local bufnr = vim.api.nvim_win_get_buf(winid)
+	return M.name_of(vim.api.nvim_win_get_buf(winid))
+end
+
+---Get what a buffer is called in a held-over header: its file's unique name while frogman has taken it
+---in, or else its buffer's name.
+---
+---@param bufnr Bufnr The buffer
+---@return string name
+function M.name_of(bufnr)
 	local id = history.get_handle_from_buffer(bufnr)
 	if id then
 		return require('frogman.domains.ui').routines.get_smart_basename(id)
@@ -795,8 +805,9 @@ function M.drop_pending(tabpage, after)
 end
 
 ---Hold over the marks of the windows and tabs that closed without their events, by noautocmd or while
----frogman was off: in the scope of the session a window was last seen in, or the whole editor's. A
----split's copy no one changed holds nothing over, as at a close with its events.
+---frogman was off, under what each showed when it was last seen: a window's in the scope of the session
+---it was last seen in, or the whole editor's, and a plain tab's in the whole editor's. A split's copy no
+---one changed holds nothing over, as at a close with its events.
 ---
 ---@return nil
 function M.hold_over_gone()
@@ -804,7 +815,7 @@ function M.hold_over_gone()
 	for winid, scope in pairs(data.scopes.window) do
 		if not vim.api.nvim_win_is_valid(winid) and not held.closing(winid) then
 			if not M.unchanged_copy(winid) then
-				M.hold_over(held.last_session(winid) or "", scope.groups, "window") -- where it was last seen
+				M.hold_over(held.last_session(winid) or "", scope.groups, held.last_seen_as("window", winid)) -- where it was last seen
 			end
 			M.drop_scope("window", winid)
 			data.copies[winid] = nil
@@ -812,7 +823,7 @@ function M.hold_over_gone()
 	end
 	for tabpage, scope in pairs(data.scopes.tab) do
 		if not vim.api.nvim_tabpage_is_valid(tabpage) then
-			M.hold_over("", scope.groups, "tab")
+			M.hold_over("", scope.groups, held.last_seen_as("tab", tabpage))
 			M.drop_scope("tab", tabpage)
 		end
 	end

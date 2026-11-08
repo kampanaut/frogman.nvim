@@ -3047,4 +3047,220 @@ T['T1008 [char] (M15, S1 Load, DESK.md:1085-1086) a plain tab\'s marks held over
 		tab = (names[1] or ''):find('tab on ', 1, true) ~= nil }, { n = 1, load = true, tab = false })
 end
 
+-- What each held-over group and snapshot in a session's scope was, its header without the time.
+local HELD_WHAT = [[
+	local session_id = ...
+	local function what(header)
+		local s = header:gsub('^held over · ', '')
+		s = s:gsub(' · %d%d%-%d%d %d%d:%d%d.*$', '')
+		return s
+	end
+	local out = { marks = {}, snapshots = {} }
+	for _, g in ipairs((require('frogman.domains.marks').data.scopes.session[session_id] or { groups = {} }).groups) do
+		if g.held then table.insert(out.marks, what(g.name)) end
+	end
+	for _, snap in ipairs(require('frogman.domains.snapshots').routines.held_in(session_id)) do
+		table.insert(out.snapshots, what(snap.held))
+	end
+	return out
+]]
+
+-- Close a window by noautocmd, then run a cleanup pass, as a window gone without its events meets one.
+local function gone(win)
+	child.lua('vim.cmd("noautocmd call nvim_win_close(" .. ... .. ", v:true)")', { win })
+	child.lua('require("frogman.domains.history").routines.cleanup_system()')
+	child.settle(100)
+end
+
+-- A window closed without its events: its marks and its snapshot held over under what it showed when frogman
+-- last saw it, its buffer changed since the mark and the snapshot were made.
+T['T1009 [char] (M15, M16, DESK.md:1079, :1086, :1697) a window closed without its events is headed by what it showed last, marks and snapshots alike'] = function()
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', ADD .. 'a>', '<M-;><M-s>', ':e d' })
+	child.cmd('wincmd p')
+	child.settle()
+	gone(split)
+	eq(child.lua(HELD_WHAT, { '' }), { marks = { 'window on d.txt' }, snapshots = { 'window on d.txt' } })
+end
+
+-- A plain tab closed without its events: its tab marks held over under what its window showed when frogman
+-- last saw it.
+T['T1010 [char] (M15, DESK.md:1086) a tab closed without its events is headed by what it showed'] = function()
+	child.steps({ ':e a' })
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e c', "<M-'><M-2>", ADD .. 'a>', ':e d', "<M-'><M-1>" })
+	child.cmd('tabprevious')
+	child.settle()
+	child.lua('vim.cmd("noautocmd tabclose 2")')
+	child.lua('require("frogman.domains.history").routines.cleanup_system()')
+	child.settle(100)
+	eq(child.lua(HELD_WHAT, { '' }), { marks = { 'tab on d.txt' }, snapshots = {} })
+end
+
+-- A split marked, and given a snapshot, before its tab starts the tab session u by the hint load, and never
+-- entered after; u has no file, so the split has no saved entry: closed without its events, it's held over in
+-- u's scope, where its tab went.
+T['T1011 [char] (M15, M16, DESK.md:1079, :1697) a window last seen before its tab started a tab session is held over in that session\'s scope'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e x' })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', ADD .. 'a>', '<M-;><M-s>' })
+	child.cmd('wincmd p')
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").load_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local u = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	gone(split)
+	eq({ u = child.lua(HELD_WHAT, { u }), editor = child.lua(HELD_WHAT, { '' }) },
+		{ u = { marks = { 'window on c.txt' }, snapshots = { 'window on c.txt' } }, editor = { marks = {}, snapshots = {} } })
+end
+
+-- A split made in t's tab, marked and given a snapshot, then t loaded into a new tab, so the first tab keeps a
+-- detached list; the split, never entered after and with no saved entry, closed without its events: held over
+-- in the detached list's scope, where its tab went, not t's.
+T['T1012 [char] (M15, M16, DESK.md:1079, :1697) a window last seen before its tab session moved to another tab is held over in the detached list\'s scope'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 't'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local first = child.lua('return vim.api.nvim_get_current_tabpage()')
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e e', ADD .. 'a>', '<M-;><M-s>' })
+	child.cmd('wincmd p')
+	child.settle()
+	eq(S2.load_tab_session(child, 't'), { true })
+	local detached = child.lua('return require("frogman.domains.history").data.tab_pools[...]', { first })
+	local t = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	gone(split)
+	eq({ apart = detached ~= t, detached = child.lua(HELD_WHAT, { detached }), t = child.lua(HELD_WHAT, { t }) },
+		{ apart = true, detached = { marks = { 'window on e.txt' }, snapshots = { 'window on e.txt' } }, t = { marks = {}, snapshots = {} } })
+end
+
+-- A tab whose window is never entered with its events, its tab marks restored by a whole-editor load, then
+-- closed without its events: its group is headed by what it showed, noted as its marks came back.
+T['T1013 [char] (M15, S1 Load, DESK.md:1086) a tab whose marks a load restored, closed without its events, is headed by what it showed'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e c', "<M-'><M-2>", ADD .. 'a>', "<M-'><M-1>" })
+	child.cmd('tabprevious')
+	child.settle()
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	S2.restore_tabs(child, { { files = { 'a' }, shown = 'a' }, { files = { 'c' }, shown = 'c' } })
+	eq(S2.load(child), { true })
+	child.settle(300)
+	child.lua('vim.cmd("noautocmd tabclose 2")')
+	child.lua('require("frogman.domains.history").routines.cleanup_system()')
+	child.settle(100)
+	eq(child.lua(HELD_WHAT, { '' }), { marks = { 'tab on c.txt' }, snapshots = {} })
+end
+
+-- A note whose name can't be looked up keeps what was noted before, and fails neither the event that takes it
+-- nor a save: the lookup made to raise, then `:e d` in a split last noted on c, and the tab saved as t, whose
+-- join notes every window of the tab.
+T['T1014 [char] (M15, DESK.md:1079, :1086) a note whose name can\'t be looked up fails no event or save, and keeps what was seen before'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', ADD .. 'a>' })
+	child.lua([[
+		local R = require('frogman.domains.marks').routines
+		_G.FRG_T1014 = R.name_of
+		R.name_of = function() error('T1014: no name') end
+		vim.v.errmsg = ''
+	]])
+	child.steps({ ':e d' })
+	local saved = child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }')
+	local during = child.lua('return { errmsg = vim.v.errmsg:find("T1014", 1, true) ~= nil, seen = require("frogman.held").last_seen_as("window", ...) }', { split })
+	child.lua('require("frogman.domains.marks").routines.name_of = _G.FRG_T1014')
+	child.steps({ ':e e' })
+	eq({ saved = saved, during = during, after = child.lua('return require("frogman.held").last_seen_as("window", ...)', { split }) },
+		{ saved = { true }, during = { errmsg = false, seen = 'window on c.txt' }, after = 'window on e.txt' })
+end
+
+-- A window closed without its events is named as a close names it, by its file's unique name: a split on
+-- c, then on sub/c.txt, which frogman takes in only once its arrival settles, after the note its BufEnter
+-- took; with c.txt open too, a close would name it sub/c.txt.
+T['T1015 [char] (M15, DESK.md:1085-1086) a window closed without its events is named by its file\'s unique name, as a close names it'] = function()
+	child.lua([[
+		vim.fn.mkdir(_G.FRG_TEST.root .. '/sub', 'p')
+		vim.fn.writefile({ 'sub c' }, _G.FRG_TEST.root .. '/sub/c.txt')
+	]])
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', ADD .. 'a>', ':e sub/c.txt' })
+	child.cmd('wincmd p')
+	child.settle()
+	gone(split)
+	eq(child.lua(HELD_WHAT, { '' }), { marks = { 'window on sub/c.txt' }, snapshots = {} })
+end
+
+-- A window a load gives its marks, never entered with its events: noted as its marks come back, it's
+-- headed by what it showed when closed without its events.
+T['T1016 [char] (M15, S1 Load, DESK.md:1079, :1086) a window noted as a load gives it its marks is headed by what it showed'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e c', ADD .. 'a>' })
+	child.cmd('wincmd p')
+	child.settle()
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'c' }, 'a')
+	local split = child.lua([[
+		vim.cmd('noautocmd vsplit')
+		vim.cmd('noautocmd edit c.txt')
+		return vim.api.nvim_get_current_win()
+	]])
+	eq(S2.load(child), { true })
+	child.settle(300)
+	gone(split)
+	eq(child.lua(HELD_WHAT, { '' }), { marks = { 'window on c.txt' }, snapshots = {} })
+end
+
+-- The same for a window a load gives its snapshot, and no marks.
+T['T1017 [char] (M16, S1 Load, DESK.md:1697, :1086) a window noted as a load gives it its snapshot is headed by what it showed'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e c', '<M-;><M-s>' })
+	child.cmd('wincmd p')
+	child.settle()
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'c' }, 'a')
+	local split = child.lua([[
+		vim.cmd('noautocmd vsplit')
+		vim.cmd('noautocmd edit c.txt')
+		return vim.api.nvim_get_current_win()
+	]])
+	eq(S2.load(child), { true })
+	child.settle(300)
+	gone(split)
+	eq(child.lua(HELD_WHAT, { '' }), { marks = {}, snapshots = { 'window on c.txt' } })
+end
+
 return T
