@@ -4573,4 +4573,444 @@ T['T1047 [char] (S2, M15, DESK.md:1090-1091, :1087) a detached list merged away 
 	]]), { { empty = true, from = 'todo' } })
 end
 
+
+-- A detached list's copy of its session's marks as the whole editor's file holds it: its closed files' count and
+-- its own groups' marks by file letter; nil when the file holds no such list.
+local DETACHED_MARKS = [[
+	local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+	for _, list in ipairs(saved and saved.detached or {}) do
+		if list.label == ... then
+			local marks = {}
+			for _, g in ipairs(list.marks or {}) do
+				if not g.held then
+					for alias, h in pairs(g.marks or {}) do
+						marks[alias] = vim.fn.fnamemodify((saved.paths or {})[h] or h, ':t:r')
+					end
+				end
+			end
+			return { closed = #(list.closed or {}), marks = marks }
+		end
+	end
+	return vim.NIL
+]]
+
+-- The whole editor's held-over groups, in memory and in its file: each by its header without the time and its
+-- marks by file letter.
+local EDITOR_HELD = [[
+	local H = require('frogman.domains.history')
+	local function what(name)
+		return (name:gsub('^held over · ', ''):gsub(' · %d%d%-%d%d %d%d:%d%d.*$', ''))
+	end
+	local memory = {}
+	for _, g in ipairs((require('frogman.domains.marks').data.scopes.session[''] or { groups = {} }).groups) do
+		if g.held then
+			local marks = {}
+			for alias, id in pairs(g.marks) do
+				local h = H.handles.get(H.handles.resolve(id))
+				table.insert(marks, alias .. '=' .. (h and vim.fn.fnamemodify(H.get_filepath_from_hash(h.hash), ':t:r') or '?'))
+			end
+			table.sort(marks)
+			table.insert(memory, what(g.name) .. ' ' .. table.concat(marks, ','))
+		end
+	end
+	local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil) or {}
+	local file = {}
+	for _, g in ipairs(saved.marks or {}) do
+		if g.held then
+			local marks = {}
+			for alias, h in pairs(g.marks or {}) do
+				table.insert(marks, alias .. '=' .. vim.fn.fnamemodify((saved.paths or {})[h] or h, ':t:r'))
+			end
+			table.sort(marks)
+			table.insert(file, what(g.name) .. ' ' .. table.concat(marks, ','))
+		end
+	end
+	return { memory = memory, file = file }
+]]
+
+-- T318's state, a whole-editor save, then t's session mark a on c made in t's tab, and t loaded into a third tab,
+-- so the second keeps t_DETACHED with a copy of t's list, empty, and of its marks. Returns the second tab's window.
+local function detached_with_copy(s, marked)
+	local _, w2 = tab_session(s)
+	eq(S2.save(child), { true })
+	if marked then
+		child.steps({ "<M-'><M-3>", ':e c', "<M-'><M-'><M-a>", ':e d', "<M-'><M-1>" })
+	end
+	eq(S2.load_tab_session(child, 't'), { true })
+	return w2
+end
+
+-- A list in the whole editor's file alone, emptied in the closed lists: its copy of its session's marks goes to
+-- the whole editor's scope, held over under the list's name, and the list leaves the file.
+T['T1095 [char] (S2, M15, DESK.md:1090-1091) a list in the file alone emptied in the closed lists gives its copy of the session\'s marks to the whole editor\'s scope'] = function()
+	local s = S2.shared()
+	local w1, w2 = tab_session(s)
+	child.steps({ "<M-'><M-3>", ':e c', "<M-'><M-'><M-a>", ':e d', "<M-'><M-1>" }) -- t's session mark, made in t's tab
+	eq(S2.save(child), { true })
+	child.steps({ ':e e', ':e d' })
+	child.cmd('bdelete e.txt')
+	child.settle()
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('tabclose')
+	child.settle(300)
+	local before = child.lua(DETACHED_MARKS, { 't_DETACHED' })
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	local p = S2.picker(child)
+	local _, e = under_detached(p.lines)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, e)
+	S2.write_picker(child, p, lines)
+	child.settle(300)
+	eq({ before = before, after = child.lua(DETACHED_MARKS, { 't_DETACHED' }), held = child.lua(EDITOR_HELD) },
+		{ before = { closed = 1, marks = { a = 'c' } }, after = vim.NIL,
+			held = { memory = { 't_DETACHED a=c' }, file = { 't_DETACHED a=c' } } })
+end
+
+-- A detached list merged away in the closed lists: it leaves memory and the file, and its copy of its session's
+-- marks goes to the whole editor's scope, held over under its name.
+T['T1096 [char] (S2, M15, DESK.md:1090-1091) a detached list merged away gives its copy of the session\'s marks to the whole editor\'s scope'] = function()
+	local s = S2.shared()
+	local _, w2 = tab_session(s)
+	child.steps({ "<M-'><M-3>", ':e c', "<M-'><M-'><M-a>", ':e d', "<M-'><M-1>" })
+	eq(S2.save(child), { true })
+	child.steps({ ':e x', ':e c', ':e d' })
+	child.cmd('bdelete x.txt')
+	child.cmd('bdelete c.txt')
+	child.settle()
+	child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		require('frogman').load_session('t')
+	]])
+	child.settle(300)
+	child.lua([[
+		vim.api.nvim_set_current_win(...)
+		vim.cmd('noautocmd edit d.txt')
+		require('frogman').load_session('t')
+	]], { w2 })
+	child.settle(300)
+	local p = child.lua(OPEN_LISTS)
+	eq(p ~= vim.NIL, true)
+	local lines, moved, under, section = {}, {}, nil, nil
+	for _, l in ipairs(p.lines) do
+		if l:sub(1, 3) == '≡' then section = l end
+		if section == '≡t_DETACHED' and l ~= '≡t_DETACHED' then table.insert(moved, l) else table.insert(lines, l) end
+	end
+	for i, l in ipairs(lines) do
+		if l == '≡t' then under = i end
+	end
+	for k, l in ipairs(moved) do
+		table.insert(lines, under + k, l)
+	end
+	S2.write_picker(child, p, lines)
+	type_into(p.win, 'q')
+	child.settle(300)
+	eq({ in_memory = child.lua(IN_MEMORY, { 't_DETACHED' }), file = child.lua(DETACHED_MARKS, { 't_DETACHED' }), held = child.lua(EDITOR_HELD) },
+		{ in_memory = false, file = vim.NIL, held = { memory = { 't_DETACHED a=c' }, file = { 't_DETACHED a=c' } } })
+end
+
+-- A detached list whose last tab closes with nothing in its closed list goes as an emptied one does: its copy of
+-- its session's marks goes to the whole editor's scope, held over under its name, and the list leaves the file.
+T['T1097 [char] (S2, M15, DESK.md:1090-1091) a detached list whose tab closes with nothing in its list gives its copy of the session\'s marks to the whole editor\'s scope'] = function()
+	local s = S2.shared()
+	local w2 = detached_with_copy(s, true)
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('tabclose')
+	child.settle(300)
+	eq({ after = child.lua(DETACHED_MARKS, { 't_DETACHED' }), in_memory = child.lua(IN_MEMORY, { 't_DETACHED' }), held = child.lua(EDITOR_HELD) },
+		{ after = vim.NIL, in_memory = false, held = { memory = { 't_DETACHED a=c' }, file = { 't_DETACHED a=c' } } })
+end
+
+-- A detached list whose last tab closes with nothing left in it at all, no closed file, no mark, no held-over
+-- snapshot, leaves the whole editor's file.
+T['T1098 [char] (S2, M15, DESK.md:1090) a detached list whose tab closes with nothing left in it leaves the whole editor\'s file'] = function()
+	local s = S2.shared()
+	local w2 = detached_with_copy(s, false)
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('tabclose')
+	child.settle(300)
+	eq({ after = child.lua(DETACHED_MARKS, { 't_DETACHED' }), held = child.lua(EDITOR_HELD) },
+		{ after = vim.NIL, held = { memory = {}, file = {} } })
+end
+
+-- T1097's list with a second group typed into its copy: each group is held over under the list's name and its own.
+T['T1099 [char] (S2, M15, DESK.md:1090, :1085) a detached list leaving with two groups names each group after the list'] = function()
+	local s = S2.shared()
+	local w2 = detached_with_copy(s, true)
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.settle()
+	child.steps({ "<M-'><M-3>", "<M-'><M-e>" }) -- the list's copy, in its tab's session mode
+	local buf = child.lua('return vim.fn.bufnr("frogman://marks")')
+	child.lua('local b = ...; vim.api.nvim_buf_set_lines(b, 0, -1, false, { "❖ main", "a -> c.txt", "❖ two", "s -> d.txt" })', { buf })
+	child.cmd('silent! write')
+	child.settle(100)
+	child.cmd('close')
+	child.settle()
+	child.steps({ "<M-'><M-1>" })
+	local copy = child.lua([[
+		local H = require('frogman.domains.history')
+		local id = H.data.tab_pools[vim.api.nvim_win_get_tabpage(...)]
+		local out = {}
+		for _, g in ipairs((require('frogman.domains.marks').data.scopes.session[id] or { groups = {} }).groups) do
+			local marks = {}
+			for alias, hid in pairs(g.marks) do
+				local h = H.handles.get(H.handles.resolve(hid))
+				table.insert(marks, alias .. '=' .. (h and vim.fn.fnamemodify(H.get_filepath_from_hash(h.hash), ':t:r') or '?'))
+			end
+			table.sort(marks)
+			table.insert(out, g.name .. ' ' .. table.concat(marks, ','))
+		end
+		return out
+	]], { w2 })
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('tabclose')
+	child.settle(300)
+	eq({ copy = copy, held = child.lua(EDITOR_HELD) }, { copy = { 'main a=c', 'two s=d' },
+		held = { memory = { 't_DETACHED, main a=c', 't_DETACHED, two s=d' }, file = { 't_DETACHED, main a=c', 't_DETACHED, two s=d' } } })
+end
+
+-- A detached list whose tab is still open stays in the whole editor's file, nothing in its closed list and no
+-- marks: its tab keeps it, and the next load finds the tab by it.
+T['T1100 [char] (S2, DESK.md:1090) a detached list whose tab is open stays in the whole editor\'s file, empty'] = function()
+	local s = S2.shared()
+	detached_with_copy(s, false)
+	eq(S2.save(child), { true })
+	eq(child.lua(DETACHED_MARKS, { 't_DETACHED' }), { closed = 0, marks = {} })
+end
+
+
+
+-- A detached list whose tab closes with nothing in its closed list gives what its tab's windows left held over, a
+-- group and a snapshot, to the whole editor's scope, and leaves the file.
+T['T1102 [char] (S2, M15, M16, DESK.md:1090) a detached list whose tab closes with nothing in its list gives its held-over group and snapshot to the whole editor\'s scope'] = function()
+	local s = S2.shared()
+	local w2 = detached_with_copy(s, false)
+	held_in_split(w2) -- in the second tab, now t_DETACHED's
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('tabclose')
+	child.settle(300)
+	eq({ after = child.lua(DETACHED_MARKS, { 't_DETACHED' }), held = child.lua(WHOLE_HELD) },
+		{ after = vim.NIL, held = { groups = 1, snapshots = 1, file_groups = 1, file_snapshots = 1 } })
+end
+
+-- T1095's write failing once, the session directory read-only, then written again: the list's copy is held over
+-- once in the whole editor's scope, the retried write not moving it a second time.
+T['T1103 [char] (S2, M15, DESK.md:1090-1091) a list in the file alone emptied by a write that fails and is retried gives its copy once'] = function()
+	local s = S2.shared()
+	local w1, w2 = tab_session(s)
+	child.steps({ "<M-'><M-3>", ':e c', "<M-'><M-'><M-a>", ':e d', "<M-'><M-1>" }) -- t's session mark, made in t's tab
+	eq(S2.save(child), { true })
+	child.steps({ ':e e', ':e d' })
+	child.cmd('bdelete e.txt')
+	child.settle()
+	eq(S2.load_tab_session(child, 't'), { true })
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('tabclose')
+	child.settle(300)
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	local p = S2.picker(child)
+	local _, e = under_detached(p.lines)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, e)
+	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
+	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
+	if vim.fn.filewritable(s.session_dir) == 2 then -- root writes through a read-only folder
+		vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+		MiniTest.skip('a read-only folder is still writable: the suite runs as root')
+	end
+	S2.write_picker(child, p, lines) -- the file can't take it: the edit stays on screen
+	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+	child.lua('local b = ...; vim.api.nvim_buf_call(b, function() vim.cmd("write") end)', { p.buf })
+	child.settle(300)
+	eq({ after = child.lua(DETACHED_MARKS, { 't_DETACHED' }), held = child.lua(EDITOR_HELD) },
+		{ after = vim.NIL, held = { memory = { 't_DETACHED a=c' }, file = { 't_DETACHED a=c' } } })
+end
+
+
+-- A detached list whose tab closes with nothing in its list while the whole editor's file, which holds the list,
+-- can't be written: the list stays in memory with no tab and nothing in it, so the next records write, once the
+-- file can be written, leaves it out rather than taking the file's own entry for it, and lets it go from memory;
+-- its copy is held over once.
+T['T1104 [char] (S2, M15, DESK.md:1090) a detached list whose tab closes empty while the whole editor\'s file can\'t be written leaves it at the next write'] = function()
+	local s = S2.shared()
+	local w2 = detached_with_copy(s, true)
+	eq(S2.save(child), { true }) -- the whole editor's file holds t_DETACHED with its copy
+	local before = child.lua(DETACHED_MARKS, { 't_DETACHED' })
+	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
+	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
+	if vim.fn.filewritable(s.session_dir) == 2 then -- root writes through a read-only folder
+		vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+		MiniTest.skip('a read-only folder is still writable: the suite runs as root')
+	end
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('tabclose')
+	child.settle(300)
+	local kept = child.lua(IN_MEMORY, { 't_DETACHED' })
+	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+	child.lua('require("frogman.domains.storage").routines.write_records()') -- the records waiting, written now
+	child.settle(300)
+	eq({ before = before, kept = kept, after = child.lua(DETACHED_MARKS, { 't_DETACHED' }), in_memory = child.lua(IN_MEMORY, { 't_DETACHED' }),
+		held = child.lua(EDITOR_HELD) },
+		{ before = { closed = 0, marks = { a = 'c' } }, kept = true, after = vim.NIL, in_memory = false,
+			held = { memory = { 't_DETACHED a=c' }, file = { 't_DETACHED a=c' } } })
+end
+
+-- T1096's merge, the whole editor's file holding the list, settled while that file can't be written: the list stays
+-- in memory with no tab and nothing in it, so the next write, a save, leaves it out of the file and lets it go from
+-- memory; its copy is held over once.
+T['T1105 [char] (S2, M15, DESK.md:1090-1091) a detached list merged away while the whole editor\'s file can\'t be written leaves it at the next write'] = function()
+	local s = S2.shared()
+	local _, w2 = tab_session(s)
+	child.steps({ "<M-'><M-3>", ':e c', "<M-'><M-'><M-a>", ':e d', "<M-'><M-1>" })
+	eq(S2.save(child), { true })
+	child.steps({ ':e x', ':e c', ':e d' })
+	child.cmd('bdelete x.txt')
+	child.cmd('bdelete c.txt')
+	child.settle()
+	child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		require('frogman').load_session('t')
+	]])
+	child.settle(300)
+	eq(S2.save(child), { true }) -- the whole editor's file holds t_DETACHED
+	child.lua([[
+		vim.api.nvim_set_current_win(...)
+		vim.cmd('noautocmd edit d.txt')
+		require('frogman').load_session('t')
+	]], { w2 })
+	child.settle(300)
+	local p = child.lua(OPEN_LISTS)
+	eq(p ~= vim.NIL, true)
+	local lines, moved, under, section = {}, {}, nil, nil
+	for _, l in ipairs(p.lines) do
+		if l:sub(1, 3) == '≡' then section = l end
+		if section == '≡t_DETACHED' and l ~= '≡t_DETACHED' then table.insert(moved, l) else table.insert(lines, l) end
+	end
+	for i, l in ipairs(lines) do
+		if l == '≡t' then under = i end
+	end
+	for k, l in ipairs(moved) do
+		table.insert(lines, under + k, l)
+	end
+	S2.write_picker(child, p, lines)
+	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
+	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
+	if vim.fn.filewritable(s.session_dir) == 2 then -- root writes through a read-only folder
+		vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+		MiniTest.skip('a read-only folder is still writable: the suite runs as root')
+	end
+	type_into(p.win, 'q')
+	child.settle(300)
+	local kept = child.lua(IN_MEMORY, { 't_DETACHED' })
+	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+	eq(S2.save(child), { true })
+	eq({ kept = kept, after = child.lua(DETACHED_MARKS, { 't_DETACHED' }), in_memory = child.lua(IN_MEMORY, { 't_DETACHED' }),
+		held = child.lua(EDITOR_HELD) },
+		{ kept = true, after = vim.NIL, in_memory = false, held = { memory = { 't_DETACHED a=c' }, file = { 't_DETACHED a=c' } } })
+end
+
+
+-- T1102's list, its tab's last window a split with a window mark on d, the tab closed while a records write queued
+-- before the close waits: the write doesn't let the list go ahead of its close, so the window's group still reaches
+-- the whole editor's scope as T1102's does.
+T['T1106 [char] (S2, M15, DESK.md:1090) a detached list whose tab closes empty while a records write waits still gives its last window\'s group to the whole editor\'s scope'] = function()
+	local s = S2.shared()
+	local w2 = detached_with_copy(s, false)
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.settle()
+	child.cmd('split')
+	child.settle()
+	child.lua('vim.api.nvim_win_close(..., false)', { w2 }) -- the split is t_DETACHED's tab's last window
+	child.settle(300)
+	child.steps({ ':e d', "<M-'><M-'><M-a>" })
+	child.lua([[
+		local storage = require('frogman.domains.storage').routines
+		storage.records_changed('')
+		vim.schedule(function() storage.write_records() end) -- a write queued ahead of the close's own work
+		vim.cmd('tabclose')
+	]])
+	child.settle(300)
+	eq({ after = child.lua(DETACHED_MARKS, { 't_DETACHED' }), in_memory = child.lua(IN_MEMORY, { 't_DETACHED' }),
+		held = child.lua(EDITOR_HELD) },
+		{ after = vim.NIL, in_memory = false, held = { memory = { 'window on d.txt a=d' }, file = { 'window on d.txt a=d' } } })
+end
+
+
+-- T1104's list with e on it: its tab closed while the whole editor's file can't be written, so it's kept in memory
+-- with no tab, e on it, then the file made writable again. Returns once it's kept.
+local function kept_with_e(s)
+	local w2 = detached_with_copy(s, true)
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.settle()
+	child.steps({ ':e e', ':e d' })
+	child.cmd('bdelete e.txt') -- e on t_DETACHED's list
+	child.settle()
+	eq(S2.save(child), { true }) -- the whole editor's file holds t_DETACHED, e on it, and its copy
+	vim.fn.setfperm(s.session_dir, 'r-xr-xr-x')
+	MiniTest.finally(function() vim.fn.setfperm(s.session_dir, 'rwxr-xr-x') end) -- writable again, even when the case fails
+	if vim.fn.filewritable(s.session_dir) == 2 then -- root writes through a read-only folder
+		vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+		MiniTest.skip('a read-only folder is still writable: the suite runs as root')
+	end
+	child.cmd('tabclose') -- the close's write fails: the list stays in memory with no tab
+	child.settle(300)
+	vim.fn.setfperm(s.session_dir, 'rwxr-xr-x')
+	return child.lua(IN_MEMORY, { 't_DETACHED' })
+end
+
+-- A detached list kept with no tab after a failed write, its last line deleted in the closed lists once the file can
+-- be written: it goes as an emptied list does, its copy held over in the whole editor's scope, and it leaves
+-- memory and the file.
+T['T1107 [char] (S2, M15, DESK.md:1090-1091) a detached list kept with no tab after a failed write, emptied in the closed lists, gives its copy to the whole editor\'s scope and leaves'] = function()
+	local s = S2.shared()
+	local kept = kept_with_e(s)
+	local p = S2.picker(child)
+	local _, e = under_detached(p.lines)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, e)
+	S2.write_picker(child, p, lines)
+	child.cmd('close')
+	child.settle(300)
+	eq({ kept = kept, after = child.lua(DETACHED_MARKS, { 't_DETACHED' }), in_memory = child.lua(IN_MEMORY, { 't_DETACHED' }),
+		held = child.lua(EDITOR_HELD) },
+		{ kept = true, after = vim.NIL, in_memory = false, held = { memory = { 't_DETACHED a=c' }, file = { 't_DETACHED a=c' } } })
+end
+
+-- The same list emptied by opening its last file again: it goes the same way.
+T['T1108 [char] (S2, M15, DESK.md:1090-1091) a detached list kept with no tab after a failed write, emptied by opening its file, gives its copy to the whole editor\'s scope and leaves'] = function()
+	local s = S2.shared()
+	local kept = kept_with_e(s)
+	child.steps({ ':e e' }) -- e off every list
+	child.settle(300)
+	eq({ kept = kept, after = child.lua(DETACHED_MARKS, { 't_DETACHED' }), in_memory = child.lua(IN_MEMORY, { 't_DETACHED' }),
+		held = child.lua(EDITOR_HELD) },
+		{ kept = true, after = vim.NIL, in_memory = false, held = { memory = { 't_DETACHED a=c' }, file = { 't_DETACHED a=c' } } })
+end
+
+
+-- The same list emptied by opening its file and the whole editor saved at once, before any records write: the save
+-- leaves the list out and holds its copy over in the whole editor's scope.
+T['T1109 [char] (S2, M15, DESK.md:1090-1091) a detached list kept with no tab after a failed write, emptied and saved at once, leaves the file through the save'] = function()
+	local s = S2.shared()
+	local kept = kept_with_e(s)
+	local saved = child.lua([[
+		vim.cmd('edit e.txt') -- e off every list; the records write waits for the next tick
+		local ok = pcall(require('frogman').save_session)
+		local file = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil) or {}
+		local listed, held = false, 0
+		for _, list in ipairs(file.detached or {}) do
+			if list.label == 't_DETACHED' then listed = true end
+		end
+		for _, g in ipairs(file.marks or {}) do
+			if g.held then held = held + 1 end
+		end
+		return { ok = ok, listed = listed, held = held }
+	]])
+	child.settle(300)
+	eq({ kept = kept, saved = saved, in_memory = child.lua(IN_MEMORY, { 't_DETACHED' }) },
+		{ kept = true, saved = { ok = true, listed = false, held = 1 }, in_memory = false })
+end
+
 return T

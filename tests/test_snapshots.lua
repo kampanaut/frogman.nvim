@@ -1537,6 +1537,9 @@ T['T838 [char] (M16, M5) a detached list\'s tab closing writes the snapshots its
 	eq(S2.load_tab_session(child, 't'), { true }) -- the second tab keeps t_DETACHED
 	child.cmd('tabnext 2')
 	child.settle()
+	child.steps({ ':e e', ':e d' })
+	child.cmd('bdelete e.txt') -- e on the list, so the list goes into the file with what it holds
+	child.settle()
 	child.cmd('split')
 	child.settle()
 	child.steps({ ':e c', TAKE, ':e d' })

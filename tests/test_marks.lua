@@ -1780,33 +1780,68 @@ local function detached_marks()
 	]])
 end
 
--- T823's route: in t_DETACHED's tab, e marked in session mode and held by the mark alone; the tab closed.
-local function detached_into_file(s)
+-- The whole editor's held-over groups in memory, each by its header without the time and its marks by file
+-- letter, and its file's held-over marks.
+local function editor_held()
+	return child.lua([[
+		local function what(name) return (name:gsub('^held over · ', ''):gsub(' · %d%d%-%d%d %d%d:%d%d.*$', '')) end
+		local H = require('frogman.domains.history')
+		local memory = {}
+		for _, g in ipairs((require('frogman.domains.marks').data.scopes.session[''] or { groups = {} }).groups) do
+			if g.held then
+				local marks = {}
+				for alias, id in pairs(g.marks) do
+					table.insert(marks, alias .. '=' .. vim.fn.fnamemodify(H.get_filepath_from_handle(H.handles.resolve(id)) or '?', ':t:r'))
+				end
+				table.sort(marks)
+				table.insert(memory, what(g.name) .. ' ' .. table.concat(marks, ','))
+			end
+		end
+		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil) or {}
+		local file = {}
+		for _, g in ipairs(saved.marks or {}) do
+			if g.held then
+				for alias, h in pairs(g.marks or {}) do table.insert(file, alias .. '=' .. vim.fn.fnamemodify((saved.paths or {})[h] or h, ':t:r')) end
+			end
+		end
+		table.sort(file)
+		return { memory = memory, file = file }
+	]])
+end
+
+-- T823's route: in t_DETACHED's tab, e marked in session mode and closed, and, unless kept, its line deleted from
+-- the list, so the mark alone holds it; the tab closed.
+local function detached_into_file(s, kept)
 	detached(s)
 	child.steps({ "<M-'><M-3>", ':e e', ADD .. 'a>', ':e d' })
 	child.cmd('bdelete e.txt')
 	child.settle()
-	local p = S2.picker(child)
-	local lines = vim.deepcopy(p.lines)
-	table.remove(lines, S2.line_of(lines, 'e.txt'))
-	S2.write_picker(child, p, lines)
-	child.cmd('close')
-	child.settle(100)
-	child.cmd('tabclose') -- t_DETACHED goes into the whole editor's file, its marks with it
+	if not kept then
+		local p = S2.picker(child)
+		local lines = vim.deepcopy(p.lines)
+		table.remove(lines, S2.line_of(lines, 'e.txt'))
+		S2.write_picker(child, p, lines)
+		child.cmd('close')
+		child.settle(100)
+	end
+	child.cmd('tabclose')
 	child.settle(300)
 end
 
-T['T823 [char] (M15, M5) a detached list that goes into the whole editor\'s file keeps its marks through the next save'] = function()
+-- T823's route, the list emptied before its tab closes: it goes as an emptied list does, the mark that alone holds
+-- e held over in the whole editor's scope under the list's name, which the next save keeps.
+T['T823 [char] (M15, M5, DESK.md:1090) a detached list whose tab closes with only a mark holding its file gives the mark to the whole editor\'s scope through the next save'] = function()
 	local s = S2.shared()
 	detached_into_file(s)
 	local written = detached_marks()
 	eq(S2.save(child), { true })
-	eq({ written = written, saved = detached_marks() }, { written = { a = 'e' }, saved = { a = 'e' } })
+	eq({ written = written, saved = detached_marks(), held = editor_held() },
+		{ written = false, saved = false, held = { memory = { 't_DETACHED a=e' }, file = { 'a=e' } } })
 end
 
 T['T824 [char] (M15, M5, S1 Load) a list in the whole editor\'s file alone keeps its marks across a load and a save'] = function()
 	local s = S2.shared()
-	detached_into_file(s)
+	detached_into_file(s, true) -- e kept on the list, so the list goes into the file with its mark
 	S2.start(child, s)
 	eq(S2.load(child), { true })
 	child.settle(300)
@@ -3442,8 +3477,10 @@ T['T1021 [char] (M15, S1 Save, DESK.md:1076-1077) a detached list\'s tab saved a
 			if pool.detached then return id end
 		end
 	]])
-	eq({ detached = detached, u = child.lua(GROUPS_IN_ORDER, { u }), kept = kept and child.lua(GROUPS_IN_ORDER, { kept }) },
-		{ detached = true, u = { 'main a=c' }, kept = { 'main a=c' } })
+	-- the old list, its tab taken with nothing in its closed list, goes as an emptied one does: its copy held over
+	-- in the whole editor's scope under its name
+	eq({ detached = detached, u = child.lua(GROUPS_IN_ORDER, { u }), kept = kept ~= nil and kept ~= vim.NIL, editor = editor_held().memory },
+		{ detached = true, u = { 'main a=c' }, kept = false, editor = { 't_DETACHED a=c' } })
 end
 
 -- A plain tab saved as a tab session carries none of the whole editor's marks, and a tab session's tab saved

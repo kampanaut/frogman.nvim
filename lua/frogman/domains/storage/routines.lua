@@ -1876,12 +1876,23 @@ local function push_out(pool, tabpage)
 	end
 end
 
+---Check if a detached list in memory has nothing left in it: no tab, no closed file the file would keep, no
+---group and no held-over snapshot. The whole editor's file leaves such a list out.
+---
+---@param pool Pool The detached list's pool
+---@return boolean empty
+local function nothing_left(pool)
+	return next(pool.tabs) == nil and #serialise_closed_buffers({ pool }) == 0
+		and marks().serialise("session", pool.id) == nil and snapshots().serialise_held(pool.id) == nil
+end
+
 ---Build the detached lists as the whole editor's file holds them.
 ---
----Each detached pool in memory comes first, with its closed list and close times. Its window
----entries come from `windows_of` at a save, and otherwise from the file, which a records write
----leaves as the session manager last saved them. Then each list the file holds and memory doesn't
----comes as it is, but with no windows at a save, since a save writes the windows anew.
+---Each detached pool in memory comes first, with its closed list and close times, but for one with no
+---tab and nothing left in it, no closed file, no group and no held-over snapshot, which goes from the
+---file. Its window entries come from `windows_of` at a save, and otherwise from the file, which a
+---records write leaves as the session manager last saved them. Then each list the file holds and memory
+---doesn't comes as it is, but with no windows at a save, since a save writes the windows anew.
 ---
 ---@param old table|nil The file's data
 ---@param windows_of (fun(pool: Pool): integer[])|nil A pool's window entries, at a save
@@ -1900,13 +1911,16 @@ local function detached_lists(old, windows_of)
 	end
 	table.sort(pools, function(a, b) return a.id < b.id end)
 	for _, pool in ipairs(pools) do
-		local closed, times = serialise_closed_buffers({ pool })
-		table.insert(lists, {
-			label = pool.name, of = pool.of, closed = closed, closed_times = times,
-			windows = windows_of and windows_of(pool) or old_windows[pool.name] or {},
-			marks = marks().serialise("session", pool.id), -- its copy of its session's marks
-			snapshots = snapshots().serialise_held(pool.id), -- and the snapshots held over in its scope
-		})
+		-- one with no tab and nothing left goes from the file, which keeps no copy of it, the list being in memory
+		if not nothing_left(pool) then
+			local closed, times = serialise_closed_buffers({ pool })
+			table.insert(lists, {
+				label = pool.name, of = pool.of, closed = closed, closed_times = times,
+				windows = windows_of and windows_of(pool) or old_windows[pool.name] or {},
+				marks = marks().serialise("session", pool.id), -- its copy of its session's marks
+				snapshots = snapshots().serialise_held(pool.id), -- and the snapshots held over in its scope
+			})
+		end
 	end
 	for _, list in ipairs(old and old.detached or {}) do
 		if not live[list.label] then
@@ -2717,7 +2731,8 @@ function M.read_trail(directory, name, day)
 end
 
 ---Put a session's closed lists into its file's data: its pools' closed entries and their close times, and,
----for the whole editor's, the detached lists, the closed lists' changes to those in the file alone among them.
+---for the whole editor's, the detached lists, the closed lists' changes to those in the file alone among them,
+---a list they empty giving what it keeps of marks and snapshots to the whole editor's scope as it goes.
 ---
 ---@param saved table The file's data, written into in place
 ---@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string}
@@ -2744,8 +2759,16 @@ local function put_closed_part(saved, session, changes, key, scratch_dir)
 					list.closed, list.closed_times = change.closed, change.times
 					table.insert(kept, list)
 				else
-					-- emptied: what windows closed in its tab left held over goes to the whole editor's scope, which
-					-- the marks part writes
+					-- emptied: its copy of its session's marks, held over under its name, and what windows closed in its
+					-- tab left held over go to the whole editor's scope, which the marks part writes
+					local copy = vim.tbl_filter(function(group) return type(group) == "table" and not group.held end,
+						type(list.marks) == "table" and list.marks or {})
+					for filehash, _ in pairs(marks().named_by(copy)) do
+						if not history.handles.of_hash(filehash) and saved.paths[filehash] then
+							history.register_filepath(saved.paths[filehash])
+						end
+					end
+					marks().hold_over("", copy, list.label, true, true, marks().held_now("")) -- not again after a write that failed
 					marks().adopt_held("", list.marks, saved.paths)
 					for _, held in ipairs(type(list.snapshots) == "table" and list.snapshots or {}) do
 						for filehash, _ in pairs(snapshots().named_by({ held })) do
@@ -3267,12 +3290,28 @@ function M.write_file_only_lists(changes)
 	return write_records(session, changes)
 end
 
+---Hand what a detached list in memory keeps of marks and snapshots to the whole editor's scope, as it goes
+---with nothing in its closed list: its copy of its session's marks, each group held over under the list's
+---name, and the group's when it had several, then the groups and the snapshots its tab's windows left held
+---over, each as it is. The list keeps none, so the next whole-editor write leaves it out of the file.
+---
+---@param pool Pool The detached list's pool
+---@return nil
+local function hand_to_editor(pool)
+	local scope = marks().scope("session", pool.id)
+	marks().hold_over("", vim.tbl_filter(function(group) return not group.held end, scope and scope.groups or {}), pool.name)
+	marks().move_held(pool.id, "")
+	snapshots().move_held(pool.id, "")
+	marks().drop_scope("session", pool.id)
+	snapshots().drop_held(pool.id)
+end
+
 ---Settle the detached lists that waited on the closed lists, once those are gone.
 ---
 ---A session loaded back into its own detached list's tab opens the closed lists on that list, and
 ---the list waits in memory until they close. Then a list still holding entries goes into the whole
 ---editor's file, as any left with no tab does, and one the merge emptied goes from memory and from
----the file.
+---the file, what it keeps of marks and snapshots going to the whole editor's scope.
 ---
 ---@return nil
 function M.settle_merging()
@@ -3280,17 +3319,19 @@ function M.settle_merging()
 		if pool.merging and next(pool.tabs) == nil then
 			pool.merging = nil
 			if #pool.closed == 0 then
-				pool:drop()
-				-- what windows closed in its tab left held over isn't a copy: it goes to the whole editor's scope
-				marks().move_held(id, "")
-				snapshots().move_held(id, "")
-				marks().drop_scope("session", id)
-				snapshots().drop_held(id)
-				require('frogman.domains.ledger').move("detached_left", { subject = id, name = pool.name, words = "merged, and gone" })
+				hand_to_editor(pool)
 				local session = whole_editor_session()
+				local ok, problem = true, nil
 				if session then
-					write_records(session, { [pool.name] = false })
+					ok, problem = write_records(session) -- the list in memory with nothing left: the file loses it
 				end
+				-- a write that failed leaves it in memory, with nothing in it, so the next one leaves it out of the file
+				local gone = ok or problem == "missing"
+				if gone then
+					pool:drop()
+				end
+				require('frogman.domains.ledger').move("detached_left", { subject = id, name = pool.name,
+					words = gone and "merged, and gone" or "merged; kept, with no tab" })
 			else
 				M.close_tab_pool(pool)
 			end
@@ -3417,6 +3458,35 @@ forget_closed_keys = function()
 	end
 end
 
+---Hand what each detached list in memory with no tab and nothing in its closed list keeps of marks and snapshots to
+---the whole editor's scope, ahead of a whole-editor write, so the write leaves it out as an emptied list: one a
+---write that failed kept with no tab, emptied since in the closed lists or by opening its files. One waiting on the
+---closed lists stays for its merge, and one whose tab has just closed for its close, which hands it over itself.
+---
+---@return nil
+local function hand_over_emptied()
+	for id, pool in pairs(history.data.pools) do
+		if pool.detached and not pool.merging and not closing[id] and next(pool.tabs) == nil and #pool.closed == 0 then
+			hand_to_editor(pool)
+		end
+	end
+end
+
+---Let go the detached lists in memory that the whole editor's file leaves out, once a write of it has gone
+---through: each with no tab and nothing left in it, as an empty one a write that failed kept is, so it
+---doesn't stay as a section with nothing in it. One waiting on the closed lists stays for its merge, and one
+---whose tab has just closed stays for its close, which takes what its windows left held over first.
+---
+---@return nil
+local function let_empty_lists_go()
+	for id, pool in pairs(history.data.pools) do
+		if pool.detached and not pool.merging and not closing[id] and nothing_left(pool) then
+			pool:drop()
+			require('frogman.domains.ledger').move("detached_left", { subject = id, name = pool.name, words = "empty, and gone" })
+		end
+	end
+end
+
 ---Write a session's records now, warning once about what stops it.
 ---
 ---A missing file isn't warned about. A session that's written is no longer marked as changed.
@@ -3424,9 +3494,15 @@ end
 ---@param session table The session, as `known_sessions()` gives it
 ---@return boolean written True if the records were written
 local function write_now(session)
+	if session.scope == "editor" then
+		hand_over_emptied() -- an emptied list with no tab goes as emptied: the write leaves it out, its marks in
+	end
 	local ok, problem = write_records(session)
 	if ok then
 		dirty[session.id] = nil
+		if session.scope == "editor" then
+			let_empty_lists_go() -- the lists the file left out go from memory too
+		end
 	elseif problem ~= "missing" and not told[session.id .. problem] then
 		told[session.id .. problem] = true
 		vim.notify("frogman: " .. (session.name or vim.fn.fnamemodify(session.directory, ":t")) .. "'s closed files and No Name texts weren't written, since " .. problem, vim.log.levels.WARN)
@@ -3532,9 +3608,12 @@ end
 
 ---Write the records of a pool whose last tab closed, then let the pool go.
 ---
----A tab session's records go into its own file, and a detached list's into the whole editor's. When
----they can't be written, the pool is kept with no tab, and a warning says so. A load since, which
----tore it down, or a tab back in it, leaves it alone.
+---A tab session's records go into its own file, and a detached list's into the whole editor's, but for
+---one with nothing in its closed list, which goes as an emptied list does: what it keeps of marks and
+---snapshots goes to the whole editor's scope, and the list from memory and that file, or from memory
+---alone when there's no such file. When the records can't be written, the pool is kept with no tab, so the
+---next write still knows it, and a warning says so. A load since, which tore it down, or a tab back in
+---it, leaves it alone.
 ---
 ---@param pool Pool The pool whose last tab closed
 ---@return nil
@@ -3547,23 +3626,36 @@ local function close_now(pool)
 	marks().flush_pending(pool.id)
 	snapshots().flush_pending(pool.id)
 	if pool.detached then
-		-- a detached list goes into the whole editor's file, and leaves memory
+		-- a detached list goes into the whole editor's file, and leaves memory; one with nothing in its closed
+		-- list goes as an emptied one does, its marks and snapshots to the whole editor's scope
+		local empty = #pool.closed == 0
+		if empty then
+			hand_to_editor(pool)
+		end
 		local session = whole_editor_session()
 		local ok, problem = false, "missing"
 		if session then
 			ok, problem = write_records(session)
 		end
 		local ledger = require('frogman.domains.ledger')
-		if ok then
+		-- with no file there's nothing of an empty one to keep; a write that failed leaves it in memory, so the
+		-- next one leaves it out of the file rather than taking the file's own entry for it
+		if ok or (empty and problem == "missing") then
 			pool:drop()
 			marks().drop_scope("session", pool.id) -- its marks are on its entry in the file now
 			snapshots().drop_held(pool.id) -- and its held-over snapshots
-			ledger.move("detached_left", { subject = pool.id, name = pool.name, words = data.replayed and "let go" or "into the whole editor's file" })
+			ledger.move("detached_left", { subject = pool.id, name = pool.name,
+				words = data.replayed and "let go" or empty and "empty, and gone" or "into the whole editor's file" })
 			return
 		end
 		ledger.move("detached_left", { subject = pool.id, name = pool.name, words = "kept, with no tab" })
-		vim.notify("frogman: " .. pool.name .. "'s tab is gone, and its closed files couldn't be written into the whole editor's session file (" ..
-			(problem == "missing" and "it has no session file yet" or problem) .. "); they stay, with no tab, in :FrogmanClosed.", vim.log.levels.WARN)
+		if empty then
+			vim.notify("frogman: " .. pool.name .. "'s tab is gone with nothing in its list, and the whole editor's session file couldn't be written (" ..
+				problem .. "); its marks are held over in the whole editor's scope.", vim.log.levels.WARN)
+		else
+			vim.notify("frogman: " .. pool.name .. "'s tab is gone, and its closed files couldn't be written into the whole editor's session file (" ..
+				(problem == "missing" and "it has no session file yet" or problem) .. "); they stay, with no tab, in :FrogmanClosed.", vim.log.levels.WARN)
+		end
 		return
 	end
 	local ok, problem = write_records({ name = pool.name, directory = pool.directory, pools = { pool }, owner = pool, scope = "tab" })
@@ -3794,6 +3886,7 @@ function M.save_history(cwd, name, tab)
 	local windows, entry_wins = serialise_window_relationships(outsiders, tab)
 	local saved_tabs, tab_pages = nil, {}
 	if not pool then
+		hand_over_emptied() -- an emptied list with no tab goes as emptied: the save leaves it out, its marks in
 		saved_tabs, tab_pages = serialise_tabs()
 	end
 	hold_dropped(file_path, entry_wins, tab_pages) -- before the session's own marks are written, so they're in them
@@ -3882,6 +3975,7 @@ function M.save_history(cwd, name, tab)
 		data.editor_session, data.unnamed = { name = name, directory = cwd }, nil
 		require('frogman.domains.ledger').set_session(name, cwd)
 		dirty[""] = nil
+		let_empty_lists_go() -- the lists the file left out go from memory too
 	end
 	forget_closed_keys()
 end
