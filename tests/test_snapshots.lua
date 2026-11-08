@@ -535,7 +535,7 @@ local function headers()
 	]])
 end
 
-T['T771 [char] (M16) a window closed while you work leaves its snapshots held over'] = function()
+T['T771 [char] (M16) a window closed while you work with no saved entry leaves its snapshots held over'] = function()
 	local split = split_held_over()
 	local x = child.lua([[
 		local H = require('frogman.domains.history')
@@ -1916,6 +1916,61 @@ T['T904 [char] (M16, S1 Load, DESK.md:1716) a saved snapshot holding one file tw
 		got[twice] = snapshots()[1].slots
 	end
 	eq(got, { ternary = '⦉-⦊ [a] ⟦b⟧', secondary = '⦉c⦊ [a] ⟦-⟧' })
+end
+
+-- R9s: a snapshot taken in a tab session's tab after its last save, the tab closed with nothing saving at
+-- the close: it goes onto its window's entry in t's file, and the next load gives it back to the window.
+T['T1059 [char] (M16, DESK.md:1697, repro R9s) a snapshot taken after a tab session\'s last save comes back after its tab closes'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	local id = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.steps({ ':e c', TAKE, ':e d' })
+	child.cmd('tabclose')
+	child.settle(300)
+	eq(S2.load_tab_session(child, 't'), { true })
+	eq(child.lua([[
+		local R = require('frogman.domains.snapshots').routines
+		return { own = #R.of_window(vim.api.nvim_get_current_win()), held = #R.held_in(...) }
+	]], { id }), { own = 1, held = 0 })
+end
+
+-- A snapshot pasted into a window frogman never took in, not committed, goes with the window at its close.
+T['T1063 [char] (M16, DESK.md:1694, :1696) a snapshot pasted into a window frogman never took in goes at its close'] = function()
+	local one = two_windows()
+	in_list(one, 'yy')
+	child.cmd('help')
+	child.settle()
+	local help = child.lua('return vim.api.nvim_get_current_win()')
+	in_list(help, 'p')
+	local pasted = #snapshots(help)
+	child.lua('vim.api.nvim_win_close(..., false)', { help })
+	child.settle(300)
+	eq({ pasted = pasted, held = #child.lua('return require("frogman.domains.snapshots").routines.held_in("")') }, { pasted = 1, held = 0 })
+end
+
+-- A window with snapshots and no marks, closed after a save: its snapshots go onto its entry as they stand, one
+-- taken since the save among them, nothing held over; the entry, `[10]` null in the file, is known again as the
+-- file holds it.
+T['T1066 [char] (M16, DESK.md:1697) a window closed with a saved entry puts its snapshots onto it as they stand, nothing held over'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e c', TAKE })
+	eq(S2.save(child), { true })
+	child.steps({ ':e d', TAKE })
+	child.cmd('close')
+	child.settle(1500) -- the close's write lands with the records
+	eq(child.lua([[
+		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil) or {}
+		local filed = {}
+		for _, entry in ipairs(saved.windows or {}) do
+			if type(entry) == 'table' and type(entry[11]) == 'table' then table.insert(filed, #entry[11]) end
+		end
+		return { held = #require('frogman.domains.snapshots').routines.held_in(''), filed = filed }
+	]]), { held = 0, filed = { 2 } })
 end
 
 return T

@@ -802,15 +802,17 @@ end
 ---session's tab has none: its tab mode is its session's.
 ---
 ---@return table[]|nil tabs Each tab's `{ shows, position, groups }`, or nil with none
+---@return integer[] tab_pages The tab each entry came from, in their order
 local function serialise_tabs()
-	local tabs = {}
+	local tabs, pages = {}, {}
 	for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
 		local groups = marks().serialise("tab", tabpage)
 		if groups and history.data.tab_pools[tabpage] == nil then
 			table.insert(tabs, { shows = tab_shows(tabpage), position = vim.api.nvim_tabpage_get_number(tabpage), groups = groups })
+			table.insert(pages, tabpage)
 		end
 	end
-	return #tabs > 0 and tabs or nil
+	return #tabs > 0 and tabs or nil, pages
 end
 
 ---Give each plain tab the marks of the saved tab it is.
@@ -823,8 +825,9 @@ end
 ---@param what string The load, as a held-over group names it
 ---@param earlier table<MarksGroup, true> The groups held over in the whole editor's scope before the load
 ---@return table<integer, true> unclaimed The saved tabs no tab took, by index, for the records to take off
+---@return table<integer, integer> claimed The tab each saved tab went to, by index
 local function restore_tabs(saved_tabs, what, earlier)
-	local taken, unclaimed = {}, {}
+	local taken, unclaimed, claimed = {}, {}, {}
 	for i, saved in ipairs(type(saved_tabs) == "table" and saved_tabs or {}) do
 		local want = table.concat(type(saved.shows) == "table" and saved.shows or {}, ",")
 		local best
@@ -841,13 +844,14 @@ local function restore_tabs(saved_tabs, what, earlier)
 		end
 		if best then
 			taken[best.tabpage] = true
+			claimed[i] = best.tabpage
 			marks().restore("tab", best.tabpage, saved.groups, what) -- named by the load, for a pop-up with edits not written
 		else
 			marks().hold_over("", type(saved.groups) == "table" and saved.groups or {}, what, true, true, earlier)
 			unclaimed[i] = true -- every group is held over, so the tab leaves the file
 		end
 	end
-	return unclaimed
+	return unclaimed, claimed
 end
 
 ---Get the hashes a session file's marks and snapshots name, in the parts of it asked for: its own,
@@ -1018,6 +1022,7 @@ end
 ---@param what string The load, as a held-over group names it
 ---@return table<integer, true> gone The window entries no window took that carried marks, by index
 ---@return table<integer, true> gone_tabs The tab entries no tab took, by index
+---@return table<integer, integer> claimed The tab each tab entry went to, by index
 local function restore_marks(saved_data, taken, session_id, own, key, scratch_dir, what)
 	local gone, earlier = {}, nil -- earlier: the groups held over before this load, which a window taking its entry clears
 	if own then
@@ -1098,7 +1103,7 @@ local function restore_marks(saved_data, taken, session_id, own, key, scratch_di
 			gone[i] = next(entry[10]) ~= nil or nil -- every group is held over, so they leave the file
 		end
 	end
-	local gone_tabs = restore_tabs(saved_data.tabs, what, earlier) -- a tab session's file has none
+	local gone_tabs, claimed = restore_tabs(saved_data.tabs, what, earlier) -- a tab session's file has none
 	local held = require('frogman.held').files_held(nil) -- the snapshots' texts too, which `restore_snapshots` gave before
 	for filehash, _ in pairs(held) do
 		local entry = type(saved_data.noname_content) == "table" and saved_data.noname_content[filehash]
@@ -1111,40 +1116,136 @@ local function restore_marks(saved_data, taken, session_id, own, key, scratch_di
 				read = scratch_reader(source, key, filehash) }
 		end
 	end
-	return gone, gone_tabs
+	return gone, gone_tabs, claimed
 end
 
----Remember a session file's entries a load didn't take, for the next records write to take their marks
----and snapshots off the file: they live in the session's held-over groups and snapshots from then on,
----so one you clear, or move up, isn't held over again at the next load.
+---Get an entry as the session file holds it, written and read back, its holes and nulls as a read finds
+---them, so the records write knows it again by comparing what it reads.
 ---
----Each entry is kept as the load read it, so a write takes it off only while it's still that entry:
----another editor's save may have rewritten the windows meanwhile.
+---@param entry table An entry as a save builds it
+---@return table entry
+local function as_filed(entry)
+	return vim.json.decode(vim.json.encode(entry))
+end
+
+-- counts the holder places the closes' files wait in until their entries take them
+local closes_held = 0
+
+---Let go of what a session file's known entries hold, as a save or a load sets them anew.
+---
+---@param file_path string The session's main file
+---@return nil
+local function forget_entries(file_path)
+	local known = data.entries[file_path]
+	for _, kind in ipairs({ "windows", "tabs" }) do
+		for _, slot in pairs(known and known[kind] or {}) do
+			if slot.close and slot.close.state ~= "held" then
+				history.handles.drop_place(slot.close.place)
+			end
+		end
+	end
+	data.entries[file_path] = nil
+end
+
+---Hold over what a close put onto an entry that won't take it, in the scope of the session it closed in,
+---under what it showed: its groups and snapshots as they stood. Its files go from their wait, the held-over
+---groups and snapshots holding them now.
+---
+---@param close EntryClose What the close put onto the entry, with what it showed and the session it closed in
+---@return nil
+local function hold_closed(close)
+	if close.groups then
+		marks().hold_over(close.session, close.groups, close.what, true)
+	end
+	if close.snapshots then
+		snapshots().hold_saved(close.session, close.snapshots, close.what)
+	end
+	history.handles.drop_place(close.place)
+	close.state = "held"
+end
+
+---Remember which window or tab each entry a load read is: the window or tab that took it, or, for one none
+---took that carried marks or snapshots, to take those off the file at the next records write, held over
+---since, so one you clear, or move up, isn't held over again at the next load; but for an entry a detached
+---list names among its windows, which its tab takes back when it comes back.
+---
+---Each is kept as the load read it, so a write touches it only while it's still that entry: another
+---editor's save may have rewritten the windows meanwhile.
 ---
 ---@param file_path string The session's main file
 ---@param saved_data table The file's data, as the load read it
+---@param taken table<integer, WinId> The window each entry went to, by its index
+---@param claimed table<integer, integer> The tab each tab entry went to, by its index
 ---@param snapped table<integer, true> The window entries no window took that carried snapshots
 ---@param marked table<integer, true> The window entries no window took that carried marks
 ---@param tabs table<integer, true> The tab entries no tab took
 ---@return nil
-local function remember_unclaimed(file_path, saved_data, snapped, marked, tabs)
-	local windows, kept_tabs = {}, {}
-	-- an entry a detached list names among its windows is the list's: its tab takes it back when it comes
-	-- back, so the records never take its marks or snapshots off
+local function remember_loaded(file_path, saved_data, taken, claimed, snapped, marked, tabs)
+	forget_entries(file_path)
+	local known = { windows = {}, tabs = {} }
 	local listed = waited_on(saved_data)
-	for i, _ in pairs(vim.tbl_extend("force", snapped, marked)) do
-		if not listed[i] then
-			windows[i] = vim.deepcopy(saved_data.windows[i])
+	for i, entry in ipairs(type(saved_data.windows) == "table" and saved_data.windows or {}) do
+		local winid = (taken or {})[i]
+		if winid and vim.api.nvim_win_is_valid(winid) then
+			known.windows[i] = { win = winid, entry = vim.deepcopy(entry) }
+		elseif (snapped[i] or marked[i]) and not listed[i] then
+			known.windows[i] = { entry = vim.deepcopy(entry), take_off = true }
 		end
 	end
-	for i, _ in pairs(tabs) do
-		kept_tabs[i] = vim.deepcopy(saved_data.tabs[i])
+	for i, tab in ipairs(type(saved_data.tabs) == "table" and saved_data.tabs or {}) do
+		if claimed[i] then
+			known.tabs[i] = { tab = claimed[i], entry = vim.deepcopy(tab) }
+		elseif tabs[i] then
+			known.tabs[i] = { entry = vim.deepcopy(tab), take_off = true }
+		end
 	end
-	if next(windows) or next(kept_tabs) then
-		data.unclaimed[file_path] = { windows = windows, tabs = kept_tabs }
-	else
-		data.unclaimed[file_path] = nil
+	data.entries[file_path] = known
+end
+
+---Hold over what closes put onto the entries of a file a save doesn't write again, the windows and tabs
+---written anew without them: once, whether the close's write landed or not.
+---
+---@param file_path string The session's main file
+---@param entry_wins WinId[] The window each entry the save writes came from
+---@param tab_pages integer[] The tab each tab entry the save writes came from
+---@return nil
+local function hold_dropped(file_path, entry_wins, tab_pages)
+	local known = data.entries[file_path]
+	local writing = { windows = {}, tabs = {} }
+	for _, winid in ipairs(entry_wins) do
+		writing.windows[winid] = true
 	end
+	for _, tabpage in ipairs(tab_pages) do
+		writing.tabs[tabpage] = true
+	end
+	for _, kind in ipairs({ "windows", "tabs" }) do
+		for _, slot in pairs(known and known[kind] or {}) do
+			local id = slot.win or slot.tab
+			if slot.close and slot.close.state ~= "held" and not (id and writing[kind][id]) then
+				hold_closed(slot.close)
+			end
+		end
+	end
+end
+
+---Remember which window or tab each entry a save wrote is, as the file holds it.
+---
+---@param file_path string The session's main file
+---@param windows table[] The window entries written
+---@param entry_wins WinId[] The window each came from
+---@param tabs table[]|nil The tab entries written
+---@param tab_pages integer[] The tab each came from
+---@return nil
+local function remember_saved(file_path, windows, entry_wins, tabs, tab_pages)
+	forget_entries(file_path)
+	local known = { windows = {}, tabs = {} }
+	for i, winid in ipairs(entry_wins) do
+		known.windows[i] = { win = winid, entry = as_filed(windows[i]) }
+	end
+	for i, tabpage in ipairs(tab_pages) do
+		known.tabs[i] = { tab = tabpage, entry = as_filed(tabs[i]) }
+	end
+	data.entries[file_path] = known
 end
 
 ---Reopen the No Name buffers that were open at the save.
@@ -1936,7 +2037,8 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 	end
 	local what = vim.fn.fnamemodify(name or directory, ":t") .. ", loaded into tab " .. vim.api.nvim_tabpage_get_number(tabpage)
 	local gone = restore_snapshots(saved_data, taken, load_pool.id, not open, what)
-	remember_unclaimed(file_path, saved_data, gone, restore_marks(saved_data, taken, load_pool.id, not open, key, scratch_dir, what)) -- before the texts reopen under new hashes
+	local marked, gone_tabs, claimed = restore_marks(saved_data, taken, load_pool.id, not open, key, scratch_dir, what)
+	remember_loaded(file_path, saved_data, taken, claimed, gone, marked, gone_tabs) -- before the texts reopen under new hashes
 	tab_marks_held_over(tabpage, load_pool.id, what)
 	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
 		if window.data.crux[winid] then
@@ -2130,7 +2232,8 @@ function M.load_history(cwd, name)
 		load_pool = history.routines.pools()[""]
 		local what = vim.fn.fnamemodify(name or cwd, ":t") .. ", loaded"
 		local gone = restore_snapshots(saved_data, taken, "", true, what)
-		remember_unclaimed(file_path, saved_data, gone, restore_marks(saved_data, taken, "", true, key, scratch_dir, what)) -- before the texts reopen under new hashes
+		local marked, gone_tabs, claimed = restore_marks(saved_data, taken, "", true, key, scratch_dir, what)
+		remember_loaded(file_path, saved_data, taken, claimed, gone, marked, gone_tabs) -- before the texts reopen under new hashes
 		reopen_noname_buffers(saved_data.noname_content or {}, key, scratch_dir)
 		for filehash, tag in pairs(saved_data.missing or {}) do
 			history.handles.set_tag(history.get_handle_from_hash(filehash), tag, { load = true })
@@ -2601,20 +2704,51 @@ local function write_records(session, changes)
 	local gone = false
 	local ok, err = pcall(function()
 		local salt = bytes:sub(#HEADER + 1, #HEADER + crypto.salt_length)
-		-- the entries the last load didn't take give up their marks and snapshots, held over since, each
-		-- only while it's still the entry the load left there
-		local unclaimed = data.unclaimed[file_path]
-		for i, was in pairs(unclaimed and unclaimed.windows or {}) do
+		-- the entries this editor knows, each only while it's still the entry it knows: one the last load
+		-- didn't take gives up its marks and snapshots, held over since; one a close left takes what the
+		-- close put onto it; one another editor's save rewrote has the close's held over instead
+		local known = data.entries[file_path]
+		local wrote, at = {}, {}
+		for i, slot in pairs(known and known.windows or {}) do
 			local entry = type(saved.windows) == "table" and saved.windows[i]
-			if type(entry) == "table" and vim.deep_equal(entry, was) then
+			local same = type(entry) == "table" and vim.deep_equal(entry, slot.entry)
+			if slot.take_off and same then
 				entry[10], entry[11] = nil, nil
+				wrote[slot] = entry
+			elseif slot.close and slot.close.state == nil then
+				if same then
+					entry[10], entry[11] = slot.close.groups, slot.close.snapshots
+					wrote[slot] = entry
+				else
+					hold_closed(slot.close)
+				end
 			end
 		end
-		if unclaimed and type(saved.tabs) == "table" then
+		if known then
+			local file_tabs, keep = type(saved.tabs) == "table" and saved.tabs or {}, {}
+			for i, tab in ipairs(file_tabs) do
+				keep[i] = true
+			end
+			for i, slot in pairs(known.tabs) do
+				local tab = file_tabs[i]
+				local same = tab ~= nil and vim.deep_equal(tab, slot.entry)
+				if slot.take_off and same then
+					keep[i] = false
+				elseif slot.close and slot.close.state == nil then
+					if same then
+						tab.groups = slot.close.groups
+						keep[i] = tab.groups ~= nil -- a tab entry with no groups left comes off
+						wrote[slot] = tab
+					else
+						hold_closed(slot.close)
+					end
+				end
+			end
 			local tabs = {}
-			for i, tab in ipairs(saved.tabs) do
-				if not (unclaimed.tabs[i] and vim.deep_equal(tab, unclaimed.tabs[i])) then
+			for i, tab in ipairs(file_tabs) do
+				if keep[i] then
 					table.insert(tabs, tab)
+					at[i] = #tabs
 				end
 			end
 			saved.tabs = #tabs > 0 and tabs or nil
@@ -2692,7 +2826,34 @@ local function write_records(session, changes)
 		saved.trail, paged = write_trail_pages(file_path, saved.trail, session.owner,
 			require('frogman.domains.ledger').session_of(session.name, session.directory), key, kept) -- today's page rides along
 		commit_session(file_path, key, salt, saved, kept)
-		data.unclaimed[file_path] = nil
+		-- landed: each entry written is the one this editor knows now; an entry taken off, or a tab entry
+		-- gone, leaves what it knew of it
+		for i, slot in pairs(known and known.windows or {}) do
+			if wrote[slot] then
+				slot.entry = as_filed(wrote[slot])
+				if slot.close then
+					slot.close.state = "landed"
+				end
+				if slot.take_off then
+					known.windows[i] = nil
+				end
+			end
+		end
+		if known then
+			local tabs = {}
+			for i, slot in pairs(known.tabs) do
+				if at[i] then
+					if wrote[slot] then
+						slot.entry = as_filed(wrote[slot])
+						slot.close.state = "landed"
+					end
+					tabs[at[i]] = slot
+				elseif slot.close and slot.close.state ~= "held" then
+					history.handles.drop_place(slot.close.place) -- its entry came off with nothing left to hold over
+				end
+			end
+			known.tabs = tabs
+		end
 		settle_days(file_path, paged)
 	end)
 	if not ok then
@@ -2761,6 +2922,60 @@ local function whole_editor_session()
 		return { id = "", name = data.editor_session.name, directory = data.editor_session.directory, pools = every_pool(), scope = "editor" }
 	end
 	return nil
+end
+
+---Get the main file a session's records go into: a tab session's own, the whole editor's for its own and
+---for a detached list's.
+---
+---@param session_id string The session's pool id ("" for the whole editor's)
+---@return string|nil file_path Nil while the session has no file
+local function records_file(session_id)
+	local pool = history.data.pools[session_id]
+	if session_id == "" or (pool and pool.detached) then
+		local session = whole_editor_session()
+		return session and get_session_filepath(session.directory, session.name) or nil
+	end
+	return pool and pool.directory and get_session_filepath(pool.directory, pool.name) or nil
+end
+
+---Put what a closing window or plain tab holds onto its entry in its session's file, as it stands, for the
+---next records write: its groups, and a window's snapshots. Taken once, by whichever close comes first,
+---both parts at once, so neither is missed for the other's having none. Its files stay held while the
+---entry waits, so a save that holds them over finds them.
+---
+---@param kind "window"|"tab" Whether a window or a plain tab is closing
+---@param id WinId|integer The window or the tab closing
+---@param session_id string The pool id of the session it's in ("" for the whole editor's)
+---@param what string What it was, as a held-over header names it, should the entry not take it
+---@return boolean onto Whether it has an entry there: one without has nothing put anywhere, to be held over
+function M.close_onto_entry(kind, id, session_id, what)
+	local file_path = records_file(session_id)
+	local known = file_path and data.entries[file_path]
+	local slot
+	for _, candidate in pairs(known and known[kind == "window" and "windows" or "tabs"] or {}) do
+		if (kind == "window" and candidate.win == id) or (kind == "tab" and candidate.tab == id) then
+			slot = candidate
+		end
+	end
+	if slot == nil then
+		return false
+	end
+	if slot.close == nil then
+		local groups = marks().serialise(kind, id)
+		local saved = kind == "window" and snapshots().serialise_window(id) or nil
+		closes_held = closes_held + 1
+		local place, ids = "entry:closed:" .. closes_held, {}
+		for filehash, _ in pairs(snapshots().named_by(saved, marks().named_by(groups))) do
+			local handle = history.handles.of_hash(filehash)
+			if handle then
+				table.insert(ids, handle.id)
+			end
+		end
+		history.handles.hold(place, ids)
+		slot.close = { groups = groups, snapshots = saved, what = what, session = session_id, place = place }
+		require('frogman.held').records_changed(session_id)
+	end
+	return true
 end
 
 -- what the last look at the whole editor's file found, for an entry moved out of a list there
@@ -3052,6 +3267,9 @@ local function close_now(pool)
 	if history.data.pools[pool.id] ~= pool or next(pool.tabs) ~= nil then
 		return
 	end
+	-- what its windows' closes queued to hold over goes into its scope first, so its records take it
+	marks().flush_pending(pool.id)
+	snapshots().flush_pending(pool.id)
 	if pool.detached then
 		-- a detached list goes into the whole editor's file, and leaves memory
 		local session = whole_editor_session()
@@ -3298,6 +3516,11 @@ function M.save_history(cwd, name, tab)
 
 	local outsiders = {}
 	local windows, entry_wins = serialise_window_relationships(outsiders, tab)
+	local saved_tabs, tab_pages = nil, {}
+	if not pool then
+		saved_tabs, tab_pages = serialise_tabs()
+	end
+	hold_dropped(file_path, entry_wins, tab_pages) -- before the session's own marks are written, so they're in them
 	local texts, paths = serialise_noname_content(pool), serialise_paths(outsiders)
 	local detached
 	if not pool then
@@ -3340,7 +3563,7 @@ function M.save_history(cwd, name, tab)
 		unwritten = #unwritten > 0 and unwritten or nil, -- files never written
 		marks = marks().serialise("session", pool and pool.id or ""), -- the session's own marks, when it has some
 		snapshots = snapshots().serialise_held(pool and pool.id or ""), -- the snapshots held over in its scope, when there are some
-		tabs = not pool and serialise_tabs() or nil, -- the plain tabs' marks, when there are some
+		tabs = saved_tabs, -- the plain tabs' marks, when there are some
 	}
 
 	if pool then
@@ -3369,7 +3592,7 @@ function M.save_history(cwd, name, tab)
 
 	-- Write updated data back to file
 	commit_session(file_path, key, salt, storage, kept)
-	data.unclaimed[file_path] = nil -- the windows and tabs are written anew
+	remember_saved(file_path, windows, entry_wins, saved_tabs, tab_pages) -- the windows and tabs are written anew
 	if written then
 		settle_days(file_path, paged)
 	end

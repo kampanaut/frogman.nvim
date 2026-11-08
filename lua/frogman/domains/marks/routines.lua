@@ -829,9 +829,8 @@ end
 ---@param session_id string The session's pool id ("" for the whole editor's)
 ---@param groups MarksGroup[] The groups, live
 ---@param what string What they were
----@param ends boolean|nil Whether a tab session's last window queued them: they wait past its tab's close, held over only when another window keeps the tab open
 ---@return nil
-function M.queue_hold_over(tabpage, session_id, groups, what, ends)
+function M.queue_hold_over(tabpage, session_id, groups, what)
 	-- each mark by its file's handle, so a file moved before the tick keeps its mark
 	local copy, ids = {}, {}
 	for _, group in ipairs(groups) do
@@ -859,23 +858,45 @@ function M.queue_hold_over(tabpage, session_id, groups, what, ends)
 		history.handles.drop_place(entry.place)
 		data.places[entry.key] = nil
 	end
-	require('frogman.held').wait_a_tick(function() return data.pending end, entry, function()
+	local function hold()
 		M.hold_over(entry.session, entry.groups, entry.what)
 		repaint()
 		let_go()
-	end, ends and let_go or nil)
+	end
+	require('frogman.held').wait_a_tick(function() return data.pending end, entry, hold)
+end
+
+---Hold over at once what closes in a session queued, as its last tab closes and its records are written
+---with its closed list, so they take it.
+---
+---@param session_id string The session's pool id
+---@return nil
+function M.flush_pending(session_id)
+	local due = {}
+	for i = #data.pending, 1, -1 do
+		if data.pending[i].session == session_id then
+			table.insert(due, 1, table.remove(data.pending, i))
+		end
+	end
+	for _, entry in ipairs(due) do
+		M.hold_over(entry.session, entry.groups, entry.what)
+		history.handles.drop_place(entry.place)
+		data.places[entry.key] = nil
+	end
+	if #due > 0 then
+		repaint()
+	end
 end
 
 ---Drop the held-over groups still queued from a tab, as a tab session's load into it starts.
 ---
----@param tabpage integer
----@param after integer|nil Only what was queued after this wait (nil = all of it)
+---@param tabpage integer The tab the load goes into
 ---@return nil
-function M.drop_pending(tabpage, after)
+function M.drop_pending(tabpage)
 	require('frogman.held').drop_waiting(data.pending, tabpage, function(entry)
 		history.handles.drop_place(entry.place)
 		data.places[entry.key] = nil
-	end, after)
+	end)
 end
 
 ---Hold over the marks of the windows and tabs that closed without their events, by noautocmd or while
@@ -886,10 +907,13 @@ end
 ---@return nil
 function M.hold_over_gone()
 	local held = require('frogman.held')
+	local storage = require('frogman.domains.storage').routines
 	for winid, scope in pairs(data.scopes.window) do
 		if not vim.api.nvim_win_is_valid(winid) and not held.closing(winid) then
-			if not M.unchanged_copy(winid) then
-				M.hold_over(held.last_session(winid) or "", scope.groups, held.last_seen_as("window", winid)) -- where it was last seen
+			-- onto its saved entry in the session it was last seen in, when it has one there; else held over
+			local session, what = held.last_session(winid) or "", held.last_seen_as("window", winid)
+			if not storage.close_onto_entry("window", winid, session, what) and not M.unchanged_copy(winid) then
+				M.hold_over(session, scope.groups, what) -- where it was last seen
 			end
 			M.drop_scope("window", winid)
 			data.copies[winid] = nil
@@ -897,7 +921,9 @@ function M.hold_over_gone()
 	end
 	for tabpage, scope in pairs(data.scopes.tab) do
 		if not vim.api.nvim_tabpage_is_valid(tabpage) then
-			M.hold_over("", scope.groups, held.last_seen_as("tab", tabpage))
+			if not storage.close_onto_entry("tab", tabpage, "", held.last_seen_as("tab", tabpage)) then
+				M.hold_over("", scope.groups, held.last_seen_as("tab", tabpage))
+			end
 			M.drop_scope("tab", tabpage)
 		end
 	end

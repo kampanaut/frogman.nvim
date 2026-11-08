@@ -18,7 +18,6 @@
 ---@field pending table[] The closed windows' and tabs' groups waiting a tick to be held over
 ---@field waited integer Counts the groups that waited, naming the place each one's files wait in
 ---@field tab_shows table<integer, { session: string, what: string }> Each tab's session and what it showed, read as tabs close
----@field ending table<integer, integer> The tab sessions' tabs closing now, each with the last wait queued before its close began: what its windows queue after is dropped at its TabClosed
 ---@field copies table<WinId, { from: WinId, given: table|nil }> The splits that started with a copy of a window's marks: the window, and the marks given, serialised
 
 ---@type MarksState
@@ -30,7 +29,6 @@ local corpus = {
 	pending = {},
 	waited = 0,
 	tab_shows = {},
-	ending = {},
 	copies = {},
 }
 

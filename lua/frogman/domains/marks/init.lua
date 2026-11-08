@@ -49,21 +49,21 @@ function M.init_autocmds(group)
 			local winid = tonumber(args.file)
 			local scope = winid and data.scopes.window[winid]
 			local held = require('frogman.held')
-			-- a copy no one changed, or one whose copy lives unchanged, loses nothing
-			if scope and not routines.unchanged_copy(winid) then
-				-- held over in its session's scope once the editor settles, unless a load comes first, or its
-				-- tab's own TabClosed, a tab session's tab really closing, drops it (a refused close fires none);
-				-- a tab session's last window waits past its tab's close, which ends the session there
-				local tabpage = vim.api.nvim_win_get_tabpage(winid)
-				routines.queue_hold_over(tabpage, require('frogman.domains.history').data.tab_pools[tabpage] or "", scope.groups,
-					"window on " .. routines.shows(winid), held.ends_session(winid))
+			-- onto its saved entry in its session's file, as it stands, when it has one there
+			local session, what = "", ""
+			if winid then
+				session, what = held.closing_in(winid)
+			end
+			local onto = winid and require('frogman.domains.storage').routines.close_onto_entry("window", winid, session, what)
+			-- else held over in its session's scope once the editor settles, unless a load comes first, a tab
+			-- session's last tab closing holding it over as its records are written; a copy no one changed, or
+			-- one whose copy lives unchanged, loses nothing
+			if scope and not onto and not routines.unchanged_copy(winid) then
+				routines.queue_hold_over(vim.api.nvim_win_get_tabpage(winid), session, scope.groups, what)
 			end
 			if scope then
 				-- kept until the close is over, so a save at its tab's TabClosedPre still reads them
 				held.after_close(winid, function() routines.drop_scope("window", winid) end)
-			end
-			if winid then
-				held.forget_session(winid)
 			end
 			data.flashes[winid or -1] = nil
 			data.copies[winid or -1] = nil
@@ -99,12 +99,6 @@ function M.init_autocmds(group)
 	vim.api.nvim_create_autocmd("TabClosedPre", {
 		group = group,
 		callback = function()
-			-- the tab closing is the current one; a tab session's, but a detached list's, ends there
-			local closing = vim.api.nvim_get_current_tabpage()
-			local pool = require('frogman.domains.history').data.pools[require('frogman.domains.history').data.tab_pools[closing] or ""]
-			-- read anew at each close's start: a tab that outlived a refused close may be a detached list's now
-			-- the last wait queued before the close began: what its windows queue after is dropped at TabClosed
-			data.ending[closing] = (pool and pool.id ~= "" and not pool.detached) and require('frogman.held').last_wait() or nil
 			for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
 				if data.scopes.tab[tabpage] then
 					data.tab_shows[tabpage] = { session = require('frogman.domains.history').data.tab_pools[tabpage] or "",
@@ -120,20 +114,13 @@ function M.init_autocmds(group)
 			for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
 				alive[tabpage] = true
 			end
-			for tabpage, began in pairs(data.ending) do
-				if not alive[tabpage] then
-					data.ending[tabpage] = nil
-					-- a tab session's tab closing ends the session there, as a switch does: its windows' marks
-					-- and snapshots live on their entries, and come back with them; what was waiting from before
-					-- the close began is held over as at any close
-					routines.drop_pending(tabpage, began)
-					require('frogman.domains.snapshots').routines.drop_pending(tabpage, began)
-				end
-			end
 			for tabpage, scope in pairs(data.scopes.tab) do
 				if not alive[tabpage] then
 					local shown = data.tab_shows[tabpage] or { session = "", what = "tab" }
-					routines.queue_hold_over(tabpage, shown.session, scope.groups, shown.what)
+					-- onto its saved tab entry, as it stands, when it has one; else held over
+					if not require('frogman.domains.storage').routines.close_onto_entry("tab", tabpage, shown.session, shown.what) then
+						routines.queue_hold_over(tabpage, shown.session, scope.groups, shown.what)
+					end
 					routines.drop_scope("tab", tabpage)
 					data.tab_shows[tabpage] = nil
 				end

@@ -68,10 +68,15 @@ function M.init_autocmds(group)
 		group = group,
 		callback = function(args)
 			local winid = tonumber(args.file)
-			if winid and data.by_window[winid] then
-				-- held over in its session's scope once the editor settles, unless a load comes first, or its
-				-- tab's own TabClosed, a tab session's tab really closing, drops it (a refused close fires none)
-				routines.queue_hold_over(winid)
+			if winid == nil then
+				return
+			end
+			-- onto its saved entry in its session's file, as they stand, when it has one there; else held over
+			-- in its session's scope once the editor settles, unless a load comes first
+			local session, what = require('frogman.held').closing_in(winid)
+			local onto = require('frogman.domains.storage').routines.close_onto_entry("window", winid, session, what)
+			if data.by_window[winid] then
+				routines.queue_hold_over(winid, onto)
 			end
 		end,
 	})

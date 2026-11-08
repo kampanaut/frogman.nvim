@@ -387,36 +387,56 @@ function M.hold_over(session_id, snapshots, what)
 	require('frogman.held').records_changed(session_id)
 end
 
----Queue a closed window's snapshots to be held over once the editor settles.
+---Queue a closed window's snapshots to be held over once the editor settles, but for a window whose close
+---put them onto its saved entry, and a window frogman never took in, which keeps none (DESK.md:1694): their
+---snapshots let their files go.
 ---
 ---A session manager's switch closes windows inside its teardown, and the load it ends with drops
 ---what's queued, so a switch holds nothing over. A tab session's load drops what came from the tab it
 ---loads into. While they wait, the snapshots keep holding their files.
 ---
 ---A tab session's last window keeps its snapshots until the close is over, for a save at the tab's
----TabClosedPre, and they wait past the tab's close: once it has closed, its session ended there and
----they live on its entry; a tab another window keeps open has them held over.
+---TabClosedPre; a tab session's last tab closing holds what its windows queued over as its records are
+---written.
 ---
 ---@param winid WinId The window closing
+---@param onto boolean|nil Whether its close put its snapshots onto its saved entry
 ---@return nil
-function M.queue_hold_over(winid)
+function M.queue_hold_over(winid, onto)
 	local snapshots = data.by_window[winid]
 	local held = require('frogman.held')
-	local ends = held.ends_session(winid)
 	held.after_close(winid, function() data.by_window[winid] = nil end)
 	if snapshots == nil or #snapshots == 0 then
 		return
 	end
-	local tabpage = vim.api.nvim_win_get_tabpage(winid)
-	local entry = { tab = tabpage, session = M.session_of(winid), snapshots = snapshots,
-		what = "window on " .. require('frogman.domains.marks').routines.shows(winid) }
-	require('frogman.held').wait_a_tick(function() return data.pending end, entry, function()
-		M.hold_over(entry.session, entry.snapshots, entry.what)
-	end, ends and function()
-		for _, snapshot in ipairs(entry.snapshots) do
-			history.handles.drop_place(place_of(snapshot)) -- its session ended: they live on its entry
+	if onto or held.never_taken_in(winid) then
+		for _, snapshot in ipairs(snapshots) do
+			history.handles.drop_place(place_of(snapshot))
 		end
-	end or nil)
+		return
+	end
+	local session, what = held.closing_in(winid)
+	local entry = { tab = vim.api.nvim_win_get_tabpage(winid), session = session, snapshots = snapshots, what = what }
+	held.wait_a_tick(function() return data.pending end, entry, function()
+		M.hold_over(entry.session, entry.snapshots, entry.what)
+	end)
+end
+
+---Hold over at once what closes in a session queued, as its last tab closes and its records are written
+---with its closed list, so they take it.
+---
+---@param session_id string The session's pool id
+---@return nil
+function M.flush_pending(session_id)
+	local due = {}
+	for i = #data.pending, 1, -1 do
+		if data.pending[i].session == session_id then
+			table.insert(due, 1, table.remove(data.pending, i))
+		end
+	end
+	for _, entry in ipairs(due) do
+		M.hold_over(entry.session, entry.snapshots, entry.what)
+	end
 end
 
 ---Hold over the snapshots of the windows that closed without their WinClosed, by noautocmd or while
@@ -428,8 +448,17 @@ function M.hold_over_gone()
 	local held = require('frogman.held')
 	for winid, snapshots in pairs(data.by_window) do
 		if not vim.api.nvim_win_is_valid(winid) and not held.closing(winid) then
+			-- onto its saved entry in the session it was last seen in, when it has one there; else held over
+			local session, what = held.last_session(winid) or "", held.last_seen_as("window", winid)
+			local onto = require('frogman.domains.storage').routines.close_onto_entry("window", winid, session, what)
 			data.by_window[winid] = nil
-			M.hold_over(held.last_session(winid) or "", snapshots, held.last_seen_as("window", winid))
+			if onto or held.never_taken_in(winid) then
+				for _, snapshot in ipairs(snapshots) do
+					history.handles.drop_place(place_of(snapshot))
+				end
+			else
+				M.hold_over(session, snapshots, what)
+			end
 		end
 	end
 end
@@ -437,14 +466,13 @@ end
 ---Drop the snapshots still queued to be held over from a tab, as a tab session's load into it starts.
 ---
 ---@param tabpage integer The tab whose queued snapshots go
----@param after integer|nil Only what was queued after this wait (nil = all of it)
 ---@return nil
-function M.drop_pending(tabpage, after)
+function M.drop_pending(tabpage)
 	require('frogman.held').drop_waiting(data.pending, tabpage, function(entry)
 		for _, snapshot in ipairs(entry.snapshots) do
 			history.handles.drop_place(place_of(snapshot))
 		end
-	end, after)
+	end)
 end
 
 ---Move the snapshots held over in one session's scope into another's, each keeping its header,

@@ -29,10 +29,25 @@ M.editor_session = nil
 ---@type {name: string|nil, directory: string}|nil
 M.unnamed = nil
 
----Each session file's entries no window or tab took at its last load, by their indices: their marks
----and snapshots were held over, so the next records write takes them off the file, and a save, which
----writes the windows and tabs anew, forgets them
----@type table<string, {windows: table<integer, true>, tabs: table<integer, true>}>
-M.unclaimed = {}
+---@class EntryClose What a closing window or plain tab put onto its entry, for the records to write
+---@field groups table[]|nil Its groups as the file holds them, nil with none
+---@field snapshots table[]|nil A window's snapshots as the file holds them, nil with none
+---@field what string What it was, as a held-over header names it, should the entry not take them
+---@field session string The pool id of the session it closed in ("" for the whole editor's)
+---@field place string The holder place its files wait in, so none is let go before they land
+---@field state "landed"|"held"|nil Written onto the entry, or held over instead; nil while it waits
+
+---@class EntrySlot A window or tab entry of a session's file, as this editor knows it
+---@field win WinId|nil The window that wrote it or took it at a load
+---@field tab integer|nil The tab that wrote it or took it at a load
+---@field entry table The entry as the file holds it, for a write to know it again
+---@field take_off true|nil An entry no window or tab took at the last load, its marks and snapshots held over since, to come off the file
+---@field close EntryClose|nil What its window's or tab's close put onto it
+
+---Each session file's window and tab entries this editor knows, by file and index: which window or
+---tab each is, and what the next records write does to it, while it's still the entry this editor
+---knows. A save of the file sets them anew, as does a load of it.
+---@type table<string, {windows: table<integer, EntrySlot>, tabs: table<integer, EntrySlot>}>
+M.entries = {}
 
 return M
