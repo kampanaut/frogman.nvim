@@ -24,7 +24,7 @@ end
 ---shows, what each drawn name stands for, the rows drawn as incoming or already set, each group
 ---drawn, by itself and by its key and rows, for the write to know it again, the drafts of the scopes
 ---a mode switch left with edits, and the lines the screen's scope was drawn as.
----@type {buf: Bufnr, win: WinId, origin: WinId, kind: string, id: any, names: table<string, HandleId>, paths: table<string, string>, states: table<string, string>, drawn: table<MarksGroup, true>, groups_drawn: {key: string, name: string, held: boolean|nil, default: boolean|nil, rows: string[]}[], drafts: table[], drawn_lines: string[]|nil}|nil
+---@type {buf: Bufnr, win: WinId, origin: WinId, kind: string, id: any, names: table<string, HandleId>, paths: table<string, string>, states: table<string, string>, drawn: table<MarksGroup, true>, groups_drawn: {key: string, name: string, held: boolean|nil, default: boolean|nil, from: string|nil, rows: string[]}[], drafts: table[], drawn_lines: string[]|nil}|nil
 local open = nil
 
 ---Get the glyph a group's header opens with, in the glyph set in use.
@@ -168,7 +168,7 @@ end
 ---@return string[] lines
 ---@return table<string, HandleId> names
 ---@return table<string, string> states Row (alias and the file's handle) → "incoming" or "already set"
----@return {key: string, name: string, held: boolean|nil, default: boolean|nil, rows: string[]}[] drawn Each group drawn, in order: its key, its flags and its marks, each by its alias and its file
+---@return {key: string, name: string, held: boolean|nil, default: boolean|nil, from: string|nil, rows: string[]}[] drawn Each group drawn, in order: its key, its flags, the name a held-over one with no marks came from, and its marks, each by its alias and its file
 ---@return table<string, string> paths Drawn name → the file's path
 local function draw(kind, id, conflict)
 	local scope = data.scopes[kind][id]
@@ -187,7 +187,9 @@ local function draw(kind, id, conflict)
 	end
 	for g, group in ipairs(groups) do
 		table.insert(lines, glyph .. " " .. group.name)
-		local info = { key = routines().group_key(groups, g), name = group.name, held = group.held, default = group.default, rows = {} }
+		local info = {
+			key = routines().group_key(groups, g), name = group.name, held = group.held, default = group.default, from = group.from, rows = {},
+		}
 		table.insert(drawn, info)
 		local function row(alias, id)
 			table.insert(lines, alias .. " -> " .. (id and name_of(id, names, paths) or ""))
@@ -598,6 +600,30 @@ local function read_groups(lines)
 	return read
 end
 
+---Check if a group the pop-up drew has this group's name and its marks, alias for alias, already.
+---
+---@param group MarksGroup A group that came into the scope since the draw
+---@return boolean drawn
+local function drawn_already(group)
+	local rows = {}
+	for alias, _ in pairs(group.marks) do
+		local handle = routines().handle_of(group, alias)
+		if handle then
+			rows[alias .. "\0" .. handle.id] = true
+		end
+	end
+	for _, drawn in ipairs(open.groups_drawn or {}) do
+		local same = drawn.name == group.name and vim.tbl_count(rows) == #drawn.rows
+		for _, row in ipairs(same and drawn.rows or {}) do
+			same = same and rows[row] == true
+		end
+		if same then
+			return true
+		end
+	end
+	return false
+end
+
 ---Write the pop-up's lines into the scope.
 ---
 ---Lines that hold no edits write nothing. A row naming a file above the first header, or an alias that
@@ -606,8 +632,9 @@ end
 ---A line naming nothing, a row naming no file, a second group of one name, and a header deleted with
 ---some of its rows left under another group's are asked about in one prompt, in the lines' order, and
 ---No writes nothing, the cursor on the first of them. The lines are the scope's groups from then on, in
----order, and what came in since the pop-up was drawn stays below them: a group held over meanwhile, and
----a load's marks, held over under its header. A row it drew follows its file through a move.
+---order, and what came in since the pop-up was drawn stays below them, with marks or none: a group held
+---over meanwhile, and a load's, held over under its header, but for one a group the pop-up drew has
+---already, by its name and its marks. A row it drew follows its file through a move.
 ---Each group written keeps what the drawn group it matches was (`match_groups`): held over, unless it
 ---was moved first, and the default group while its name stands.
 ---
@@ -653,9 +680,11 @@ local function write()
 		history.register_filepath(path) -- a file typed by its path, known from now on
 	end
 	local scope = routines().scope(open.kind, open.id, true)
-	-- what came in since the draw: a group held over, or a load's, with marks
+	-- what came in since the draw: a group held over, or a load's, with marks or none, but for one the
+	-- pop-up drew already and the default with none, which goes as a load's does
 	local arrived = vim.tbl_filter(function(group)
-		return not open.drawn[group] and next(group.marks) ~= nil and (group.held or group.loaded ~= nil)
+		return not open.drawn[group] and (group.held or group.loaded ~= nil) and not drawn_already(group)
+			and not (group.default and next(group.marks) == nil)
 	end, scope.groups)
 	scope.groups = {}
 	for g, group in ipairs(groups) do
@@ -667,11 +696,14 @@ local function write()
 				marks[alias] = handle.id
 			end
 		end
-		-- a held-over group stays held over, renamed or not, unless you moved it first; the default group
-		-- stays the default while its name stands, and is one typed in once it's renamed
+		-- a held-over group stays held over, renamed or not, unless you moved it first, keeping the name an
+		-- empty one came from; the default group stays the default while its name stands, and is one typed in
+		-- once it's renamed
 		local was = match[g] and drawn_groups[match[g]] or {}
+		local held = (g > 1 and was.held) or nil
 		table.insert(scope.groups, {
-			name = group.name, marks = marks, held = (g > 1 and was.held) or nil, default = (was.default and was.name == group.name) or nil,
+			name = group.name, marks = marks, held = held, default = (was.default and was.name == group.name) or nil,
+			from = held and was.from or nil,
 		})
 	end
 	-- what came in since the draw stays below: a load's marks held over under its header, as a load
@@ -682,10 +714,11 @@ local function write()
 			for _, other in ipairs(scope.groups) do
 				taken[other.name] = true
 			end
+			group.from = next(group.marks) == nil and group.name or nil -- what an empty one is known by
 			group.name = require('frogman.held').held_header(group.loaded or "loaded", taken)
 			group.held = true
 		end
-		group.loaded = nil
+		group.default, group.loaded = nil, nil -- held over, it's no default
 		table.insert(scope.groups, group)
 	end
 	routines().hold_scope(open.kind, open.id)

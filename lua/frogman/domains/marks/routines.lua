@@ -212,8 +212,8 @@ end
 ---Move a session scope's held-over groups into another's, as a detached list that goes leaves them to
 ---the whole editor's, each keeping its name, numbered on when the scope it goes to has it.
 ---
----@param from_id string
----@param to_id string
+---@param from_id string The pool id of the session they leave
+---@param to_id string The pool id of the session they go to ("" for the whole editor's)
 ---@return nil
 function M.move_held(from_id, to_id)
 	local from = data.scopes.session[from_id]
@@ -233,7 +233,7 @@ function M.move_held(from_id, to_id)
 				name = group.name .. " #" .. n
 			end
 			taken[name] = true
-			table.insert(to.groups, { name = name, marks = vim.deepcopy(group.marks), held = true })
+			table.insert(to.groups, { name = name, marks = vim.deepcopy(group.marks), held = true, from = group.from })
 		else
 			table.insert(kept, group)
 		end
@@ -244,9 +244,10 @@ function M.move_held(from_id, to_id)
 end
 
 ---Give a session's scope the held-over groups a session file holds, each kept as it is, after its own,
----but for one whose marks a held-over group there has already, which it would only repeat.
+---with marks or none, but for one a held-over group there has already, which it would only repeat: one
+---with its marks, or, for one with none, held over before from a group of the same name.
 ---
----@param session_id string
+---@param session_id string The session's pool id ("" for the whole editor's)
 ---@param groups table[]|nil Saved groups, their marks by hash; only the held-over ones come in
 ---@param paths table<Filehash, string>|nil The file's paths, for a file the registry doesn't know yet
 ---@return nil
@@ -256,8 +257,9 @@ function M.adopt_held(session_id, groups, paths)
 		return
 	end
 	local scope = M.scope("session", session_id, true)
+	local before = vim.tbl_filter(function(g) return g.held end, scope.groups) -- what's there before these come in
 	for _, saved in ipairs(held) do
-		local group = { name = saved.name, marks = {}, held = true }
+		local group = { name = saved.name, marks = {}, held = true, from = type(saved.from) == "string" and saved.from or nil }
 		for alias, filehash in pairs(type(saved.marks) == "table" and saved.marks or {}) do
 			if not history.handles.of_hash(filehash) and paths and paths[filehash] then
 				history.register_filepath(paths[filehash])
@@ -268,10 +270,16 @@ function M.adopt_held(session_id, groups, paths)
 			end
 		end
 		local there = false
-		for _, other in ipairs(scope.groups) do
-			there = there or (other.held and vim.deep_equal(other.marks, group.marks))
+		if next(group.marks) then
+			for _, other in ipairs(scope.groups) do
+				there = there or (other.held and vim.deep_equal(other.marks, group.marks))
+			end
+		else
+			for _, other in ipairs(before) do
+				there = there or (group.from ~= nil and other.from == group.from and next(other.marks) == nil)
+			end
 		end
-		if next(group.marks) and not there then
+		if not there then
 			table.insert(scope.groups, group)
 		end
 	end
@@ -536,31 +544,49 @@ end
 
 ---Get a scope's groups as a session file holds them.
 ---
----Each group keeps its name, its marks, each by its alias and its file's hash, and whether it's held
----over or the default group. A group typed in is kept even while it has no marks, so it stays where it
----is across a restart; the default group and a held-over one only while they have some. A scope with
----none gives nil.
+---Each group keeps its name, its marks, each by its alias and its file's hash, whether it's held over or
+---the default group, and the name a held-over group with no marks came from. Every group is kept, with
+---marks or none, so it stays where it is across a restart: a group goes only when its header is deleted
+---in the marks pop-up. A scope with none gives nil.
 ---
 ---@param kind "window"|"tab"|"session" The scope's kind
 ---@param id any Its window, tab or session's pool id
----@return {name: string, marks: table<string, Filehash>, held: true|nil, default: true|nil}[]|nil groups
+---@return {name: string, marks: table<string, Filehash>, held: true|nil, default: true|nil, from: string|nil}[]|nil groups
 function M.serialise(kind, id)
 	local scope = data.scopes[kind][id]
 	local groups = {}
 	for _, group in ipairs(scope and scope.groups or {}) do
-		local marks = M.hashes_of(group)
-		if next(marks) or not (group.default or group.held) then
-			table.insert(groups, { name = group.name, marks = marks, held = group.held or nil, default = group.default or nil })
-		end
+		table.insert(groups, {
+			name = group.name, marks = M.hashes_of(group), held = group.held or nil, default = group.default or nil, from = group.from,
+		})
 	end
 	return #groups > 0 and groups or nil
 end
 
+---Make a live group from one a session file holds: each mark by its file's handle, a file the registry
+---doesn't know left out.
+---
+---@param saved {name: string, marks: table<string, Filehash>, held: true|nil, default: true|nil, from: string|nil} The file's group
+---@param what string|nil The load, as a held-over group names it, kept on the group
+---@return MarksGroup group
+local function from_saved(saved, what)
+	local group = {
+		name = saved.name, marks = {}, held = saved.held == true or nil, default = saved.default == true or nil, loaded = what,
+		from = type(saved.from) == "string" and saved.from or nil,
+	}
+	for alias, filehash in pairs(type(saved.marks) == "table" and saved.marks or {}) do
+		local handle = history.handles.of_hash(filehash)
+		if handle then
+			group.marks[alias] = handle.id
+		end
+	end
+	return group
+end
+
 ---Give a scope the groups a session file holds.
 ---
----Each mark takes its file's handle. A file the registry doesn't know is left out. A group typed in
----comes back even with no marks; the default group and a held-over one only with some. A scope left
----with no group goes.
+---Each mark takes its file's handle. A file the registry doesn't know is left out. Every group comes
+---back, with marks or none. A scope left with no group goes.
 ---
 ---@param kind "window"|"tab"|"session" The scope's kind
 ---@param id any Its window, tab or session's pool id
@@ -571,20 +597,37 @@ end
 function M.restore(kind, id, groups, what)
 	local scope = { groups = {} }
 	for _, saved in ipairs(type(groups) == "table" and groups or {}) do
-		local group = {
-			name = saved.name, marks = {}, held = saved.held == true or nil, default = saved.default == true or nil, loaded = what,
-		}
-		for alias, filehash in pairs(type(saved.marks) == "table" and saved.marks or {}) do
-			local handle = history.handles.of_hash(filehash)
-			if handle then
-				group.marks[alias] = handle.id
-			end
-		end
-		if next(group.marks) or not (group.default or group.held) then
-			table.insert(scope.groups, group)
+		if type(saved) == "table" then
+			table.insert(scope.groups, from_saved(saved, what))
 		end
 	end
 	data.scopes[kind][id] = #scope.groups > 0 and scope or nil
+	M.hold_scope(kind, id)
+end
+
+---Add the groups a session file holds below a scope's own, but for one whose name the scope has and the
+---default group with no marks: a window that keeps its own marks at a load takes its entry's groups typed
+---in with none so.
+---
+---@param kind "window"|"tab"|"session" The scope's kind
+---@param id any Its window, tab or session's pool id
+---@param groups table[]|nil The file's groups
+---@param what string|nil The load, as a held-over group names it: kept on each group, for a marks pop-up
+---with edits not written, whose write holds them over under it
+---@return nil
+function M.add_below(kind, id, groups, what)
+	local scope = M.scope(kind, id, true)
+	local named = {}
+	for _, group in ipairs(scope.groups) do
+		named[group.name] = true
+	end
+	for _, saved in ipairs(type(groups) == "table" and groups or {}) do
+		local empty_default = type(saved) == "table" and saved.default and not next(type(saved.marks) == "table" and saved.marks or {})
+		if type(saved) == "table" and not named[saved.name] and not empty_default then
+			named[saved.name] = true
+			table.insert(scope.groups, from_saved(saved, what))
+		end
+	end
 	M.hold_scope(kind, id)
 end
 
@@ -670,10 +713,12 @@ function M.held_now(session_id)
 end
 
 ---Let go of the copies held over of these groups, as the window they came from takes them back from its
----entry: each group held over before the load, a close's or a load's, holding one of them alias for alias.
+---entry: for each group, one held over before the load, a close's or a load's, holding it alias for alias.
 ---
 ---A copy you edited no longer holds one of them, and one you moved up first is a group of your own, not
----held over, so both stay; what the load itself holds over, another entry's, stays too.
+---held over, so both stay; what the load itself holds over, another entry's, stays too. A copy with no
+---marks is known by the name of the group it was held over from, and goes when the window takes back an
+---empty group of that name. A group takes one copy back, so another window's copy of the same stays.
 ---
 ---@param session_id string The session's pool id ("" for the whole editor's)
 ---@param groups {name: string, marks: table<string, Filehash>}[] The groups the window took back, saved
@@ -684,15 +729,14 @@ function M.drop_copies(session_id, groups, earlier)
 	if scope == nil then
 		return
 	end
-	for i = #scope.groups, 1, -1 do
-		local group = scope.groups[i]
-		if earlier[group] then
-			local marks = M.hashes_of(group)
-			for _, saved in ipairs(groups) do
-				if type(saved) == "table" and vim.deep_equal(saved.marks, marks) then
-					table.remove(scope.groups, i)
-					break
-				end
+	for _, saved in ipairs(groups) do
+		local brings = type(saved) == "table" and type(saved.marks) == "table" and saved.marks or {}
+		for i, group in ipairs(scope.groups) do
+			local marks = earlier[group] and M.hashes_of(group)
+			if type(saved) == "table" and marks and vim.deep_equal(brings, marks)
+				and (next(marks) ~= nil or (group.from ~= nil and group.from == saved.name)) then
+				table.remove(scope.groups, i)
+				break
 			end
 		end
 	end
@@ -701,16 +745,18 @@ end
 
 ---Hold groups over in a session's scope, below its groups.
 ---
----Each group with marks becomes one of its own, held over, named after what it was and when. A
----held-over group drives the keys only once you move it first yourself.
+---Each group becomes one of its own, held over, with marks or none, named after what it was and when,
+---and after its own name when it's one of several; the default group goes instead while it has no marks,
+---frogman having made it. A held-over group drives the keys only once you move it first yourself.
 ---
 ---@param session_id string The session's pool id ("" for the whole editor's)
----@param groups MarksGroup[]|{name: string, marks: table<string, Filehash>}[] The groups, live (handle ids) or saved (hashes)
+---@param groups MarksGroup[]|{name: string, marks: table<string, Filehash>, default: true|nil}[] The groups, live (handle ids) or saved (hashes)
 ---@param what string What they were, like "window on api.lua"
 ---@param saved boolean|nil Whether the groups are saved ones, their marks by hash
 ---@param once boolean|nil Whether to skip a group a held-over group of the scope has already, alias for alias, as a load's are: a records write keeps the windows as the last save wrote them, so the same entry comes back at every load
+---@param earlier table<MarksGroup, true>|nil With `once`, the groups held over before the load: a group with no marks is one of them already when one of them was held over from a group of its name and has none
 ---@return nil
-function M.hold_over(session_id, groups, what, saved, once)
+function M.hold_over(session_id, groups, what, saved, once, earlier)
 	local scope = M.scope("session", session_id, true)
 	-- each group's marks by the handles they still have: a mark whose file nothing knows goes
 	local kept = {}
@@ -728,17 +774,26 @@ function M.hold_over(session_id, groups, what, saved, once)
 			end
 		end
 	end
-	-- a group's name goes in its header when another of them keeps marks too: an empty group isn't counted
-	local marked = 0
-	for i, _ in ipairs(groups) do
-		if next(kept[i]) then
-			marked = marked + 1
-		end
+	-- the default group with no marks goes; a group's name goes in its header when it's one of several held
+	-- over, with marks or none
+	local going = {}
+	for i, group in ipairs(groups) do
+		going[i] = group.default and next(kept[i]) == nil or nil
 	end
-	local several = marked > 1
+	local several = #groups - vim.tbl_count(going) > 1
 	-- the groups held over before this call: two groups of one entry with the same marks are both kept
 	local before = vim.tbl_filter(function(g) return g.held end, scope.groups)
-	local function held_already(marks)
+	local function held_already(marks, name)
+		if next(marks) == nil then
+			-- one with no marks is known by the name it was held over from, among the groups held before the
+			-- load, so two empty groups of one name this load holds over are both kept
+			for _, other in ipairs(scope.groups) do -- one this load cleared since isn't there to be it
+				if earlier and earlier[other] and other.held and other.from == name and next(other.marks) == nil then
+					return true
+				end
+			end
+			return false
+		end
 		for _, other in ipairs(before) do
 			if vim.deep_equal(other.marks, marks) then
 				return true
@@ -748,11 +803,14 @@ function M.hold_over(session_id, groups, what, saved, once)
 	end
 	for i, group in ipairs(groups) do
 		local marks = kept[i]
-		if next(marks) and not (once and held_already(marks)) then
+		if not going[i] and not (once and held_already(marks, group.name)) then
 			if not M.first_group(scope) then
 				M.first_group(scope, true) -- the keys keep a group of their own, ahead of what's held over
 			end
-			table.insert(scope.groups, { name = held_name(scope, several and (what .. ", " .. group.name) or what), marks = marks, held = true })
+			table.insert(scope.groups, {
+				name = held_name(scope, several and (what .. ", " .. group.name) or what), marks = marks, held = true,
+				from = next(marks) == nil and (group.from or group.name) or nil, -- what an empty one is known by
+			})
 		end
 	end
 	M.hold_scope("session", session_id)
@@ -785,9 +843,8 @@ function M.queue_hold_over(tabpage, session_id, groups, what, ends)
 				table.insert(ids, handle.id)
 			end
 		end
-		if next(marks) then
-			table.insert(copy, { name = group.name, marks = marks })
-		end
+		-- with marks or none, a group going only by its header, but for the default with none
+		table.insert(copy, { name = group.name, marks = marks, default = group.default })
 	end
 	if #copy == 0 then
 		return

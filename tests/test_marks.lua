@@ -2028,8 +2028,8 @@ T['T957 [char] (M15, DESK.md:1070-1071, :1065) a typed group is saved even while
 	]]), { 'feature' })
 end
 
--- The default group a mark's add made, emptied again: not saved.
-T['T958 [char] (M15, DESK.md:1065) the default group isn\'t saved while it\'s empty'] = function()
+-- The default group a mark's add made, emptied again: saved, it comes back empty.
+T['T958 [char] (M15, DESK.md:1065) the default group emptied again is saved, and comes back empty'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e b', ADD .. 'a>', OPEN })
@@ -2041,7 +2041,10 @@ T['T958 [char] (M15, DESK.md:1065) the default group isn\'t saved while it\'s em
 	Misc.restore(child, { 'b' }, 'b')
 	eq(S2.load(child), { true })
 	child.settle(300)
-	eq(child.lua('return require("frogman.domains.marks").data.scopes.window[vim.api.nvim_get_current_win()] == nil'), true)
+	eq(child.lua([[
+		local s = require('frogman.domains.marks').data.scopes.window[vim.api.nvim_get_current_win()]
+		return s and vim.tbl_map(function(g) return { name = g.name, marked = next(g.marks) ~= nil } end, s.groups) or {}
+	]]), { { name = 'main', marked = false } })
 end
 
 -- The current window's groups, each with its marks by file letter.
@@ -2060,8 +2063,8 @@ local WINDOW_GROUPS = [[
 ]]
 
 -- A tab session's window entry bringing a typed group with no marks: a window with marks of its own
--- keeps them, nothing held over, and a window with none takes the group.
-T['T959 [char] (M15, S1 Load, DESK.md:1102, :1070) an entry bringing only an empty typed group leaves a window\'s own marks, and gives a window with none the group'] = function()
+-- keeps them and takes the group below them, nothing held over, and a window with none takes the group.
+T['T959 [char] (M15, S1 Load, DESK.md:1102, :1070) an entry bringing only an empty typed group leaves a window\'s own marks, the group below them, and gives a window with none the group'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', OPEN })
@@ -2086,7 +2089,8 @@ T['T959 [char] (M15, S1 Load, DESK.md:1102, :1070) an entry bringing only an emp
 	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
 	child.settle(300)
 	eq({ own = own, held = held, typed = child.lua(WINDOW_GROUPS) },
-		{ own = { { name = 'main', marks = { a = 'b' } } }, held = 0, typed = { { name = 'feature', marks = {} } } })
+		{ own = { { name = 'main', marks = { a = 'b' } }, { name = 'feature', marks = {} } }, held = 0,
+			typed = { { name = 'feature', marks = {} } } })
 end
 
 -- Deleting a held-over group's header and rows, the way to clear it, asks nothing: no row of it is left
@@ -2627,63 +2631,6 @@ T['T979 [char] (M15, DESK.md:1070) an empty typed group first is saved, comes ba
 	eq({ names = names, shown = child.shown() }, { names = { 'feature', 'main' }, shown = 'e' })
 end
 
--- A saved window entry no window takes, holding only an empty typed group, is no entry the records
--- write takes marks off: nothing was held over for it.
-T['T980 [char] (M15, S1 Records, DESK.md:1070) an entry no window takes holding only an empty typed group keeps it through the records'] = function()
-	local s = S2.shared()
-	S2.start(child, s)
-	child.steps({ ':e a' })
-	child.cmd('vsplit')
-	child.settle()
-	child.steps({ ':e b', OPEN })
-	local lines = popup().lines
-	lines[1] = '❖ feature'
-	write_lines(lines)
-	child.cmd('close')
-	child.settle()
-	eq(S2.save(child), { true })
-	S2.start(child, s)
-	Misc.restore(child, { 'a' }, 'a')
-	eq(S2.load(child), { true })
-	child.settle(300)
-	child.lua("vim.api.nvim_exec_autocmds('VimLeavePre', {})") -- the quit writes the records
-	eq(child.lua([[
-		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
-		for _, entry in ipairs(saved.windows or {}) do
-			if type(entry[10]) == 'table' and entry[10][1] and entry[10][1].name == 'feature' then return true end
-		end
-		return false
-	]]), true)
-end
-
--- The same for a saved tab no tab takes.
-T['T981 [char] (M15, S1 Records, DESK.md:1070) a saved tab no tab takes holding only an empty typed group keeps it through the records'] = function()
-	local s = S2.shared()
-	S2.start(child, s)
-	child.steps({ ':e a' })
-	child.cmd('tabnew')
-	child.settle()
-	child.steps({ ':e b', "<M-'><M-2>", OPEN })
-	local lines = popup().lines
-	lines[1] = '❖ feature'
-	write_lines(lines)
-	child.cmd('close')
-	child.settle()
-	eq(S2.save(child), { true })
-	S2.start(child, s)
-	Misc.restore(child, { 'a' }, 'a')
-	eq(S2.load(child), { true })
-	child.settle(300)
-	child.lua("vim.api.nvim_exec_autocmds('VimLeavePre', {})") -- the quit writes the records
-	eq(child.lua([[
-		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
-		for _, tab in ipairs(saved.tabs or {}) do
-			if type(tab.groups) == 'table' and tab.groups[1] and tab.groups[1].name == 'feature' then return true end
-		end
-		return false
-	]]), true)
-end
-
 -- A scope's groups, each with its marks by file letter, its held flag and whether its name is a load's.
 local SCOPE_GROUPS = [[
 	local kind, id = ...
@@ -2996,9 +2943,9 @@ T['T1005 [char] (M15, S1 Load, DESK.md:1085-1086) a plain tab\'s marks held over
 		tab = (names[1] or ''):find('tab on ', 1, true) ~= nil }, { n = 1, load = true, tab = false })
 end
 
--- A window entry no window takes, holding one marked group and a group typed in with none: held over at
--- the load under the load's header alone, the empty group not counted toward naming the group.
-T['T1006 [char] (M15, S1 Load, DESK.md:1085-1086) an entry with one marked group and an empty one is held over under the load\'s header alone'] = function()
+-- A window entry no window takes, holding one marked group and a group typed in with none: both held over
+-- at the load, each under the load's header with its group's name.
+T['T1006 [char] (M15, S1 Load, DESK.md:1085-1086, :1079) an entry with one marked group and an empty one has both held over, each named'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ADD .. 'a>', ':e d', OPEN })
@@ -3011,8 +2958,9 @@ T['T1006 [char] (M15, S1 Load, DESK.md:1085-1086) an entry with one marked group
 	eq(S2.load(child), { true })
 	child.settle(300)
 	local names = child.lua(HELD_NAMES, { '' })
-	eq({ n = #names, plain = (names[1] or ''):find(', loaded · ', 1, true) ~= nil, named = (names[1] or ''):find(', main', 1, true) ~= nil },
-		{ n = 1, plain = true, named = false })
+	table.sort(names)
+	eq({ n = #names, feature = (names[1] or ''):find(', loaded, feature · ', 1, true) ~= nil,
+		main = (names[2] or ''):find(', loaded, main · ', 1, true) ~= nil }, { n = 2, feature = true, main = true })
 end
 
 -- A window with two marked groups closed while you work leaves one held-over group for each, its group's
@@ -3428,6 +3376,695 @@ T['T1022 [char] (M15, S1 Save, DESK.md:1076-1077) only a tab session saved as an
 	child.settle(300)
 	eq({ editor = child.lua(GROUPS_IN_ORDER, { '' }), u = child.lua(GROUPS_IN_ORDER, { u }) },
 		{ editor = { 'main a=a' }, u = { 'main s=c' } })
+end
+
+-- A list of group lines with the times taken out of held-over headers.
+local function untimed(list)
+	return vim.tbl_map(function(line) return (line:gsub(' · %d%d%-%d%d %d%d:%d%d', '')) end, list)
+end
+
+-- A window's groups, each by its name and its marks by file letter.
+local WIN_GROUPS = [[
+	local win = ...
+	local H = require('frogman.domains.history')
+	local s = require('frogman.domains.marks').data.scopes.window[win]
+	return vim.tbl_map(function(g)
+		local marks = {}
+		for alias, hid in pairs(g.marks) do
+			local h = H.handles.get(H.handles.resolve(hid))
+			marks[alias] = h and vim.fn.fnamemodify(H.get_filepath_from_hash(h.hash), ':t:r') or false
+		end
+		return { name = g.name, held = g.held == true, marks = marks }
+	end, s and s.groups or {})
+]]
+
+-- A held-over group whose rows are all emptied, its header kept, is saved and loaded back empty, and so is
+-- the empty default group the hold-over made ahead of it.
+T['T1023 [char] (M15, DESK.md:1085, :1065) a held-over group emptied in the pop-up is saved and loaded back'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	local lines, held = held_session_popup()
+	local name = lines[held]:gsub('^❖ ', '')
+	lines[held + 1] = 'a -> '
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a' }, 'a')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	eq(child.lua(GROUPS_IN_ORDER, { '' }), { 'main ', 'held ' .. name .. ' ' })
+end
+
+-- An empty default group beside a typed one is saved, and comes back first.
+T['T1024 [char] (M15, DESK.md:1065, :1070) an empty default group beside a typed one is saved and comes back first'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e b', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({}))
+	vim.list_extend(lines, vim.list_extend({ '❖ dev' }, rows({ a = 'b.txt' })))
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'b' }, 'b')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	eq(child.lua(WIN_GROUPS, { child.lua('return vim.api.nvim_get_current_win()') }),
+		{ { name = 'main', held = false, marks = {} }, { name = 'dev', held = false, marks = { a = 'b' } } })
+end
+
+-- A window closed with a marked group and an empty typed one leaves both held over, each named.
+T['T1025 [char] (M15, DESK.md:1079, :1085) a window closed with a marked group and an empty typed one leaves both held over, each named'] = function()
+	child.steps({ ':e a' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e c', ADD .. 'a>', ':e d', OPEN })
+	write_lines(vim.list_extend({ '❖ main', 'a -> c.txt', '❖ todo' }, rows({})))
+	child.cmd('close')
+	child.settle()
+	child.cmd('close')
+	child.settle(300)
+	eq(untimed(child.lua(GROUPS_IN_ORDER, { '' })),
+		{ 'main ', 'held held over · window on d.txt, main a=c', 'held held over · window on d.txt, todo ' })
+end
+
+-- A window whose only group is a typed one with no marks holds it over, empty, as it closes.
+T['T1026 [char] (M15, DESK.md:1079) a window closed with only an empty typed group holds it over, empty'] = function()
+	child.steps({ ':e a' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e d', OPEN })
+	local lines = popup().lines
+	lines[1] = '❖ todo'
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	child.cmd('close')
+	child.settle(300)
+	eq(untimed(child.lua(GROUPS_IN_ORDER, { '' })), { 'main ', 'held held over · window on d.txt ' })
+end
+
+-- The same window closed without its events: the cleanup pass holds its empty group over too.
+T['T1027 [char] (M15, DESK.md:1079) a window closed without its events holds its empty typed group over'] = function()
+	child.steps({ ':e a' })
+	child.cmd('split')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e d', OPEN })
+	local lines = popup().lines
+	lines[1] = '❖ todo'
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	child.cmd('wincmd p')
+	child.settle()
+	gone(split)
+	eq(untimed(child.lua(GROUPS_IN_ORDER, { '' })), { 'main ', 'held held over · window on d.txt ' })
+end
+
+-- A plain tab whose only tab group is a typed one with no marks holds it over, empty, as it closes.
+T['T1028 [char] (M15, DESK.md:1079) a plain tab closed with only an empty typed group holds it over, empty'] = function()
+	child.steps({ ':e a' })
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e d', "<M-'><M-2>", OPEN })
+	local lines = popup().lines
+	lines[1] = '❖ todo'
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	child.steps({ "<M-'><M-1>" })
+	child.cmd('tabclose')
+	child.settle(300)
+	eq(untimed(child.lua(GROUPS_IN_ORDER, { '' })), { 'main ', 'held held over · tab on d.txt ' })
+end
+
+-- A window entry no window takes, holding only a typed group with no marks: held over at the load, empty, and
+-- the entry gives it up at the records write, as one with marks does.
+T['T1029 [char] (M15, S1 Load, DESK.md:1079, :1085) an entry no window takes holds its empty typed group over, and gives it up in the file'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e d', OPEN })
+	local lines = popup().lines
+	lines[1] = '❖ todo'
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'x' }, 'x')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local held = untimed(child.lua(GROUPS_IN_ORDER, { '' }))
+	S2.start(child, s) -- the quit writes the records
+	local carrying = child.lua([[
+		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil) or {}
+		local n = 0
+		for _, entry in ipairs(saved.windows or {}) do
+			if type(entry) == 'table' and entry[10] ~= nil then n = n + 1 end
+		end
+		return n
+	]])
+	eq({ held = #held, typed = (held[2] or ''):find('^held held over · .*, loaded $') ~= nil, carrying = carrying },
+		{ held = 2, typed = true, carrying = 0 })
+end
+
+-- A load's clearing of held-over copies leaves an empty held-over group alone: two empty groups carry
+-- nothing to tell them apart by.
+T['T1030 [char] (M15, S1 Load, DESK.md:1087) a load\'s clearing leaves an empty held-over group alone'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', OPEN })
+	local lines = popup().lines
+	lines[1] = '❖ other'
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	eq(S2.save(child), { true })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e c', OPEN })
+	lines = popup().lines
+	lines[1] = '❖ todo'
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	child.cmd('close')
+	child.settle(1200) -- held over, and written into the file with the records
+	eq(S2.load(child), { true })
+	child.settle(300)
+	eq(untimed(child.lua(GROUPS_IN_ORDER, { '' })), { 'main ', 'held held over · window on c.txt ' })
+end
+
+-- The pop-up's write keeps an empty group held over while it held edits, below its lines.
+T['T1031 [char] (M15, DESK.md:1093, :1079) the marks pop-up keeps an empty group held over meanwhile below its lines'] = function()
+	child.steps({ ':e a' })
+	child.cmd('split')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e d', OPEN })
+	local lines = popup().lines
+	lines[1] = '❖ todo'
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	child.cmd('wincmd p')
+	child.settle()
+	child.steps({ "<M-'><M-3>", OPEN })
+	lines = popup().lines
+	lines[1] = '❖ mine'
+	child.lua('vim.api.nvim_buf_set_lines(vim.fn.bufnr("frogman://marks"), 0, -1, false, ...)', { lines })
+	child.lua('vim.api.nvim_win_close(..., false)', { split })
+	child.settle(300)
+	child.cmd('silent! write')
+	child.settle(100)
+	eq(untimed(child.lua(GROUPS_IN_ORDER, { '' })), { 'mine ', 'held held over · window on d.txt ' })
+end
+
+-- A load bringing a window the marks it has already, under the pop-up's edits: the write keeps nothing of it
+-- below, a drawn group having the same name and marks.
+T['T1032 [char] (M15, S1 Load, DESK.md:1093) an unchanged load under the pop-up\'s edits leaves nothing below'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e b', ADD .. 'a>', ':e a' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e b', ADD .. 'a>', ':e a' })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ OPEN })
+	child.lua('vim.api.nvim_buf_set_lines(vim.fn.bufnr("frogman://marks"), 0, -1, false, { "❖ main", "a -> b.txt", "d -> d.txt" })')
+	child.lua('vim.api.nvim_set_current_win(...)', { win })
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	child.lua('vim.api.nvim_set_current_win(vim.fn.bufwinid("frogman://marks"))')
+	child.cmd('silent! write')
+	child.settle(100)
+	eq(child.lua(WIN_GROUPS, { win }), { { name = 'main', held = false, marks = { a = 'b', d = 'd' } } })
+end
+
+-- A load that holds a matched window's own groups over leaves out an empty one its entry brings back, by
+-- its name, having no marks to be known by, and holds over an empty one the entry doesn't name.
+T['T1033 [char] (M15, S1 Load, DESK.md:1102, :1079) a load holding a window\'s own groups over knows an empty one by its name'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', ADD .. 'a>', ':e a', OPEN })
+	write_lines(vim.list_extend({ '❖ main', 'a -> c.txt', '❖ todo' }, rows({})))
+	child.cmd('close')
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e b', ADD .. 'a>', ':e a', OPEN })
+	local lines = vim.list_extend({ '❖ main', 'a -> b.txt', '❖ todo' }, rows({}))
+	vim.list_extend(lines, vim.list_extend({ '❖ extra' }, rows({})))
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local id = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	eq({ window = child.lua(WIN_GROUPS, { win }), held = untimed(child.lua(GROUPS_IN_ORDER, { id })) },
+		{ window = { { name = 'main', held = false, marks = { a = 'c' } }, { name = 'todo', held = false, marks = {} } },
+			held = { 'main ', 'held held over · t, loaded into tab 1, main a=b', 'held held over · t, loaded into tab 1, extra ' } })
+end
+
+-- A saved plain tab no tab takes at a load, holding only a typed tab group with no marks: held over, empty,
+-- and the tab leaves the file at the records write.
+T['T1034 [char] (M15, S1 Load, DESK.md:1079, :1085) a saved tab no tab takes holds its empty typed group over, and leaves the file'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e d', "<M-'><M-2>", OPEN })
+	local lines = popup().lines
+	lines[1] = '❖ todo'
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	child.steps({ "<M-'><M-1>" })
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'x' }, 'x')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local held = untimed(child.lua(GROUPS_IN_ORDER, { '' }))
+	S2.start(child, s) -- the quit writes the records
+	local tabs = child.lua([[
+		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil) or {}
+		return #(saved.tabs or {})
+	]])
+	eq({ n = #held, first = held[1], typed = (held[2] or ''):find('^held held over · .+, loaded $') ~= nil, tabs = tabs },
+		{ n = 2, first = 'main ', typed = true, tabs = 0 })
+end
+
+-- A window closed with an empty default group and a marked typed one: the default goes with the window,
+-- the typed one is held over alone, unnamed.
+T['T1035 [char] (M15, DESK.md:1079, :1065) a window closed with an empty default group holds over only its other groups'] = function()
+	child.steps({ ':e a' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e d', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({}))
+	vim.list_extend(lines, vim.list_extend({ '❖ feature' }, rows({ a = 'c.txt' })))
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	child.cmd('close')
+	child.settle(300)
+	eq(untimed(child.lua(GROUPS_IN_ORDER, { '' })), { 'main ', 'held held over · window on d.txt a=c' })
+end
+
+-- A window entry no window takes, holding an empty default group and a marked typed one: the load holds the
+-- typed one over alone, the default going.
+T['T1036 [char] (M15, S1 Load, DESK.md:1079, :1065) an entry no window takes holds over only its groups but an empty default'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e d', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({}))
+	vim.list_extend(lines, vim.list_extend({ '❖ feature' }, rows({ a = 'c.txt' })))
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'x' }, 'x')
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local held = untimed(child.lua(GROUPS_IN_ORDER, { '' }))
+	eq({ n = #held, first = held[1], feature = (held[2] or ''):find('^held held over · .+, loaded a=c$') ~= nil },
+		{ n = 2, first = 'main ', feature = true })
+end
+
+-- A tab session's load replacing a matched window's own groups: its empty default isn't held over.
+T['T1037 [char] (M15, S1 Load, DESK.md:1102, :1065) a load replacing a window\'s own groups holds over none of its empty default'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', ADD .. 'a>', ':e a' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e a', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({}))
+	vim.list_extend(lines, vim.list_extend({ '❖ mine' }, rows({ s = 'e.txt' })))
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local id = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	eq(untimed(child.lua(GROUPS_IN_ORDER, { id })), { 'main ', 'held held over · t, loaded into tab 1 s=e' })
+end
+
+-- A window keeping its own marks at a tab session's load, its entry bringing an empty default group and an
+-- empty typed one: it takes the typed one below its own, not the default.
+T['T1038 [char] (M15, S1 Load, DESK.md:1102, :1065) a window keeping its own marks takes its entry\'s empty typed group, not its empty default'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({}))
+	vim.list_extend(lines, vim.list_extend({ '❖ feature' }, rows({})))
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e b', ADD .. 'a>', OPEN })
+	lines = popup().lines
+	lines[1] = '❖ work'
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	child.steps({ ':e a' })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	eq(child.lua(WIN_GROUPS, { win }), { { name = 'work', held = false, marks = { a = 'b' } }, { name = 'feature', held = false, marks = {} } })
+end
+
+-- P1 with an empty group: a tab session loaded twice, first into a tab its entries don't match, then into one
+-- they do: the window takes its empty group back, and the empty copy the first load held over goes, known by
+-- the name of the group it came from.
+T['T1039 [char] (M15, S1 Load, DESK.md:1087) a tab session loaded twice, first where no entry matches, gives the window its empty group once'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e c', ADD .. 'a>', ':e d', OPEN })
+	write_lines(vim.list_extend({ '❖ main', 'a -> c.txt', '❖ todo' }, rows({})))
+	child.cmd('close')
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local first = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	local held_first = #child.lua(HELD_NAMES, { first })
+	eq(S2.load_tab_session(child, 't'), { true })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	local pool = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	eq({ same = pool == first, held_first = held_first, held = child.lua(HELD_NAMES, { pool }), window = child.lua(WIN_GROUPS, { win }) },
+		{ same = true, held_first = 2, held = {},
+			window = { { name = 'main', held = false, marks = { a = 'c' } }, { name = 'todo', held = false, marks = {} } } })
+end
+
+-- A tab session loaded again where it's open, before any records write: an entry no window takes holds its
+-- empty group over once, not again.
+T['T1040 [char] (M15, S1 Load, DESK.md:1079, :1101) a tab session loaded again holds no repeat of an untaken entry\'s empty group over'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e d' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e c', OPEN })
+	local lines = popup().lines
+	lines[1] = '❖ todo'
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e d' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local pool = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	local once = #child.lua(HELD_NAMES, { pool })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	eq({ once = once, again = #child.lua(HELD_NAMES, { pool }) }, { once = 1, again = 1 })
+end
+
+-- Two entries no window takes in one load, each with an empty group of one name: both are held over.
+T['T1041 [char] (M15, S1 Load, DESK.md:1079) two entries no window takes, each with an empty group of one name, have both held over'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e d' })
+	for _, f in ipairs({ 'c', 'e' }) do
+		child.cmd('vsplit')
+		child.settle()
+		child.steps({ ':e ' .. f, OPEN })
+		local lines = popup().lines
+		lines[1] = '❖ todo'
+		write_lines(lines)
+		child.cmd('close')
+		child.settle()
+	end
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e d' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local pool = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	eq(#child.lua(HELD_NAMES, { pool }), 2)
+end
+
+-- Another editor's save stands in: t's file gains an empty group of its own, notes, that memory doesn't have.
+-- Loaded again where it's open, memory winning: notes is held over, once, and not again at the next load.
+T['T1042 [char] (M15, S1 Load, DESK.md:1101) a load where the session is open holds an empty group only its file has over, once'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e d' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	child.lua([[
+		local crypto = require('frogman.domains.storage.crypto')
+		local dir = vim.fn.getcwd(-1, -1)
+		local path = require('frogman.configs').session_dir .. vim.fn.sha256(dir .. "\n" .. "t")
+		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
+		local salt = bytes:sub(5, 4 + crypto.salt_length)
+		local data = require('frogman.domains.storage.routines').read_session(dir, 't')
+		data.marks = data.marks or {}
+		table.insert(data.marks, { name = 'notes', marks = {} })
+		local header = "CDV1" .. salt
+		local out = header .. crypto.seal(crypto.derive_key(dir, salt), vim.json.encode(data), header)
+		fh = assert(io.open(path, 'wb')); fh:write(out); fh:close()
+	]])
+	local pool = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local once = untimed(child.lua(HELD_NAMES, { pool }))
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	eq({ once = once, again = #child.lua(HELD_NAMES, { pool }) }, { once = { 'held over · t, loaded into tab 1' }, again = 1 })
+end
+
+-- A load bringing a window its entry under the pop-up's edits, the entry holding an empty default group: the
+-- write keeps nothing of the default below its lines, it going as a load's empty default goes.
+T['T1044 [char] (M15, S1 Load, DESK.md:1093, :1065) an empty default a load brings under the pop-up\'s edits isn\'t kept below them'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', OPEN })
+	local lines = vim.list_extend({ '❖ main' }, rows({}))
+	vim.list_extend(lines, vim.list_extend({ '❖ feature' }, rows({ a = 'c.txt' })))
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e b', ADD .. 'a>', ':e a' })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ OPEN })
+	child.lua('vim.api.nvim_buf_set_lines(vim.fn.bufnr("frogman://marks"), 0, -1, false, { "❖ main", "a -> b.txt", "d -> d.txt" })')
+	child.lua('vim.api.nvim_set_current_win(...)', { win })
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	child.lua('vim.api.nvim_set_current_win(vim.fn.bufwinid("frogman://marks"))')
+	child.cmd('silent! write')
+	child.settle(100)
+	local groups = child.lua(WIN_GROUPS, { win })
+	eq({ n = #groups, first = groups[1] and groups[1].marks, second = groups[2] and groups[2].marks,
+		held = groups[2] and groups[2].held, default = child.lua([[
+			local s = require('frogman.domains.marks').data.scopes.window[...]
+			local n = 0
+			for _, g in ipairs(s and s.groups or {}) do if g.default and g.held then n = n + 1 end end
+			return n
+		]], { win }) },
+		{ n = 2, first = { a = 'b', d = 'd' }, second = { a = 'c' }, held = true, default = 0 })
+end
+
+-- P2 with an empty group: a plain tab closed after the whole editor's save, its window's empty group held over
+-- and written with the records; a fresh editor restores both tabs and loads: the window takes the group back
+-- from its entry, and the copy the close held over goes, known by the name it came from, read from the file.
+T['T1045 [char] (M15, S1 Load, DESK.md:1087) a plain tab restored before any save takes its window\'s empty group back once'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e x' })
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e c', OPEN })
+	local lines = popup().lines
+	lines[1] = '❖ todo'
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	eq(S2.save(child), { true })
+	child.cmd('tabclose')
+	child.settle(1500) -- held over, and the records written within the second
+	S2.start(child, s)
+	S2.restore_tabs(child, { { files = { 'x' }, shown = 'x' }, { files = { 'c' }, shown = 'c' } })
+	eq(S2.load(child), { true })
+	child.settle(300)
+	child.cmd('tabnext 2')
+	child.settle()
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	eq({ held = child.lua(HELD_NAMES, { '' }), window = child.lua(WIN_GROUPS, { win }) },
+		{ held = {}, window = { { name = 'todo', held = false, marks = {} } } })
+end
+
+-- A default group with marks a load brings under the pop-up's edits: kept below them, held over, as no
+-- default; the pop-up's own first group stays the default.
+T['T1046 [char] (M15, S1 Load, DESK.md:1093, :1065) a default group a load brings under the pop-up\'s edits is held over below them as no default'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', ADD .. 'a>', ':e a' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e b', ADD .. 'a>', ':e a' })
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ OPEN })
+	child.lua('vim.api.nvim_buf_set_lines(vim.fn.bufnr("frogman://marks"), 0, -1, false, { "❖ main", "a -> b.txt", "d -> d.txt" })')
+	child.lua('vim.api.nvim_set_current_win(...)', { win })
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	child.lua('vim.api.nvim_set_current_win(vim.fn.bufwinid("frogman://marks"))')
+	child.cmd('silent! write')
+	child.settle(100)
+	eq(child.lua([[
+		local s = require('frogman.domains.marks').data.scopes.window[...]
+		return vim.tbl_map(function(g) return { held = g.held == true, default = g.default == true } end, s and s.groups or {})
+	]], { win }), { { held = false, default = true }, { held = true, default = false } })
+end
+
+-- A load whose taken entry clears an empty copy holds over another entry's empty group of the same name: the
+-- copy cleared isn't there to be it.
+T['T1048 [char] (M15, S1 Load, DESK.md:1087, :1079) a copy a load clears doesn\'t keep another entry\'s same-named empty group from being held over'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.settle()
+	for i, f in ipairs({ 'c', 'e' }) do
+		if i > 1 then
+			child.cmd('vsplit')
+			child.settle()
+		end
+		child.steps({ ':e ' .. f, OPEN })
+		local lines = popup().lines
+		lines[1] = '❖ todo'
+		write_lines(lines)
+		child.cmd('close')
+		child.settle()
+	end
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x', ':e t' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local pool = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	local first = #child.lua(HELD_NAMES, { pool })
+	eq(child.lua([[
+		vim.cmd('noautocmd tabnew')
+		local b = vim.fn.bufadd('e.txt')
+		vim.fn.bufload(b)
+		vim.cmd('noautocmd edit c.txt')
+		return { pcall(require('frogman').load_session, 't', { tab = vim.api.nvim_get_current_tabpage() }) }
+	]]), { true })
+	child.settle(300)
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	pool = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	eq({ first = first, held = #child.lua(HELD_NAMES, { pool }), window = child.lua(WIN_GROUPS, { win }) },
+		{ first = 2, held = 1, window = { { name = 'todo', held = false, marks = {} } } })
+end
+
+-- A tab session's first load into a tab on e holds the c window's empty group over; its second, into a tab on c
+-- alone, gives the c window its group back, clearing that copy, and holds the e window's empty group of the same
+-- name over: the cleared copy isn't there to be it, whatever order the file keeps the two windows in.
+T['T1049 [char] (M15, S1 Load, DESK.md:1087, :1079) a window taking its empty group back leaves another window\'s same-named empty group to be held over'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.settle()
+	for i, f in ipairs({ 'c', 'e' }) do
+		if i > 1 then
+			child.cmd('vsplit')
+			child.settle()
+		end
+		child.steps({ ':e ' .. f, OPEN })
+		local lines = popup().lines
+		lines[1] = '❖ todo'
+		write_lines(lines)
+		child.cmd('close')
+		child.settle()
+	end
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e e' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local pool = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	local first = #child.lua(HELD_NAMES, { pool })
+	eq(child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit c.txt')
+		return { pcall(require('frogman').load_session, 't', { tab = vim.api.nvim_get_current_tabpage() }) }
+	]]), { true })
+	child.settle(300)
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	pool = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	eq({ first = first, held = #child.lua(HELD_NAMES, { pool }), window = child.lua(WIN_GROUPS, { win }) },
+		{ first = 1, held = 1, window = { { name = 'todo', held = false, marks = {} } } })
+end
+
+-- Two windows with no saved entry, each with an empty todo, closed: two copies held over. A window whose entry
+-- brings an empty todo takes it back at a load: one copy goes, the other window's stays.
+T['T1050 [char] (M15, S1 Load, DESK.md:1087) a window taking its empty group back clears one copy of it, another window\'s staying'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e d', OPEN })
+	local lines = popup().lines
+	lines[1] = '❖ todo'
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	eq(S2.save(child), { true })
+	for _, f in ipairs({ 'c', 'e' }) do
+		child.cmd('split')
+		child.settle()
+		child.steps({ ':e ' .. f, OPEN })
+		lines = popup().lines
+		lines[1] = '❖ todo'
+		write_lines(lines)
+		child.cmd('close')
+		child.settle()
+		child.cmd('close')
+		child.settle(300)
+	end
+	child.settle(1200) -- the two copies written with the records
+	local before = #child.lua(HELD_NAMES, { '' })
+	eq(S2.load(child), { true })
+	child.settle(300)
+	eq({ before = before, after = #child.lua(HELD_NAMES, { '' }), window = child.lua(WIN_GROUPS, { child.lua('return vim.api.nvim_get_current_win()') }) },
+		{ before = 2, after = 1, window = { { name = 'todo', held = false, marks = {} } } })
 end
 
 return T

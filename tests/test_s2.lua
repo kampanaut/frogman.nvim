@@ -4485,4 +4485,92 @@ T['T525 [char] (S1 Load) a window entry whose maps are saved as null loads with 
 		{ failed = false, maps = { t = 'table', s = 'table' }, slots = '⦉a⦊ [b] ⟦-⟧' })
 end
 
+-- A split in t_DETACHED's tab with only an empty typed group, closed: held over, empty, in the list's scope.
+local function empty_held_in_split(win)
+	child.lua('vim.api.nvim_set_current_win(...)', { win })
+	child.settle()
+	child.cmd('split')
+	child.settle()
+	child.steps({ ':e d', "<M-'><M-e>" })
+	local buf = child.lua('return vim.fn.bufnr("frogman://marks")')
+	local lines = child.lua('return vim.api.nvim_buf_get_lines(..., 0, -1, false)', { buf })
+	lines[1] = '❖ todo'
+	child.lua('local b, l = ...; vim.api.nvim_buf_set_lines(b, 0, -1, false, l)', { buf, lines })
+	child.cmd('silent! write')
+	child.settle(100)
+	child.cmd('close')
+	child.settle()
+	child.cmd('close')
+	child.settle(300)
+end
+
+T['T1043 [char] (S2, M15, DESK.md:1090-1091) a list in the file alone emptied gives its empty held-over group to the whole editor\'s scope'] = function()
+	local s = S2.shared()
+	local w1, w2 = tab_session(s)
+	eq(S2.save(child), { true })
+	child.steps({ ':e e', ':e d' })
+	child.cmd('bdelete e.txt')
+	child.settle()
+	eq(S2.load_tab_session(child, 't'), { true })
+	empty_held_in_split(w2)
+	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
+	child.cmd('tabclose')
+	child.settle(300)
+	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
+	local p = S2.picker(child)
+	local _, e = under_detached(p.lines)
+	local lines = vim.deepcopy(p.lines)
+	table.remove(lines, e)
+	S2.write_picker(child, p, lines)
+	child.settle(300)
+	eq(child.lua(WHOLE_HELD), { groups = 1, snapshots = 0, file_groups = 1, file_snapshots = 0 })
+end
+
+-- T860's route with the split holding only an empty typed group: the list merged away gives the group to the
+-- whole editor's scope, empty, still known by the name it was held over from.
+T['T1047 [char] (S2, M15, DESK.md:1090-1091, :1087) a detached list merged away gives its empty held-over group to the whole editor\'s scope, known as before'] = function()
+	local s = S2.shared()
+	local _, w2 = tab_session(s)
+	eq(S2.save(child), { true })
+	child.steps({ ':e x', ':e c', ':e d' })
+	child.cmd('bdelete x.txt')
+	child.cmd('bdelete c.txt')
+	child.settle()
+	child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		require('frogman').load_session('t')
+	]])
+	child.settle(300)
+	empty_held_in_split(w2) -- in the second tab, now t_DETACHED's
+	child.lua([[
+		vim.api.nvim_set_current_win(...)
+		vim.cmd('noautocmd edit d.txt')
+		require('frogman').load_session('t')
+	]], { w2 })
+	child.settle(300)
+	local p = child.lua(OPEN_LISTS)
+	local lines, moved, under, section = {}, {}, nil, nil
+	for _, l in ipairs(p.lines) do
+		if l:sub(1, 3) == '≡' then section = l end
+		if section == '≡t_DETACHED' and l ~= '≡t_DETACHED' then table.insert(moved, l) else table.insert(lines, l) end
+	end
+	for i, l in ipairs(lines) do
+		if l == '≡t' then under = i end
+	end
+	for k, l in ipairs(moved) do
+		table.insert(lines, under + k, l)
+	end
+	S2.write_picker(child, p, lines)
+	type_into(p.win, 'q')
+	child.settle(300)
+	eq(child.lua([[
+		local out = {}
+		for _, g in ipairs((require('frogman.domains.marks').data.scopes.session[''] or { groups = {} }).groups) do
+			if g.held then table.insert(out, { empty = next(g.marks) == nil, from = g.from or false }) end
+		end
+		return out
+	]]), { { empty = true, from = 'todo' } })
+end
+
 return T
