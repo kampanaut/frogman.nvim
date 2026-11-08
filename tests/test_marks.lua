@@ -5419,4 +5419,38 @@ T['T1130 [char] (M15, DESK.md:1194) a draw that raises as a buffer is made again
 		{ failed = true, reopened = 's -> ', undone = 's -> c.txt' })
 end
 
+
+-- Something that asks whether the pop-up holds edits while its float is opening, a WinEnter of the user's, finds it
+-- opening, not closed without its events: the open goes through.
+T['T1131 [char] (M15, DESK.md:1194) a check of the pop-up while its float opens leaves the open alone'] = function()
+	child.steps({ ':e b', ADD .. 'a>', ':e c' })
+	child.lua([[vim.api.nvim_create_autocmd("WinEnter", { once = true, callback = function()
+		require("frogman.domains.marks.popup").dirty()
+	end })]])
+	local opened = child.lua('return { pcall(require("frogman.domains.marks.popup").open) }')
+	eq({ ok = opened[1], shown = popup() ~= vim.NIL }, { ok = true, shown = true })
+end
+
+-- A scope's buffer kept twice, the first given back by an :e! whose draw raised, then thrown away by :q!, leaves no
+-- undo file behind once it's made again.
+T['T1132 [char] (M15, DESK.md:1194) a scope kept twice leaves no undo file behind'] = function()
+	local count = 'return #vim.fn.readdir(vim.fn.fnamemodify(vim.fn.tempname(), ":h"))'
+	child.steps({ ':e b', ADD .. 'a>', ':e c', OPEN })
+	child.type_keys('3G', 'cc', 's -> c.txt', '<Esc>')
+	local before = child.lua(count)
+	child.lua([[
+		local R = require('frogman.domains.marks.routines')
+		local first_group = R.first_group
+		R.first_group = function() error('drawing fails') end
+		pcall(vim.cmd, 'edit!')
+		R.first_group = first_group
+	]])
+	child.settle(50)
+	child.cmd('quit!')
+	child.settle(100)
+	child.steps({ OPEN })
+	child.settle(50)
+	eq(child.lua(count), before)
+end
+
 return T

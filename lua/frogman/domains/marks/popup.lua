@@ -914,6 +914,9 @@ local function keep(record, buf)
 		return
 	end
 	bufs[record.key] = nil
+	if kept[record.key] and kept[record.key].undo then
+		os.remove(kept[record.key].undo) -- an earlier keep not given back, a draw having raised: this one replaces it
+	end
 	local undo = vim.fn.tempname()
 	local written = pcall(vim.api.nvim_buf_call, buf, function()
 		vim.cmd("silent wundo! " .. vim.fn.fnameescape(undo))
@@ -1115,10 +1118,11 @@ local function closed()
 end
 
 ---Do what the float's close would have when it closed without its events, by `noautocmd` or while frogman was
----off: the edits the drafts still hold dropped, each as an undo step.
+---off: the edits the drafts still hold dropped, each as an undo step. A float still opening, its window not yet
+---known, isn't one.
 ---@return nil
 local function closed_unseen()
-	if open ~= nil and not is_open() then
+	if open ~= nil and open.win ~= nil and not is_open() then
 		closed()
 	end
 end
