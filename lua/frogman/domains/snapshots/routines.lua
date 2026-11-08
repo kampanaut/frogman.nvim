@@ -391,9 +391,9 @@ end
 ---put them onto its saved entry, and a window frogman never took in, which keeps none (DESK.md:1694): their
 ---snapshots let their files go.
 ---
----A session manager's switch closes windows inside its teardown, and the load it ends with drops
----what's queued, so a switch holds nothing over. A tab session's load drops what came from the tab it
----loads into. While they wait, the snapshots keep holding their files.
+---A load holds over what's still queued as it begins, so the windows a session manager's switch
+---closes inside its teardown have their snapshots held over in the session left, and so do those a
+---tab session's load replaces. While they wait, the snapshots keep holding their files.
 ---
 ---A tab session's last window keeps its snapshots until the close is over, for a save at the tab's
 ---TabClosedPre; a tab session's last tab closing holds what its windows queued over as its records are
@@ -422,26 +422,32 @@ function M.queue_hold_over(winid, onto)
 	end)
 end
 
----Hold over at once what closes in a session queued, as its last tab closes and its records are written
----with its closed list, so they take it.
+---Hold over at once what closes queued, each in its session's scope: a session's, as its last tab closes
+---and its records are written with its closed list, so they take it; a tab's, as a tab session's load into
+---it begins; or every one, as a whole-editor load begins.
 ---
----@param session_id string The session's pool id
----@return nil
-function M.flush_pending(session_id)
-	local due = {}
+---@param session_id string|nil The session's pool id, or nil for any session's
+---@param tabpage integer|nil The tab the closes were in, or nil for any tab's
+---@return table<string, true> sessions The pool ids of the sessions it held snapshots over in
+function M.flush_pending(session_id, tabpage)
+	local due, sessions = {}, {}
 	for i = #data.pending, 1, -1 do
-		if data.pending[i].session == session_id then
+		local entry = data.pending[i]
+		if (session_id == nil or entry.session == session_id) and (tabpage == nil or entry.tab == tabpage) then
 			table.insert(due, 1, table.remove(data.pending, i))
 		end
 	end
 	for _, entry in ipairs(due) do
 		M.hold_over(entry.session, entry.snapshots, entry.what)
+		sessions[entry.session] = true
 	end
+	return sessions
 end
 
----Hold over the snapshots of the windows that closed without their WinClosed, by noautocmd or while
----frogman was off: in the scope of the session a window was last seen in, or the whole editor's, under
----what it showed then.
+---Let the snapshots of the windows that closed without their WinClosed go as their closes would have, by
+---noautocmd or while frogman was off: onto a window's saved entry in the session it was last seen in, or
+---held over in that session's scope, or the whole editor's, with none, under what it showed then. A window
+---frogman never took in keeps none.
 ---
 ---@return nil
 function M.hold_over_gone()
@@ -461,18 +467,6 @@ function M.hold_over_gone()
 			end
 		end
 	end
-end
-
----Drop the snapshots still queued to be held over from a tab, as a tab session's load into it starts.
----
----@param tabpage integer The tab whose queued snapshots go
----@return nil
-function M.drop_pending(tabpage)
-	require('frogman.held').drop_waiting(data.pending, tabpage, function(entry)
-		for _, snapshot in ipairs(entry.snapshots) do
-			history.handles.drop_place(place_of(snapshot))
-		end
-	end)
 end
 
 ---Move the snapshots held over in one session's scope into another's, each keeping its header,

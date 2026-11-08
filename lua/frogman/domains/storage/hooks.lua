@@ -21,6 +21,11 @@ storageSM:on("{bare,idle}", states.LOADING, "load_history_pre_start", function(c
 	routines.load_history(context.directory, context.name)
 end, 1, true)
 
+-- a load from idle starts from nothing: the entries of the session left go, written as the load began
+storageSM:on(states.IDLE, states.BARE, "entries_teardown", function()
+	routines.forget_all_entries()
+end, 2.7, true)
+
 -- after the save (1) on bare->saving: it does nothing but register the way back to idle
 storageSM:on("{bare,saving,loading}", "{idle,saving}", "back_to_idle", function(_, _, _) end, 2, true)
 

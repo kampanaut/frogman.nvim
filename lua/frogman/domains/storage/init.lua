@@ -97,10 +97,20 @@ local function load(name, opts, restart)
 	local tab_session = routines.prepare_load(directory, name, hint and opts.tab or nil)
 	local ledger = require('frogman.domains.ledger')
 	if not tab_session then
-		-- the manager has torn the outgoing session down by now: a write still waiting would hold that,
-		-- and so would the moves and the messages of the batch it happened in
-		routines.drop_pending_records()
+		-- the manager has torn the outgoing session down by now: the moves and the messages of the batch it
+		-- happened in aren't the session's
 		ledger.drop_batch()
+	end
+	-- the session left keeps what memory holds of its records, written before anything's dropped: every
+	-- session's at a whole-editor load, at a tab session's what the closes in its tab left; a file it wrote
+	-- is the one the load reads, read again
+	local into = tab_session and (hint and opts.tab or vim.api.nvim_get_current_tabpage()) or nil
+	if routines.keep_session_left(into, directory, name) then
+		tab_session = routines.prepare_load(directory, name, hint and opts.tab or nil)
+	end
+	if not tab_session then
+		-- a write still waiting would hold the teardown's closes: their lists stay as the files have them
+		routines.drop_pending_records()
 	end
 	local step = ledger.begin(restart and "restart" or "load", vim.fn.fnamemodify(name or directory, ":t"))
 	if tab_session then

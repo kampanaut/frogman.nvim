@@ -1762,10 +1762,8 @@ function M.cleanup_system(on_tick)
 	end
 
 	-- a window or a tab closed without its events, by noautocmd or while frogman was off: what it marked
-	-- and its snapshots are held over, as a close holds them over
-	require('frogman.domains.marks').routines.hold_over_gone()
-	require('frogman.domains.snapshots').routines.hold_over_gone()
-	require('frogman.held').forget_gone() -- what was seen of them goes once both have read it
+	-- and its snapshots go onto its entry or are held over, as its close would have put them
+	require('frogman.held').hold_over_gone()
 
 	return report
 end

@@ -49,17 +49,11 @@ function M.init_autocmds(group)
 			local winid = tonumber(args.file)
 			local scope = winid and data.scopes.window[winid]
 			local held = require('frogman.held')
-			-- onto its saved entry in its session's file, as it stands, when it has one there
-			local session, what = "", ""
 			if winid then
-				session, what = held.closing_in(winid)
-			end
-			local onto = winid and require('frogman.domains.storage').routines.close_onto_entry("window", winid, session, what)
-			-- else held over in its session's scope once the editor settles, unless a load comes first, a tab
-			-- session's last tab closing holding it over as its records are written; a copy no one changed, or
-			-- one whose copy lives unchanged, loses nothing
-			if scope and not onto and not routines.unchanged_copy(winid) then
-				routines.queue_hold_over(vim.api.nvim_win_get_tabpage(winid), session, scope.groups, what)
+				-- onto its saved entry in its session's file, as it stands, when it has one there; else held over
+				-- in its session's scope once the editor settles, or as a load begins, a tab session's last tab
+				-- closing holding it over as its records are written
+				routines.window_going(winid, held.closing_in(winid))
 			end
 			if scope then
 				-- kept until the close is over, so a save at its tab's TabClosedPre still reads them
@@ -101,8 +95,8 @@ function M.init_autocmds(group)
 		callback = function()
 			for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
 				if data.scopes.tab[tabpage] then
-					data.tab_shows[tabpage] = { session = require('frogman.domains.history').data.tab_pools[tabpage] or "",
-						what = "tab on " .. routines.shows(vim.api.nvim_tabpage_get_win(tabpage)) }
+					local session, what = require('frogman.held').tab_closing_in(tabpage)
+					data.tab_shows[tabpage] = { session = session, what = what }
 				end
 			end
 		end,
@@ -117,10 +111,7 @@ function M.init_autocmds(group)
 			for tabpage, scope in pairs(data.scopes.tab) do
 				if not alive[tabpage] then
 					local shown = data.tab_shows[tabpage] or { session = "", what = "tab" }
-					-- onto its saved tab entry, as it stands, when it has one; else held over
-					if not require('frogman.domains.storage').routines.close_onto_entry("tab", tabpage, shown.session, shown.what) then
-						routines.queue_hold_over(tabpage, shown.session, scope.groups, shown.what)
-					end
+					routines.tab_going(tabpage, shown.session, shown.what) -- onto its saved tab entry, or held over
 					routines.drop_scope("tab", tabpage)
 					data.tab_shows[tabpage] = nil
 				end

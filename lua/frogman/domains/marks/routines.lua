@@ -819,11 +819,42 @@ function M.hold_over(session_id, groups, what, saved, once, earlier)
 	end
 end
 
+---Put what a window going holds onto its saved entry in its session's file as it stands, or queue its groups
+---to be held over in its session's scope with none: a window closing, or one a whole-editor load is about to
+---tear down. A copy no one changed, or one whose copy lives unchanged, loses nothing.
+---
+---@param winid WinId The window going, still there
+---@param session string The pool id of the session it's in ("" for the whole editor's)
+---@param what string What it shows, as a held-over header names it
+---@return boolean onto Whether its entry took what it holds
+function M.window_going(winid, session, what)
+	local onto = require('frogman.domains.storage').routines.close_onto_entry("window", winid, session, what)
+	local scope = data.scopes.window[winid]
+	if scope and not onto and not M.unchanged_copy(winid) then
+		M.queue_hold_over(vim.api.nvim_win_get_tabpage(winid), session, scope.groups, what)
+	end
+	return onto
+end
+
+---Put a plain tab's groups onto its saved tab entry as they stand as it goes, or queue them to be held over
+---with none: a tab closing, or one a whole-editor load is about to tear down.
+---
+---@param tabpage integer The tab going
+---@param session string The pool id of the session it's in ("" for the whole editor's)
+---@param what string What it shows, as a held-over header names it
+---@return nil
+function M.tab_going(tabpage, session, what)
+	local scope = data.scopes.tab[tabpage]
+	if scope and not require('frogman.domains.storage').routines.close_onto_entry("tab", tabpage, session, what) then
+		M.queue_hold_over(tabpage, session, scope.groups, what)
+	end
+end
+
 ---Queue a closed window's or tab's groups to be held over once the editor settles.
 ---
----A session manager's switch closes windows and tabs inside its teardown, and the load it ends with
----drops what's queued, so a switch holds nothing over. A tab session's load drops what came from the
----tab it loads into.
+---A load holds over what's still queued as it begins, so the windows and tabs a session manager's
+---switch closes inside its teardown are held over in the session left, and so are those a tab
+---session's load replaces.
 ---
 ---@param tabpage integer The tab the window or tab was in
 ---@param session_id string The session's pool id ("" for the whole editor's)
@@ -866,15 +897,18 @@ function M.queue_hold_over(tabpage, session_id, groups, what)
 	require('frogman.held').wait_a_tick(function() return data.pending end, entry, hold)
 end
 
----Hold over at once what closes in a session queued, as its last tab closes and its records are written
----with its closed list, so they take it.
+---Hold over at once what closes queued, each in its session's scope: a session's, as its last tab closes
+---and its records are written with its closed list, so they take it; a tab's, as a tab session's load into
+---it begins; or every one, as a whole-editor load begins.
 ---
----@param session_id string The session's pool id
----@return nil
-function M.flush_pending(session_id)
-	local due = {}
+---@param session_id string|nil The session's pool id, or nil for any session's
+---@param tabpage integer|nil The tab the closes were in, or nil for any tab's
+---@return table<string, true> sessions The pool ids of the sessions it held groups over in
+function M.flush_pending(session_id, tabpage)
+	local due, sessions = {}, {}
 	for i = #data.pending, 1, -1 do
-		if data.pending[i].session == session_id then
+		local entry = data.pending[i]
+		if (session_id == nil or entry.session == session_id) and (tabpage == nil or entry.tab == tabpage) then
 			table.insert(due, 1, table.remove(data.pending, i))
 		end
 	end
@@ -882,27 +916,19 @@ function M.flush_pending(session_id)
 		M.hold_over(entry.session, entry.groups, entry.what)
 		history.handles.drop_place(entry.place)
 		data.places[entry.key] = nil
+		sessions[entry.session] = true
 	end
 	if #due > 0 then
 		repaint()
 	end
+	return sessions
 end
 
----Drop the held-over groups still queued from a tab, as a tab session's load into it starts.
----
----@param tabpage integer The tab the load goes into
----@return nil
-function M.drop_pending(tabpage)
-	require('frogman.held').drop_waiting(data.pending, tabpage, function(entry)
-		history.handles.drop_place(entry.place)
-		data.places[entry.key] = nil
-	end)
-end
-
----Hold over the marks of the windows and tabs that closed without their events, by noautocmd or while
----frogman was off, under what each showed when it was last seen: a window's in the scope of the session
----it was last seen in, or the whole editor's, and a plain tab's in the whole editor's. A split's copy no
----one changed holds nothing over, as at a close with its events.
+---Let the marks of the windows and tabs that closed without their events go as their closes would have, by
+---noautocmd or while frogman was off, under what each showed when it was last seen: a window's onto its saved
+---entry in the session it was last seen in, or held over in that session's scope, or the whole editor's, with
+---none, and a plain tab's the same in the whole editor's. A split's copy no one changed holds nothing over,
+---as at a close with its events.
 ---
 ---@return nil
 function M.hold_over_gone()

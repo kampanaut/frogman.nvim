@@ -451,6 +451,7 @@ local NOT_A_LIST = {
 		'list.closed = vim.tbl_filter(keeps, list.closed or {})', -- the same, a detached list in the file
 		'saved.closed, saved.closed_times = serialise_closed_buffers(session.pools)', -- a records write's file
 		'list.closed, list.closed_times = change.closed, change.times', -- a list in that file alone
+		'list.closed, list.closed_times = was.closed, was.closed_times', -- the switch's write, a detached list as its file has it
 	},
 	['lua/frogman/domains/ledger/routines.lua'] = { 'step.closed = true' }, -- a step closed, no list
 	['lua/frogman/domains/ui/routines.lua'] = {

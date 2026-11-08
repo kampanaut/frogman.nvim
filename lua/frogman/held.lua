@@ -1,10 +1,11 @@
 ---What a close holds over, a window's marks and its snapshots alike.
 ---
----This module names what's held over and waits for the editor to settle before holding it, so a
----close that turns out to be a tab's, or a load, can drop it first; it lets a closed window's data
----go once the close is over, tells a session its held-over records changed, and keeps the session
----each window was last seen in. The marks and the snapshots both hold over through it, so their
----headers and their waits can't go apart.
+---This module names what's held over and waits for the editor to settle before holding it, so a load,
+---or a tab session's last close as its records are written, can hold it over at once first; it holds over
+---what the windows and tabs closed without their events left, lets a closed window's data go once the
+---close is over, tells a session its held-over records changed, and keeps the session each window was
+---last seen in. The marks and the snapshots both hold over through it, so their headers and their waits
+---can't go apart.
 
 local M = {}
 
@@ -35,11 +36,11 @@ function M.held_header(what, taken)
 	return name
 end
 
----Wait for the editor to settle before holding over what a close left, in a queue a load can drop from,
----and a tab session's last close holds over at once.
+---Wait for the editor to settle before holding over what a close left, in a queue a load and a tab
+---session's last close hold over at once.
 ---
 ---The entry runs as settle work, so a key later in the same batch, or a quit, runs it first, unless
----it's off the queue by then: a load drops it, and a tab session's last tab closing holds it over first,
+---it's off the queue by then: a load holds it over as it begins, and a tab session's last tab closing
 ---as its records are written.
 ---
 ---@param queue fun(): table[] The queue as it is when the tick comes, each entry with the `tab` it came from
@@ -49,7 +50,7 @@ end
 function M.wait_a_tick(queue, entry, run)
 	table.insert(queue(), entry)
 	require('frogman.settle').later("hold over", function()
-		-- one a teardown, a load or its session's last close took meanwhile isn't there any more
+		-- one a load or its session's last close held over meanwhile, or a teardown let go, isn't there any more
 		for i, waiting in ipairs(queue()) do
 			if waiting == entry then
 				table.remove(queue(), i)
@@ -203,7 +204,7 @@ end
 ---closed without their events left have read it.
 ---
 ---@return nil
-function M.forget_gone()
+local function forget_gone()
 	for winid, _ in pairs(seen) do
 		if not vim.api.nvim_win_is_valid(winid) then
 			seen[winid] = nil
@@ -214,6 +215,19 @@ function M.forget_gone()
 			seen_tabs[tabpage] = nil
 		end
 	end
+end
+
+---Let what the windows and tabs closed without their events left go as their closes would have, by
+---noautocmd or while frogman was off: each window's marks and snapshots onto its saved entry in the session
+---it was last seen in, or held over in that session's scope with none, and each plain tab's marks the same
+---in the whole editor's; then forget what was seen of them. It runs from the cleanup tick, and as a load
+---begins, before anything is dropped.
+---
+---@return nil
+function M.hold_over_gone()
+	require('frogman.domains.marks').routines.hold_over_gone()
+	require('frogman.domains.snapshots').routines.hold_over_gone()
+	forget_gone() -- what was seen of them goes once both have read it
 end
 
 ---Check if a session owns a scope of marks or snapshots: with no session, every scope; a window or a
@@ -250,18 +264,21 @@ function M.files_held(owner)
 	return held
 end
 
----Drop what a queue holds from a tab, each entry handed to `dropped` as it goes.
+---Get the session a plain tab going is in and what it shows, as a held-over header names it: its current
+---window's buffer. It's asked inside the tab's close and ahead of a load, so a name that can't be looked up
+---gives what was noted of the tab before, or "tab" alone, rather than failing them.
 ---
----@param queue table[] The waits, each entry with the `tab` it came from
----@param tabpage integer The tab whose waits go
----@param dropped fun(entry: table) What lets each one go
----@return nil
-function M.drop_waiting(queue, tabpage, dropped)
-	for i = #queue, 1, -1 do
-		if queue[i].tab == tabpage then
-			dropped(table.remove(queue, i))
-		end
+---@param tabpage integer The tab going, still there
+---@return string session_id Its pool id ("" for the whole editor's)
+---@return string what Like "tab on api.lua"
+function M.tab_closing_in(tabpage)
+	local found, shows = pcall(function()
+		return require('frogman.domains.marks').routines.shows(vim.api.nvim_tabpage_get_win(tabpage))
+	end)
+	if not found then
+		shows = seen_tabs[tabpage] and seen_tabs[tabpage].shows
 	end
+	return require('frogman.domains.history').data.tab_pools[tabpage] or "", shows and ("tab on " .. shows) or "tab"
 end
 
 ---Get the session a closing window is in and what it shows, as a held-over header names it. It's asked

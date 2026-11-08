@@ -194,14 +194,20 @@ T['T767 [char] (M16) the capture refuses where there\'s nothing to take'] = func
 		{ help = { 'Window with unregistered buffer.' }, cycling = { 'frogman: pick or cancel the cycle first.' }, n = 0 })
 end
 
-T['T768 [char] (M16, S1) a whole-editor load from idle starts with the file\'s snapshots alone'] = function()
+-- A whole-editor load from idle starts with the file's snapshots alone, each once: reloading the session left,
+-- whose write as the load began put the window's snapshots onto its entry as they stood, the one taken since
+-- the save among them (DESK.md:1082).
+T['T768 [char] (M16, S1, DESK.md:1082) a whole-editor load from idle starts with the file\'s snapshots alone, the session left\'s written first'] = function()
 	taken()
-	local first = snapshots()[1].id
 	eq(S2.save(child), { true })
 	child.steps({ ':e e', TAKE, ':e d' }) -- back on d, so the window takes its entry
+	local before = vim.tbl_map(function(x) return x.id end, snapshots())
+	table.sort(before)
 	eq(S2.load(child), { true })
 	child.settle(300)
-	eq(vim.tbl_map(function(x) return x.id end, snapshots()), { first })
+	local after = vim.tbl_map(function(x) return x.id end, snapshots())
+	table.sort(after)
+	eq({ n = #before, after = after }, { n = 2, after = before })
 end
 
 T['T769 [char] (M16, S1 Load) a fresh start from bare drops the snapshots before their handles go'] = function()
@@ -1971,6 +1977,94 @@ T['T1066 [char] (M16, DESK.md:1697) a window closed with a saved entry puts its 
 		end
 		return { held = #require('frogman.domains.snapshots').routines.held_in(''), filed = filed }
 	]]), { held = 0, filed = { 2 } })
+end
+
+
+-- A switch with nothing wired to save at it: a snapshot taken since the session's last save, its window closed
+-- by the switch's teardown with the load in the same call: the session left's file holds it on the window's
+-- entry, none held over.
+T['T1070 [char] (M16, DESK.md:1082) a switch keeps a window\'s snapshot taken since the last save on its entry in the session left\'s file'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', TAKE })
+	eq(S2.save(child, 'left'), { true })
+	child.steps({ ':e d', TAKE })
+	local got = child.lua([[
+		vim.api.nvim_win_close(..., true)
+		return { pcall(require('frogman').load_session, 'next') }
+	]], { split })
+	child.settle(300)
+	eq({ got = got, filed = child.lua([[
+		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 'left') or {}
+		local out = {}
+		for _, entry in ipairs(saved.windows or {}) do
+			if type(entry) == 'table' and type(entry[11]) == 'table' then table.insert(out, #entry[11]) end
+		end
+		return { windows = out, held = #(saved.snapshots or {}) }
+	]]) }, { got = { true }, filed = { windows = { 2 }, held = 0 } })
+end
+
+-- A window the switch's teardown leaves standing: its snapshot taken since the session's last save goes onto its
+-- entry in the session left's file as it stands, as a closed window's does.
+T['T1086 [char] (M16, DESK.md:1082) a window the switch leaves standing keeps its snapshot taken since the last save on its entry'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c' })
+	child.cmd('wincmd p')
+	child.settle()
+	child.steps({ TAKE })
+	eq(S2.save(child, 'left'), { true })
+	child.steps({ ':e d', TAKE })
+	local got = child.lua([[
+		vim.api.nvim_win_close(..., true)
+		return { pcall(require('frogman').load_session, 'next') }
+	]], { split })
+	child.settle(300)
+	eq({ got = got, filed = child.lua([[
+		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 'left') or {}
+		local out = {}
+		for _, entry in ipairs(saved.windows or {}) do
+			if type(entry) == 'table' and type(entry[11]) == 'table' then table.insert(out, #entry[11]) end
+		end
+		return out
+	]]) }, { got = { true }, filed = { 2 } })
+end
+
+-- A switch whose teardown closes a window without its events (noautocmd), the load in the same call: the window's
+-- snapshot taken since the session's last save goes onto its entry in the session left's file as a closed
+-- window's does, none held over.
+T['T1090 [char] (M16, DESK.md:1082, :1697) a switch keeps the snapshot of a window it closes without its events on its entry'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', TAKE })
+	eq(S2.save(child, 'left'), { true })
+	child.steps({ ':e d', TAKE })
+	local got = child.lua([[
+		local split = ...
+		vim.cmd('noautocmd call nvim_win_close(' .. split .. ', v:true)')
+		return { pcall(require('frogman').load_session, 'next') }
+	]], { split })
+	child.settle(300)
+	eq({ got = got, filed = child.lua([[
+		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 'left') or {}
+		local out = {}
+		for _, entry in ipairs(saved.windows or {}) do
+			if type(entry) == 'table' and type(entry[11]) == 'table' then table.insert(out, #entry[11]) end
+		end
+		return { windows = out, held = #(saved.snapshots or {}) }
+	]]) }, { got = { true }, filed = { windows = { 2 }, held = 0 } })
 end
 
 return T

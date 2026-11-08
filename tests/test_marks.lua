@@ -1289,7 +1289,7 @@ T['T752 [char] (M15) a closed tab leaves one group for its tab marks and one for
 	eq(names, { 'tab', 'window', 'window' })
 end
 
-T['T753 [char] (M15) a switch holds nothing over'] = function()
+T['T753 [char] (M15, DESK.md:1082) a reload in the same call as a close holds nothing over'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.cmd('split')
 	child.settle()
@@ -1725,7 +1725,7 @@ T['T864 [char] (M15, S1 Records) an entry a list in the file alone names keeps i
 	eq(child.shown(), 'c')
 end
 
-T['T761 [char] (M15) a tab session\'s load drops what its own tab\'s closes queued and keeps the rest'] = function()
+T['T761 [char] (M15, DESK.md:1082) a tab session\'s load keeps what its own tab\'s closes queued, held over as the rest are'] = function()
 	child.steps({ ':e a' })
 	child.cmd('split')
 	child.settle()
@@ -1746,7 +1746,9 @@ T['T761 [char] (M15) a tab session\'s load drops what its own tab\'s closes queu
 	]], { one, got[1], got[2] })
 	child.settle(300)
 	local held = vim.tbl_filter(function(g) return g.held end, session_groups(''))
-	eq({ n = #held, marks = held[1] and held[1].marks }, { n = 1, marks = { a = 'b' } })
+	local marked = vim.tbl_map(function(g) return g.marks.a end, held)
+	table.sort(marked)
+	eq({ n = #held, marked = marked }, { n = 2, marked = { 'b', 'd' } })
 end
 
 -- Review round 5's storage findings, and the tab rule's count (M15, S1) ---------------------------
@@ -2735,11 +2737,16 @@ T['T976 [char] (M15, S1 Load, DESK.md:1093-1094) a load under the pop-up\'s edit
 	})
 end
 
--- The same for a plain tab's marks.
+-- The same for a plain tab's marks: the tab's own made in a fresh editor, as T976's are, so the load brings
+-- the file's tab marks in their place.
 T['T977 [char] (M15, S1 Load, DESK.md:1093-1094) a load under the pop-up\'s edits for a tab\'s marks keeps both'] = function()
+	local shared = S2.shared()
+	S2.start(child, shared)
 	child.steps({ ':e b', "<M-'><M-2>", ADD .. 'a>', ':e c', ':e e' })
 	eq(child.lua('return { pcall(require("frogman").save_session) }'), { true })
-	child.steps({ ':e c', ADD .. 's>', ':e e', OPEN })
+	S2.start(child, shared)
+	Misc.restore(child, { 'b', 'c', 'e' }, 'e')
+	child.steps({ "<M-'><M-2>", ':e c', ADD .. 's>', ':e e', OPEN })
 	child.lua('vim.api.nvim_buf_set_lines(0, 3, 4, false, { "d -> d.txt" })')
 	child.cmd('wincmd p')
 	child.settle()
@@ -2750,7 +2757,7 @@ T['T977 [char] (M15, S1 Load, DESK.md:1093-1094) a load under the pop-up\'s edit
 	child.settle(100)
 	child.cmd('wincmd p')
 	eq(child.lua(SCOPE_GROUPS, { 'tab' }), {
-		{ marks = { a = 'b', s = 'c', d = 'd' }, held = false, load = false }, { marks = { a = 'b' }, held = true, load = true },
+		{ marks = { s = 'c', d = 'd' }, held = false, load = false }, { marks = { a = 'b' }, held = true, load = true },
 	})
 end
 
@@ -2787,13 +2794,17 @@ T['T978 [char] (M15, DESK.md:1068-1069) the pop-up\'s lines are coloured in the 
 	})
 end
 
--- A load that changes the tab's marks while the pop-up holds the tab's draft, the screen on the window's:
--- q writes the draft as the tab's marks, and what the load brought stays below, held over under the
--- load's header.
+-- A load that changes the tab's marks while the pop-up holds the tab's draft, the screen on the window's: q
+-- writes the draft as the tab's marks, and what the load brought stays below, held over under the load's
+-- header. The tab's own marks are made in a fresh editor, as T977's are.
 T['T987 [char] (M15, S1 Load, DESK.md:1093-1094, :1068) a load under a draft for the tab\'s marks keeps both'] = function()
+	local shared = S2.shared()
+	S2.start(child, shared)
 	child.steps({ ':e b', "<M-'><M-2>", ADD .. 'a>', ':e c', ':e e' })
 	eq(child.lua('return { pcall(require("frogman").save_session) }'), { true })
-	child.steps({ ':e c', ADD .. 's>', ':e e', OPEN })
+	S2.start(child, shared)
+	Misc.restore(child, { 'b', 'c', 'e' }, 'e')
+	child.steps({ "<M-'><M-2>", ':e c', ADD .. 's>', ':e e', OPEN })
 	child.lua('vim.api.nvim_buf_set_lines(0, 3, 4, false, { "d -> d.txt" })')
 	child.steps({ "<M-'><M-1>" })
 	child.cmd('wincmd p')
@@ -2805,7 +2816,7 @@ T['T987 [char] (M15, S1 Load, DESK.md:1093-1094, :1068) a load under a draft for
 	child.settle(100)
 	eq({ gone = popup() == vim.NIL, groups = child.lua(SCOPE_GROUPS, { 'tab' }) }, {
 		gone = true,
-		groups = { { marks = { a = 'b', s = 'c', d = 'd' }, held = false, load = false }, { marks = { a = 'b' }, held = true, load = true } },
+		groups = { { marks = { s = 'c', d = 'd' }, held = false, load = false }, { marks = { a = 'b' }, held = true, load = true } },
 	})
 end
 
@@ -4489,6 +4500,567 @@ T['T1068 [char] (M15, DESK.md:1079, :1086) a close whose name can\'t be looked u
 	child.settle(300)
 	eq({ closed = closed, errmsg = errmsg, held = child.lua(HELD_WHAT, { '' }) },
 		{ closed = true, errmsg = false, held = { marks = { 'window on c.txt' }, snapshots = {} } })
+end
+
+
+-- A session manager's switch, in one call as a manager runs it: its teardown closes the windows given and
+-- deletes the buffers given, then it loads the session it switches to.
+local function switch(wins, bufs, name)
+	return child.lua([[
+		local wins, bufs, name = ...
+		for _, w in ipairs(wins) do
+			if vim.api.nvim_win_is_valid(w) then vim.api.nvim_win_close(w, true) end
+		end
+		for _, b in ipairs(bufs) do vim.cmd('bdelete ' .. b) end
+		return { pcall(require('frogman').load_session, name) }
+	]], { wins, bufs, name })
+end
+
+-- A session file's closed list, each entry by its file's letter.
+local CLOSED_IN = [[
+	local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), ...) or {}
+	local out = {}
+	for _, h in ipairs(saved.closed or {}) do
+		table.insert(out, vim.fn.fnamemodify((saved.paths or {})[h] or h, ':t:r'))
+	end
+	return out
+]]
+
+-- The trail pages a session file names, each there on disk: true when every one is.
+local PAGES_THERE = [[
+	local name = ...
+	local dir = vim.fn.getcwd(-1, -1)
+	local saved = require('frogman.domains.storage').routines.read_session(dir, name) or {}
+	local main = require('frogman.configs').session_dir .. vim.fn.sha256(name and (dir .. "\n" .. name) or dir)
+	local n, there = 0, 0
+	for _, page in pairs(saved.trail or {}) do
+		n = n + 1
+		if vim.uv.fs_stat(main .. ".d/" .. page) then there = there + 1 end
+	end
+	return { pages = n > 0, there = there == n }
+]]
+
+-- A switch with nothing wired to save at it: a mark made since the session's last save, its window closed by
+-- the switch's teardown with the load in the same call: the session left's file holds it on the window's
+-- entry, nothing held over.
+T['T1069 [char] (M15, DESK.md:1082) a switch keeps a window\'s mark made since the last save on its entry in the session left\'s file'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', ADD .. 'a>' })
+	eq(S2.save(child, 'left'), { true })
+	child.steps({ ':e e', ADD .. 's>' })
+	eq(switch({ split }, {}, 'next'), { true })
+	child.settle(300)
+	eq({ filed = child.lua(ENTRY_GROUPS, { 'left' }), held = child.lua(FILE_MARKS, { 'left' }).held },
+		{ filed = { { 'main a=c,s=e' } }, held = {} })
+end
+
+-- A window with no saved entry at a switch: its mark is held over in the session left's scope and written
+-- into its file, and none of it reaches the session loaded next.
+T['T1071 [char] (M15, DESK.md:1082) a window with no saved entry at a switch is held over in the session left\'s file, not in the next'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	eq(S2.save(child, 'left'), { true })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e e', ADD .. 'a>' })
+	eq(switch({ split }, {}, 'next'), { true })
+	child.settle(300)
+	eq({ filed = child.lua(FILE_MARKS, { 'left' }).held, next = child.lua(HELD_NAMES, { '' }) }, { filed = { 'a=e' }, next = {} })
+end
+
+-- The switch's write leaves the session left's closed list as its file has it: a close settled into the list
+-- in the same call as the switch, so no records write runs before it; the switch's write doesn't write the
+-- close, which goes with the pending write the load drops.
+T['T1072 [char] (M5, M15, DESK.md:1082) the switch\'s write leaves the session left\'s closed list as its file has it'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e a' }) -- b hidden, so deleting it closes no window
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', ADD .. 'a>' })
+	eq(S2.save(child, 'left'), { true })
+	local before = child.lua(CLOSED_IN, { 'left' })
+	local got = child.lua([[
+		vim.cmd('bdelete b.txt')
+		require('frogman.settle').drain() -- the close on the list now
+		local on_list = vim.tbl_contains(vim.tbl_map(function(id)
+			local h = require('frogman.domains.history').handles.get(id)
+			return h and vim.fn.fnamemodify(require('frogman.domains.history').get_filepath_from_hash(h.hash) or '', ':t:r')
+		end, require('frogman.domains.history').routines.pools()[''].closed), 'b')
+		vim.api.nvim_win_close(..., true)
+		return { on_list = on_list, loaded = { pcall(require('frogman').load_session, 'next') } }
+	]], { split })
+	child.settle(300)
+	eq({ before = before, got = got, after = child.lua(CLOSED_IN, { 'left' }), filed = child.lua(ENTRY_GROUPS, { 'left' }) },
+		{ before = {}, got = { on_list = true, loaded = { true } }, after = {}, filed = { { 'main a=c' } } })
+end
+
+-- A tab session's tab torn down at a whole-editor switch: its window's mark made since t's last save goes onto
+-- its entry in t's file, and t's closed list stays as the file had it.
+T['T1073 [char] (M15, DESK.md:1082) a tab session\'s tab torn down at a switch keeps its window\'s mark on t\'s entry, t\'s list as it was'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	eq(save_t(), { true })
+	child.steps({ ':e c', ADD .. 'a>', ':e d' })
+	local before = child.lua(CLOSED_IN, { 't' })
+	local got = child.lua([[
+		vim.cmd('tabclose')
+		vim.cmd('bdelete c.txt')
+		return { pcall(require('frogman').load_session, 'next') }
+	]])
+	child.settle(300)
+	eq({ got = got, filed = child.lua(ENTRY_GROUPS, { 't' }), list = child.lua(CLOSED_IN, { 't' }) },
+		{ got = { true }, filed = { { 'main a=c' } }, list = before })
+end
+
+-- A load of the same session right after a close, before the close's write lands: the window restored as
+-- the load runs takes its entry with the close's groups on it.
+T['T1074 [char] (M15, DESK.md:1079, :1082) a load of the same session right after a close gives the restored window the close\'s groups'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', ADD .. 'a>' })
+	eq(S2.save(child), { true })
+	child.steps({ ADD .. 's>' })
+	local got = child.lua([[
+		vim.api.nvim_win_close(..., true)
+		vim.cmd('noautocmd vsplit')
+		vim.cmd('noautocmd edit c.txt')
+		return { pcall(require('frogman').load_session) }
+	]], { split })
+	child.settle(300)
+	eq({ got = got, window = child.lua(WIN_GROUPS, { child.lua('return vim.api.nvim_get_current_win()') }), held = child.lua(HELD_NAMES, { '' }) },
+		{ got = { true }, window = { { name = 'main', held = false, marks = { a = 'c', s = 'c' } } }, held = {} })
+end
+
+-- After a switch, a save under the session left's name, from the session loaded next, holds none of the session
+-- left's closes over: the switch wrote them, and the load let its entries go.
+T['T1075 [char] (M15, DESK.md:1082, :1079) a save under the session left\'s name after a switch holds none of its closes over'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', ADD .. 'a>' })
+	eq(S2.save(child, 'left'), { true })
+	eq(switch({ split }, {}, 'next'), { true })
+	child.settle(300)
+	eq(S2.save(child, 'left'), { true })
+	eq(child.lua(HELD_NAMES, { '' }), {})
+end
+
+-- An open No Name text the session left's last save wrote, no mark naming it: the switch's write keeps its
+-- text, and the session loaded back reopens it.
+T['T1076 [char] (M15, S1 Records, DESK.md:1082) an open No Name text of the session left survives the switch\'s write'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	S2.noname(child, { 'kept text' })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', ADD .. 'a>' })
+	eq(S2.save(child, 'left'), { true })
+	eq(switch({ split }, {}, 'next'), { true })
+	child.settle(300)
+	S2.start(child, s)
+	eq(S2.load(child, 'left'), { true })
+	child.settle(300)
+	eq(S2.holding(child, 'kept text'), 1)
+end
+
+-- A No Name text made and marked in a split, the split closed by the switch's teardown and the load, all in one
+-- batch, so no records write has written the text: the switch's write takes it from its buffer, open still,
+-- its window gone, and the window restored at the next load opens it from its mark.
+T['T1077 [char] (M15, S1 Records, DESK.md:1082, :1075) a marked No Name text made in the switch\'s batch survives it, its mark opening it'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c' })
+	eq(S2.save(child, 'left'), { true })
+	local got = child.lua([[
+		local split = ...
+		vim.api.nvim_set_current_win(split)
+		vim.cmd('enew')
+		vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'marked text' })
+		require('frogman').mark_add('a')
+		vim.api.nvim_win_close(split, true)
+		return { pcall(require('frogman').load_session, 'next') }
+	]], { split })
+	child.settle(300)
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'c' }, 'a')
+	child.lua('vim.cmd("noautocmd vsplit"); vim.cmd("noautocmd edit c.txt")')
+	eq(S2.load(child, 'left'), { true })
+	child.settle(300)
+	child.steps({ JUMP .. 'a>' })
+	eq({ got = got, opened = opened() }, { got = { true }, opened = { '[No Name]', { 'marked text' } } })
+end
+
+-- A split closed in a detached list's tab by the switch's teardown: the switch's write carries the list's
+-- held-over group onto the list in the whole editor's file.
+T['T1078 [char] (M15, S2, DESK.md:1082, :1090) a switch writes a detached list\'s held-over group onto the list in the whole editor\'s file'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	eq(S2.save(child), { true }) -- the whole editor's file, before t moves
+	eq(S2.load_tab_session(child, 't'), { true }) -- the second tab keeps t_DETACHED
+	eq(S2.save(child), { true })
+	child.cmd('tabnext 2')
+	child.settle()
+	child.cmd('split')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e e', ADD .. 'a>' })
+	eq(switch({ split }, {}, 'next'), { true })
+	child.settle(300)
+	eq(child.lua([[
+		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil) or {}
+		for _, l in ipairs(saved.detached or {}) do
+			if l.label == 't_DETACHED' then
+				local held = {}
+				for _, g in ipairs(l.marks or {}) do
+					if g.held then
+						for alias, h in pairs(g.marks or {}) do
+							table.insert(held, alias .. '=' .. vim.fn.fnamemodify((saved.paths or {})[h] or h, ':t:r'))
+						end
+					end
+				end
+				return held
+			end
+		end
+		return false
+	]]), { 'a=e' })
+end
+
+-- The switch's write keeps the session left's trail pages: its file names today's page, written by the save
+-- after a close, and the page is still on disk after the switch.
+T['T1079 [char] (A27, M15, DESK.md:1082) the switch\'s write keeps the session left\'s trail pages'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c', '<M-.>' })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e d', ADD .. 'a>' })
+	eq(S2.save(child, 'left'), { true })
+	local before = child.lua(PAGES_THERE, { 'left' })
+	eq(switch({ split }, {}, 'next'), { true })
+	child.settle(300)
+	eq({ before = before, after = child.lua(PAGES_THERE, { 'left' }) },
+		{ before = { pages = true, there = true }, after = { pages = true, there = true } })
+end
+
+-- A tab session loaded into its own tab right after a close there, before the close's write lands: the window
+-- restored as the load runs takes its entry with the close's groups.
+T['T1080 [char] (M15, DESK.md:1079, :1082) a tab session loaded into its own tab right after a close gives the restored window the close\'s groups'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', ADD .. 'a>' })
+	eq(save_t(), { true })
+	child.steps({ ADD .. 's>' })
+	local got = child.lua([[
+		vim.api.nvim_win_close(..., true)
+		vim.cmd('noautocmd vsplit')
+		vim.cmd('noautocmd edit c.txt')
+		return { pcall(require('frogman').load_session, 't', { tab = vim.api.nvim_get_current_tabpage() }) }
+	]], { split })
+	child.settle(300)
+	eq({ got = got, window = child.lua(WIN_GROUPS, { child.lua('return vim.api.nvim_get_current_win()') }) },
+		{ got = { true }, window = { { name = 'main', held = false, marks = { a = 'c', s = 'c' } } } })
+end
+
+-- A No Name text marked since the session's last save, its records written, then edited and the window that
+-- marked it closed by the switch in one call, the text still open in another window: the switch's write takes
+-- the text from the buffer over the file's copy, and the restored window's mark opens it as edited.
+T['T1081 [char] (M15, S1 Records, DESK.md:1082, :1075) a marked No Name text edited since its last write keeps its edits at the switch'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c' })
+	eq(S2.save(child, 'left'), { true })
+	local buf = S2.noname(child, { 'open text' })
+	child.steps({ ADD .. 'a>' })
+	child.lua('vim.cmd("wincmd p"); vim.api.nvim_win_set_buf(0, ...)', { buf })
+	child.settle(1500) -- the records written, the text among them
+	local got = child.lua([[
+		local buf, split = ...
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { 'edited text' })
+		vim.api.nvim_win_close(split, true)
+		return { pcall(require('frogman').load_session, 'next') }
+	]], { buf, split })
+	child.settle(300)
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'c' }, 'a')
+	child.lua('vim.cmd("noautocmd vsplit"); vim.cmd("noautocmd edit c.txt")')
+	eq(S2.load(child, 'left'), { true })
+	child.settle(300)
+	child.steps({ JUMP .. 'a>' })
+	eq({ got = got, opened = opened() }, { got = { true }, opened = { '[No Name]', { 'edited text' } } })
+end
+
+-- A window the switch's teardown leaves standing: its mark made since the session's last save goes onto its
+-- entry in the session left's file as it stands, as a closed window's does.
+T['T1082 [char] (M15, DESK.md:1082) a window the switch leaves standing keeps its mark made since the last save on its entry'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', ADD .. 'a>' })
+	child.cmd('wincmd p')
+	child.settle()
+	eq(S2.save(child, 'left'), { true })
+	child.steps({ ADD .. 's>' })
+	eq(switch({ split }, {}, 'next'), { true })
+	child.settle(300)
+	local filed = vim.tbl_map(function(groups) return table.concat(groups, '|') end, child.lua(ENTRY_GROUPS, { 'left' }))
+	table.sort(filed)
+	eq(filed, { 'main a=c', 'main s=a' })
+end
+
+-- A plain tab the switch leaves standing: its tab marks made since the session's last save go onto its tab entry.
+T['T1083 [char] (M15, DESK.md:1082) a plain tab the switch leaves standing keeps its tab marks made since the last save on its tab entry'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e x' })
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e c', "<M-'><M-2>", ADD .. 'a>' })
+	eq(S2.save(child), { true })
+	child.steps({ ':e d', ADD .. 's>' })
+	eq(switch({}, {}, 'next'), { true })
+	child.settle(300)
+	eq(child.lua(TAB_GROUPS), { { 'main a=c,s=d' } })
+end
+
+-- An open No Name text the session left's last save wrote, edited since, in a window the switch leaves standing:
+-- the switch's write takes its lines from the buffer, open as the file has it, and the session loaded back
+-- reopens it as edited.
+T['T1084 [char] (M15, S1 Records, DESK.md:1082, :442) an open No Name text edited since the last write keeps its edits at the switch'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	local buf = S2.noname(child, { 'first text' })
+	eq(S2.save(child, 'left'), { true })
+	local got = child.lua([[
+		vim.api.nvim_buf_set_lines(..., 0, -1, false, { 'edited text' })
+		return { pcall(require('frogman').load_session, 'next') }
+	]], { buf })
+	child.settle(300)
+	S2.start(child, s)
+	eq(S2.load(child, 'left'), { true })
+	child.settle(300)
+	eq({ got = got, edited = S2.holding(child, 'edited text'), first = S2.holding(child, 'first text') },
+		{ got = { true }, edited = 1, first = 0 })
+end
+
+-- Today's trail page of a session, read back: whether a move of each kind given is on it, by kind and name.
+local PAGE_HAS = [[
+	local name, kinds = ...
+	local steps = require('frogman.domains.storage').routines.read_trail(vim.fn.getcwd(-1, -1), name, os.date('%Y-%m-%d')) or {}
+	local out = {}
+	for _, want in ipairs(kinds) do
+		out[want] = false
+		for _, step in ipairs(steps) do
+			for _, m in ipairs(step.moves or {}) do
+				if (m.kind .. ' ' .. (m.name or '?')):find(want, 1, true) == 1 then out[want] = true end
+			end
+		end
+	end
+	return out
+]]
+
+-- The switch writes today's trail page with the session left's own steps: a cycle cancelled by a window jump since
+-- the last save is on the session left's page, and a close made in the switch's own batch, the teardown's, isn't.
+T['T1085 [char] (A27, DESK.md:1082, :442) the switch writes the session left\'s trail page, its teardown\'s moves left out'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	child.steps({ ':e x' })
+	child.cmd('wincmd p')
+	child.settle()
+	eq(S2.save(child, 'left'), { true })
+	child.steps({ ':e c', '<M-n>' })
+	child.cmd('wincmd p')
+	child.settle(200)
+	local got = child.lua([[
+		vim.cmd('bdelete b.txt')
+		require('frogman.settle').drain()
+		return { pcall(require('frogman').load_session, 'next') }
+	]])
+	child.settle(300)
+	eq({ got = got, page = child.lua(PAGE_HAS, { 'left', { 'cancelled', 'closed b.txt' } }) },
+		{ got = { true }, page = { cancelled = true, ['closed b.txt'] = false } })
+end
+
+-- A switch whose teardown closes a window without its events (noautocmd), the load in the same call: the window's
+-- mark made since the session's last save goes onto its entry in the session left's file as a closed window's
+-- does, nothing held over.
+T['T1087 [char] (M15, DESK.md:1082, :1079) a window the switch closes without its events keeps its mark made since the last save on its entry'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', ADD .. 'a>' })
+	eq(S2.save(child, 'left'), { true })
+	child.steps({ ':e e', ADD .. 's>' })
+	local got = child.lua([[
+		local split = ...
+		vim.cmd('noautocmd call nvim_win_close(' .. split .. ', v:true)')
+		return { pcall(require('frogman').load_session, 'next') }
+	]], { split })
+	child.settle(300)
+	eq({ got = got, filed = child.lua(ENTRY_GROUPS, { 'left' }), held = child.lua(FILE_MARKS, { 'left' }).held },
+		{ got = { true }, filed = { { 'main a=c,s=e' } }, held = {} })
+end
+
+-- A window with no saved entry closed without its events by the switch's teardown: its mark is held over in the
+-- session left's scope and written into its file, and none of it reaches the session loaded next, a cleanup
+-- tick after the load included.
+T['T1088 [char] (M15, DESK.md:1082, :1079) a window with no saved entry the switch closes without its events is held over in the session left\'s file'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	eq(S2.save(child, 'left'), { true })
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e e', ADD .. 'a>' })
+	local got = child.lua([[
+		local split = ...
+		vim.cmd('noautocmd call nvim_win_close(' .. split .. ', v:true)')
+		return { pcall(require('frogman').load_session, 'next') }
+	]], { split })
+	child.settle(300)
+	child.lua('require("frogman.domains.history").routines.cleanup_system()') -- the pass a cleanup tick runs
+	child.settle(100)
+	eq({ got = got, filed = child.lua(FILE_MARKS, { 'left' }).held, next = child.lua(HELD_NAMES, { '' }) },
+		{ got = { true }, filed = { 'a=e' }, next = {} })
+end
+
+-- A tab session loaded into its own tab right after a split there closed without its events, before any cleanup
+-- tick: the window restored as the load runs takes its entry with what the split held, and nothing is held
+-- over, a cleanup tick after the load included.
+T['T1089 [char] (M15, DESK.md:1079, :1082) a tab session loaded into its own tab right after a split there closed without its events gives the restored window its groups'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', ADD .. 'a>' })
+	eq(save_t(), { true })
+	child.steps({ ADD .. 's>' })
+	local got = child.lua([[
+		local split = ...
+		vim.cmd('noautocmd call nvim_win_close(' .. split .. ', v:true)')
+		vim.cmd('noautocmd vsplit')
+		vim.cmd('noautocmd edit c.txt')
+		return { pcall(require('frogman').load_session, 't', { tab = vim.api.nvim_get_current_tabpage() }) }
+	]], { split })
+	child.settle(300)
+	child.lua('require("frogman.domains.history").routines.cleanup_system()') -- the pass a cleanup tick runs
+	child.settle(100)
+	eq({ got = got, window = child.lua(WIN_GROUPS, { child.lua('return vim.api.nvim_get_current_win()') }), held = child.lua(HELD_NAMES, { pool_here() }) },
+		{ got = { true }, window = { { name = 'main', held = false, marks = { a = 'c', s = 'c' } } }, held = {} })
+end
+
+-- A marked No Name text open at the session left's last write, wiped by the switch's teardown, its close settled
+-- before the load: the switch's write keeps it open in the file, as the file has it, and the session loaded back
+-- reopens it with no mark jump.
+T['T1092 [char] (M15, S1 Records, DESK.md:1082, :442) a marked No Name text the switch\'s teardown wipes stays open in the session left\'s file'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	local buf = S2.noname(child, { 'kept text' })
+	child.steps({ ADD .. 'a>' })
+	eq(S2.save(child, 'left'), { true })
+	local got = child.lua([[
+		local buf = ...
+		local hash = require('frogman.domains.history').get_hash_from_buffer(buf)
+		vim.cmd('bwipeout! ' .. buf)
+		require('frogman.settle').drain() -- the close settled before the load
+		return { hash = hash, loaded = { pcall(require('frogman').load_session, 'next') } }
+	]], { buf })
+	child.settle(300)
+	local reopen = child.lua([[
+		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 'left') or {}
+		local entry = (saved.noname_content or {})[...]
+		return entry ~= nil and entry.reopen == true
+	]], { got.hash })
+	S2.start(child, s)
+	eq(S2.load(child, 'left'), { true })
+	child.settle(300)
+	eq({ loaded = got.loaded, reopen = reopen, open = S2.holding(child, 'kept text') }, { loaded = { true }, reopen = true, open = 1 })
+end
+
+-- A plain tab with no saved entry closed with its events in the switch's own call: its tab marks are held over
+-- once in the session left's file, the pass for tabs gone without their events not taking them again.
+T['T1093 [char] (M15, DESK.md:1082, :1079) a plain tab the switch closes with its events is held over once in the session left\'s file'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e x' })
+	eq(S2.save(child, 'left'), { true })
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e c', "<M-'><M-2>", ADD .. 'a>' })
+	local got = child.lua([[
+		vim.cmd('tabclose')
+		return { pcall(require('frogman').load_session, 'next') }
+	]])
+	child.settle(300)
+	eq({ got = got, held = child.lua(FILE_MARKS, { 'left' }).held }, { got = { true }, held = { 'a=c' } })
+end
+
+-- A tab session loaded into another tab session's only tab right after a split there closed without its events:
+-- the session left, let go as its last tab becomes the other's, keeps the split's mark made since its last save
+-- on its entry in its file, nothing held over in the whole editor's scope, a cleanup tick after the load
+-- included.
+T['T1094 [char] (M15, DESK.md:1082, :1079) a tab session loaded into another\'s only tab keeps a split closed there without its events on its entry'] = function()
+	local s = S2.shared()
+	eq(S2.save_tab_session(child, s, 'u'), { true })
+	tab_session(s)
+	child.cmd('vsplit')
+	child.settle()
+	local split = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ ':e c', ADD .. 'a>' })
+	eq(save_t(), { true })
+	child.steps({ ADD .. 's>' })
+	local got = child.lua([[
+		local split = ...
+		vim.cmd('noautocmd call nvim_win_close(' .. split .. ', v:true)')
+		return { pcall(require('frogman').load_session, 'u', { tab = vim.api.nvim_get_current_tabpage() }) }
+	]], { split })
+	child.settle(300)
+	child.lua('require("frogman.domains.history").routines.cleanup_system()') -- the pass a cleanup tick runs
+	child.settle(100)
+	eq({ got = got, filed = child.lua(ENTRY_GROUPS, { 't' }), held = child.lua(HELD_NAMES, { '' }) },
+		{ got = { true }, filed = { { 'main a=c,s=c' } }, held = {} })
 end
 
 return T

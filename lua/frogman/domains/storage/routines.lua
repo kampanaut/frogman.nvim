@@ -657,11 +657,24 @@ local function owned(owner, handle_id)
 	return true
 end
 
----Serialize [No Name] buffer content for session saving.
+---Get an open [No Name] buffer's text as a session file keeps it: its lines, its filetype and the cursor
+---of a window showing it, in any tab, marked to be reopened at load, since no session manager saves it.
 ---
----Collects the closed [No Name] texts, with their filetype and cursor position, and
----every open, non-empty [No Name] buffer's text the same way. The open ones are marked
----to be reopened at load, since no session manager saves their text.
+---@param bufnr Bufnr The No Name buffer
+---@return NoNameBufferContent text
+local function open_text(bufnr)
+	local winid = vim.fn.bufwinid(bufnr)
+	winid = winid ~= -1 and winid or (vim.fn.win_findbuf(bufnr)[1] or -1) -- or one in another tab
+	return {
+		lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false),
+		filetype = vim.bo[bufnr].filetype,
+		cursor = winid ~= -1 and vim.api.nvim_win_get_cursor(winid) or { 1, 0 },
+		reopen = true
+	}
+end
+
+---Get the [No Name] texts a session's lists and windows hold: its closed texts, and every open, non-empty
+---[No Name] buffer's text it owns.
 ---
 ---With `owner`, only the texts that pool owns are collected: its closed texts, and the open
 ---ones its tabs visited (their windows show them or have them in their history). The editor's
@@ -669,33 +682,61 @@ end
 ---
 ---@param owner Pool|nil The pool whose texts are collected (nil = every text)
 ---@return table<Filehash, NoNameBufferContent> texts Each text, by its buffer's hash
-local function serialise_noname_content(owner)
+local function owned_texts(owner)
 	local texts = {}
-	-- the texts its marks and its snapshots hold go too, open or closed, an empty one included
-	local marked = require('frogman.held').files_held(owner)
 	for id, handle in pairs(history.handles.live()) do
 		local identifier = handle.hash
-		if handle.text and is_known(identifier) and (owner == nil or vim.tbl_contains(owner.closed, id) or marked[identifier]) then
+		if handle.text and is_known(identifier) and (owner == nil or vim.tbl_contains(owner.closed, id)) then
 			texts[identifier] = handle.text
 		end
 	end
 	for filehash, bufnr in pairs(history.data.hash_buffer_registry.buffers) do
 		local filepath = history.get_filepath_from_hash(filehash)
 		if filepath and filepath:match("^NONAME_") and vim.api.nvim_buf_is_loaded(bufnr)
-			and (owned(owner, history.get_handle_from_hash(filehash)) or marked[filehash]) then
-			local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-			-- empty ones are skipped, as when closed, but for one a mark holds
-			if marked[filehash] or not (#lines == 0 or (#lines == 1 and lines[1] == "")) then
-				local winid = vim.fn.bufwinid(bufnr)
-				winid = winid ~= -1 and winid or (vim.fn.win_findbuf(bufnr)[1] or -1) -- or one in another tab
-				texts[filehash] = {
-					lines = lines,
-					filetype = vim.bo[bufnr].filetype,
-					cursor = winid ~= -1 and vim.api.nvim_win_get_cursor(winid) or { 1, 0 },
-					reopen = true
-				}
+			and owned(owner, history.get_handle_from_hash(filehash)) then
+			local text = open_text(bufnr)
+			-- empty ones are skipped, as when closed
+			if not (#text.lines == 0 or (#text.lines == 1 and text.lines[1] == "")) then
+				texts[filehash] = text
 			end
 		end
+	end
+	return texts
+end
+
+---Get the [No Name] texts a session's marks and its snapshots hold, open or closed, an empty one included.
+---
+---@param owner Pool|nil The pool whose marks and snapshots count (nil = every one's)
+---@return table<Filehash, NoNameBufferContent> texts Each text, by its buffer's hash
+local function marked_texts(owner)
+	local texts = {}
+	local marked = require('frogman.held').files_held(owner)
+	for _, handle in pairs(history.handles.live()) do
+		if marked[handle.hash] and handle.text and is_known(handle.hash) then
+			texts[handle.hash] = handle.text
+		end
+	end
+	for filehash, bufnr in pairs(history.data.hash_buffer_registry.buffers) do
+		local filepath = history.get_filepath_from_hash(filehash)
+		if marked[filehash] and filepath and filepath:match("^NONAME_") and vim.api.nvim_buf_is_loaded(bufnr) then
+			texts[filehash] = open_text(bufnr)
+		end
+	end
+	return texts
+end
+
+---Serialize [No Name] buffer content for session saving.
+---
+---The texts a session's lists and windows hold, and those its marks and its snapshots hold, an empty
+---one among them. The open ones are marked to be reopened at load, since no session manager saves their
+---text.
+---
+---@param owner Pool|nil The pool whose texts are collected (nil = every text)
+---@return table<Filehash, NoNameBufferContent> texts Each text, by its buffer's hash
+local function serialise_noname_content(owner)
+	local texts = owned_texts(owner)
+	for filehash, text in pairs(marked_texts(owner)) do
+		texts[filehash] = text
 	end
 	return texts
 end
@@ -888,10 +929,11 @@ end
 
 ---Carry into a write the No Name texts the file's marks and its windows' snapshots name.
 ---
----A records write leaves the windows and the tabs as the last save wrote them, their marks and
----snapshots included, and a list in the file alone keeps its marks, so the texts those name stay: from
----memory when it holds them, and otherwise carried from the file, unread. A save writes the windows
----and tabs anew, so it carries only the lists' in the file alone.
+---A records write leaves the windows and the tabs as the last save wrote them, but for what closes put
+---onto their entries, and a list in the file alone keeps its marks, so the texts those name stay: from
+---memory when it holds them, an open one's lines as they stand, its window gone, and otherwise carried
+---from the file, unread. A save writes the windows and tabs anew, so it carries only the lists' in the
+---file alone.
 ---
 ---@param texts table<Filehash, table> The texts the write takes, added to in place
 ---@param saved table The file's data
@@ -905,7 +947,11 @@ local function carry_marked_texts(texts, saved, key, scratch_dir, references)
 		local entry = type(saved.noname_content) == "table" and saved.noname_content[filehash]
 		if texts[filehash] == nil then
 			local handle = history.handles.of_hash(filehash)
-			if handle and handle.text and is_known(filehash) then
+			local bufnr = history.data.hash_buffer_registry.buffers[filehash]
+			local filepath = history.get_filepath_from_hash(filehash)
+			if bufnr and filepath and filepath:match("^NONAME_") and vim.api.nvim_buf_is_loaded(bufnr) then
+				texts[filehash] = open_text(bufnr)
+			elseif handle and handle.text and is_known(filehash) then
 				texts[filehash] = handle.text
 			elseif type(entry) == "table" and type(entry.scratch) == "string" then
 				local source = scratch_dir .. entry.scratch
@@ -1971,8 +2017,6 @@ local function start_tab_fresh(directory, name, tabpage)
 	if data.unnamed == nil and data.editor_session then
 		data.unnamed = vim.deepcopy(data.editor_session) -- the whole editor's session, as tab sessions start
 	end
-	marks().drop_pending(tabpage)
-	snapshots().drop_pending(tabpage)
 	load_pool = join_for_load(tabpage, name, directory)
 	push_out(load_pool, tabpage)
 	tab_marks_held_over(tabpage, load_pool.id, vim.fn.fnamemodify(name or directory, ":t") .. ", loaded into tab " .. vim.api.nvim_tabpage_get_number(tabpage))
@@ -2013,8 +2057,6 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 	end
 	-- a session already open in a tab, or whose list was kept: what's in memory is newer than the file
 	local open = history.data.pools[history.routines.pool_id(name, directory)] ~= nil
-	marks().drop_pending(tabpage) -- what its closes queued to hold over goes, as the load replaces it
-	snapshots().drop_pending(tabpage)
 	load_pool = join_for_load(tabpage, name, directory)
 	push_out(load_pool, tabpage)
 	local scratch_dir = file_path .. ".d/"
@@ -2674,20 +2716,193 @@ function M.read_trail(directory, name, day)
 	return read_page(file_path .. ".d/" .. page, key, day)
 end
 
----Write a session's records into its file.
+---Put a session's closed lists into its file's data: its pools' closed entries and their close times, and,
+---for the whole editor's, the detached lists, the closed lists' changes to those in the file alone among them.
 ---
----The records are its closed list, close times and No Name texts, from its pools, and the trail's
----pages ride along. Its references stay as the session manager last saved them, and the whole
----editor's records carry the detached lists too. A file that isn't there isn't made, and one that
----can't be read, or whose scope isn't the session's, isn't touched.
----
+---@param saved table The file's data, written into in place
 ---@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string}
 ---@param changes table<string, {closed: Filehash[], times: table}|false>|nil For the whole editor's
 ---session, new entries and close times for the lists in the file alone, by name (false, or no
 ---entries, drops the list)
+---@param key string The session's key
+---@param scratch_dir string The session's scratch directory
+---@return table<Filehash, table> texts The texts its lists and windows hold, the detached lists' among them
+local function put_closed_part(saved, session, changes, key, scratch_dir)
+	saved.closed, saved.closed_times = serialise_closed_buffers(session.pools)
+	saved.paths = saved.paths or {}
+	local texts = owned_texts(session.owner)
+	if session.scope == "editor" then
+		-- the detached lists ride with the whole editor's records
+		local lists, live = detached_lists(saved, nil)
+		if changes then
+			local kept = {}
+			for _, list in ipairs(lists) do
+				local change = changes[list.label]
+				if live[list.label] or change == nil then
+					table.insert(kept, list)
+				elseif change and #change.closed > 0 then
+					list.closed, list.closed_times = change.closed, change.times
+					table.insert(kept, list)
+				else
+					-- emptied: what windows closed in its tab left held over goes to the whole editor's scope, which
+					-- the marks part writes
+					marks().adopt_held("", list.marks, saved.paths)
+					for _, held in ipairs(type(list.snapshots) == "table" and list.snapshots or {}) do
+						for filehash, _ in pairs(snapshots().named_by({ held })) do
+							if not history.handles.of_hash(filehash) and saved.paths[filehash] then
+								history.register_filepath(saved.paths[filehash])
+							end
+						end
+					end
+					snapshots().restore_held("", snapshots().not_held(list.snapshots)) -- not again, once memory has them
+				end
+			end
+			lists = kept
+		end
+		carry_detached(lists, live, saved, texts, saved.paths, key, scratch_dir)
+		saved.detached = #lists > 0 and lists or nil
+		for _, list in ipairs(lists) do
+			for _, filehash in ipairs(list.closed or {}) do
+				saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
+			end
+		end
+	end
+	return texts
+end
+
+---Put a session's marks and snapshots into its file's data: what a close put onto a window's or a tab's
+---entry, and the marks and snapshots taken off an entry the last load left, each only while it's still the
+---entry this editor knows, as the file holds it, one another editor's save rewrote holding the close over
+---instead; the session's own marks and the snapshots held over in its scope; and the texts they name but
+---those the closed part took already, which stay as it took them, and the paths they name, the detached
+---lists' copies among them, the closed part having built the lists.
+---
+---@param saved table The file's data, written into in place
+---@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string}
+---@param texts table<Filehash, table> The texts the file takes, added to in place
+---@param key string The session's key
+---@param file_path string The session's main file
+---@return table landing The entries it wrote, for `land_entries` once the file is committed
+local function put_marks_part(saved, session, texts, key, file_path)
+	-- the entries this editor knows, each only while it's still the entry it knows: one the last load
+	-- didn't take gives up its marks and snapshots, held over since; one a close left takes what the
+	-- close put onto it; one another editor's save rewrote has the close's held over instead
+	local known = data.entries[file_path]
+	local wrote, at = {}, {}
+	for i, slot in pairs(known and known.windows or {}) do
+		local entry = type(saved.windows) == "table" and saved.windows[i]
+		local same = type(entry) == "table" and vim.deep_equal(entry, slot.entry)
+		if slot.take_off and same then
+			entry[10], entry[11] = nil, nil
+			wrote[slot] = entry
+		elseif slot.close and slot.close.state == nil then
+			if same then
+				entry[10], entry[11] = slot.close.groups, slot.close.snapshots
+				wrote[slot] = entry
+			else
+				hold_closed(slot.close)
+			end
+		end
+	end
+	if known then
+		local file_tabs, keep = type(saved.tabs) == "table" and saved.tabs or {}, {}
+		for i, tab in ipairs(file_tabs) do
+			keep[i] = true
+		end
+		for i, slot in pairs(known.tabs) do
+			local tab = file_tabs[i]
+			local same = tab ~= nil and vim.deep_equal(tab, slot.entry)
+			if slot.take_off and same then
+				keep[i] = false
+			elseif slot.close and slot.close.state == nil then
+				if same then
+					tab.groups = slot.close.groups
+					keep[i] = tab.groups ~= nil -- a tab entry with no groups left comes off
+					wrote[slot] = tab
+				else
+					hold_closed(slot.close)
+				end
+			end
+		end
+		local tabs = {}
+		for i, tab in ipairs(file_tabs) do
+			if keep[i] then
+				table.insert(tabs, tab)
+				at[i] = #tabs
+			end
+		end
+		saved.tabs = #tabs > 0 and tabs or nil
+	end
+	saved.paths = saved.paths or {}
+	local scope_id = session.scope == "tab" and session.owner.id or ""
+	saved.marks = marks().serialise("session", scope_id)
+	saved.snapshots = snapshots().serialise_held(scope_id) -- the snapshots held over in its scope
+	for filehash, text in pairs(marked_texts(session.owner)) do
+		texts[filehash] = texts[filehash] or text -- at a switch, the closed part's copy is open or closed as the file has it
+	end
+	carry_marked_texts(texts, saved, key, file_path .. ".d/", true)
+	for filehash, _ in pairs(named_in(saved, { session = true, windows = true, tabs = true })) do
+		saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
+	end
+	if session.scope == "editor" then
+		-- the paths the detached lists' marks and held-over snapshots need, the lists as the closed part built them
+		for _, list in ipairs(saved.detached or {}) do
+			for filehash, _ in pairs(snapshots().named_by(list.snapshots, marks().named_by(list.marks))) do
+				saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
+			end
+		end
+	end
+	return { known = known, wrote = wrote, at = at }
+end
+
+---Settle the entries a write put marks and snapshots onto, once its file is committed: each is the entry
+---this editor knows now, a close on it landed; an entry taken off, or a tab entry gone, leaves what it knew
+---of it.
+---
+---@param landing table What `put_marks_part` wrote
+---@return nil
+local function land_entries(landing)
+	local known, wrote, at = landing.known, landing.wrote, landing.at
+	for i, slot in pairs(known and known.windows or {}) do
+		if wrote[slot] then
+			slot.entry = as_filed(wrote[slot])
+			if slot.close then
+				slot.close.state = "landed"
+			end
+			if slot.take_off then
+				known.windows[i] = nil
+			end
+		end
+	end
+	if known then
+		local tabs = {}
+		for i, slot in pairs(known.tabs) do
+			if at[i] then
+				if wrote[slot] then
+					slot.entry = as_filed(wrote[slot])
+					slot.close.state = "landed"
+				end
+				tabs[at[i]] = slot
+			elseif slot.close and slot.close.state ~= "held" then
+				history.handles.drop_place(slot.close.place) -- its entry came off with nothing left to hold over
+			end
+		end
+		known.tabs = tabs
+	end
+end
+
+---Write a session's records into its file again: what `fill` puts into the file's data, and today's trail
+---page, everything else as the file has it.
+---
+---A file that isn't there isn't made, and one that can't be read, or whose scope isn't the session's,
+---isn't touched. The texts are written before the main file, the trail's pages beside them, then the main
+---file is committed and the entries the write put marks and snapshots onto are settled.
+---
+---@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string}
+---@param fill fun(saved: table, key: string, file_path: string): table<Filehash, table>, table What the write puts into the file's data, giving the texts the file takes and what `put_marks_part` wrote
 ---@return boolean written True if the file was written
 ---@return string|nil problem "missing" when there's no file, otherwise what went wrong
-local function write_records(session, changes)
+local function rewrite_records(session, fill)
 	if data.replayed then
 		return true -- a replayed editor isn't a session: nothing waits to be written, and nothing is
 	end
@@ -2704,114 +2919,11 @@ local function write_records(session, changes)
 	local gone = false
 	local ok, err = pcall(function()
 		local salt = bytes:sub(#HEADER + 1, #HEADER + crypto.salt_length)
-		-- the entries this editor knows, each only while it's still the entry it knows: one the last load
-		-- didn't take gives up its marks and snapshots, held over since; one a close left takes what the
-		-- close put onto it; one another editor's save rewrote has the close's held over instead
-		local known = data.entries[file_path]
-		local wrote, at = {}, {}
-		for i, slot in pairs(known and known.windows or {}) do
-			local entry = type(saved.windows) == "table" and saved.windows[i]
-			local same = type(entry) == "table" and vim.deep_equal(entry, slot.entry)
-			if slot.take_off and same then
-				entry[10], entry[11] = nil, nil
-				wrote[slot] = entry
-			elseif slot.close and slot.close.state == nil then
-				if same then
-					entry[10], entry[11] = slot.close.groups, slot.close.snapshots
-					wrote[slot] = entry
-				else
-					hold_closed(slot.close)
-				end
-			end
-		end
-		if known then
-			local file_tabs, keep = type(saved.tabs) == "table" and saved.tabs or {}, {}
-			for i, tab in ipairs(file_tabs) do
-				keep[i] = true
-			end
-			for i, slot in pairs(known.tabs) do
-				local tab = file_tabs[i]
-				local same = tab ~= nil and vim.deep_equal(tab, slot.entry)
-				if slot.take_off and same then
-					keep[i] = false
-				elseif slot.close and slot.close.state == nil then
-					if same then
-						tab.groups = slot.close.groups
-						keep[i] = tab.groups ~= nil -- a tab entry with no groups left comes off
-						wrote[slot] = tab
-					else
-						hold_closed(slot.close)
-					end
-				end
-			end
-			local tabs = {}
-			for i, tab in ipairs(file_tabs) do
-				if keep[i] then
-					table.insert(tabs, tab)
-					at[i] = #tabs
-				end
-			end
-			saved.tabs = #tabs > 0 and tabs or nil
-		end
-		saved.closed, saved.closed_times = serialise_closed_buffers(session.pools)
-		saved.paths = saved.paths or {}
-		local texts = serialise_noname_content(session.owner)
-		-- the session's own marks are records too; its windows' marks stay as the last save wrote them,
-		-- and so do the texts they name
-		saved.marks = marks().serialise("session", session.scope == "tab" and session.owner.id or "")
-		-- and so are the snapshots held over in its scope
-		saved.snapshots = snapshots().serialise_held(session.scope == "tab" and session.owner.id or "")
-		carry_marked_texts(texts, saved, key, file_path .. ".d/", true)
-		local named = named_in(saved, { session = true, windows = true, tabs = true })
-		for filehash, _ in pairs(named) do
-			saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
-		end
-		if session.scope == "editor" then
-			-- the detached lists ride with the whole editor's records
-			local lists, live = detached_lists(saved, nil)
-			if changes then
-				local kept, adopted = {}, false
-				for _, list in ipairs(lists) do
-					local change = changes[list.label]
-					if live[list.label] or change == nil then
-						table.insert(kept, list)
-					elseif change and #change.closed > 0 then
-						list.closed, list.closed_times = change.closed, change.times
-						table.insert(kept, list)
-					else
-						-- emptied: what windows closed in its tab left held over goes to the whole editor's scope
-						marks().adopt_held("", list.marks, saved.paths)
-						for _, held in ipairs(type(list.snapshots) == "table" and list.snapshots or {}) do
-							for filehash, _ in pairs(snapshots().named_by({ held })) do
-								if not history.handles.of_hash(filehash) and saved.paths[filehash] then
-									history.register_filepath(saved.paths[filehash])
-								end
-							end
-						end
-						snapshots().restore_held("", snapshots().not_held(list.snapshots)) -- not again, once memory has them
-						adopted = true
-					end
-				end
-				lists = kept
-				if adopted then
-					saved.marks = marks().serialise("session", "")
-					saved.snapshots = snapshots().serialise_held("")
-				end
-			end
-			carry_detached(lists, live, saved, texts, saved.paths, key, file_path .. ".d/")
-			saved.detached = #lists > 0 and lists or nil
-			for _, list in ipairs(lists) do
-				for _, filehash in ipairs(list.closed or {}) do
-					saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
-				end
-				for filehash, _ in pairs(snapshots().named_by(list.snapshots, marks().named_by(list.marks))) do
-					saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
-				end
-			end
-		end
+		local texts, landing = fill(saved, key, file_path)
 		local noname_content, kept = write_noname_texts(texts, key, file_path .. ".d/")
 		saved.noname_content = noname_content
-		for _, filehash in ipairs(saved.closed) do
+		saved.paths = saved.paths or {}
+		for _, filehash in ipairs(saved.closed or {}) do
 			saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
 		end
 		for filehash, _ in pairs(noname_content) do
@@ -2826,34 +2938,7 @@ local function write_records(session, changes)
 		saved.trail, paged = write_trail_pages(file_path, saved.trail, session.owner,
 			require('frogman.domains.ledger').session_of(session.name, session.directory), key, kept) -- today's page rides along
 		commit_session(file_path, key, salt, saved, kept)
-		-- landed: each entry written is the one this editor knows now; an entry taken off, or a tab entry
-		-- gone, leaves what it knew of it
-		for i, slot in pairs(known and known.windows or {}) do
-			if wrote[slot] then
-				slot.entry = as_filed(wrote[slot])
-				if slot.close then
-					slot.close.state = "landed"
-				end
-				if slot.take_off then
-					known.windows[i] = nil
-				end
-			end
-		end
-		if known then
-			local tabs = {}
-			for i, slot in pairs(known.tabs) do
-				if at[i] then
-					if wrote[slot] then
-						slot.entry = as_filed(wrote[slot])
-						slot.close.state = "landed"
-					end
-					tabs[at[i]] = slot
-				elseif slot.close and slot.close.state ~= "held" then
-					history.handles.drop_place(slot.close.place) -- its entry came off with nothing left to hold over
-				end
-			end
-			known.tabs = tabs
-		end
+		land_entries(landing)
 		settle_days(file_path, paged)
 	end)
 	if not ok then
@@ -2862,6 +2947,101 @@ local function write_records(session, changes)
 		return false, "missing"
 	end
 	return true, nil
+end
+
+---Write a session's records into its file.
+---
+---The records are its closed list, close times and No Name texts, from its pools, and its marks and the
+---snapshots held over in its scope, and the trail's pages ride along. Its references stay as the
+---session manager last saved them, but for what closes put onto their entries and what a load left taken
+---off, and the whole editor's records carry the detached lists too. A file that isn't there isn't made,
+---and one that can't be read, or whose scope isn't the session's, isn't touched.
+---
+---@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string}
+---@param changes table<string, {closed: Filehash[], times: table}|false>|nil For the whole editor's
+---session, new entries and close times for the lists in the file alone, by name (false, or no
+---entries, drops the list)
+---@return boolean written True if the file was written
+---@return string|nil problem "missing" when there's no file, otherwise what went wrong
+local function write_records(session, changes)
+	return rewrite_records(session, function(saved, key, file_path)
+		local texts = put_closed_part(saved, session, changes, key, file_path .. ".d/")
+		return texts, put_marks_part(saved, session, texts, key, file_path)
+	end)
+end
+
+---Put a session's closed lists into its file's data as the file has them, and what else they hold as memory
+---has it: the file's closed entries and close times, and its detached lists', a detached list made since it
+---was written taking its own; and every text the file names, memory's lines where memory holds it, the
+---file's word on whether it's open kept, and otherwise carried from the file, unread.
+---
+---@param saved table The file's data, written into in place
+---@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string}
+---@param key string The session's key
+---@param scratch_dir string The session's scratch directory
+---@return table<Filehash, table> texts The texts the file names
+local function keep_closed_part(saved, session, key, scratch_dir)
+	saved.paths = saved.paths or {}
+	local texts = {}
+	for filehash, entry in pairs(type(saved.noname_content) == "table" and saved.noname_content or {}) do
+		if type(entry) == "table" then
+			local handle = history.handles.of_hash(filehash)
+			local bufnr = history.data.hash_buffer_registry.buffers[filehash]
+			local text
+			if bufnr and vim.api.nvim_buf_is_loaded(bufnr) and is_known(filehash) then
+				text = open_text(bufnr)
+			elseif handle and handle.text and is_known(filehash) then
+				text = handle.text
+			end
+			if text then
+				local copy = {}
+				for field, value in pairs(text) do
+					copy[field] = value
+				end
+				copy.reopen = entry.reopen -- open or closed as the file has it, whatever the teardown closed
+				texts[filehash] = copy
+			elseif type(entry.scratch) == "string" then
+				local source = scratch_dir .. entry.scratch
+				texts[filehash] = { scratch = entry.scratch, source = source, key = key,
+					read = scratch_reader(source, key, filehash), reopen = entry.reopen }
+			end
+		end
+	end
+	if session.scope == "editor" then
+		-- the detached lists ride with the whole editor's records, each the file has with its closed entries
+		local lists, live = detached_lists(saved, nil)
+		local filed = {}
+		for _, list in ipairs(saved.detached or {}) do
+			filed[list.label] = list
+		end
+		for _, list in ipairs(lists) do
+			local was = live[list.label] and filed[list.label]
+			if was then
+				list.closed, list.closed_times = was.closed, was.closed_times
+			end
+		end
+		carry_detached(lists, live, saved, texts, saved.paths, key, scratch_dir)
+		saved.detached = #lists > 0 and lists or nil
+		for _, list in ipairs(lists) do
+			for _, filehash in ipairs(list.closed or {}) do
+				saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
+			end
+		end
+	end
+	return texts
+end
+
+---Write the session left's records into its file at a load: everything memory holds of them but its closed
+---lists' changes, which a session manager's teardown made, the closed lists staying as the file has them.
+---
+---@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string}
+---@return boolean written True if the file was written
+---@return string|nil problem "missing" when there's no file, otherwise what went wrong
+local function write_session_left(session)
+	return rewrite_records(session, function(saved, key, file_path)
+		local texts = keep_closed_part(saved, session, key, file_path .. ".d/")
+		return texts, put_marks_part(saved, session, texts, key, file_path)
+	end)
 end
 
 ---Refresh the unnamed session's records in its file.
@@ -3252,6 +3432,102 @@ local function write_now(session)
 		vim.notify("frogman: " .. (session.name or vim.fn.fnamemodify(session.directory, ":t")) .. "'s closed files and No Name texts weren't written, since " .. problem, vim.log.levels.WARN)
 	end
 	return ok
+end
+
+---Check if a close waits to be written onto one of a session file's entries.
+---
+---@param file_path string The session's main file
+---@return boolean waiting
+local function closes_waiting(file_path)
+	local known = data.entries[file_path]
+	for _, kind in ipairs({ "windows", "tabs" }) do
+		for _, slot in pairs(known and known[kind] or {}) do
+			if slot.close and slot.close.state == nil then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+---Let every window and plain tab still open go as its close would, ahead of a whole-editor load that tears
+---them all down: what each holds onto its saved entry as it stands, or queued to be held over in its
+---session's scope with none, so the session left keeps every window's marks and snapshots, not only those
+---its manager's teardown closed.
+---
+---@return nil
+local function close_open_windows()
+	local held = require('frogman.held')
+	for _, winid in ipairs(vim.api.nvim_list_wins()) do
+		if vim.api.nvim_win_get_config(winid).relative == "" then
+			local session, what = held.closing_in(winid)
+			local onto = marks().window_going(winid, session, what)
+			if require('frogman.domains.snapshots').data.by_window[winid] then
+				snapshots().queue_hold_over(winid, onto)
+			end
+		end
+	end
+	for tabpage, _ in pairs(require('frogman.domains.marks').data.scopes.tab) do
+		if vim.api.nvim_tabpage_is_valid(tabpage) then
+			marks().tab_going(tabpage, held.tab_closing_in(tabpage))
+		end
+	end
+end
+
+---Write what memory holds of the session left's records into its file, as a load begins and before it
+---drops anything: at a whole-editor load, which tears every window and session down, every session's, each
+---window and plain tab still open going first as its close would; at a tab session's load, those of the
+---sessions the closes in the tab it loads into left something to, and of a session with a close waiting to
+---be written onto an entry. What the windows and tabs closed without their events left goes first, as their
+---closes would have, the next cleanup tick's pass run now, and what the closes queued to hold over is held
+---over, each in its session's scope; then each such session with a file gets its records written but for
+---its closed lists, which stay as the file has them, so at a session manager's switch the session left keeps
+---everything memory holds but its teardown's closes. It isn't held by the editor's directory, what it writes
+---being each session's own; nothing is written while the records are off.
+---
+---@param tabpage integer|nil The tab a tab session's load goes into, or nil for a whole-editor load
+---@param directory string The directory of the session the load reads
+---@param name string|nil Its name (nil for a nameless session)
+---@return boolean wrote Whether it wrote the file the load reads, which the load then reads again
+function M.keep_session_left(tabpage, directory, name)
+	if not writing then
+		return false
+	end
+	require('frogman.held').hold_over_gone()
+	if tabpage == nil then
+		close_open_windows()
+	end
+	local due = {}
+	for _, held in ipairs({ marks().flush_pending(nil, tabpage), snapshots().flush_pending(nil, tabpage) }) do
+		for id, _ in pairs(held) do
+			local pool = history.data.pools[id]
+			due[(pool and pool.detached) and "" or id] = true -- a detached list's records are the whole editor's
+		end
+	end
+	local reads, wrote = get_session_filepath(directory, name), false
+	for _, session in ipairs(known_sessions()) do
+		local file_path = get_session_filepath(session.directory, session.name)
+		if tabpage == nil or due[session.id] or closes_waiting(file_path) then
+			local ok, problem = write_session_left(session)
+			wrote = wrote or (ok and file_path == reads)
+			if not ok and problem ~= "missing" and not told["left " .. session.id .. problem] then
+				told["left " .. session.id .. problem] = true
+				vim.notify("frogman: " .. (session.name or vim.fn.fnamemodify(session.directory, ":t")) ..
+					"'s marks, snapshots and No Name texts weren't written as the load began, since " .. problem, vim.log.levels.WARN)
+			end
+		end
+	end
+	return wrote
+end
+
+---Let go of every session file's entries this editor knows, as a whole-editor load starts from nothing: the
+---session left's were written as the load began.
+---
+---@return nil
+function M.forget_all_entries()
+	for file_path, _ in pairs(data.entries) do
+		forget_entries(file_path)
+	end
 end
 
 ---Write the records of a pool whose last tab closed, then let the pool go.
