@@ -1233,7 +1233,7 @@ end
 
 -- A file another writer left holding a closed hash twice, as a hand edit could: the load places it once,
 -- since a list holds a file once (I22), and nothing dumps.
-T['T928 [char] (S1 Load, M5, I22, DESK.md:758) a session file holding a closed hash twice loads it once'] = function()
+T['T928 [char] (S1 Load, M5, I22, DESK.md:807) a session file holding a closed hash twice loads it once'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b', ':e c', ':e b', ':bdelete c.txt' })
@@ -2403,7 +2403,7 @@ T['T354 [char] (S2) a tab session with no file, loaded with the hint, starts onl
 end
 
 -- The hint is read (T354, T367); a usable file's scope wins over it.
-T['T355 [char] (S2, DESK.md:2391) a load with the hint reads the tab session\'s own file alone: the whole editor\'s file of that name says nothing, and the tab starts fresh'] = function()
+T['T355 [char] (S2, DESK.md:2446) a load with the hint reads the tab session\'s own file alone: the whole editor\'s file of that name says nothing, and the tab starts fresh'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ':e d' })
@@ -3287,7 +3287,7 @@ end
 -- File-only state, sub/e.txt closed in the first tab too, so e.txt names two files, and e taken off
 -- t's list, so frogman lets e go and knows its path no longer: t_DETACHED's e line, in the file alone,
 -- is followed by its hash and named by the path the file keeps.
-T['T922 [char] (A27, S2 Closed-stack picker, DESK.md:1861) * on an entry of a list in the whole editor\'s file alone follows its file'] = function()
+T['T922 [char] (A27, S2 Closed-stack picker, DESK.md:1920) * on an entry of a list in the whole editor\'s file alone follows its file'] = function()
 	local s = S2.shared()
 	local w1 = file_only_state(s)
 	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
@@ -4114,7 +4114,7 @@ T['T504 [char] (S2) two lists of one name and one last part get headers of their
 	eq({ distinct = #headers == 2 and headers[1] ~= headers[2], lists = lists_by_dir() }, { distinct = true, lists = before })
 end
 
-T['T1195 [char] (S2, DESK.md:2391, :2392) a nameless session\'s list reads (unnamed), apart from one named after its directory'] = function()
+T['T1195 [char] (S2, DESK.md:2446) a nameless session\'s list reads (unnamed), apart from one named after its directory'] = function()
 	child.setup()
 	child.lua('vim.fn.mkdir(_G.FRG_TEST.root .. "/w/app", "p")')
 	child.steps({ ':e a' })
@@ -4147,7 +4147,7 @@ T['T1195 [char] (S2, DESK.md:2391, :2392) a nameless session\'s list reads (unna
 		{ headers = { '≡app', '≡app (unnamed)' }, under = { ['≡app'] = 'b.txt', ['≡app (unnamed)'] = 'd.txt' } })
 end
 
-T['T1216 [char] (S2, DESK.md:2391, :2392) a nameless session\'s list alone reads (unnamed), and two of one last part add the directory that tells them apart inside it'] = function()
+T['T1216 [char] (S2, DESK.md:2446) a nameless session\'s list alone reads (unnamed), and two of one last part add the directory that tells them apart inside it'] = function()
 	child.setup()
 	child.lua('for _, d in ipairs({ "w/app", "p/app" }) do vim.fn.mkdir(_G.FRG_TEST.root .. "/" .. d, "p") end')
 	child.steps({ ':e a' })
@@ -4247,7 +4247,7 @@ T['T375 [char] (S2) <M-;>W opens the picker, named keymaps.open_closed_lists'] =
 end
 
 -- vim.fn.confirm is answered by hand: the choice named No, then Yes, in the write's one prompt.
-T['T376 [char] (S2, DESK.md:1733) discarding a No Name entry in the picker asks first, in the write\'s one prompt'] = function()
+T['T376 [char] (S2, DESK.md:1793) discarding a No Name entry in the picker asks first, in the write\'s one prompt'] = function()
 	child.setup()
 	child.steps({ ':e a' })
 	S2.noname(child, { 'draft' })
@@ -4364,7 +4364,7 @@ T['T672 [char] (S2) a header can\'t be changed in insert mode, keystroke by keys
 		{ { clear = p.lines, type_over = p.lines, join = p.lines, split = p.lines }, p.lines })
 end
 
-T['T673 [char] (S2, DESK.md:1730) a pasted copy of a header stays where it\'s put'] = function()
+T['T673 [char] (S2, DESK.md:1791) a pasted copy of a header stays where it\'s put'] = function()
 	local s = S2.shared()
 	two_pools(s)
 	local p = S2.picker(child)
@@ -4458,7 +4458,7 @@ end
 -- b and c closed, the lists open with an edit not written (their lines swapped), then c reopened in the
 -- window they came from, as from another window: c's line, drawn closed, is open by the write. The
 -- cleanup tick waits an hour, so nothing else takes c off a list between.
-T['T926 [char] (S2 Closed-stack picker, I7, DESK.md:758) the write asks about a line whose file is open now, and Yes leaves it off'] = function()
+T['T926 [char] (S2 Closed-stack picker, I7, DESK.md:807) the write asks about a line whose file is open now, and Yes leaves it off'] = function()
 	two_closed()
 	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
 	local p = S2.picker(child)
@@ -4592,7 +4592,7 @@ local function empty_held_in_split(win)
 	child.settle(300)
 end
 
-T['T1043 [char] (S2, M15, DESK.md:1214) a list in the file alone emptied gives its empty held-over group to the whole editor\'s scope'] = function()
+T['T1043 [char] (S2, M15, DESK.md:1260) a list in the file alone emptied gives its empty held-over group to the whole editor\'s scope'] = function()
 	local s = S2.shared()
 	local w1, w2 = tab_session(s)
 	eq(S2.save(child), { true })
@@ -4616,7 +4616,7 @@ end
 
 -- T860's route with the split holding only an empty typed group: the list merged away gives the group to the
 -- whole editor's scope, empty, still known by the name it was held over from.
-T['T1047 [char] (S2, M15, DESK.md:1214, :1211) a detached list merged away gives its empty held-over group to the whole editor\'s scope, known as before'] = function()
+T['T1047 [char] (S2, M15, DESK.md:1260, :1258) a detached list merged away gives its empty held-over group to the whole editor\'s scope, known as before'] = function()
 	local s = S2.shared()
 	local _, w2 = tab_session(s)
 	eq(S2.save(child), { true })
@@ -4730,7 +4730,7 @@ end
 
 -- A list in the whole editor's file alone, emptied in the closed lists: its copy of its session's marks goes to
 -- the whole editor's scope, held over under the list's name, and the list leaves the file.
-T['T1095 [char] (S2, M15, DESK.md:1214) a list in the file alone emptied in the closed lists gives its copy of the session\'s marks to the whole editor\'s scope'] = function()
+T['T1095 [char] (S2, M15, DESK.md:1260) a list in the file alone emptied in the closed lists gives its copy of the session\'s marks to the whole editor\'s scope'] = function()
 	local s = S2.shared()
 	local w1, w2 = tab_session(s)
 	child.steps({ "<M-'><M-3>", ':e c', "<M-'><M-'><M-a>", ':e d', "<M-'><M-1>" }) -- t's session mark, made in t's tab
@@ -4757,7 +4757,7 @@ end
 
 -- A detached list merged away in the closed lists: it leaves memory and the file, and its copy of its session's
 -- marks goes to the whole editor's scope, held over under its name.
-T['T1096 [char] (S2, M15, DESK.md:1214) a detached list merged away gives its copy of the session\'s marks to the whole editor\'s scope'] = function()
+T['T1096 [char] (S2, M15, DESK.md:1260) a detached list merged away gives its copy of the session\'s marks to the whole editor\'s scope'] = function()
 	local s = S2.shared()
 	local _, w2 = tab_session(s)
 	child.steps({ "<M-'><M-3>", ':e c', "<M-'><M-'><M-a>", ':e d', "<M-'><M-1>" })
@@ -4800,7 +4800,7 @@ end
 
 -- A detached list whose last tab closes with nothing in its closed list goes as an emptied one does: its copy of
 -- its session's marks goes to the whole editor's scope, held over under its name, and the list leaves the file.
-T['T1097 [char] (S2, M15, DESK.md:1214) a detached list whose tab closes with nothing in its list gives its copy of the session\'s marks to the whole editor\'s scope'] = function()
+T['T1097 [char] (S2, M15, DESK.md:1260) a detached list whose tab closes with nothing in its list gives its copy of the session\'s marks to the whole editor\'s scope'] = function()
 	local s = S2.shared()
 	local w2 = detached_with_copy(s, true)
 	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
@@ -4812,7 +4812,7 @@ end
 
 -- A detached list whose last tab closes with nothing left in it at all, no closed file, no mark, no held-over
 -- snapshot, leaves the whole editor's file.
-T['T1098 [char] (S2, M15, DESK.md:1214) a detached list whose tab closes with nothing left in it leaves the whole editor\'s file'] = function()
+T['T1098 [char] (S2, M15, DESK.md:1260) a detached list whose tab closes with nothing left in it leaves the whole editor\'s file'] = function()
 	local s = S2.shared()
 	local w2 = detached_with_copy(s, false)
 	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
@@ -4823,7 +4823,7 @@ T['T1098 [char] (S2, M15, DESK.md:1214) a detached list whose tab closes with no
 end
 
 -- T1097's list with a second group typed into its copy: each group is held over under the list's name and its own.
-T['T1099 [char] (S2, M15, DESK.md:1214, :1208) a detached list leaving with two groups names each group after the list'] = function()
+T['T1099 [char] (S2, M15, DESK.md:1260, :1256) a detached list leaving with two groups names each group after the list'] = function()
 	local s = S2.shared()
 	local w2 = detached_with_copy(s, true)
 	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
@@ -4860,7 +4860,7 @@ end
 
 -- A detached list whose tab is still open stays in the whole editor's file, nothing in its closed list and no
 -- marks: its tab keeps it, and the next load finds the tab by it.
-T['T1100 [char] (S2, DESK.md:1214) a detached list whose tab is open stays in the whole editor\'s file, empty'] = function()
+T['T1100 [char] (S2, DESK.md:1260) a detached list whose tab is open stays in the whole editor\'s file, empty'] = function()
 	local s = S2.shared()
 	detached_with_copy(s, false)
 	eq(S2.save(child), { true })
@@ -4871,7 +4871,7 @@ end
 
 -- A detached list whose tab closes with nothing in its closed list gives what its tab's windows left held over, a
 -- group and a snapshot, to the whole editor's scope, and leaves the file.
-T['T1102 [char] (S2, M15, M16, DESK.md:1214) a detached list whose tab closes with nothing in its list gives its held-over group and snapshot to the whole editor\'s scope'] = function()
+T['T1102 [char] (S2, M15, M16, DESK.md:1260) a detached list whose tab closes with nothing in its list gives its held-over group and snapshot to the whole editor\'s scope'] = function()
 	local s = S2.shared()
 	local w2 = detached_with_copy(s, false)
 	held_in_split(w2) -- in the second tab, now t_DETACHED's
@@ -4884,7 +4884,7 @@ end
 
 -- T1095's write failing once, the session directory read-only, then written again: the list's copy is held over
 -- once in the whole editor's scope, the retried write not moving it a second time.
-T['T1103 [char] (S2, M15, DESK.md:1214) a list in the file alone emptied by a write that fails and is retried gives its copy once'] = function()
+T['T1103 [char] (S2, M15, DESK.md:1260) a list in the file alone emptied by a write that fails and is retried gives its copy once'] = function()
 	local s = S2.shared()
 	local w1, w2 = tab_session(s)
 	child.steps({ "<M-'><M-3>", ':e c', "<M-'><M-'><M-a>", ':e d', "<M-'><M-1>" }) -- t's session mark, made in t's tab
@@ -4920,7 +4920,7 @@ end
 -- can't be written: the list stays in memory with no tab and nothing in it, so the next records write, once the
 -- file can be written, leaves it out rather than taking the file's own entry for it, and lets it go from memory;
 -- its copy is held over once.
-T['T1104 [char] (S2, M15, DESK.md:1214) a detached list whose tab closes empty while the whole editor\'s file can\'t be written leaves it at the next write'] = function()
+T['T1104 [char] (S2, M15, DESK.md:1260) a detached list whose tab closes empty while the whole editor\'s file can\'t be written leaves it at the next write'] = function()
 	local s = S2.shared()
 	local w2 = detached_with_copy(s, true)
 	eq(S2.save(child), { true }) -- the whole editor's file holds t_DETACHED with its copy
@@ -4947,7 +4947,7 @@ end
 -- T1096's merge, the whole editor's file holding the list, settled while that file can't be written: the list stays
 -- in memory with no tab and nothing in it, so the next write, a save, leaves it out of the file and lets it go from
 -- memory; its copy is held over once.
-T['T1105 [char] (S2, M15, DESK.md:1214) a detached list merged away while the whole editor\'s file can\'t be written leaves it at the next write'] = function()
+T['T1105 [char] (S2, M15, DESK.md:1260) a detached list merged away while the whole editor\'s file can\'t be written leaves it at the next write'] = function()
 	local s = S2.shared()
 	local _, w2 = tab_session(s)
 	child.steps({ "<M-'><M-3>", ':e c', "<M-'><M-'><M-a>", ':e d', "<M-'><M-1>" })
@@ -5003,7 +5003,7 @@ end
 -- T1102's list, its tab's last window a split with a window mark on d, the tab closed while a records write queued
 -- before the close waits: the write doesn't let the list go ahead of its close, so the window's group still reaches
 -- the whole editor's scope as T1102's does.
-T['T1106 [char] (S2, M15, DESK.md:1214) a detached list whose tab closes empty while a records write waits still gives its last window\'s group to the whole editor\'s scope'] = function()
+T['T1106 [char] (S2, M15, DESK.md:1260) a detached list whose tab closes empty while a records write waits still gives its last window\'s group to the whole editor\'s scope'] = function()
 	local s = S2.shared()
 	local w2 = detached_with_copy(s, false)
 	child.lua('vim.api.nvim_set_current_win(...)', { w2 })
@@ -5051,7 +5051,7 @@ end
 -- A detached list kept with no tab after a failed write, its last line deleted in the closed lists once the file can
 -- be written: it goes as an emptied list does, its copy held over in the whole editor's scope, and it leaves
 -- memory and the file.
-T['T1107 [char] (S2, M15, DESK.md:1214) a detached list kept with no tab after a failed write, emptied in the closed lists, gives its copy to the whole editor\'s scope and leaves'] = function()
+T['T1107 [char] (S2, M15, DESK.md:1260) a detached list kept with no tab after a failed write, emptied in the closed lists, gives its copy to the whole editor\'s scope and leaves'] = function()
 	local s = S2.shared()
 	local kept = kept_with_e(s)
 	local p = S2.picker(child)
@@ -5067,7 +5067,7 @@ T['T1107 [char] (S2, M15, DESK.md:1214) a detached list kept with no tab after a
 end
 
 -- The same list emptied by opening its last file again: it goes the same way.
-T['T1108 [char] (S2, M15, DESK.md:1214) a detached list kept with no tab after a failed write, emptied by opening its file, gives its copy to the whole editor\'s scope and leaves'] = function()
+T['T1108 [char] (S2, M15, DESK.md:1260) a detached list kept with no tab after a failed write, emptied by opening its file, gives its copy to the whole editor\'s scope and leaves'] = function()
 	local s = S2.shared()
 	local kept = kept_with_e(s)
 	child.steps({ ':e e' }) -- e off every list
@@ -5080,7 +5080,7 @@ end
 
 -- The same list emptied by opening its file and the whole editor saved at once, before any records write: the save
 -- leaves the list out and holds its copy over in the whole editor's scope.
-T['T1109 [char] (S2, M15, DESK.md:1214) a detached list kept with no tab after a failed write, emptied and saved at once, leaves the file through the save'] = function()
+T['T1109 [char] (S2, M15, DESK.md:1260) a detached list kept with no tab after a failed write, emptied and saved at once, leaves the file through the save'] = function()
 	local s = S2.shared()
 	local kept = kept_with_e(s)
 	local saved = child.lua([[
@@ -5133,7 +5133,7 @@ local LOAD_CLOSES = [[
 -- A tab session's load into another tab session's tab, the teardown deleting that tab's buffers in the same call:
 -- the session left keeps its closed list as its file had it, as at a whole-editor switch, while the trail still
 -- records the closes onto its list.
-T['T1101 [char] (S2, M5, DESK.md:1205) a tab session\'s load into a tab session\'s tab leaves the teardown\'s closes off the session left\'s closed list'] = function()
+T['T1101 [char] (S2, M5, DESK.md:1253) a tab session\'s load into a tab session\'s tab leaves the teardown\'s closes off the session left\'s closed list'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 'u'), { true })
 	tab_session(s) -- t in the second tab, on d, c in its history
@@ -5150,7 +5150,7 @@ T['T1101 [char] (S2, M5, DESK.md:1205) a tab session\'s load into a tab session\
 end
 
 -- The same teardown in a plain tab: the files it closes go onto the whole editor's list, which its file takes.
-T['T1110 [char] (S2, M5, DESK.md:1205) a tab session\'s load into a plain tab puts the teardown\'s closes onto the whole editor\'s list'] = function()
+T['T1110 [char] (S2, M5, DESK.md:1253) a tab session\'s load into a plain tab puts the teardown\'s closes onto the whole editor\'s list'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 'u'), { true })
 	S2.start(child, s)
@@ -5172,7 +5172,7 @@ end
 
 -- The same teardown in a detached list's tab: the files it closes go onto that list, which goes into the whole
 -- editor's file with them as its tab goes.
-T['T1111 [char] (S2, M5, DESK.md:1205) a tab session\'s load into a detached list\'s tab puts the teardown\'s closes onto that list in the whole editor\'s file'] = function()
+T['T1111 [char] (S2, M5, DESK.md:1253) a tab session\'s load into a detached list\'s tab puts the teardown\'s closes onto that list in the whole editor\'s file'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 'u'), { true })
 	local w2 = detached_with_copy(s, false) -- the second tab keeps t_DETACHED, after a whole-editor save
@@ -5192,7 +5192,7 @@ end
 
 -- t reloaded into its own tab, the teardown closing a file opened there since t's save in the same call: the file
 -- stays off t's list, as t's file has it, while the trail records its close onto t.
-T['T1112 [char] (S2, M5, DESK.md:1205) a tab session reloaded into its own tab leaves the teardown\'s closes off its closed list'] = function()
+T['T1112 [char] (S2, M5, DESK.md:1253) a tab session reloaded into its own tab leaves the teardown\'s closes off its closed list'] = function()
 	local s = S2.shared()
 	local _, w2 = tab_session(s) -- t in the second tab, its file with nothing closed
 	child.steps({ ':e e', ':e d' }) -- e opened in t's tab since t's save
@@ -5218,7 +5218,7 @@ end
 
 -- A file t's tab visited, closed from the first tab in the same call as u's load into t's tab: a close made in
 -- another tab isn't the teardown's, so it goes onto t's list as a visitor's does, and into t's file as t goes.
-T['T1113 [char] (S2, M5, DESK.md:1205) a close made in another tab just before a tab session\'s load still goes onto the session left\'s list'] = function()
+T['T1113 [char] (S2, M5, DESK.md:1253) a close made in another tab just before a tab session\'s load still goes onto the session left\'s list'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 'u'), { true })
 	local w1, w2 = tab_session(s) -- t in the second tab, c in its history
@@ -5235,7 +5235,7 @@ T['T1113 [char] (S2, M5, DESK.md:1205) a close made in another tab just before a
 end
 
 
--- The guards (DESK.md:1730, :1733): a header the lists drew that's missing at the write refuses it, a pasted
+-- The guards (DESK.md:1791, :1793): a header the lists drew that's missing at the write refuses it, a pasted
 -- copy of one stays and is asked about, and the No Name texts the write would discard are in its one prompt.
 
 -- The write run on one command line with a line of the lists, before the guard can take the change back; the
@@ -5247,7 +5247,7 @@ local function on_one_line(command)
 	]], { command })
 end
 
-T['T1133 [char] (S2 Closed-stack picker, DESK.md:1730, repro R10) a header deleted and written on one command line refuses the write, the cursor on its first entry'] = function()
+T['T1133 [char] (S2 Closed-stack picker, DESK.md:1791, repro R10) a header deleted and written on one command line refuses the write, the cursor on its first entry'] = function()
 	local s = S2.shared()
 	two_pools(s)
 	local before = child.lua(LISTS_STATE)
@@ -5260,7 +5260,7 @@ T['T1133 [char] (S2 Closed-stack picker, DESK.md:1730, repro R10) a header delet
 		lines = picker_lines() }, { got = { cursor = t, modified = true }, told = 1, lists = before, lines = p.lines })
 end
 
-T['T1134 [char] (S2 Closed-stack picker, DESK.md:1730, repro R10) a header deleted and written by a macro refuses the write'] = function()
+T['T1134 [char] (S2 Closed-stack picker, DESK.md:1791, repro R10) a header deleted and written by a macro refuses the write'] = function()
 	local s = S2.shared()
 	two_pools(s)
 	local before = child.lua(LISTS_STATE)
@@ -5286,7 +5286,7 @@ local function copy_over_x(p)
 	return lines
 end
 
-T['T1135 [char] (S2 Closed-stack picker, DESK.md:1730, :1733) a pasted copy of a header is asked about at the write, and Yes leaves it out, the lines under it with the list above'] = function()
+T['T1135 [char] (S2 Closed-stack picker, DESK.md:1791, :1793) a pasted copy of a header is asked about at the write, and Yes leaves it out, the lines under it with the list above'] = function()
 	local s = S2.shared()
 	two_pools(s)
 	local before = child.lua(LISTS_STATE)
@@ -5309,7 +5309,7 @@ T['T1135 [char] (S2 Closed-stack picker, DESK.md:1730, :1733) a pasted copy of a
 			yes = { lists = before, modified = false, lines = p.lines } })
 end
 
-T['T1136 [char] (S2 Closed-stack picker, DESK.md:1730, :1738) the header a guard took a change back on is still told from a pasted copy'] = function()
+T['T1136 [char] (S2 Closed-stack picker, DESK.md:1791, :1797) the header a guard took a change back on is still told from a pasted copy'] = function()
 	local s = S2.shared()
 	two_pools(s)
 	local before = child.lua(LISTS_STATE)
@@ -5328,7 +5328,7 @@ T['T1136 [char] (S2 Closed-stack picker, DESK.md:1730, :1738) the header a guard
 	eq(pasted[2], pasted[S2.line_of(pasted, 'c.txt') - 1])
 end
 
-T['T1137 [char] (S2 Closed-stack picker, DESK.md:1733) the No Name texts a write would discard are asked about in its one prompt'] = function()
+T['T1137 [char] (S2 Closed-stack picker, DESK.md:1793) the No Name texts a write would discard are asked about in its one prompt'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b' })
 	S2.noname(child, { 'draft' })
@@ -5352,7 +5352,7 @@ T['T1137 [char] (S2 Closed-stack picker, DESK.md:1733) the No Name texts a write
 		{ no = { prompts = 1, typo = true, text = true, kept = true }, yes = { prompts = 1, closed = 'b' } })
 end
 
-T['T1142 [char] (S2 Closed-stack picker, DESK.md:1730) <CR> under a pasted copy of another list\'s header reopens from the list the line is under'] = function()
+T['T1142 [char] (S2 Closed-stack picker, DESK.md:1791) <CR> under a pasted copy of another list\'s header reopens from the list the line is under'] = function()
 	local s = S2.shared()
 	local w1 = file_only_state(s)
 	child.lua('vim.api.nvim_set_current_win(...)', { w1 })
@@ -5376,7 +5376,7 @@ T['T1142 [char] (S2 Closed-stack picker, DESK.md:1730) <CR> under a pasted copy 
 	eq({ in_file = child.lua(EDITOR_FILE).detached.t_DETACHED, reopened = child.shown(w1) }, { in_file = nil, reopened = 'e' })
 end
 
-T['T1143 [char] (S2 Closed-stack picker, DESK.md:1730) a header deleted with a copy of it below is taken back'] = function()
+T['T1143 [char] (S2 Closed-stack picker, DESK.md:1791) a header deleted with a copy of it below is taken back'] = function()
 	local s = S2.shared()
 	two_pools(s)
 	local before = child.lua(LISTS_STATE)
@@ -5395,7 +5395,7 @@ T['T1143 [char] (S2 Closed-stack picker, DESK.md:1730) a header deleted with a c
 	eq({ copied = copied, after = after, lists = child.lua(LISTS_STATE) }, { copied = lines, after = lines, lists = before })
 end
 
-T['T1144 [char] (S2 Closed-stack picker, DESK.md:1730) after every line is written over, the headers are told from a copy pasted later'] = function()
+T['T1144 [char] (S2 Closed-stack picker, DESK.md:1791) after every line is written over, the headers are told from a copy pasted later'] = function()
 	local s = S2.shared()
 	two_pools(s)
 	local before = child.lua(LISTS_STATE)
@@ -5409,7 +5409,7 @@ T['T1144 [char] (S2 Closed-stack picker, DESK.md:1730) after every line is writt
 	eq({ prompts = #child.prompts(), lists = child.lua(LISTS_STATE) }, { prompts = 1, lists = before })
 end
 
-T['T1145 [char] (S2 Closed-stack picker, DESK.md:1730) the refusal puts the cursor on the list\'s own first entry, a file on two lists'] = function()
+T['T1145 [char] (S2 Closed-stack picker, DESK.md:1791) the refusal puts the cursor on the list\'s own first entry, a file on two lists'] = function()
 	local s = S2.shared()
 	x_on_both(s)
 	local p = S2.picker(child)
@@ -5419,7 +5419,7 @@ T['T1145 [char] (S2 Closed-stack picker, DESK.md:1730) the refusal puts the curs
 	eq({ first = p.lines[t + 1], cursor = got.cursor }, { first = 'x.txt', cursor = t })
 end
 
-T['T1147 [char] (S2 Closed-stack picker, DESK.md:1730) keys typed ahead with the lists\' open key meet the headers it drew: a header deleted past its copy refuses'] = function()
+T['T1147 [char] (S2 Closed-stack picker, DESK.md:1791) keys typed ahead with the lists\' open key meet the headers it drew: a header deleted past its copy refuses'] = function()
 	local s = S2.shared()
 	two_pools(s)
 	local before = child.lua(LISTS_STATE)
@@ -5431,7 +5431,7 @@ T['T1147 [char] (S2 Closed-stack picker, DESK.md:1730) keys typed ahead with the
 		{ told = 1, lists = before })
 end
 
-T['T1149 [char] (S2 Closed-stack picker, DESK.md:1738) an edit typed ahead with a header change the guard undoes stays through a later put-back'] = function()
+T['T1149 [char] (S2 Closed-stack picker, DESK.md:1797) an edit typed ahead with a header change the guard undoes stays through a later put-back'] = function()
 	local s = S2.shared()
 	two_pools(s)
 	local p = S2.picker(child)
@@ -5444,7 +5444,7 @@ T['T1149 [char] (S2 Closed-stack picker, DESK.md:1738) an edit typed ahead with 
 	eq({ undone = undone, put_back = picker_lines() }, { undone = { '≡editor', '≡t', 'c.txt' }, put_back = { '≡editor', '≡t', 'c.txt' } })
 end
 
-T['T1150 [char] (S2 Closed-stack picker, DESK.md:1730, :1738) a line opened above a header is kept'] = function()
+T['T1150 [char] (S2 Closed-stack picker, DESK.md:1791, :1797) a line opened above a header is kept'] = function()
 	local s = S2.shared()
 	two_pools(s)
 	local p = S2.picker(child)
@@ -5455,7 +5455,7 @@ T['T1150 [char] (S2 Closed-stack picker, DESK.md:1730, :1738) a line opened abov
 	eq(picker_lines(), lines)
 end
 
-T['T1151 [char] (S2 Closed-stack picker, DESK.md:1730, :1733) a header\'s copy put above it is the copy the write asks about'] = function()
+T['T1151 [char] (S2 Closed-stack picker, DESK.md:1791, :1793) a header\'s copy put above it is the copy the write asks about'] = function()
 	local s = S2.shared()
 	two_pools(s)
 	local p = S2.picker(child)
@@ -5468,7 +5468,7 @@ T['T1151 [char] (S2 Closed-stack picker, DESK.md:1730, :1733) a header\'s copy p
 	eq({ prompts = #child.prompts(), cursor = child.lua('return vim.api.nvim_win_get_cursor(0)[1]') }, { prompts = 1, cursor = t })
 end
 
-T['T1194 [char] (M5, S1, DESK.md:2391, :2392) the lists a file came off when it was opened again are saved with the session'] = function()
+T['T1194 [char] (M5, S1, DESK.md:2446) the lists a file came off when it was opened again are saved with the session'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b' })
@@ -5490,7 +5490,7 @@ T['T1194 [char] (M5, S1, DESK.md:2391, :2392) the lists a file came off when it 
 	]]) }, { before = { '' }, after = { '' } })
 end
 
-T['T1196 [char] (S2, DESK.md:2391, :2392) after Neovim\'s :restart session, frogman runs every load of the startup again, each tab session into its own tab'] = function()
+T['T1196 [char] (S2, DESK.md:2446) after Neovim\'s :restart session, frogman runs every load of the startup again, each tab session into its own tab'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b' })
@@ -5518,7 +5518,7 @@ T['T1196 [char] (S2, DESK.md:2391, :2392) after Neovim\'s :restart session, frog
 	eq({ loads = S2.loads(child), tabs = #tabs, slots = child.slots(second) }, { loads = 4, tabs = 2, slots = '⦉c⦊ [d] ⟦-⟧' })
 end
 
-T['T1200 [char] (S2, DESK.md:2391, :2392) after Neovim\'s :restart session, a whole-editor load the startup made before another isn\'t run again'] = function()
+T['T1200 [char] (S2, DESK.md:2446) after Neovim\'s :restart session, a whole-editor load the startup made before another isn\'t run again'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b' })
@@ -5542,7 +5542,7 @@ T['T1200 [char] (S2, DESK.md:2391, :2392) after Neovim\'s :restart session, a wh
 		{ loads = 3, session = 'two' })
 end
 
--- Separate files for a tab session and the whole editor's session of one name (DESK.md:2391, :2392) ----------------
+-- Separate files for a tab session and the whole editor's session of one name (DESK.md:2446) ----------------
 
 -- A tab session's file moved to the name it shared with the whole editor's session, as saves wrote it before.
 local function to_shared_name(name)
@@ -5555,7 +5555,7 @@ local function to_shared_name(name)
 	]], { name })
 end
 
-T['T1201 [char] (S1, S2, DESK.md:2391, :2392) a tab session and the whole editor\'s session of one name have a file each'] = function()
+T['T1201 [char] (S1, S2, DESK.md:2446) a tab session and the whole editor\'s session of one name have a file each'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b' })
@@ -5572,7 +5572,7 @@ T['T1201 [char] (S1, S2, DESK.md:2391, :2392) a tab session and the whole editor
 	eq(got, { whole = 'editor', tab = 'tab' })
 end
 
-T['T1202 [char] (S1, S2, DESK.md:2391, :2392) a tab session\'s load that finds only a file under the shared name starts the tab fresh and names the script'] = function()
+T['T1202 [char] (S1, S2, DESK.md:2446) a tab session\'s load that finds only a file under the shared name starts the tab fresh and names the script'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ':e d' })
@@ -5588,7 +5588,7 @@ T['T1202 [char] (S1, S2, DESK.md:2391, :2392) a tab session\'s load that finds o
 	eq(told, 1)
 end
 
-T['T1207 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint that finds only a tab session\'s file under the shared name starts the tab it runs in fresh, the whole editor\'s session left as it was'] = function()
+T['T1207 [char] (S1, S2, DESK.md:2446) a load without the hint that finds only a tab session\'s file under the shared name starts the tab it runs in fresh, the whole editor\'s session left as it was'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ':e d' })
@@ -5608,7 +5608,7 @@ T['T1207 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint that finds
 		{ told = 1, session = 'work', pool = 'old\n' .. s.root })
 end
 
-T['T1208 [char] (S2, DESK.md:2391, :2392) the migration script leaves a tab session\'s file whose own name has a texts folder already, its own folder with it'] = function()
+T['T1208 [char] (S2, DESK.md:2446) the migration script leaves a tab session\'s file whose own name has a texts folder already, its own folder with it'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c' })
@@ -5635,7 +5635,7 @@ T['T1208 [char] (S2, DESK.md:2391, :2392) the migration script leaves a tab sess
 		{ code = 0, left = true, shared = true, shared_d = true, own = false })
 end
 
-T['T1209 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint in a tab with a :tcd of its own finds a tab session\'s file there under the shared name, starts that tab fresh and names the script'] = function()
+T['T1209 [char] (S1, S2, DESK.md:2446) a load without the hint in a tab with a :tcd of its own finds a tab session\'s file there under the shared name, starts that tab fresh and names the script'] = function()
 	local s = S2.shared()
 	vim.fn.mkdir(s.root .. '/sub', 'p')
 	S2.start(child, s)
@@ -5670,7 +5670,7 @@ T['T1209 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint in a tab w
 		{ told = 1, session = 'work', pool = 't\n' .. s.root .. '/sub' })
 end
 
-T['T1210 [char] (S2, DESK.md:2391, :2392) a dry run counts a tab session\'s file under the shared name still in cavediver\'s folder, as the real run renames it'] = function()
+T['T1210 [char] (S2, DESK.md:2446) a dry run counts a tab session\'s file under the shared name still in cavediver\'s folder, as the real run renames it'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ':e d' })
@@ -5708,7 +5708,7 @@ T['T1210 [char] (S2, DESK.md:2391, :2392) a dry run counts a tab session\'s file
 		{ dry = true, real = true, code = 0 })
 end
 
-T['T1211 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint in a tab with a :tcd of its own whose tab session\'s file there fails to read starts that tab fresh, the whole editor\'s session left as it was'] = function()
+T['T1211 [char] (S1, S2, DESK.md:2446) a load without the hint in a tab with a :tcd of its own whose tab session\'s file there fails to read starts that tab fresh, the whole editor\'s session left as it was'] = function()
 	local s = S2.shared()
 	vim.fn.mkdir(s.root .. '/sub', 'p')
 	S2.start(child, s)
@@ -5737,7 +5737,7 @@ T['T1211 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint in a tab w
 		{ told = true, session = 'work', pool = 't\n' .. s.root .. '/sub' })
 end
 
-T['T1212 [char] (S2, DESK.md:2391, :2392) a dry run doesn\'t count a tab session\'s file in cavediver\'s folder whose name frogman\'s folder has, as the real run\'s move leaves it there'] = function()
+T['T1212 [char] (S2, DESK.md:2446) a dry run doesn\'t count a tab session\'s file in cavediver\'s folder whose name frogman\'s folder has, as the real run\'s move leaves it there'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ':e d' })
@@ -5778,7 +5778,7 @@ T['T1212 [char] (S2, DESK.md:2391, :2392) a dry run doesn\'t count a tab session
 		{ dry = true, real = true })
 end
 
-T['T1213 [char] (S2, DESK.md:2391, :2392) a tab session with no resession file is renamed by the warning\'s own command, run as it reads with a session folder of its own, and a load reads it'] = function()
+T['T1213 [char] (S2, DESK.md:2446) a tab session with no resession file is renamed by the warning\'s own command, run as it reads with a session folder of its own, and a load reads it'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ':e d' })
@@ -5806,7 +5806,7 @@ T['T1213 [char] (S2, DESK.md:2391, :2392) a tab session with no resession file i
 		{ code = 0, renamed = true, slots = '⦉c⦊ [d] ⟦-⟧' })
 end
 
-T['T1214 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint whose whole editor\'s file can\'t be read says so and starts the whole editor fresh, the tab session of that name left unread'] = function()
+T['T1214 [char] (S1, S2, DESK.md:2446) a load without the hint whose whole editor\'s file can\'t be read says so and starts the whole editor fresh, the tab session of that name left unread'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b' })
@@ -5828,7 +5828,7 @@ T['T1214 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint whose whol
 		{ told = true, pool = '' })
 end
 
-T['T1217 [char] (S2, DESK.md:2391, :2392) a load with the hint whose file is still in cavediver\'s folder under the name it shared points to the migration script'] = function()
+T['T1217 [char] (S2, DESK.md:2446) a load with the hint whose file is still in cavediver\'s folder under the name it shared points to the migration script'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	eq(child.lua([[
@@ -5858,7 +5858,7 @@ local function damage_own(name)
 	S2.write(own, bytes:sub(1, -2) .. string.char((bytes:byte(-1) + 1) % 256))
 end
 
-T['T1218 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint that finds a tab session\'s file under the shared name and a damaged one under its own says the damage and starts the tab fresh'] = function()
+T['T1218 [char] (S1, S2, DESK.md:2446) a load without the hint that finds a tab session\'s file under the shared name and a damaged one under its own says the damage and starts the tab fresh'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ':e d' })
@@ -5878,7 +5878,7 @@ T['T1218 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint that finds
 		{ damage = true, old_name = false, session = 'work', pool = 'old\n' .. s.root })
 end
 
-T['T1219 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint that finds only a damaged tab session\'s file under its own name says the damage and starts the tab fresh'] = function()
+T['T1219 [char] (S1, S2, DESK.md:2446) a load without the hint that finds only a damaged tab session\'s file under its own name says the damage and starts the tab fresh'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ':e d' })
@@ -5898,7 +5898,7 @@ T['T1219 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint that finds
 		{ damage = true, session = 'work', pool = 'old\n' .. s.root })
 end
 
-T['T1220 [char] (S2, DESK.md:2391, :2392) a load with the hint says nothing of cavediver\'s copy under the name it shared while frogman\'s folder has that name, the move leaving it'] = function()
+T['T1220 [char] (S2, DESK.md:2446) a load with the hint says nothing of cavediver\'s copy under the name it shared while frogman\'s folder has that name, the move leaving it'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	eq(child.lua([[
@@ -5927,7 +5927,7 @@ T['T1220 [char] (S2, DESK.md:2391, :2392) a load with the hint says nothing of c
 	eq(said, false)
 end
 
-T['T1203 [char] (S2, DESK.md:2391, :2392) the migration script renames a tab session\'s file to its own name, its texts with it, and a load reads it'] = function()
+T['T1203 [char] (S2, DESK.md:2446) the migration script renames a tab session\'s file to its own name, its texts with it, and a load reads it'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c' })
@@ -5950,7 +5950,7 @@ T['T1203 [char] (S2, DESK.md:2391, :2392) the migration script renames a tab ses
 		text = S2.holding(child, 'draft') }, { code = 0, renamed = true, d = 'd', text = 1 })
 end
 
-T['T1204 [char] (S1, S2, DESK.md:2391, :2392) a tab session and the whole editor\'s session of one name keep their own records'] = function()
+T['T1204 [char] (S1, S2, DESK.md:2446) a tab session and the whole editor\'s session of one name keep their own records'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b', ':e x' })
@@ -5983,7 +5983,7 @@ T['T1204 [char] (S1, S2, DESK.md:2391, :2392) a tab session and the whole editor
 	eq({ whole = whole, tab = tab }, { whole = 'b', tab = 'd' })
 end
 
-T['T1206 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint still finds a tab session\'s file, under its own name'] = function()
+T['T1206 [char] (S1, S2, DESK.md:2446) a load without the hint still finds a tab session\'s file, under its own name'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ':e d' })

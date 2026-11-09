@@ -291,7 +291,7 @@ T['T688 [char] (M2 Handles, A20) a move onto a name a live handle has: the moved
 	eq(child.lua('return require("frogman.domains.history").handles.get(...) == nil', { a.id }), true)
 end
 
-T['T936 [char] (M2 Handles, A20, DESK.md:754) a move onto a held name hands its notes, its snapshot notes and its visits over before its handle is let go'] = function()
+T['T936 [char] (M2 Handles, A20, DESK.md:803) a move onto a held name hands its notes, its snapshot notes and its visits over before its handle is let go'] = function()
 	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
 	child.steps({ ':e c', ':e b', ':e a', ':e d' })
 	eq({ child.slots(), child.notes() }, { '⦉a⦊ [d] ⟦-⟧', 'dtm{a>b b>c} dsm{}' })
@@ -402,9 +402,9 @@ T['T695 [char] (M6 Triquetra) an update that would leave a file in two slots is 
 	eq({ ok, child.slots(), child.dumped_since(dumps) ~= nil }, { false, '⦉a⦊ [b] ⟦-⟧', true })
 end
 
--- The Pool class (M5, DESK.md:758): a change that would break one of a list's rules is refused,
+-- The Pool class (M5, DESK.md:807): a change that would break one of a list's rules is refused,
 -- the list as it was, and dumps, as T695's update is.
-T['T923 [char] (M5, I22, DESK.md:758) a change that would put a file twice on a list is refused, and dumps'] = function()
+T['T923 [char] (M5, I22, DESK.md:807) a change that would put a file twice on a list is refused, and dumps'] = function()
 	child.steps({ ':e c', ':e a', ':e b', ':bdelete c.txt' })
 	eq(holders('c'), { 'pool:editor' })
 	local dumps = child.dump_files()
@@ -421,7 +421,7 @@ T['T923 [char] (M5, I22, DESK.md:758) a change that would put a file twice on a 
 	eq({ got, child.dumped_since(dumps) ~= nil }, { { method = true, ok = false, same = true }, true })
 end
 
-T['T924 [char] (M5, I7, DESK.md:758) a change that would put an open file on a list is refused, and dumps'] = function()
+T['T924 [char] (M5, I7, DESK.md:807) a change that would put an open file on a list is refused, and dumps'] = function()
 	child.steps({ ':e c', ':e a', ':e b', ':bdelete c.txt' })
 	local dumps = child.dump_files()
 	local got = child.lua([[
@@ -471,7 +471,7 @@ local function assigns(code)
 	return false
 end
 
-T['T925 [char] (M5, DESK.md:758) every write to a list goes through the Pool class'] = function()
+T['T925 [char] (M5, DESK.md:807) every write to a list goes through the Pool class'] = function()
 	local found = {}
 	for _, path in ipairs(vim.fs.find(function(name) return name:match('%.lua$') ~= nil end,
 			{ path = 'lua/frogman', type = 'file', limit = math.huge })) do
@@ -501,7 +501,7 @@ T['T925 [char] (M5, DESK.md:758) every write to a list goes through the Pool cla
 	eq({ module = vim.uv.fs_stat('lua/frogman/domains/history/pool.lua') ~= nil, writes = found }, { module = true, writes = {} })
 end
 
-T['T935 [char] (M2 Holders, A22, DESK.md:754, :768) the scan is gone: nothing names follow_along or is_handle_referenced, and the cleanup pass forgets nothing'] = function()
+T['T935 [char] (M2 Holders, A22, DESK.md:803, :817) the scan is gone: nothing names follow_along or is_handle_referenced, and the cleanup pass forgets nothing'] = function()
 	local found = {}
 	for _, path in ipairs(vim.fs.find(function(name) return name:match('%.lua$') ~= nil end,
 			{ path = 'lua/frogman', type = 'file', limit = math.huge })) do
@@ -525,7 +525,7 @@ T['T935 [char] (M2 Holders, A22, DESK.md:754, :768) the scan is gone: nothing na
 	eq({ cleanup = cleanup ~= '', found = found }, { cleanup = true, found = {} })
 end
 
-T['T927 [char] (M5, DESK.md:758) clear_closed_buffers() empties the editor\'s list in place'] = function()
+T['T927 [char] (M5, DESK.md:807) clear_closed_buffers() empties the editor\'s list in place'] = function()
 	child.steps({ ':e c', ':e a', ':e b', ':bdelete c.txt' })
 	local got = child.lua([[
 		local H = require('frogman.domains.history')
@@ -538,7 +538,7 @@ T['T927 [char] (M5, DESK.md:758) clear_closed_buffers() empties the editor\'s li
 	eq(got, { same = true, empty = true, field = true, read = 0 })
 end
 
-T['T932 [char] (M5, DESK.md:754) a file let go takes what it remembers of its lists with it'] = function()
+T['T932 [char] (M5, DESK.md:803) a file let go takes what it remembers of its lists with it'] = function()
 	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
 	child.steps({ ':e a' })
 	child.cmd('enew')
@@ -660,7 +660,7 @@ T['T880 [char] (M6 Triquetra) a slot\'s write holds its own place alone'] = func
 	eq(writes, 1)
 end
 
-T['T937 [char] (M2 Holders, DESK.md:754) a handle held by nothing is let go even when its path is gone already'] = function()
+T['T937 [char] (M2 Holders, DESK.md:803) a handle held by nothing is let go even when its path is gone already'] = function()
 	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
 	child.steps({ ':e b', ':e a' })
 	local b = handle('b')
@@ -699,7 +699,7 @@ T['T699 [char] (M2 Holders) a file let go and held again in one batch is kept'] 
 	eq(after, { path = true, id = got.id })
 end
 
-T['T895 [char] (M2 Handles, DESK.md:752) a move and a No Name text\'s reopen leave every consumer holding what it held'] = function()
+T['T895 [char] (M2 Handles, DESK.md:801) a move and a No Name text\'s reopen leave every consumer holding what it held'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	eq(child.slots(), '⦉b⦊ [c] ⟦-⟧')
 	local a, b = handle('a'), handle('b')
@@ -732,7 +732,7 @@ T['T895 [char] (M2 Handles, DESK.md:752) a move and a No Name text\'s reopen lea
 	eq({ after.current, after.hash ~= n.hash }, { n.id, true })
 end
 
-T['T900 [char] (M2 Handles, M11, DESK.md:766, :769) every handle transition runs the ledger\'s hook last, and no two of its hooks share a class'] = function()
+T['T900 [char] (M2 Handles, M11, DESK.md:815, :818) every handle transition runs the ledger\'s hook last, and no two of its hooks share a class'] = function()
 	local got = child.lua([[
 		local helpers = require('frogman.engine.helpers')
 		local model = require('frogman.domains.history.handles').model
@@ -758,7 +758,7 @@ T['T900 [char] (M2 Handles, M11, DESK.md:766, :769) every handle transition runs
 	eq(got, want)
 end
 
-T['T931 [char] (M2 Holders, M11, DESK.md:754) a let-go runs one hook for each weak holder, each in a class of its own, between the fields and the trail'] = function()
+T['T931 [char] (M2 Holders, M11, DESK.md:803) a let-go runs one hook for each weak holder, each in a class of its own, between the fields and the trail'] = function()
 	local got = child.lua([[
 		local helpers = require('frogman.engine.helpers')
 		local model = require('frogman.domains.history.handles').model
@@ -779,7 +779,7 @@ T['T931 [char] (M2 Holders, M11, DESK.md:754) a let-go runs one hook for each we
 	})
 end
 
-T['T901 [char] (M11, DESK.md:771) a handle goes by its file\'s unique name in a message'] = function()
+T['T901 [char] (M11, DESK.md:820) a handle goes by its file\'s unique name in a message'] = function()
 	child.lua([[
 		local root = _G.FRG_TEST.root
 		for _, d in ipairs({ 'sub1', 'sub2' }) do

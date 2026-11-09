@@ -57,7 +57,7 @@ end
 
 -- T49's old route, planted: the slot cleared right after the reopen, as the cleanup cleared the ternary
 -- once before the swap's rename of it ran (the nil rename).
-T["T896 [char] (A7, DESK.md:2390) a ternary cleared while <M-S-f> reopens it throws nothing and leaves no duplicate slot"] = function()
+T["T896 [char] (A7, DESK.md:2445) a ternary cleared while <M-S-f> reopens it throws nothing and leaves no duplicate slot"] = function()
 	child.steps({ ':e a', ':e b', '<M-n>' })
 	child.cmd('bdelete')
 	child.settle()
