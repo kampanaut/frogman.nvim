@@ -558,6 +558,18 @@ M.open_closed_lists = ui.routines.show_closed_lists
 M.take_snapshot = function()
 	snapshots.take()
 end
+---Leave a snapshot showing, as a cancel does: the window goes back to what it showed, the borrowed
+---buffers given back. Nothing happens when none shows.
+---
+---Wired into a session manager's switch ahead of its save, so the switch saves what the windows hold.
+---
+---@return nil
+M.cancel_preview = function()
+	if snapshots.preview.active() then
+		snapshots.preview.cancel()
+	end
+end
+
 M.open_snapshots = function()
 	snapshots.open_list()
 end

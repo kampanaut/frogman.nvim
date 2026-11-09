@@ -97,6 +97,8 @@ It doesn't care which session manager you use, it just needs these to happen:
         end)
 
         resession.add_hook("pre_load", function()
+            -- a snapshot showing is left first: frogman refuses a save while one shows
+            require('frogman').cancel_preview()
             resession.save_all({ notify = false })
         end)
 
@@ -104,6 +106,7 @@ It doesn't care which session manager you use, it just needs these to happen:
             callback = function()
                 local info = resession.get_current_session_info()
                 if info and info.tab_scoped and not resession.is_loading() then
+                    require('frogman').cancel_preview()
                     resession.save_tab(info.name, { dir = info.dir, notify = false })
                 end
             end,

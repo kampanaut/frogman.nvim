@@ -2474,16 +2474,49 @@ T['T1168 [char] (M16, A17, DESK.md:1945, :1946) <M-,> while a snapshot shows lea
 		{ active = false, at = true, shown = 'e', slots = '⦉a⦊ [e] ⟦b⟧', refused = 0 })
 end
 
-T['T1169 [char] (M16, S1, DESK.md:1945, :1946) a session save while a snapshot shows is refused'] = function()
+T['T1169 [char] (M16, S1, DESK.md:1945, :1946) a session save while a snapshot shows raises, so a session manager\'s save through it stops'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	previewing()
-	child.messages()
 	local saved = S2.save(child)
-	local told = #vim.tbl_filter(function(m) return m:find("a snapshot is showing, so the session isn't saved", 1, true) ~= nil end, said())
-	eq({ saved = saved, told = told, file = S2.main_file(s.session_dir, S2.cwd(child)) ~= nil,
-		active = child.lua('return require("frogman.domains.snapshots").preview.active()') },
-		{ saved = { true }, told = 1, file = false, active = true })
+	eq({ ok = saved[1], told = type(saved[2]) == 'string' and saved[2]:find("a snapshot is showing, so the session isn't saved", 1, true) ~= nil,
+		file = S2.main_file(s.session_dir, S2.cwd(child)) ~= nil, active = child.lua('return require("frogman.domains.snapshots").preview.active()') },
+		{ ok = false, told = true, file = false, active = true })
+end
+
+T['T1221 [char] (M16, S1, DESK.md:1945) cancel_preview leaves a snapshot showing as a cancel does, so a switch\'s save after it goes through'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	local win = previewing()
+	child.lua('require("frogman").cancel_preview()')
+	child.settle(100)
+	local left = { active = child.lua('return require("frogman.domains.snapshots").preview.active()'), shown = child.shown(win), slots = child.slots(win) }
+	-- with nothing showing, it does nothing
+	local idle = child.lua('return { pcall(require("frogman").cancel_preview) }')
+	local saved = S2.save(child)
+	eq({ idle = idle, left = left, saved = saved, file = S2.main_file(s.session_dir, S2.cwd(child)) ~= nil },
+		{ idle = { true }, left = { active = false, shown = 'e', slots = '⦉a⦊ [e] ⟦b⟧' }, saved = { true }, file = true })
+end
+
+T['T1223 [char] (M16, S1, DESK.md:1945) a snapshot showing in a tab that closes is left from TabClosedPre while its window still stands, and the tab closes clean'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.cmd('tabnew')
+	local win = previewing()
+	child.lua([[
+		_G.seen = nil
+		vim.api.nvim_create_autocmd('TabClosedPre', { once = true, callback = function()
+			local ok, err = pcall(require('frogman').cancel_preview)
+			_G.seen = { ok = ok, err = err, active = require('frogman.domains.snapshots').preview.active() }
+		end })
+	]])
+	child.messages()
+	child.cmd('tabclose')
+	child.settle(100)
+	local errors = #vim.tbl_filter(function(m) return m:find('E%d+:') ~= nil or m:find('rror') ~= nil end, said())
+	eq({ seen = child.lua('return _G.seen'), tabs = child.lua('return #vim.api.nvim_list_tabpages()'), gone = child.lua('return not vim.api.nvim_win_is_valid(...)', { win }),
+		errors = errors, active = child.lua('return require("frogman.domains.snapshots").preview.active()') },
+		{ seen = { ok = true, active = false }, tabs = 1, gone = true, errors = 0, active = false })
 end
 
 T['T1170 [char] (M16, S1, DESK.md:1945) a save as the editor quits ends the snapshot showing first, then saves'] = function()

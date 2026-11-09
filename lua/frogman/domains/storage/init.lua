@@ -20,8 +20,9 @@ local M = {
 ---Save current session to file.
 ---
 ---The session's directory is read here, the global one for the whole editor or the tab's for a
----tab session. Throws when the editor replayed a dump, since its state isn't a session. While a
----snapshot shows it's refused, with a WARN, but as the editor quits, when the preview ends first.
+---tab session. Throws when the editor replayed a dump, since its state isn't a session, and while a
+---snapshot shows, so a session manager's save through it stops before writing anything, but as the
+---editor quits, when the preview ends first.
 ---
 ---@param name string|nil The session's name as the session manager passes it (nil for a nameless save)
 ---@param opts {tab: integer|nil}|nil Options (`tab` is the tabpage of a tab session)
@@ -34,10 +35,10 @@ function M.save_session(name, opts)
 	local preview = package.loaded['frogman.domains.snapshots.preview']
 	if preview and preview.active() then
 		if vim.v.exiting == vim.NIL then
-			-- what the preview shows isn't the window's: nothing's saved until it's taken or left
-			vim.notify("frogman: a snapshot is showing, so the session isn't saved: <M-v> takes it, and opening " ..
-				"the snapshot list or going to another window leaves it.", vim.log.levels.WARN)
-			return
+			-- what the preview shows isn't the window's: nothing's saved until it's taken or left, a session
+			-- manager's own file included, which its save writes only once its hooks have run
+			error("frogman: a snapshot is showing, so the session isn't saved: <M-v> takes it, and opening " ..
+				"the snapshot list or going to another window leaves it.", 0)
 		end
 		preview.cancel() -- the editor quits: the window as it was is what's saved
 	end

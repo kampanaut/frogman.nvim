@@ -232,6 +232,18 @@ T['D29 [char] init.lua\'s header says encrypted session persistence, and the XOR
 	}, { true, false, false })
 end
 
+T['T1222 [char] (S2, DESK.md:1945) the README\'s pre_load and TabClosedPre leave a snapshot showing before their saves'] = function()
+	local r = read(README)
+	local pre_load = r:match('add_hook%("pre_load", function%(%)(.-)end%)')
+	local tab_closed = r:match('"TabClosedPre", {(.-)}%)')
+	local function first(body, a, b)
+		local i, j = body and body:find(a, 1, true), body and body:find(b, 1, true)
+		return i ~= nil and j ~= nil and i < j
+	end
+	eq({ pre_load = first(pre_load, "cancel_preview()", "save_all"), tab_closed = first(tab_closed, "cancel_preview()", "save_tab") },
+		{ pre_load = true, tab_closed = true })
+end
+
 T['A26 [char] README says how to read a replay\'s line'] = function()
 	local r = read(README)
 	eq({
