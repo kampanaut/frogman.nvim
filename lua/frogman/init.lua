@@ -570,6 +570,16 @@ M.cancel_preview = function()
 	end
 end
 
+---Tell whether a snapshot is showing in a window.
+---
+---While one shows, a session save is refused with an error, so a session manager's save through it
+---writes nothing. A timer of the config's own, such as an autosave, asks this first and skips its save.
+---
+---@return boolean previewing True while a snapshot preview shows
+M.previewing = function()
+	return snapshots.preview.active()
+end
+
 M.open_snapshots = function()
 	snapshots.open_list()
 end

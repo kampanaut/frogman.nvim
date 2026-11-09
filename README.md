@@ -120,6 +120,28 @@ It doesn't care which session manager you use, it just needs these to happen:
 },
 ```
 
+This next part is optional, and only there to save you an annoyance. If you have resession's `autosave` on, every tick that comes while a snapshot shows pops up an error: frogman refuses a save during a preview by raising one, and resession's timer runs the save hooks with nothing catching them. Nothing gets saved and nothing breaks, it's just noise until you leave the preview. To skip it, run the timer yourself and have it pass over the ticks during a preview. `require('frogman').previewing()` tells you whether one shows. resession's autosave also saves as you quit, so that part goes into your own `VimLeavePre`:
+
+```lua
+resession.setup({
+    autosave = { enabled = false },
+    -- your configurations....
+})
+
+local autosave = vim.uv.new_timer()
+autosave:start(300000, 300000, vim.schedule_wrap(function()
+    if not require('frogman').previewing() then
+        resession.save_all({ notify = false })
+    end
+end))
+
+vim.api.nvim_create_autocmd("VimLeavePre", {
+    callback = function()
+        resession.save_all({ notify = false })
+    end,
+})
+```
+
 #### Native sessions (`:mksession`)
 
 `save_session(vim.v.this_session)` on `SessionWritePost`, `load_session(vim.v.this_session)` on `SessionLoadPost`,

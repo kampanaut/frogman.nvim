@@ -3107,4 +3107,16 @@ T['T1234 [char] (M16, review round 9) a buffer listed before the preview borrowe
 		{ active = false, listed = false })
 end
 
+T['T1237 [char] (M16) previewing() says whether a snapshot shows, so a config\'s own autosave can skip its save'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	local before = child.lua('return require("frogman").previewing()')
+	previewing()
+	local during = child.lua('return require("frogman").previewing()')
+	child.lua('require("frogman").cancel_preview()')
+	child.settle(100)
+	eq({ before = before, during = during, after = child.lua('return require("frogman").previewing()') },
+		{ before = false, during = true, after = false })
+end
+
 return T
