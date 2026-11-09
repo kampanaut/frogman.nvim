@@ -641,10 +641,13 @@ local function draw_closed_lists(dbuf)
 		table.insert(order, pool)
 	end
 
-	-- a list's name: "editor", or its session's; two sessions of one name are told apart by directory
-	local label, named = {}, {}
+	-- a list's name: "editor", or its session's, a nameless session's its directory's last part marked
+	-- unnamed; two that would read alike are told apart by directory, a nameless one's inside its parenthesis
+	local label, base, unnamed, named = {}, {}, {}, {}
 	for _, pool in ipairs(order) do
-		label[pool] = pool.id == "" and "editor" or (pool.name or vim.fn.fnamemodify(pool.directory, ":t"))
+		unnamed[pool] = pool.id ~= "" and pool.name == nil
+		base[pool] = pool.id == "" and "editor" or (pool.name or vim.fn.fnamemodify(pool.directory, ":t"))
+		label[pool] = unnamed[pool] and (base[pool] .. " (unnamed)") or base[pool]
 		named[label[pool]] = (named[label[pool]] or 0) + 1
 	end
 	-- as much of the directory as it takes: its last part, or more when two of them end alike
@@ -674,7 +677,7 @@ local function draw_closed_lists(dbuf)
 			parts = parts + 1
 		end
 		for _, pool in ipairs(pools) do
-			label[pool] = name .. " (" .. tail(pool, parts) .. ")"
+			label[pool] = base[pool] .. (unnamed[pool] and " (unnamed, " or " (") .. tail(pool, parts) .. ")"
 		end
 	end
 

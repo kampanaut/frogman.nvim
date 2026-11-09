@@ -4114,6 +4114,71 @@ T['T504 [char] (S2) two lists of one name and one last part get headers of their
 	eq({ distinct = #headers == 2 and headers[1] ~= headers[2], lists = lists_by_dir() }, { distinct = true, lists = before })
 end
 
+T['T1195 [char] (S2, DESK.md:2391, :2392) a nameless session\'s list reads (unnamed), apart from one named after its directory'] = function()
+	child.setup()
+	child.lua('vim.fn.mkdir(_G.FRG_TEST.root .. "/w/app", "p")')
+	child.steps({ ':e a' })
+	child.cmd('tcd w/app')
+	child.cmd('edit ../../b.txt')
+	child.cmd('edit ../../c.txt')
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").save_session, "app", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/b.txt")'))
+	child.cmd('tabnew')
+	child.cmd('tcd ' .. child.lua('return _G.FRG_TEST.root') .. '/w/app')
+	child.cmd('edit ../../d.txt')
+	child.cmd('edit ../../e.txt')
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").save_session, nil, { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/d.txt")'))
+	child.settle()
+	local p = S2.picker(child)
+	local headers = vim.tbl_filter(function(l) return l:match('^\226\137\161app') ~= nil end, p.lines)
+	table.sort(headers)
+	local under = {}
+	-- each list's first entry, by its file's last part: a file outside the session's folder is drawn with its path;
+	-- the header found by the whole line, `≡app` being the start of `≡app (unnamed)`
+	for _, h in ipairs(headers) do
+		for i, l in ipairs(p.lines) do
+			if l == h then under[h] = vim.fs.basename(p.lines[i + 1]) end
+		end
+	end
+	eq({ headers = headers, under = under },
+		{ headers = { '≡app', '≡app (unnamed)' }, under = { ['≡app'] = 'b.txt', ['≡app (unnamed)'] = 'd.txt' } })
+end
+
+T['T1216 [char] (S2, DESK.md:2391, :2392) a nameless session\'s list alone reads (unnamed), and two of one last part add the directory that tells them apart inside it'] = function()
+	child.setup()
+	child.lua('for _, d in ipairs({ "w/app", "p/app" }) do vim.fn.mkdir(_G.FRG_TEST.root .. "/" .. d, "p") end')
+	child.steps({ ':e a' })
+	child.cmd('tcd w/app')
+	child.cmd('edit ../../b.txt')
+	child.cmd('edit ../../c.txt')
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").save_session, nil, { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/b.txt")'))
+	child.settle()
+	local function headers()
+		local p = S2.picker(child)
+		local got = vim.tbl_filter(function(l) return l:match('^\226\137\161app') ~= nil end, p.lines)
+		child.cmd('quit!')
+		child.settle()
+		table.sort(got)
+		return got
+	end
+	local alone = headers()
+	child.cmd('tabnew')
+	child.cmd('tcd ' .. child.lua('return _G.FRG_TEST.root') .. '/p/app')
+	child.cmd('edit ../../d.txt')
+	child.cmd('edit ../../e.txt')
+	child.settle()
+	eq(child.lua('return { pcall(require("frogman").save_session, nil, { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/d.txt")'))
+	child.settle()
+	eq({ alone = alone, two = headers() },
+		{ alone = { '≡app (unnamed)' }, two = { '≡app (unnamed, p/app)', '≡app (unnamed, w/app)' } })
+end
+
 T['T505 [char] (S2) opening the closed lists again keeps an edit not written yet'] = function()
 	two_closed()
 	local p = S2.picker(child)
