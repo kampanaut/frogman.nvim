@@ -4,7 +4,7 @@
 
 So basically, this plugin allows you to manage your buffers with a per-window recall system designed around the human mind's frailty in _working memory_. Let me explain what that is: have you ever felt lost after unconsciously jumping to files trying to get around the codebase just because you forgot to be conscious about it? Like some jumps earlier you should have remembered your current filename, but you were too busy thinking about the problem at hand not the filename itself. And also sometimes you don't want to mess up your current jumping setup, like, at some point you have decided to just swap between files A and B, with A being your current file, and now you have to go to C. In traditional neovim, B would have been forgotten, and now you can only jump between A and C. It's fine if you remember the full filename of B, what if you forgot? And now it gets annoying to try remember it and then it just interrupts your flow, trying to go back to only swap between A and B. 
 
-This is the kind of problem this plugin solves for you. This recall system is known as the **Triquetra System**. The Triquetra System is what mainly drives the recalling of buffers, with less load on your working memory. In a way because of how the triquetra buffers are presented in the UI, this gives you at least a semblance of your current jumping setup. And I have designed this in a way, that you can always restore the secondary buffer and the ternary buffer so you can always get back to what once was. There are other neat features as well, like it remembering all of this across restarts, and keeping a log of every move it makes for you, just read the **How to Use** section below.
+This is the kind of problem this plugin solves for you. This recall system is known as the **Triquetra System**. The Triquetra System is what mainly drives the recalling of buffers, with less load on your working memory. In a way because of how the triquetra buffers are presented in the UI, this gives you at least a semblance of your current jumping setup. And I have designed this in a way, that you can always restore the secondary buffer and the ternary buffer so you can always get back to what once was. On top of the triquetras there are marks, for the buffers you keep coming back to, and snapshots, to save a window's whole setup and get back to it later. There are other neat features as well, like it remembering all of this across restarts, and keeping a log of every move it makes for you, just read the **How to Use** section below.
 
 ### Functions
 
@@ -12,6 +12,8 @@ This is the kind of problem this plugin solves for you. This recall system is kn
 - **Session Persistence**: Buffer relationships survive restarts, with any session manager, in an encrypted file
 - **Cycling Mode**: Explore buffers without losing your working context
 - **Context Preservation**: Remembers where buffers came from for restoration
+- **Marks**: Long-term recall: buffers under keys you pick, per window, tab or session, in an editable pop-up (`:FrogmanMarks`)
+- **Snapshots**: Save points of a window's whole setup, to preview and take back later (`:FrogmanSnapshots`)
 - **Buffer Lifecycle**: Closed buffers reopen when accessed through relationships
 - **Closed Lists**: Every closed buffer, per session, in one editable window (`:FrogmanClosed`)
 - **Missing Files**: Files gone from disk are kept, tagged with the branch they went missing from
@@ -218,6 +220,18 @@ end
 
 ## How to use
 
+### The recall tiers
+
+So frogman gives you three ways to hold on to a buffer, and each one is for a different kind of remembering:
+
+- **The triquetra** is what you're juggling right now. It's ephemeral in how you use it, the slots shift as you jump around, but frogman still brings it back after a restart.
+- **The primary** is the bridge. It's the one buffer you lift out of the turnover, with its own key, `<m-;><m-f>`, so it doesn't get pushed out while you jump around.
+- **Marks** are long-term recall. They're there every time, under keys you pick, for a window, a tab or the whole session.
+
+You can cross the bridge both ways: mark your primary like any other buffer, or press `<m-c>` on a mark in the marks pop-up to make it the primary.
+
+And then there are **snapshots**, which aren't a tier: a snapshot is a save point of a window's whole setup, for when you want to come back to exactly how it was.
+
 ### Window Triquetras
 
 The frogman plugin tracks windows showing regular file buffers. When a window switches to a non-regular buffer then it will keep the triquetra associated to that window, and the current slot stays on the file you were on, so `<m-f>` brings you back to it. The winbar shows it like `main.lua ← [15 help]`, the visited buffer's number first. Each window has their own triquetra. 
@@ -267,6 +281,57 @@ You can backtrack your previous primary buffers. Every time you set a new buffer
 These only works for regular file buffers. The frogman plugin, only tracks regular file buffers. Makes it easy to deal with cross-session persistence. 
 
 A buffer cannot occur more than once among a window's current, secondary and ternary slots. The primary can be any of them.
+
+### Marks
+
+Marks replace harpoon. You mark a buffer under an alias, and then you can jump to it from anywhere with that alias' key.
+
+The prefix is `<m-'>`. With the default aliases, `a s d f u i o p`:
+- `<m-'><m-'><m-a>` marks the current buffer under `a`. The winbar tells you what happened for a moment.
+- `<m-'><m-a>` jumps to whatever `a` holds. If it's closed, it gets reopened.
+
+Marks live in a scope, and you pick which one with the mode keys:
+- `<m-'><m-1>` is window mode, the marks of the window you're in
+- `<m-'><m-2>` is tab mode, the marks of the tab
+- `<m-'><m-3>` is session mode, the marks of the session
+
+In a tab session's tab, tab mode and session mode are the same thing. The bufferline repaints with the current mode's marks, a marked buffer showing its aliases next to its name, like `api.lua ⟨a,s⟩`.
+
+**The marks pop-up**
+
+`<m-'><m-e>` (or `:FrogmanMarks`) opens the current mode's marks in a pop-up you can edit like any other buffer:
+
+```text
+marks · window
+❖ main
+a -> api.lua
+s -> routes/user.lua
+d ->
+```
+
+- Each `❖` line is a group header, and the first group is the one the keys use. Type a new header to make a group. Delete a header and its marks join the group above, it asks you first.
+- Edit a row to change what an alias points to, or press `a` to pick an alias and then a file through telescope.
+- `<cr>` jumps to the line's file and closes the pop-up, `gf` jumps and keeps it open, and `<m-c>` makes the line's file the primary of the window you opened the pop-up from.
+- `:w` writes, `q` writes and leaves, `:q!` drops your edits. The mode keys work in here too, and the scope you leave keeps your edits as a draft until you write them.
+- An alias can only hold one file in a group. If you mark a buffer under an alias that's taken, the pop-up opens on the conflict for you to settle.
+
+When a window or a tab closes, its marks don't just disappear. They go onto its entry in the session file, or if it has none, they get held over as a group of their own in the session's marks, like `❖ held over · window on api.lua · 11-09 14:05`. A held-over group stays until you delete its header, and it only drives the keys once you move it.
+
+If you want a new split to start with a copy of its window's marks, set `marks.split_copies = true`.
+
+### Snapshots
+
+A snapshot is a save point you make on purpose: the window's slots, its notes, its primary queue and the order its bufferline drew. You take one when you have a setup you want to come back to.
+
+- `<m-;><m-s>` takes a snapshot of the window you're in.
+- `<m-;>S` (or `:FrogmanSnapshots`) opens the window's snapshot list. Each line shows its time, its triquetra and its order.
+- `<cr>` on a line previews it in the window. You see the snapshot's slots and order, you can step through its files with `<m-n>` and `<m-m>`, and nothing gets recorded.
+- `<m-v>` takes the snapshot, landing on the buffer you're on.
+- Opening the list again or jumping to another window leaves the preview, and the window goes back to how it was. `<m-,>` leaves it and jumps to the previous window.
+
+The list is editable too: delete a line and write to delete that snapshot. Each line carries the whole snapshot, so you can yank a line from one window's list and paste it into another window's list to copy it there, or cut and paste to move it. That's how you "duplicate" a window's setup. The lines are encrypted like the session files, so a line opens in the project it came from, and anywhere else it asks you for that directory.
+
+While a snapshot shows, the session can't be saved, so the session manager setup above calls `require('frogman').cancel_preview()` before its saves. A window that closes with no saved entry has its snapshots held over in the session, like its marks.
 
 ### Bufferline
 
