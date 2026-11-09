@@ -402,7 +402,7 @@ T['T167 [char] <M-.> on a running terminal refuses with a message'] = function()
 	eq(child.lua('return vim.api.nvim_buf_is_valid(...) and vim.api.nvim_get_current_buf() == ...', { term }), true)
 end
 
-T['T905 [char] (M5, DESK.md:807, repro R24) a file written without a visit leaves its list at once'] = function()
+T['T905 [char] (M5, DESK.md:836, repro R24) a file written without a visit leaves its list at once'] = function()
 	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
 	child.steps({ ':e a', ':e b' })
 	child.cmd('bdelete a.txt')
@@ -427,7 +427,7 @@ T['T905 [char] (M5, DESK.md:807, repro R24) a file written without a visit leave
 	eq({ closed = child.closed(), reopened = reopened }, { closed = '', reopened = { 'editor' } })
 end
 
-T['T907 [char] (A19, P2, DESK.md:815) a delete\'s close runs once the editor settles'] = function()
+T['T907 [char] (A19, P2, DESK.md:844) a delete\'s close runs once the editor settles'] = function()
 	child.steps({ ':e a', ':e b' })
 	local during = child.lua([[vim.cmd('bdelete b.txt'); return _G.FRG_TEST.closed()]])
 	child.settle(100)
@@ -442,7 +442,7 @@ T['T907 [char] (A19, P2, DESK.md:815) a delete\'s close runs once the editor set
 	eq({ during = during, after = child.closed(), trigger = trigger }, { during = '', after = 'b', trigger = 'BufDelete b.txt' })
 end
 
-T['T1193 [char] (A16, P9, DESK.md:2446) <M-S-w> past a newest entry gone from disk opens the next one that\'s there'] = function()
+T['T1193 [char] (A16, P9, DESK.md:2486) <M-S-w> past a newest entry gone from disk opens the next one that\'s there'] = function()
 	child.steps({ ':e d', ':e e', ':e f', '<M-.>' })
 	child.cmd('bdelete e.txt')
 	child.settle()

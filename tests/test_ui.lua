@@ -630,7 +630,7 @@ T['T502 [char] (M12) after a load with an untracked window focused, the bufferli
 	eq({ errors = errors(), dump = child.dumped_since(dumps) }, { errors = {}, dump = nil })
 end
 
-T['T1192 [char] (Bug 2, DESK.md:2386, repro R22) the bufferline toggled off and on brings the tabline back'] = function()
+T['T1192 [char] (Bug 2, DESK.md:2426, repro R22) the bufferline toggled off and on brings the tabline back'] = function()
 	child.lua('vim.o.showtabline = 2')
 	child.cmd('FrogmanBufferline')
 	child.settle()

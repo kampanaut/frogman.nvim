@@ -200,7 +200,7 @@ T['T898 [char] (M14) a deleted file\'s buffer reloaded as a new file is marked n
 	]]), { unwritten = true, tag = false })
 end
 
-T['T908 [char] (M14, P2, DESK.md:815) a settle point\'s check of the disk runs once the editor settles'] = function()
+T['T908 [char] (M14, P2, DESK.md:844) a settle point\'s check of the disk runs once the editor settles'] = function()
 	child.lua('_G.FRG_TEST.setup({ cleanup_interval = 3600000 })')
 	child.steps({ ':e a', ':e b' })
 	child.cmd('bdelete b.txt')

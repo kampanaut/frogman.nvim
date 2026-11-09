@@ -374,7 +374,7 @@ local function gone_cycle()
 	}
 end
 
-T['T948 [char] (A12, DESK.md:1099) a Vim error in a cycle step shows as Neovim shows it, and the cycle goes on'] = function()
+T['T948 [char] (A12, DESK.md:1128) a Vim error in a cycle step shows as Neovim shows it, and the cycle goes on'] = function()
 	local want = { shown = { 'a', 'd', 'b', 'c' }, wrong = 0, said = 1, state = NORMAL }
 	eq(gone_cycle(), want)
 	child.setup({ no_cokeline = true })
@@ -382,7 +382,7 @@ T['T948 [char] (A12, DESK.md:1099) a Vim error in a cycle step shows as Neovim s
 end
 
 -- The step's switch raising a Lua error of its own is a bug, as anywhere in frogman.
-T['T949 [char] (A12, A26, DESK.md:1099) an error in a cycle step that isn\'t Vim\'s is still a hook failure, and dumps'] = function()
+T['T949 [char] (A12, A26, DESK.md:1128) an error in a cycle step that isn\'t Vim\'s is still a hook failure, and dumps'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	child.messages()
 	local dumps = child.dump_files()

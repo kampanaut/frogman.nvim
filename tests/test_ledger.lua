@@ -1121,7 +1121,7 @@ os.rename(root .. '/c.txt', root .. '/g.txt')
 vim.api.nvim_buf_set_name(vim.fn.bufnr(root .. '/c.txt'), root .. '/g.txt')
 ]==]
 
-T['T916 [char] (A27, DESK.md:1920) a move made in another tab goes on the pages of a tab session whose windows hold the file'] = function()
+T['T916 [char] (A27, DESK.md:1957) a move made in another tab goes on the pages of a tab session whose windows hold the file'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	-- t's window holds c in its ternary; the first tab, in no tab session, moves it
@@ -1155,7 +1155,7 @@ local function unnamed_records()
 	child.settle(1500)
 end
 
-T['T917 [char] (A27, DESK.md:1920) a move made in a tab session\'s tab goes on the whole editor\'s pages when a plain tab\'s window holds the file'] = function()
+T['T917 [char] (A27, DESK.md:1957) a move made in a tab session\'s tab goes on the whole editor\'s pages when a plain tab\'s window holds the file'] = function()
 	local s = S2.shared()
 	unnamed_holding_c(s)
 	child.lua(MOVE_C)
@@ -1164,7 +1164,7 @@ T['T917 [char] (A27, DESK.md:1920) a move made in a tab session\'s tab goes on t
 	eq(has_kind(page(), 'moved'), true)
 end
 
-T['T918 [char] (A27, DESK.md:1920) a copy made in a tab session\'s tab goes on the whole editor\'s pages when a plain tab\'s window holds the file'] = function()
+T['T918 [char] (A27, DESK.md:1957) a copy made in a tab session\'s tab goes on the whole editor\'s pages when a plain tab\'s window holds the file'] = function()
 	local s = S2.shared()
 	unnamed_holding_c(s)
 	child.cmd('saveas g.txt')
@@ -1173,7 +1173,7 @@ T['T918 [char] (A27, DESK.md:1920) a copy made in a tab session\'s tab goes on t
 	eq(has_kind(page(), 'copied'), true)
 end
 
-T['T919 [char] (A27, DESK.md:1920) the sessions holding a file are those whose lists or windows hold it'] = function()
+T['T919 [char] (A27, DESK.md:1957) the sessions holding a file are those whose lists or windows hold it'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	-- e closed in a split of t's tab, which closes with it: t's list alone holds e, the tab's own
@@ -1263,7 +1263,7 @@ T['T516 [char] (A27, S1) each whole-editor session\'s file keeps the moves made 
 	})
 end
 
-T['T906 [char] (A27, M15, DESK.md:815, :1266) a file only a mark holds, reopened by its key, leaves a reopen in the trail'] = function()
+T['T906 [char] (A27, M15, DESK.md:844, :1295) a file only a mark holds, reopened by its key, leaves a reopen in the trail'] = function()
 	child.setup()
 	child.steps({ ':e a', ':e b', "<M-'><M-'><M-a>", ':e a' })
 	child.cmd('bdelete b.txt')
@@ -1282,7 +1282,7 @@ T['T906 [char] (A27, M15, DESK.md:815, :1266) a file only a mark holds, reopened
 end
 
 
-T['T910 [char] (A21, A27, DESK.md:815) the window pass letting go a slot\'s buffer whose path is gone writes no close'] = function()
+T['T910 [char] (A21, A27, DESK.md:844) the window pass letting go a slot\'s buffer whose path is gone writes no close'] = function()
 	child.setup()
 	child.steps({ ':e b', ':e a' })
 	-- b's path pair dropped by hand, its buffer still registered: the window pass finds its slot stale,
@@ -1359,7 +1359,7 @@ end
 
 -- Another editor that started before this one: its step sealed into today's page by hand, timed between two of
 -- this editor's closes.
-T['T1152 [char] (A27, DESK.md:1919, repro P8) two editors\' steps on one page come out of the reader by time, a tie by the editor that started first'] = function()
+T['T1152 [char] (A27, DESK.md:1956, repro P8) two editors\' steps on one page come out of the reader by time, a tie by the editor that started first'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b', ':e c', ':e x' })
@@ -1412,7 +1412,7 @@ T['T1152 [char] (A27, DESK.md:1919, repro P8) two editors\' steps on one page co
 end
 
 -- This editor's clock set back between its two closes: the second close's time put before the first's.
-T['T1153 [char] (A27, DESK.md:1919) an editor\'s own steps keep the order it made them through a clock set back'] = function()
+T['T1153 [char] (A27, DESK.md:1956) an editor\'s own steps keep the order it made them through a clock set back'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b', ':e c', ':e x' })
@@ -1448,7 +1448,7 @@ T['T1153 [char] (A27, DESK.md:1919) an editor\'s own steps keep the order it mad
 	eq(got, { 'a.txt', 'b.txt' })
 end
 
-T['T1197 [char] (A27, DESK.md:2446) the trail\'s view reads its page list again when another write adds a day while it\'s open'] = function()
+T['T1197 [char] (A27, DESK.md:2486) the trail\'s view reads its page list again when another write adds a day while it\'s open'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b', ':e x' })
@@ -1479,7 +1479,7 @@ T['T1197 [char] (A27, DESK.md:2446) the trail\'s view reads its page list again 
 	local text = table.concat(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), '\n')
 	eq({ day = text:find('02 Jan 2026', 1, true) ~= nil, step = text:find('old.txt', 1, true) ~= nil }, { day = true, step = true }) -- the header's date
 end
-T['T1205 [char] (A27, DESK.md:2446) the trail\'s view keeps the days it had when the main file stops reading'] = function()
+T['T1205 [char] (A27, DESK.md:2486) the trail\'s view keeps the days it had when the main file stops reading'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a', ':e b', ':e x' })
