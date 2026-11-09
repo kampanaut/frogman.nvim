@@ -821,6 +821,26 @@ local function noname_already_back(filehash)
 	return nil
 end
 
+---Get the hash each file of a session file has now: a No Name text the file names that's back in memory
+---already has the hash it's back under, its old handle giving way to the text's only once the texts
+---reopen, after a load's comparison of what it holds with what memory held over; any other file keeps its
+---own.
+---
+---@param noname_content table<Filehash, table>|nil The file's texts, by the hash it has for each
+---@return fun(filehash: Filehash): Filehash now The hash a file's hash names now
+local function hashes_now(noname_content)
+	local back = {}
+	for filehash, _ in pairs(type(noname_content) == "table" and noname_content or {}) do
+		local bufnr = noname_already_back(filehash)
+		if bufnr then
+			back[filehash] = history.routines.get_filehash(history.routines.noname_name(bufnr))
+		end
+	end
+	return function(filehash)
+		return back[filehash] or filehash
+	end
+end
+
 ---Get what a tab's windows show, sorted, floats left out.
 ---
 ---@param tabpage integer
@@ -1010,7 +1030,7 @@ end
 ---@param what string The load, as a held-over header names it
 ---@return table<integer, true> gone The entries no window took that carried snapshots, by index
 local function restore_snapshots(saved_data, taken, session_id, own, what)
-	local unclaimed, held_over, gone = {}, {}, {}
+	local unclaimed, held_over, gone, now = {}, {}, {}, hashes_now(saved_data.noname_content)
 	for _, saved in ipairs(type(saved_data.snapshots) == "table" and saved_data.snapshots or {}) do
 		if type(saved) == "table" and saved.id ~= nil then
 			held_over[saved.id] = true
@@ -1030,9 +1050,13 @@ local function restore_snapshots(saved_data, taken, session_id, own, what)
 					return false
 				end
 				-- a window taking its entry takes a snapshot held over meanwhile back when the copy is unchanged,
-				-- a close's or a load's; a changed copy stays held over, and so does one only the file holds so
-				if back and snapshots().held_copy(session_id, saved.id) then
-					return snapshots().drop_copy(session_id, saved)
+				-- a close's or a load's, in the load's scope or the window's own session's, a detached list's for
+				-- its tab; a changed copy stays held over, and so does one only the file holds so
+				local own_id = back and history.routines.pool_of_tab(vim.api.nvim_win_get_tabpage(winid)).id
+				local copy_in = back and (snapshots().held_copy(session_id, saved.id) and session_id
+					or own_id ~= session_id and snapshots().held_copy(own_id, saved.id) and own_id) or nil
+				if copy_in then
+					return snapshots().drop_copy(copy_in, saved, now)
 				end
 				return not held_over[saved.id]
 			end, entry[11])
@@ -1070,12 +1094,14 @@ end
 ---@return table<integer, true> gone_tabs The tab entries no tab took, by index
 ---@return table<integer, integer> claimed The tab each tab entry went to, by index
 local function restore_marks(saved_data, taken, session_id, own, key, scratch_dir, what)
-	local gone, earlier = {}, nil -- earlier: the groups held over before this load, which a window taking its entry clears
+	-- earlier: the groups held over before this load, in every session's scope, which a window taking its entry
+	-- clears in the load's and in its own session's
+	local gone, earlier, now = {}, nil, hashes_now(saved_data.noname_content)
 	if own then
 		marks().restore("session", session_id, saved_data.marks, what) -- named by the load, for a pop-up with edits not written
-		earlier = marks().held_now(session_id)
+		earlier = marks().held_now()
 	else
-		earlier = marks().held_now(session_id)
+		earlier = marks().held_now()
 		-- memory's marks win: every file mark memory doesn't hold, alias by alias, is held over
 		local scope = marks().scope("session", session_id)
 		for _, saved in ipairs(type(saved_data.marks) == "table" and saved_data.marks or {}) do
@@ -1134,8 +1160,13 @@ local function restore_marks(saved_data, taken, session_id, own, key, scratch_di
 						marks().hold_over(session_id, keep, what, nil, true, earlier)
 					end
 					marks().restore("window", winid, entry[10], what)
-					-- what a close or an earlier load held over of the entry's groups goes, the window holding them
-					marks().drop_copies(session_id, entry[10], earlier)
+					-- what a close or an earlier load held over of the entry's groups goes, the window holding them:
+					-- in the load's scope and in the window's own session's, a detached list's for its tab
+					marks().drop_copies(session_id, entry[10], earlier, now)
+					local own_id = history.routines.pool_of_tab(vim.api.nvim_win_get_tabpage(winid)).id
+					if own_id ~= session_id then
+						marks().drop_copies(own_id, entry[10], earlier, now)
+					end
 				else
 					marks().add_below("window", winid, entry[10], what)
 				end

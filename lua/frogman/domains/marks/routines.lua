@@ -698,15 +698,20 @@ local function held_name(scope, what)
 	return require('frogman.held').held_header(what, taken)
 end
 
----Get the groups held over in a session's scope now, for a load to tell them from those it holds over.
+---Get the groups held over in a session's scope now, or in every session's, for a load to tell them from
+---those it holds over.
 ---
----@param session_id string The session's pool id ("" for the whole editor's)
+---@param session_id string|nil The session's pool id ("" for the whole editor's), or nil for every session's
 ---@return table<MarksGroup, true> held
 function M.held_now(session_id)
 	local held = {}
-	for _, group in ipairs((data.scopes.session[session_id] or { groups = {} }).groups) do
-		if group.held then
-			held[group] = true
+	for id, scope in pairs(data.scopes.session) do
+		if session_id == nil or id == session_id then
+			for _, group in ipairs(scope.groups) do
+				if group.held then
+					held[group] = true
+				end
+			end
 		end
 	end
 	return held
@@ -715,22 +720,28 @@ end
 ---Let go of the copies held over of these groups, as the window they came from takes them back from its
 ---entry: for each group, one held over before the load, a close's or a load's, holding it alias for alias.
 ---
----A copy you edited no longer holds one of them, and one you moved up first is a group of your own, not
----held over, so both stay; what the load itself holds over, another entry's, stays too. A copy with no
----marks is known by the name of the group it was held over from, and goes when the window takes back an
----empty group of that name. A group takes one copy back, so another window's copy of the same stays.
+---Both are read by the files their marks name now: a No Name text the file names under its old hash and
+---memory holds back under a new one is the same text. A copy you edited no longer holds one of them, and
+---one you moved up first is a group of your own, not held over, so both stay; what the load itself holds
+---over, another entry's, stays too. A copy with no marks is known by the name of the group it was held
+---over from, and goes when the window takes back an empty group of that name. A group takes one copy
+---back, so another window's copy of the same stays.
 ---
 ---@param session_id string The session's pool id ("" for the whole editor's)
 ---@param groups {name: string, marks: table<string, Filehash>}[] The groups the window took back, saved
----@param earlier table<MarksGroup, true> The groups held over there before the load
+---@param earlier table<MarksGroup, true> The groups held over before the load
+---@param now fun(filehash: Filehash): Filehash The hash a file's hash names now
 ---@return nil
-function M.drop_copies(session_id, groups, earlier)
+function M.drop_copies(session_id, groups, earlier, now)
 	local scope = data.scopes.session[session_id]
 	if scope == nil then
 		return
 	end
 	for _, saved in ipairs(groups) do
-		local brings = type(saved) == "table" and type(saved.marks) == "table" and saved.marks or {}
+		local brings = {}
+		for alias, filehash in pairs(type(saved) == "table" and type(saved.marks) == "table" and saved.marks or {}) do
+			brings[alias] = now(filehash)
+		end
 		for i, group in ipairs(scope.groups) do
 			local marks = earlier[group] and M.hashes_of(group)
 			if type(saved) == "table" and marks and vim.deep_equal(brings, marks)

@@ -734,6 +734,27 @@ T['T798 [char] (M16, M5) a window closed in a detached list\'s tab is held over 
 		{ detached = true, there = 1, whole = 0, listed = 1 })
 end
 
+-- A tab session's snapshot of a No Name text held over at one load, its entry taken back at the next: the copy is
+-- the same snapshot, known by its files, not by the hash the file had for the text, so the window takes it.
+T['T1225 [char] (M16, DESK.md:1211, :1212) a held-over snapshot of a No Name text goes when its window takes the entry back, the window taking it'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.steps({ ':e c' })
+	S2.noname(child, { 'draft' })
+	child.steps({ TAKE, ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	child.steps({ ':e x' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local t = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	local before = #held(t)
+	eq(S2.load_tab_session(child, 't'), { true })
+	eq({ before = before, after = #held(t), window = child.lua('return #require("frogman.domains.snapshots").routines.of_window(vim.api.nvim_get_current_win())') },
+		{ before = 1, after = 0, window = 1 })
+end
+
 -- Borrowed files, the placeholder and untracked windows (M16, 5c) ---------------------------
 
 -- The current window's buffer: its name's last part and whole, whether it's listed and taken in, and its lines.

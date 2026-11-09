@@ -3207,6 +3207,81 @@ T['T1012 [char] (M15, M16, DESK.md:1203, :1938) a window last seen before its ta
 		{ apart = true, detached = { marks = { 'window on e.txt' }, snapshots = { 'window on e.txt' } }, t = { marks = {}, snapshots = {} } })
 end
 
+-- A tab session's mark on a No Name text held over at one load, its entry taken back at the next: the copy goes,
+-- known by the text, not by the hash the file had for it.
+T['T1224 [char] (M15, DESK.md:1211, :1212) a copy of a No Name text\'s mark goes when its window takes the entry back, the text reopened under a new hash'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.steps({ ':e c' })
+	S2.noname(child, { 'draft' })
+	child.steps({ ADD .. 'a>', ':e d' })
+	eq(save_t(), { true })
+	S2.start(child, s)
+	child.steps({ ':e x' })
+	eq(child.lua('return { pcall(require("frogman").load_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.settle(300)
+	local t = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	local held_before = #child.lua(HELD_WHAT, { t }).marks
+	eq(S2.load_tab_session(child, 't'), { true }) -- a tab whose window shows d takes the entry back
+	eq({ before = held_before, after = #child.lua(HELD_WHAT, { t }).marks,
+		own = child.lua([[
+			local g = (require('frogman.domains.marks').data.scopes.window[vim.api.nvim_get_current_win()] or { groups = {} }).groups[1]
+			local h = g and require('frogman.domains.marks').routines.handle_of(g, 'a')
+			local path = h and require('frogman.domains.history').get_filepath_from_handle(h.id)
+			return path and path:match('^NONAME_') ~= nil
+		]]) },
+		{ before = 1, after = 0, own = true })
+end
+
+-- T883's route, the copies the first load held over moved, in the whole editor's file, from its own scope into
+-- the detached list's, as a window closed in the list's tab holds them: they go when the list's tab comes back.
+T['T1226 [char] (M15, M16, DESK.md:1211, :1212) a copy held in a detached list\'s own scope goes when the list\'s tab comes back with the window taking its entry'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	eq(S2.save(child), { true })
+	child.steps({ ':e c', ADD .. 'a>', '<M-;><M-s>', ':e d' }) -- a window mark and a snapshot in t's tab
+	eq(S2.load_tab_session(child, 't'), { true }) -- that tab keeps t_DETACHED
+	eq(S2.save(child), { true })
+	S2.start(child, s)
+	S2.restore_tabs(child, { { files = { 'x', 't' }, shown = 't' } })
+	eq(S2.load(child), { true }) -- the list's tab stays away: its window's marks and snapshot held over
+	child.settle(300)
+	S2.start(child, s) -- the quit writes the records, no save
+	-- sealed again by hand: the held-over group and snapshot moved into the detached list's own scope
+	child.lua([[
+		local crypto = require('frogman.domains.storage.crypto')
+		local dir = vim.fn.getcwd(-1, -1)
+		local path = require('frogman.configs').session_dir .. vim.fn.sha256(dir)
+		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
+		local salt = bytes:sub(5, 4 + crypto.salt_length)
+		local data = require('frogman.domains.storage.routines').read_session(dir, nil)
+		local list = data.detached[1]
+		list.marks, list.snapshots = list.marks or {}, list.snapshots or {}
+		local kept = {}
+		for _, g in ipairs(data.marks or {}) do
+			table.insert(g.held and list.marks or kept, g)
+		end
+		data.marks = kept
+		vim.list_extend(list.snapshots, data.snapshots or {})
+		data.snapshots = {}
+		local header = "CDV1" .. salt
+		local out = header .. crypto.seal(crypto.derive_key(dir, salt), vim.json.encode(data), header)
+		fh = assert(io.open(path, 'wb')); fh:write(out); fh:close()
+	]])
+	S2.restore_tabs(child, { { files = { 'x', 't' }, shown = 't' }, { files = { 'c', 'd' }, shown = 'd' },
+		{ files = { 'c', 'd' }, shown = 'd' } })
+	eq(S2.load(child), { true })
+	child.settle(300)
+	child.cmd('tabnext 2')
+	child.settle()
+	local list = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
+	local own = child.lua('return #require("frogman.domains.snapshots").routines.of_window(vim.api.nvim_get_current_win())')
+	local left = child.lua(HELD_WHAT, { list })
+	eq({ detached = list:match('DETACHED') ~= nil, own = own, left = { marks = #left.marks, snapshots = #left.snapshots } },
+		{ detached = true, own = 1, left = { marks = 0, snapshots = 0 } })
+end
+
 -- A tab whose window is never entered with its events, its tab marks restored by a whole-editor load, then
 -- closed without its events: its marks go onto its tab entry, and a save that writes the tabs anew without it
 -- holds them over, headed by what it showed, noted as its marks came back.

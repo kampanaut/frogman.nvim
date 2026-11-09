@@ -572,6 +572,43 @@ local function saved_of(snapshot)
 	}
 end
 
+---Get a session file's snapshot with each file by the hash it has now, as `saved_of` gives one memory holds:
+---a No Name text memory holds back under a new hash is the same text. Nothing is held.
+---
+---@param saved table The snapshot as its session file holds it
+---@param hash_now fun(filehash: Filehash): Filehash The hash a file's hash names now
+---@return table now
+local function as_now(saved, hash_now)
+	local function now(filehash)
+		return type(filehash) == "string" and hash_now(filehash) or nil
+	end
+	local function all(list)
+		local out = {}
+		for _, filehash in ipairs(type(list) == "table" and list or {}) do
+			local hash = now(filehash)
+			if hash then
+				table.insert(out, hash)
+			end
+		end
+		return out
+	end
+	local function map(notes)
+		local out = {}
+		for key, value in pairs(type(notes) == "table" and notes or {}) do
+			local k, v = now((tostring(key):gsub("%-swap$", ""))), now(value)
+			if k and v then
+				out[k .. (tostring(key):match("%-swap$") and "-swap" or "")] = v
+			end
+		end
+		return out
+	end
+	return {
+		id = saved.id, time = saved.time, held = saved.held,
+		current = now(saved.current), secondary = now(saved.secondary), ternary = now(saved.ternary),
+		queue = all(saved.queue), on = saved.on == true, dtm = map(saved.dtm), dsm = map(saved.dsm), order = all(saved.order),
+	}
+end
+
 ---Get a window's snapshots as its session file entry holds them.
 ---
 ---@param winid WinId
@@ -740,17 +777,19 @@ function M.held_copy(session_id, id)
 end
 
 ---Let go of the copy held over of a snapshot its window's entry brings back unchanged, the window taking
----it: a close's copy or a load's, by its id, while it's still what was held over.
+---it: a close's copy or a load's, by its id, while it's still what was held over, both read by the files
+---they name now.
 ---
 ---@param session_id string The session's pool id ("" for the whole editor's)
 ---@param saved table The entry's snapshot, as its session file holds it
+---@param now fun(filehash: Filehash): Filehash The hash a file's hash names now
 ---@return boolean dropped Whether the copy went; one that changed since stays held over
-function M.drop_copy(session_id, saved)
+function M.drop_copy(session_id, saved, now)
 	local copy = M.held_copy(session_id, saved.id)
 	if copy == nil then
 		return false
 	end
-	local held, brought = saved_of(copy), vim.deepcopy(saved)
+	local held, brought = saved_of(copy), as_now(saved, now)
 	held.held, brought.held = nil, nil
 	if not vim.deep_equal(held, brought) then
 		return false
