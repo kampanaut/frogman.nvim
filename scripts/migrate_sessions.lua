@@ -95,8 +95,8 @@ local storage = require("frogman.domains.storage.routines")
 local filehash = require("frogman.domains.history").routines.get_filehash -- as the editor hashes a name
 
 ---The XOR the format before encryption used: the cwd repeated as the key, then base64.
----@param encoded string
----@param key string
+---@param encoded string The base64 text the old format wrote
+---@param key string The cwd the file was saved from, repeated as the key
 ---@return string
 local function xor_decipher(encoded, key)
 	local text = vim.base64.decode(encoded)
@@ -108,7 +108,7 @@ local function xor_decipher(encoded, key)
 	return table.concat(out)
 end
 
----@param path string
+---@param path string The file to read
 ---@return table|nil
 local function read_json(path)
 	local fh = io.open(path, "rb")

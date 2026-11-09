@@ -85,7 +85,7 @@ end
 ---Open a line's seal under one directory: what it carries, or nil.
 ---
 ---@param bytes string The line's sealed bytes
----@param directory string
+---@param directory string The directory the key is stretched from
 ---@return table|nil carried
 local function open_under(bytes, directory)
 	local opened, json = pcall(require('frogman.domains.storage.routines').open_sealed, bytes, directory, "snapshot")
@@ -101,7 +101,7 @@ local function open_under(bytes, directory)
 end
 
 ---Check if a line is a snapshot's line by its shape, opening or not.
----@param line string
+---@param line string The line to check
 ---@return boolean
 local function is_sealed_line(line)
 	return vim.trim(line or ""):match("^fs1:[%w%+/=]+$") ~= nil
@@ -111,7 +111,7 @@ end
 ---they are, under the cwd, a directory an answer opened a line under, or, for a line carrying this
 ---editor's own salt, a directory this editor drew lines under.
 ---
----@param line string
+---@param line string A line of the list, as the buffer holds it
 ---@return table|nil carried A copy of what it carries
 function M.decode(line)
 	line = vim.trim(line or "")
@@ -182,7 +182,7 @@ local function open_shut(lines)
 end
 
 ---Get a snapshot's line: its whole encoding.
----@param snapshot Snapshot
+---@param snapshot Snapshot The snapshot to encode
 ---@return string line
 local function line_of(snapshot)
 	local carried = routines.carried(snapshot)
@@ -193,7 +193,7 @@ local function line_of(snapshot)
 end
 
 ---Get the snapshot a line names.
----@param line string
+---@param line string A line of the list
 ---@return string|nil id
 local function id_in(line)
 	local carried = M.decode(line)
@@ -203,7 +203,7 @@ end
 ---Draw a line no snapshot here answers to yet, a pasted one, from what it carries: its time, its
 ---triquetra by the files' names, and that a write takes it in.
 ---
----@param carried table
+---@param carried table What the line carries, as `decode` gives it
 ---@return table chunks
 local function drawing_of_carried(carried)
 	local function name(i)
@@ -593,7 +593,7 @@ end
 
 ---Map the list's keys on its buffer, from `keymaps.views`.
 ---
----@param buf Bufnr
+---@param buf Bufnr The list's buffer
 ---@return nil
 function M.map_keys(buf)
 	local keys = require('frogman.configs').keymaps.views or {}

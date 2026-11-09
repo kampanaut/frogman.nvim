@@ -62,8 +62,8 @@ function M.execute_transition(from_state, to_state, mode, context, statemachine,
 end
 
 ---Name an instance for a message: its model's labeler's answer, or the model's name.
----@param model StateMachine|mStateMachine
----@param instance iStateMachine|StateMachine
+---@param model StateMachine|mStateMachine The instance's model, whose labeler names it
+---@param instance iStateMachine|StateMachine The instance to name
 ---@return string label
 function M.label_of(model, instance)
 	if model.labeler then

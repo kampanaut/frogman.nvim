@@ -58,7 +58,7 @@ local SLOTS = { "current", "secondary", "ternary", "primary" }
 
 ---Hold the files a live triquetra's slots and primary queue hold now, each by its place.
 ---
----@param triquetra Triquetra
+---@param triquetra Triquetra The triquetra whose places are held
 ---@param fields string[]|nil The fields the write changed, so only their places are written (nil = every one)
 ---@return nil
 local function hold_places(triquetra, fields)
@@ -189,7 +189,7 @@ end
 ---
 ---Every live triquetra is made here. One the window had already is let go first.
 ---
----@param winid WinId
+---@param winid WinId The window the triquetra is for
 ---@param fields WindowTriquetra The triquetra's fields
 ---@return Triquetra triquetra
 function M.make_triquetra(winid, fields)

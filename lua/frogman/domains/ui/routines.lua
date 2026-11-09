@@ -799,7 +799,7 @@ end
 ---text, and it's missing when none holds it. Every other line of a drawn header's text is a pasted copy.
 ---
 ---@param buf Bufnr The view's buffer
----@param view {headers: table<string, any>, header_order: string[], header_marks: table<string, integer>|nil, line_marks: integer[]|nil}
+---@param view {headers: table<string, any>, header_order: string[], header_marks: table<string, integer>|nil, line_marks: integer[]|nil} The view's state: its headers in the order drawn, and the marks they were drawn with
 ---@param lines string[]|nil The buffer's lines, when they're read already
 ---@return table<integer, string> rows Each drawn header, by the row it stands on
 ---@return table<integer, string> copies Each pasted copy's header, by its row
@@ -848,7 +848,7 @@ end
 ---Find the row a missing header stood on: where the line its mark was on was deleted, which is its first line
 ---now, while the view's marks are live.
 ---@param buf Bufnr The view's buffer
----@param view {header_marks: table<string, integer>|nil}
+---@param view {header_marks: table<string, integer>|nil} The view's state, its headers' marks with it
 ---@param header string The missing header
 ---@return integer|nil row Counted from 1, within the buffer
 function M.missing_row(buf, view, header)

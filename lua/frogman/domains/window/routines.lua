@@ -580,7 +580,7 @@ end
 ---
 ---Only the first one counts, and only once the buffer has left the buffer list (a rename keeps it).
 ---
----@param winid WinId
+---@param winid WinId The window the buffer is entered in
 ---@param bufnr Bufnr The buffer being entered
 ---@return boolean pick True if it's Neovim's pick, which isn't recorded as a visit
 function M.is_landing_pick(winid, bufnr)

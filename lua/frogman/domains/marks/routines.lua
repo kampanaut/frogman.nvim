@@ -17,7 +17,7 @@ local FLASH_MS = 2000
 ---A window's mode reads the window, a tab's its tab, and a session's the tab session the tab is in, or
 ---the whole editor's. In a tab session's tab, the tab's mode is the session's.
 ---
----@param mode "window"|"tab"|"session"
+---@param mode "window"|"tab"|"session" The mode whose scope is wanted
 ---@param winid WinId|nil The window (nil = the current one)
 ---@return "window"|"tab"|"session" kind The scope's kind
 ---@return any id The window, the tab page, or the session's pool id ("" for the whole editor's)
@@ -35,8 +35,8 @@ end
 
 ---Get a scope.
 ---
----@param kind "window"|"tab"|"session"
----@param id any
+---@param kind "window"|"tab"|"session" The scope's kind
+---@param id any Its window, tab or session's pool id
 ---@param create boolean|nil Whether to make it when it's not there
 ---@return MarksScope|nil scope
 function M.scope(kind, id, create)
@@ -94,8 +94,8 @@ end
 ---A handle let go for a moved file that took its name is followed to the moved file's, and the mark
 ---keeps that one from then on.
 ---
----@param group MarksGroup
----@param alias string
+---@param group MarksGroup The group the mark is in
+---@param alias string The mark's alias
 ---@return FileHandle|nil handle
 function M.handle_of(group, alias)
 	local id = group.marks[alias]
@@ -109,10 +109,10 @@ end
 
 ---Get the name of a mark's holder place.
 ---
----@param kind string
----@param id any
+---@param kind string The scope's kind
+---@param id any Its window, tab or session's pool id
 ---@param position integer The group's position in the scope
----@param alias string
+---@param alias string The mark's alias
 ---@return string place Like "mark:session::1:a"
 local function place_of(kind, id, position, alias)
 	return "mark:" .. kind .. ":" .. tostring(id) .. ":" .. position .. ":" .. alias
@@ -161,8 +161,8 @@ end
 
 ---Let a scope go, and everything its marks held.
 ---
----@param kind "window"|"tab"|"session"
----@param id any
+---@param kind "window"|"tab"|"session" The scope's kind
+---@param id any Its window, tab or session's pool id
 ---@return nil
 function M.drop_scope(kind, id)
 	data.scopes[kind][id] = nil
@@ -190,7 +190,7 @@ end
 ---window it came from alive holding the same, or the copy it gave, alive and unchanged. Its close, or
 ---a load into it, would lose nothing.
 ---
----@param winid WinId
+---@param winid WinId The window to check
 ---@return boolean unchanged
 function M.unchanged_copy(winid)
 	local function alike(other, given)
@@ -297,7 +297,7 @@ end
 ---
 ---A saved mark whose alias the config no longer has is kept, holding its file, until it's given one.
 ---
----@param alias string
+---@param alias string The alias to check
 ---@return boolean assigned
 local function assigned(alias)
 	return alias_index()[alias] ~= nil
@@ -307,8 +307,8 @@ end
 ---else by its text, so any mix of indices sorts one way.
 ---
 ---@param index table<string, any> Alias → index
----@param a string
----@param b string
+---@param a string The first alias
+---@param b string The alias it's compared with
 ---@return boolean before
 local function before(index, a, b)
 	local x, y = index[a] or a, index[b] or b
@@ -325,8 +325,8 @@ M.alias_before = before
 
 ---Say something in a window's winbar for a moment.
 ---
----@param winid WinId
----@param text string
+---@param winid WinId The window whose winbar says it
+---@param text string What the winbar says
 ---@return nil
 local function flash(winid, text)
 	data.flashes[winid] = { text = text, till = vim.uv.now() + FLASH_MS }
@@ -334,7 +334,7 @@ end
 
 ---Get what a window's winbar says for a moment, while it does.
 ---
----@param winid WinId
+---@param winid WinId The window whose winbar is read
 ---@return string|nil text
 function M.flash_of(winid)
 	local f = data.flashes[winid]
@@ -633,7 +633,7 @@ end
 
 ---Copy one scope's marks into another, the two going their own ways after.
 ---
----@param kind "window"|"tab"|"session"
+---@param kind "window"|"tab"|"session" The scope's kind
 ---@param id any The scope copied
 ---@param to_id any The scope it's copied into
 ---@return nil
@@ -975,7 +975,7 @@ end
 ---With no pool, every mark's. With a pool, its own marks, and those of the windows and tabs in its
 ---tabs; the editor's pool takes the detached lists' too.
 ---
----@param owner Pool|nil
+---@param owner Pool|nil The session's pool, or nil for every mark
 ---@return table<Filehash, boolean> held
 function M.held_by(owner)
 	local held = {}
@@ -1003,7 +1003,7 @@ end
 
 ---Get the hashes a file's saved groups name.
 ---
----@param groups {name: string, marks: table<string, Filehash>}[]|nil
+---@param groups {name: string, marks: table<string, Filehash>}[]|nil The groups as the session file holds them
 ---@param into table<Filehash, boolean>|nil Added to in place, when given
 ---@return table<Filehash, boolean> named
 function M.named_by(groups, into)

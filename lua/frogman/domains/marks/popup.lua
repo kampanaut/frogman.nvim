@@ -264,7 +264,7 @@ end
 ---
 ---@param kind string The scope's kind: "window", "tab" or "session"
 ---@param id any Its window, tab or session's pool id
----@param conflict {alias: string, id: HandleId}|nil
+---@param conflict {alias: string, id: HandleId}|nil The alias an add found taken and the incoming file's handle, or nil
 ---@return string[] lines
 ---@return table<string, HandleId> names
 ---@return table<string, string> states Row (alias and the file's handle) → "incoming" or "already set"
@@ -329,7 +329,7 @@ end
 
 ---Read one of the pop-up's lines.
 ---
----@param line string
+---@param line string The line as the buffer holds it
 ---@return "blank"|"header"|"row"|"other" kind
 ---@return string|nil a The header's name, or the row's alias
 ---@return string|nil b The row's file as written
@@ -472,7 +472,7 @@ end
 
 ---Put a scope's marks in its buffer, as they are now: its first draw, or an undo step.
 ---@param record MarksPopupBuffer The scope's buffer
----@param conflict {alias: string, id: HandleId}|nil
+---@param conflict {alias: string, id: HandleId}|nil The alias an add found taken and the incoming file's handle, or nil
 ---@param first boolean|nil Whether it's the buffer's first draw
 ---@return nil
 local function draw_into(record, conflict, first)
@@ -935,7 +935,7 @@ end
 ---Give a scope's buffer back what was kept of it as Neovim threw it away, its lines and its undo history, then
 ---draw its scope as it stands, the edits it held dropped as one undo step; or draw it for the first time.
 ---@param record MarksPopupBuffer The scope's buffer, made again
----@param conflict {alias: string, id: HandleId}|nil
+---@param conflict {alias: string, id: HandleId}|nil The alias an add found taken and the incoming file's handle, or nil
 ---@return nil
 local function restore(record, conflict)
 	local back = kept[record.key]
@@ -961,7 +961,7 @@ end
 ---A draw that raises takes the buffer with it, so nothing half made stays.
 ---@param kind "window"|"tab"|"session" The scope's kind
 ---@param id any Its window, tab or session's pool id
----@param conflict {alias: string, id: HandleId}|nil
+---@param conflict {alias: string, id: HandleId}|nil The alias an add found taken and the incoming file's handle, or nil
 ---@return MarksPopupBuffer record
 local function make(kind, id, conflict)
 	local buf = vim.api.nvim_create_buf(false, false)
@@ -1017,7 +1017,7 @@ end
 ---Get a scope's buffer, making it when there's none.
 ---@param kind "window"|"tab"|"session" The scope's kind
 ---@param id any Its window, tab or session's pool id
----@param conflict {alias: string, id: HandleId}|nil
+---@param conflict {alias: string, id: HandleId}|nil The alias an add found taken and the incoming file's handle, or nil
 ---@return MarksPopupBuffer record
 ---@return boolean made Whether it was made now
 local function buffer_for(kind, id, conflict)
@@ -1149,7 +1149,7 @@ end
 ---With edits not written yet, the pop-up stays as it is, focused, and says so. With a conflict, the
 ---alias the add was for shows the incoming file and the one already set, to settle and write.
 ---
----@param opts {conflict: {alias: string, id: HandleId}|nil}|nil
+---@param opts {conflict: {alias: string, id: HandleId}|nil}|nil Options: `conflict`, the alias an add found taken and the incoming file's handle
 ---@return nil
 function M.open(opts)
 	opts = opts or {}
@@ -1364,9 +1364,9 @@ end
 
 ---Pick one entry through telescope.
 ---
----@param title string
----@param items string[]
----@param done fun(item: string)
+---@param title string The picker's prompt title
+---@param items string[] The entries to pick from
+---@param done fun(item: string) Called with the entry picked
 ---@return boolean picking False when telescope isn't installed
 local function pick_one(title, items, done)
 	local ok, pickers = pcall(require, "telescope.pickers")
@@ -1398,7 +1398,7 @@ local function pick_one(title, items, done)
 end
 
 ---Pick a file through telescope's find_files, one file.
----@param done fun(path: string)
+---@param done fun(path: string) Called with the path of the file picked
 ---@return nil
 local function pick_file(done)
 	require('frogman.domains.ui').routines.pick_files(false, function(paths)
@@ -1514,7 +1514,7 @@ end
 ---Each key that acts begins a step of its own, about the window the pop-up was opened from. A key set
 ---to false isn't mapped.
 ---
----@param buf Bufnr
+---@param buf Bufnr The scope's buffer to map the keys on
 ---@return nil
 function M.map_keys(buf)
 	local keys = require('frogman.configs').keymaps.views or {}

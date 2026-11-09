@@ -76,7 +76,7 @@ end
 
 ---Check if a buffer is empty and unnamed, as the one Neovim starts on is.
 ---
----@param bufnr Bufnr
+---@param bufnr Bufnr The buffer to check
 ---@return boolean empty True if it has no name, no text and no unsaved changes
 local function empty_noname(bufnr)
 	return vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_get_name(bufnr) == "" and not vim.bo[bufnr].modified
@@ -148,7 +148,7 @@ end
 
 ---Read a row back from a window, as the dump wrote rows.
 ---
----@param winid WinId
+---@param winid WinId The window to read
 ---@return table row The window's slots, queue, switch, notes and what it shows
 local function row_now(winid)
 	local row = require('frogman.domains.ledger.routines').row_of(winid, {}) or {}

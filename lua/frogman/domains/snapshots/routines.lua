@@ -11,7 +11,7 @@ local M = {}
 
 ---Get the place a snapshot holds its files by.
 ---
----@param snapshot Snapshot
+---@param snapshot Snapshot The snapshot whose place is wanted
 ---@return string place Like "snap:<id>"
 local function place_of(snapshot)
 	return "snap:" .. snapshot.id
@@ -21,7 +21,7 @@ end
 ---
 ---A handle let go for a moved file that took its name is followed to the moved file's.
 ---
----@param id integer|nil
+---@param id integer|nil The handle number the snapshot keeps
 ---@return FileHandle|nil handle
 function M.handle(id)
 	if id == nil then
@@ -189,7 +189,7 @@ function M.let_go_notes(id)
 end
 
 ---Get a file's handle id from its hash.
----@param filehash Filehash|nil
+---@param filehash Filehash|nil The file's hash
 ---@return integer|nil id
 local function id_of(filehash)
 	local handle = filehash and history.handles.of_hash(filehash)
@@ -269,7 +269,7 @@ end
 
 ---Get a window's snapshots, oldest first.
 ---
----@param winid WinId
+---@param winid WinId The window the snapshots belong to
 ---@return Snapshot[] snapshots
 function M.of_window(winid)
 	return data.by_window[winid] or {}
@@ -278,7 +278,7 @@ end
 ---Get the session whose scope a window's snapshots are held over in: its tab's list's, a tab
 ---session's or a detached list's, as its marks are, or else the whole editor's.
 ---
----@param winid WinId
+---@param winid WinId The window the snapshots belong to
 ---@return string session_id The session's pool id ("" for the whole editor's)
 function M.session_of(winid)
 	local tabpage = vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_tabpage(winid)
@@ -295,7 +295,7 @@ end
 
 ---Find a snapshot by its id, with the window it belongs to, or the session it's held over in.
 ---
----@param id string
+---@param id string The snapshot's id
 ---@return Snapshot|nil snapshot
 ---@return WinId|nil winid Its window, when it's a window's
 ---@return string|nil session_id The session it's held over in, when it's held over
@@ -319,7 +319,7 @@ end
 
 ---Delete a snapshot, a window's or a held-over one, letting its files go once nothing else holds them.
 ---
----@param id string
+---@param id string The snapshot's id
 ---@return nil
 function M.delete(id)
 	local snapshot, winid, session_id = M.find(id)
@@ -373,7 +373,7 @@ end
 ---They keep holding their files by their places. Committing one doesn't make it a window's.
 ---
 ---@param session_id string The session's pool id ("" for the whole editor's)
----@param snapshots Snapshot[]
+---@param snapshots Snapshot[] The snapshots to hold over, in their order
 ---@param what string What they were, like "window on api.lua"
 ---@return nil
 function M.hold_over(session_id, snapshots, what)
@@ -390,7 +390,7 @@ function M.hold_over(session_id, snapshots, what)
 end
 
 ---Queue a closed window's snapshots to be held over once the editor settles, but for a window whose close
----put them onto its saved entry, and a window frogman never took in, which keeps none (DESK.md:1694): their
+---put them onto its saved entry, and a window frogman never took in, which keeps none: their
 ---snapshots let their files go.
 ---
 ---A load holds over what's still queued as it begins, so the windows a session manager's switch
@@ -475,8 +475,8 @@ end
 ---numbered on when the scope it goes to has it, as a detached list that goes leaves them to the
 ---whole editor's.
 ---
----@param from_id string
----@param to_id string
+---@param from_id string The pool id they're moved out of
+---@param to_id string The pool id they're moved into
 ---@return nil
 function M.move_held(from_id, to_id)
 	if data.held[from_id] == nil then
@@ -537,7 +537,7 @@ end
 
 ---Get a snapshot as a session file holds it: each file by its hash, a note by its two.
 ---
----@param snapshot Snapshot
+---@param snapshot Snapshot The snapshot to save
 ---@return table saved Its `{ id, time, current, secondary, ternary, queue, on, dtm, dsm, order }`, and `held` when it's held over
 local function saved_of(snapshot)
 	local function hash(id)
@@ -611,7 +611,7 @@ end
 
 ---Get a window's snapshots as its session file entry holds them.
 ---
----@param winid WinId
+---@param winid WinId The window whose snapshots are saved
 ---@return table[]|nil saved Each snapshot as `saved_of` gives it, oldest first, or nil with none
 function M.serialise_window(winid)
 	local saved = vim.tbl_map(saved_of, data.by_window[winid] or {})
@@ -633,7 +633,7 @@ end
 ---registry doesn't know. An id memory holds already, another window's copy of it, gets a fresh one,
 ---the two going their own ways after.
 ---
----@param saved table
+---@param saved table A snapshot as the session file holds it, as `saved_of` gives it
 ---@return Snapshot|nil snapshot
 local function from_saved(saved)
 	if type(saved) ~= "table" then
@@ -680,7 +680,7 @@ end
 
 ---Get the snapshots a session file's list makes.
 ---
----@param list table[]|nil
+---@param list table[]|nil The snapshots as the session file holds them
 ---@return Snapshot[] snapshots
 local function from_list(list)
 	local snapshots = {}
@@ -698,7 +698,7 @@ end
 ---The ones it had are held over under the load's header, but for one the entry brings back by its id,
 ---the same snapshot, which the entry's takes the place of.
 ---
----@param winid WinId
+---@param winid WinId The window the entry is restored into
 ---@param list table[]|nil The entry's snapshots
 ---@param session_id string The session's pool id ("" for the whole editor's)
 ---@param what string The load, like "proj, loaded into tab 2"
@@ -754,7 +754,7 @@ end
 ---
 ---A session loaded while it's open keeps memory's: the file's it holds already are skipped.
 ---
----@param list table[]|nil
+---@param list table[]|nil The snapshots as the session file holds them
 ---@return table[] left
 function M.not_held(list)
 	return vim.tbl_filter(function(saved)
@@ -810,7 +810,7 @@ end
 ---Get a snapshot as a list line carries it: every file once, by its path and its handle's number, and
 ---the slots, the queue, the order and the notes by those files. A No Name text goes by its name alone.
 ---
----@param snapshot Snapshot
+---@param snapshot Snapshot The snapshot a line is drawn for
 ---@return table carried The `{ v, id, time, editor, files, c, s, t, queue, on, order, dtm, dsm }` a line encodes
 function M.carried(snapshot)
 	local files, index = {}, {}
@@ -860,8 +860,8 @@ end
 
 ---Put a snapshot where a list line sits: a window's own, with no header, or held over under the header.
 ---
----@param into SnapshotPlace
----@param snapshot Snapshot
+---@param into SnapshotPlace Where the line sits: its window, or its session and header
+---@param snapshot Snapshot The snapshot to put there
 ---@return nil
 local function put(into, snapshot)
 	if into.held then
@@ -879,8 +879,8 @@ end
 
 ---Copy a snapshot to where a list line sits, with an id of its own, the two going their own ways after.
 ---
----@param into SnapshotPlace
----@param snapshot Snapshot
+---@param into SnapshotPlace Where the line sits: its window, or its session and header
+---@param snapshot Snapshot The snapshot to copy
 ---@return Snapshot copy
 function M.copy(into, snapshot)
 	local copy = vim.deepcopy(snapshot)
@@ -906,7 +906,7 @@ end
 ---its path's, registered when the registry doesn't know it. A No Name text goes by its handle alone, and
 ---a name frogman doesn't track, a `://` one or a directory, names none.
 ---
----@param file table
+---@param file table A file the line carries, its path and its handle's number
 ---@param here boolean Whether this editor drew the line, so its handle numbers are this editor's
 ---@param register boolean Whether to register a path the registry doesn't know, or only to tell
 ---@return Filehash|nil filehash
@@ -970,9 +970,9 @@ end
 ---secondary, then the first of the order. With `dry`, nothing is registered or made: it only tells
 ---whether the snapshot would have a current.
 ---
----@param into SnapshotPlace
+---@param into SnapshotPlace Where the line sits: its window, or its session and header
 ---@param carried table The line's decoded JSON
----@param dry boolean|nil
+---@param dry boolean|nil Whether only to tell, registering and making nothing
 ---@return Snapshot|boolean|nil snapshot The snapshot made, or with `dry` whether one would be
 function M.rebuild(into, carried, dry)
 	local here = carried.editor == this_editor()
@@ -1036,7 +1036,7 @@ end
 
 ---Get the hashes a session file's snapshots name: their slots, queues, orders and notes.
 ---
----@param list table[]|nil
+---@param list table[]|nil The snapshots as the session file holds them
 ---@param into table<Filehash, boolean>|nil Added to in place, when given
 ---@return table<Filehash, boolean> named
 function M.named_by(list, into)
@@ -1072,7 +1072,7 @@ end
 ---With no pool, every snapshot's. With a pool, those of the windows in its tabs and those held over
 ---in its scope; the editor's pool takes the detached lists' too.
 ---
----@param owner Pool|nil
+---@param owner Pool|nil The session's pool, or nil for every snapshot
 ---@return table<Filehash, boolean> held
 function M.held_by(owner)
 	local held = {}

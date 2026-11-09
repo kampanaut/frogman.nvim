@@ -598,7 +598,7 @@ end
 
 ---Switch the editor's marks to a mode: the window's, the tab's or the session's.
 ---
----@param mode "window"|"tab"|"session"
+---@param mode "window"|"tab"|"session" The mode to switch to
 ---@return nil
 function M.mark_mode(mode)
 	marks.set_mode(mode)
@@ -606,7 +606,7 @@ end
 
 ---Jump to the file an alias marks, in the first group of the current mode's scope.
 ---
----@param alias string
+---@param alias string The mark's alias, a key of `marks.aliases`
 ---@return nil
 function M.mark_jump(alias)
 	marks.jump(alias)
@@ -614,7 +614,7 @@ end
 
 ---Mark the current buffer under an alias, in the first group of the current mode's scope.
 ---
----@param alias string
+---@param alias string The alias to mark the buffer under
 ---@return nil
 function M.mark_add(alias)
 	marks.add(alias)

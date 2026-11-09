@@ -14,7 +14,7 @@ local M = {}
 ---buffer with it, so its name is free for the next open. A write runs `write` when the buffer was edited, and every change runs
 ---`changed` with the event's name. The window closing takes the buffer with it, then runs `closed`.
 ---
----@param opts {name: string, filetype: string, title: string, size: table, fill: fun(buf: Bufnr), write: fun(), changed: fun(event: string), closed: fun(buf: Bufnr), events: string[]|nil, window: table|nil}
+---@param opts {name: string, filetype: string, title: string, size: table, fill: fun(buf: Bufnr), write: fun(), changed: fun(event: string), closed: fun(buf: Bufnr), events: string[]|nil, window: table|nil} The view's options
 ---@return Bufnr buf
 ---@return WinId win
 function M.open(opts)
@@ -66,7 +66,7 @@ end
 ---as its 'bufhidden' says.
 ---
 ---@param buf Bufnr The buffer to show, kept by the caller
----@param opts {title: string, size: table, closed: fun(), window: table|nil}
+---@param opts {title: string, size: table, closed: fun(), window: table|nil} The float's options
 ---@return WinId win
 function M.float(buf, opts)
 	local width, height, col, row = require('frogman.domains.ui').routines.resolve_float_geometry(opts.size)
@@ -110,7 +110,7 @@ end
 ---Show the line drawn above a view's first line: a window shows a line above its top one only when
 ---told to.
 ---
----@param win WinId|nil
+---@param win WinId|nil The view's window (nothing happens when it's nil or gone)
 ---@return nil
 function M.show_top(win)
 	if win and vim.api.nvim_win_is_valid(win) then
@@ -123,9 +123,9 @@ end
 ---Write a view when it was edited, then close it. A write that's refused or answered No leaves it
 ---open, its lines as typed.
 ---
----@param buf Bufnr
----@param win WinId|nil
----@param write fun(): boolean
+---@param buf Bufnr The view's buffer
+---@param win WinId|nil The view's window to close (nil when there's none)
+---@param write fun(): boolean The view's write, false when it was refused or answered No
 ---@return nil
 function M.leave(buf, win, write)
 	if vim.bo[buf].modified and not write() then

@@ -582,7 +582,7 @@ end
 ---A move, a No Name text's reopen and a copy record the new hash as `to`; a load's reopen of a No
 ---Name text records the old one as `from`.
 ---
----@param move FrogmanLedgerMove
+---@param move FrogmanLedgerMove The move whose hashes are read
 ---@return string|nil from The hash before
 ---@return string|nil to The hash after
 local function link_of(move)

@@ -49,7 +49,7 @@ end
 ---
 ---This is how image.nvim leaves an image's buffer, and frogman tracks those like files.
 ---
----@param bufnr Bufnr
+---@param bufnr Bufnr The buffer to check
 ---@return boolean nowrite_file True if it's `nowrite` on a readable file, not a directory
 function M.is_nowrite_file(bufnr)
 	local name = vim.api.nvim_buf_get_name(bufnr)
@@ -65,7 +65,7 @@ end
 ---Its name is empty (a No Name buffer) or a plain path, with no `://` in it. A plugin's
 ---scratch and helper buffers are unlisted, so they're left alone.
 ---
----@param bufnr Bufnr
+---@param bufnr Bufnr The buffer to check
 ---@return boolean trackable True if frogman tracks the buffer
 function M.is_trackable(bufnr)
 	if not vim.bo[bufnr].buflisted or vim.api.nvim_buf_get_name(bufnr):match("://") then
@@ -198,7 +198,7 @@ M.on_records_change = nil
 ---Returns "editor" for the editor's pool, otherwise the tab session's name, or the last part
 ---of its directory when it has no name.
 ---
----@param pool Pool
+---@param pool Pool The pool whose list is named
 ---@return string name The list's name
 function M.list_name(pool)
 	return pool.id == "" and "editor" or (pool.name or vim.fn.fnamemodify(pool.directory or "", ":t"))
@@ -790,7 +790,7 @@ end
 ---
 ---Every triquetra comes with one, wherever it's made.
 ---
----@param winid WinId
+---@param winid WinId The window whose entry is made when it's missing
 ---@return nil
 function M.ensure_window_entry(winid)
 	if data.crux_internals.window[winid] == nil then
@@ -1799,7 +1799,7 @@ end
 ---`vim.fn.bufnr()` would pattern-match, so the names are compared as they are. A NONAME_ path
 ---never has a buffer by that name, so it finds none.
 ---
----@param filepath Filepath|nil
+---@param filepath Filepath|nil The path to look for (nil finds nothing)
 ---@return Bufnr|nil bufnr Buffer number or nil if not found
 local function find_buffer_by_filepath(filepath)
 	if not filepath or filepath:match("^NONAME_") then

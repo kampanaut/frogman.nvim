@@ -170,7 +170,7 @@ end
 
 ---Get a file's handle by its hash.
 ---
----@param hash Filehash|nil
+---@param hash Filehash|nil The file's hash (nil gives nil)
 ---@return FileHandle|nil handle The live handle for the hash, or nil if there's none
 function M.of_hash(hash)
 	if hash == nil then
@@ -181,7 +181,7 @@ end
 
 ---Get a live handle by its number.
 ---
----@param id integer
+---@param id integer The handle's number
 ---@return FileHandle|nil handle The handle, or nil once it's let go
 function M.get(id)
 	return live[id]
@@ -196,8 +196,8 @@ end
 
 ---Put a handle in a place.
 ---
----@param handle FileHandle
----@param place string
+---@param handle FileHandle The handle to put in the place
+---@param place string The holder's place, like "win:1000:ternary"
 ---@return nil
 local function add(handle, place)
 	handle.holders[place] = true
@@ -234,8 +234,8 @@ end
 ---
 ---A handle left with no place holding it is let go once the editor settles.
 ---
----@param handle FileHandle
----@param place string
+---@param handle FileHandle The handle to take out
+---@param place string The holder's place it leaves
 ---@param quiet boolean|nil Whether it's being let go already, so nothing is queued
 ---@return nil
 local function remove(handle, place, quiet)
@@ -303,7 +303,7 @@ end
 
 ---Let a place go, and everything it held.
 ---
----@param place string
+---@param place string The holder's place, like "pool:editor"
 ---@return nil
 function M.drop_place(place)
 	for handle, _ in pairs(places[place] or {}) do
@@ -341,7 +341,7 @@ end
 ---Called when a path is registered. A hash with no handle gets one, closed, since no buffer is
 ---registered for it yet.
 ---
----@param hash Filehash
+---@param hash Filehash The hash the path is registered under
 ---@return FileHandle handle The file's handle
 function M.known(hash)
 	if by_hash[hash] then
@@ -448,7 +448,7 @@ end
 
 ---Follow a handle's number to the handle that took its file's name, when it was let go for a moved file.
 ---
----@param id integer
+---@param id integer The handle's number, as a mark or a snapshot keeps it
 ---@return integer id The live handle's number, or the one given when nothing took its place
 function M.resolve(id)
 	local seen = 0

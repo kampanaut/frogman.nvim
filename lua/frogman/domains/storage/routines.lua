@@ -843,7 +843,7 @@ end
 
 ---Get what a tab's windows show, sorted, floats left out.
 ---
----@param tabpage integer
+---@param tabpage integer The tab whose windows are read
 ---@return string[] shows What each window shows, its hash, or "" for an untracked buffer with no name
 local function tab_shows(tabpage)
 	local shows = {}
@@ -919,7 +919,7 @@ end
 ---its windows', its tabs' and its detached lists'.
 ---
 ---@param storage table The file's data
----@param parts {session: boolean|nil, windows: boolean|nil, tabs: boolean|nil, detached: boolean|nil}
+---@param parts {session: boolean|nil, windows: boolean|nil, tabs: boolean|nil, detached: boolean|nil} Which parts of the file's data to read
 ---@return table<Filehash, true> named
 local function named_in(storage, parts)
 	local named = {}
@@ -1524,7 +1524,7 @@ end
 
 ---Get the salt sealed bytes carry, the key's other half besides the directory.
 ---
----@param bytes string
+---@param bytes string The bytes to read the salt from
 ---@return string|nil salt Nil when the bytes aren't sealed this way
 function M.salt_of(bytes)
 	if type(bytes) ~= "string" or bytes:sub(1, #HEADER) ~= HEADER or #bytes <= #HEADER + crypto.salt_length then
@@ -2872,7 +2872,7 @@ end
 ---a list they empty giving what it keeps of marks and snapshots to the whole editor's scope as it goes.
 ---
 ---@param saved table The file's data, written into in place
----@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string}
+---@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string} The session whose closed lists are put in
 ---@param changes table<string, {closed: Filehash[], times: table}|false>|nil For the whole editor's
 ---session, new entries and close times for the lists in the file alone, by name (false, or no
 ---entries, drops the list)
@@ -2938,7 +2938,7 @@ end
 ---lists' copies among them, the closed part having built the lists.
 ---
 ---@param saved table The file's data, written into in place
----@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string}
+---@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string} The session whose marks and snapshots are put in
 ---@param texts table<Filehash, table> The texts the file takes, added to in place
 ---@param key string The session's key
 ---@param file_path string The session's main file
@@ -3058,7 +3058,7 @@ end
 ---isn't touched. The texts are written before the main file, the trail's pages beside them, then the main
 ---file is committed and the entries the write put marks and snapshots onto are settled.
 ---
----@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string}
+---@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string} The session whose records are written
 ---@param fill fun(saved: table, key: string, file_path: string): table<Filehash, table>, table What the write puts into the file's data, giving the texts the file takes and what `put_marks_part` wrote
 ---@return boolean written True if the file was written
 ---@return string|nil problem "missing" when there's no file, otherwise what went wrong
@@ -3117,7 +3117,7 @@ end
 ---off, and the whole editor's records carry the detached lists too. A file that isn't there isn't made,
 ---and one that can't be read, or whose scope isn't the session's, isn't touched.
 ---
----@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string}
+---@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string} The session whose records are written
 ---@param changes table<string, {closed: Filehash[], times: table}|false>|nil For the whole editor's
 ---session, new entries and close times for the lists in the file alone, by name (false, or no
 ---entries, drops the list)
@@ -3136,7 +3136,7 @@ end
 ---file's word on whether it's open kept, and otherwise carried from the file, unread.
 ---
 ---@param saved table The file's data, written into in place
----@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string}
+---@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string} The session whose closed lists are kept
 ---@param key string The session's key
 ---@param scratch_dir string The session's scratch directory
 ---@return table<Filehash, table> texts The texts the file names
@@ -3194,7 +3194,7 @@ end
 ---Write the session left's records into its file at a load: everything memory holds of them but its closed
 ---lists' changes, which a session manager's teardown made, the closed lists staying as the file has them.
 ---
----@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string}
+---@param session {name: string|nil, directory: string, pools: Pool[], owner: Pool|nil, scope: string} The session left, whose records are written
 ---@return boolean written True if the file was written
 ---@return string|nil problem "missing" when there's no file, otherwise what went wrong
 local function write_session_left(session)

@@ -155,9 +155,9 @@ end
 local label_of = helper.label_of
 
 ---Move an instance to a state, keeping its model's sets of who's in each state.
----@param model StateMachine|mStateMachine
----@param instance iStateMachine|StateMachine
----@param state stateName
+---@param model StateMachine|mStateMachine The model keeping the sets of who's in each state
+---@param instance iStateMachine|StateMachine The instance to move
+---@param state stateName The state to move it to
 ---@return nil
 local function place(model, instance, state)
 	local before = model.members[instance.current_state]
@@ -269,8 +269,8 @@ local function force(model, instance, state)
 end
 
 ---Switch one of an instance's own transitions off, or back to its model's.
----@param model StateMachine|mStateMachine
----@param instance iStateMachine|StateMachine
+---@param model StateMachine|mStateMachine The instance's model, whose transitions the pattern names
+---@param instance iStateMachine|StateMachine The instance whose own switches change
 ---@param from_state stateName Source state (supports wildcards "*")
 ---@param to_state stateName Destination state (supports wildcards "*")
 ---@param off boolean Whether to switch it off
@@ -294,7 +294,7 @@ end
 ---Transition the instance to a new state, running its model's hooks.
 ---@param next_state stateName The state to transition to
 ---@param context_arg transitionContextArg? Optional mutable data passed to all hooks. `caller` is reserved.
----@param mode transitionMode?
+---@param mode transitionMode? The mode whose hooks run besides the "*" ones, nil for none
 ---@return nil
 function MachineInstance:to(next_state, context_arg, mode)
 	transition(self.model, self, next_state, context_arg, mode)
