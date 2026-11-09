@@ -5556,4 +5556,47 @@ vim.cmd('qa!')
 	eq({ code = r.code, out = decoded }, { code = 0, out = { before = { float = true, modified = true }, ok = false, err = 'E445', tabs = 2, back = true, modified = true } })
 end
 
+T['T1235 [char] (M15, M11) the bufferline drawn once a mark jump settles has the file jumped to first'] = function()
+	child.steps({ ':e a', ADD .. 'a>', ':e b', ':e c' })
+	-- the tabline as a bufferline draws it: the listed buffers sorted by frogman's comparator, each draw kept
+	child.lua([[
+		_G.FRG_DRAWS = {}
+		_G.FRG_TL = function()
+			local bufs = vim.tbl_filter(function(b) return vim.bo[b].buflisted end, vim.api.nvim_list_bufs())
+			table.sort(bufs, require('frogman').bufferline.compare_buffers)
+			local names = vim.tbl_map(function(b) return vim.fn.fnamemodify(vim.api.nvim_buf_get_name(b), ':t:r') end, bufs)
+			table.insert(_G.FRG_DRAWS, table.concat(names, ','))
+			return table.concat(names, ' ')
+		end
+		vim.o.showtabline = 2
+		vim.o.tabline = '%!v:lua.FRG_TL()'
+	]])
+	child.cmd('redraw')
+	local before = child.lua('return _G.FRG_DRAWS[#_G.FRG_DRAWS]')
+	child.steps({ JUMP .. 'a>' })
+	child.settle(300)
+	eq({ before = before, last_draw = child.lua('return _G.FRG_DRAWS[#_G.FRG_DRAWS]'), shown = child.shown() },
+		{ before = 'c,b,a', last_draw = 'a,c,b', shown = 'a' })
+end
+
+T['T1236 [char] (M11) once the settle queue runs dry, the tabline is drawn again'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.lua([[
+		_G.FRG_DRAWS = 0
+		_G.FRG_TL = function() _G.FRG_DRAWS = _G.FRG_DRAWS + 1; return 'tabline' end
+		vim.o.showtabline = 2
+		vim.o.tabline = '%!v:lua.FRG_TL()'
+	]])
+	child.cmd('redraw')
+	-- work queued outside any key, which changes nothing on screen, runs on its own turn
+	child.lua([[
+		_G.FRG_BEFORE = _G.FRG_DRAWS
+		require('frogman.settle').later('probe', function() _G.FRG_RAN = _G.FRG_DRAWS end)
+	]])
+	child.settle(200)
+	local before, ran, after = unpack(child.lua('return { _G.FRG_BEFORE, _G.FRG_RAN, _G.FRG_DRAWS }'))
+	eq({ ran = ran == before, drawn_after = after > ran, pending = #child.lua('return require("frogman.settle").pending()') },
+		{ ran = true, drawn_after = true, pending = 0 })
+end
+
 return T

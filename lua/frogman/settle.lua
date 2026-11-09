@@ -8,7 +8,8 @@
 ---Everything queued ends in `run()`, whichever reaches it first: its own scheduled turn, which
 ---`later()` books as it queues it, or a drain that comes sooner. `run()` keeps track of what ran
 ---and what's still queued, so each item runs once. `now()` runs everything still queued first,
----then the key's own job, and no drain starts until that job is done.
+---then the key's own job, and no drain starts until that job is done. Once the queue runs dry, what
+---was given to `on_dry()` runs.
 
 local M = {}
 
@@ -22,6 +23,29 @@ local queue = {}
 ---the job causes) runs a key's job of its own.
 ---@type integer
 local working_count = 0
+
+---What runs each time the queue runs dry, in the order it was given
+---@type function[]
+local dry = {}
+
+---Run what waits on the queue running dry, once nothing is queued and nothing is working.
+---
+---An error is reported the way a scheduled callback's is, and doesn't stop the rest.
+---
+---@return nil
+local function ran_dry()
+	if queue[1] ~= nil or working_count > 0 then
+		return
+	end
+	for _, fn in ipairs(dry) do
+		local ok, err = xpcall(fn, debug.traceback)
+		if not ok then
+			vim.schedule(function()
+				error(err, 0)
+			end)
+		end
+	end
+end
 
 ---Run one item of the queue, once.
 ---
@@ -50,6 +74,7 @@ local function run(item)
 			error(err, 0)
 		end)
 	end
+	ran_dry()
 end
 
 ---Queue settle work, to run once the editor settles.
@@ -117,6 +142,18 @@ function M.now(fn, ...)
 		error(results[2], 0)
 	end
 	return unpack(results, 2, table.maxn(results))
+end
+
+---Run a function each time the queue runs dry.
+---
+---It runs once the last work queued has run and nothing is working, whichever way that work ran: a
+---drain, a key's drain before its job, or its own turn. A drain that finds nothing queued runs nothing,
+---and nothing runs while more is still queued.
+---
+---@param fn function What to run, with no arguments
+---@return nil
+function M.on_dry(fn)
+	table.insert(dry, fn)
 end
 
 ---Get the names of the settle work still queued, oldest first.

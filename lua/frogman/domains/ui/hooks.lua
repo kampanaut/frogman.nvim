@@ -11,6 +11,12 @@ local data = require('frogman.domains.ui.data')
 local routines = require('frogman.domains.ui.routines')
 local navigation = require('frogman.domains.navigation')
 
+-- the bufferline sorts by what the settle work settles, a visit's place among the buffers, and Neovim
+-- may have drawn it before that work ran: once the queue runs dry it's drawn again
+require('frogman.settle').on_dry(function()
+	pcall(vim.cmd, "redrawtabline") -- a moment Neovim refuses a redraw (a text lock) leaves the next one to draw it
+end)
+
 -- a load from idle starts from nothing, as at startup: the display caches go with what they showed.
 local storageSM = require('frogman.domains.storage.sm')
 local storageStates = require('frogman.domains.storage.states')
