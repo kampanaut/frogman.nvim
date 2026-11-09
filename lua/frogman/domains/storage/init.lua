@@ -74,13 +74,22 @@ local function load(name, opts, restart)
 	local hint = opts ~= nil and opts.tab ~= nil
 	local directory = vim.fn.getcwd(-1, -1)
 	-- a tab with a directory of its own: a tab session saved from it has its file there
+	local tab_file = false
 	if hint then
 		directory = vim.fn.getcwd(-1, vim.api.nvim_tabpage_get_number(opts.tab))
 	elseif vim.fn.haslocaldir(-1, 0) == 1 then
 		-- a failure here is the read's too, which the load's hook raises (prepare_load)
-		local ok, exists = pcall(routines.session_exists, vim.fn.getcwd(-1, 0), name)
+		local here = vim.fn.getcwd(-1, 0)
+		local ok, exists = pcall(routines.session_exists, here, name, true)
 		if ok and exists then
-			directory = vim.fn.getcwd(-1, 0)
+			directory, tab_file = here, true
+		else
+			-- a file there under the name the two shared, from before a tab session had one of its own: its scope
+			-- decides, as the load reads it
+			ok, exists = pcall(routines.session_exists, here, name)
+			if ok and exists then
+				directory = here
+			end
 		end
 	end
 	local session = { name = name, directory = directory }
@@ -104,7 +113,7 @@ local function load(name, opts, restart)
 		routines.after_restore()
 	end)
 	-- the file is read first, since its scope decides whether anything is torn down
-	local tab_session = routines.prepare_load(directory, name, hint and opts.tab or nil)
+	local tab_session = routines.prepare_load(directory, name, hint and opts.tab or nil, tab_file)
 	local ledger = require('frogman.domains.ledger')
 	if not tab_session then
 		-- the manager has torn the outgoing session down by now: the moves and the messages of the batch it
@@ -120,7 +129,7 @@ local function load(name, opts, restart)
 		routines.keep_teardown_off(into)
 	end
 	if routines.keep_session_left(into, directory, name) then
-		tab_session = routines.prepare_load(directory, name, hint and opts.tab or nil)
+		tab_session = routines.prepare_load(directory, name, hint and opts.tab or nil, tab_file)
 	end
 	if not tab_session then
 		-- a write still waiting would hold the teardown's closes: their lists stay as the files have them

@@ -2,7 +2,7 @@
 --
 -- Run it once, with nothing else of your config loaded:
 --
---   nvim --clean -l scripts/migrate_sessions.lua [--resession-dir <dir>] [--session-dir <path>] [--libcrypto-path <path>] [--dry-run] [--replace]
+--   nvim --clean -l scripts/migrate_sessions.lua [--resession-dir <dir>] [--session-dir <path>] [--libcrypto-path <path>] [--dry-run] [--replace] [--tab-session <directory> [<name>]]
 --
 -- Files from before encryption are plain JSON with paths XOR'd with the cwd, named after the first
 -- 32 hex characters of sha256(cwd .. "\n"). The script finds which directory and session name each
@@ -24,6 +24,13 @@
 -- has its old file under a name the script can't work out: such a session is named, not converted.
 -- The script exits with 1 when an old file couldn't be read, written or moved, and 0 otherwise.
 --
+-- A tab session's file in the encrypted format named the way a whole-editor session of the same name is,
+-- from before the two had a file each, is renamed to the tab session's own name, its folder of texts and
+-- pages with it; one whose own name has a file already is named and left. resession's tab sessions are
+-- found through its list; --tab-session names one more by its directory and name (none for a nameless
+-- one), as the load's warning gives it, for a tab session resession doesn't list. It can be given more
+-- than once, and with no resession sessions at all.
+--
 -- It moves cavediver's files first, from before the rename: the session files from
 -- stdpath("data")/cavediver/sessions/ to frogman's when --session-dir is left as it is, and the dumps
 -- from stdpath("state")/cavediver/ to stdpath("state")/frogman/. A file frogman's folder has under
@@ -38,6 +45,7 @@ local options = {
 	libcrypto_path = nil,
 	dry_run = false,
 	replace = false,
+	tab_sessions = {}, -- { directory, name|nil } each, from --tab-session
 }
 local i = 1
 while i <= #_G.arg do
@@ -61,6 +69,16 @@ while i <= #_G.arg do
 		options.dry_run = true
 	elseif a == "--replace" then
 		options.replace = true
+	elseif a == "--tab-session" then
+		-- its directory, then its name unless the next argument is a flag or there's none: a nameless one
+		if _G.arg[i + 1] == nil or _G.arg[i + 1]:sub(1, 2) == "--" then
+			io.stderr:write(a .. " needs a directory\n")
+			os.exit(2)
+		end
+		local directory = (vim.fn.fnamemodify(_G.arg[i + 1], ":p"):gsub("(.)/+$", "%1"))
+		local name = _G.arg[i + 2] ~= nil and _G.arg[i + 2]:sub(1, 2) ~= "--" and _G.arg[i + 2] or nil
+		table.insert(options.tab_sessions, { directory = directory, name = name })
+		i = i + (name and 2 or 1)
 	else
 		io.stderr:write("unknown argument: " .. a .. "\n")
 		os.exit(2)
@@ -269,9 +287,12 @@ local unmoved_dir = options.dry_run and options.session_dir == default_dir and v
 	or nil
 
 local resession_dir = vim.fn.stdpath("data") .. "/" .. options.resession_dir .. "/"
-if vim.fn.isdirectory(resession_dir) == 0 then
+local resession_entries = vim.fn.isdirectory(resession_dir) == 1 and vim.fn.readdir(resession_dir) or nil
+if not resession_entries then
 	io.stdout:write("no resession sessions in " .. resession_dir .. ": nothing to convert\n")
-	os.exit(move_failed > 0 and 1 or 0)
+	if #options.tab_sessions == 0 then
+		os.exit(move_failed > 0 and 1 or 0)
+	end
 end
 
 local report = { converted = 0, already = 0, conflict = 0, no_file = 0, renamed_by_shell = 0, unnamed = 0, dropped = 0, unreadable = 0, failed = 0 }
@@ -279,7 +300,7 @@ local used = {}
 -- each old file converted, marked once every session is through, since two sessions can share one;
 -- one a session failed to write for stays unmarked
 local to_mark, unmarked = {}, {}
-for _, entry in ipairs(vim.fn.readdir(resession_dir)) do
+for _, entry in ipairs(resession_entries or {}) do
 	local stem = entry:match("^(.+)%.json$")
 	local session = stem and read_json(resession_dir .. entry)
 	if session and session.global then
@@ -310,11 +331,12 @@ for _, entry in ipairs(vim.fn.readdir(resession_dir)) do
 				migrated = true
 			end
 		end
-		-- its file in the new format, looked for where the move would bring it from too
-		local fresh = storage.session_exists(directory, name)
+		-- its file in the new format, looked for where the move would bring it from too, a tab session's under
+		-- its own name
+		local fresh = storage.session_exists(directory, name, session.tab_scoped)
 		if not fresh and unmoved_dir then
 			require("frogman.configs").session_dir = unmoved_dir
-			fresh = storage.session_exists(directory, name)
+			fresh = storage.session_exists(directory, name, session.tab_scoped)
 			require("frogman.configs").session_dir = options.session_dir
 		end
 		if old_path == nil then
@@ -375,6 +397,87 @@ for _, entry in ipairs(vim.fn.readdir(resession_dir)) do
 	end
 end
 
+-- a tab session's encrypted file under the name it shared with the whole editor's session of that name takes
+-- its own: resession's tab sessions, each named by its resession file's name or the cwd that name was made
+-- from, and each one --tab-session names
+local tabs_renamed, tabs_left, tabs_failed = 0, 0, 0
+local tab_sessions = {}
+for _, entry in ipairs(resession_entries or {}) do
+	local stem = entry:match("^(.+)%.json$")
+	local session = stem and read_json(resession_dir .. entry)
+	if session and session.global and session.tab_scoped then
+		local directory = session.tabs and session.tabs[1] and session.tabs[1].cwd or session.global.cwd
+		local names = { stem }
+		for _, candidate in ipairs({ session.global.cwd, directory }) do
+			if candidate and (candidate:gsub("/", "_"):gsub(":", "_")) == stem then
+				table.insert(names, candidate)
+			end
+		end
+		table.insert(tab_sessions, { label = entry, directory = directory, names = names })
+	end
+end
+for _, given in ipairs(options.tab_sessions) do
+	-- false stands for no name, a nameless tab session
+	table.insert(tab_sessions, { label = (given.name or "with no name") .. " in " .. given.directory, directory = given.directory,
+		names = { given.name or false } })
+end
+-- each file once, when resession's list and --tab-session both name it
+local handled = {}
+for _, tab_session in ipairs(tab_sessions) do
+	local directory, label = tab_session.directory, tab_session.label
+	for _, given_name in ipairs(tab_session.names) do
+		local name = given_name or nil
+		-- the folders the file can be in: frogman's, and, in a dry run, cavediver's too, which a real run's
+		-- move has emptied into frogman's by now; both names checked in each before anything moves, so a
+		-- file is never renamed without its texts
+		local from, taken
+		-- a name frogman's folder has already stays in cavediver's at the move, so it's looked for there alone
+		local here = vim.uv.fs_stat(storage.session_path(directory, name)) ~= nil
+		for _, dir in ipairs({ options.session_dir, unmoved_dir }) do
+			require("frogman.configs").session_dir = dir
+			local read, old = false, nil
+			if dir == options.session_dir or not here then
+				read, old = pcall(storage.read_session, directory, name)
+			end
+			if not from and read and type(old) == "table" and old.scope == "tab" then
+				from = storage.session_path(directory, name)
+			end
+			local own = storage.session_path(directory, name, true)
+			taken = taken or vim.uv.fs_stat(own) ~= nil or vim.uv.fs_stat(own .. ".d") ~= nil
+		end
+		require("frogman.configs").session_dir = options.session_dir
+		local to = storage.session_path(directory, name, true)
+		if from and handled[from] then
+			break
+		elseif from then
+			handled[from] = true
+			if taken then
+				tabs_left = tabs_left + 1
+				io.stdout:write("tab session " .. label .. " has a file or a texts folder under its own name already; the one under the shared name is left as it is: " .. from .. "\n")
+			elseif options.dry_run then
+				tabs_renamed = tabs_renamed + 1
+			else
+				local renamed, why = os.rename(from, to)
+				if renamed and vim.uv.fs_stat(from .. ".d") then
+					renamed, why = os.rename(from .. ".d", to .. ".d")
+					if not renamed then
+						os.rename(to, from) -- the main file back beside its texts
+					end
+				end
+				if renamed then
+					tabs_renamed = tabs_renamed + 1
+				else
+					tabs_failed = tabs_failed + 1
+					io.stdout:write("tab session " .. label .. "'s file couldn't be renamed (" .. tostring(why) .. ")\n")
+				end
+			end
+			break
+		end
+	end
+end
+io.stdout:write(string.format("%s %d tab session file(s) to their own names; %d left, their own names taken already\n",
+	options.dry_run and "would rename" or "renamed", tabs_renamed, tabs_left))
+
 -- kept under a new name, the script's record of what it has converted
 for path, entry in pairs(to_mark) do
 	if not unmarked[path] then
@@ -397,11 +500,14 @@ for _, dir in ipairs({ options.session_dir, unmoved_dir }) do
 	end
 end
 
-io.stdout:write(string.format(
-	"%s %d session(s); %d already converted; %d with a file in the new format already (--replace converts over them); %d with no frogman file; %d whose directory the old shell changed; %d with a name that can't be told; %d old file(s) no resession session points to; %d reference(s) with no known path dropped; %d old file(s) that can't be read; %d that couldn't be written\n",
-	options.dry_run and "would convert" or "converted",
-	report.converted, report.already, report.conflict, report.no_file, report.renamed_by_shell, report.unnamed, leftover, report.dropped,
-	report.unreadable, report.failed
-))
+-- with no resession sessions, "nothing to convert" said it already
+if resession_entries then
+	io.stdout:write(string.format(
+		"%s %d session(s); %d already converted; %d with a file in the new format already (--replace converts over them); %d with no frogman file; %d whose directory the old shell changed; %d with a name that can't be told; %d old file(s) no resession session points to; %d reference(s) with no known path dropped; %d old file(s) that can't be read; %d that couldn't be written\n",
+		options.dry_run and "would convert" or "converted",
+		report.converted, report.already, report.conflict, report.no_file, report.renamed_by_shell, report.unnamed, leftover, report.dropped,
+		report.unreadable, report.failed
+	))
+end
 -- a wrapper can tell a run that left files behind from one that didn't
-os.exit((report.unreadable > 0 or report.failed > 0 or move_failed > 0) and 1 or 0)
+os.exit((report.unreadable > 0 or report.failed > 0 or move_failed > 0 or tabs_failed > 0) and 1 or 0)

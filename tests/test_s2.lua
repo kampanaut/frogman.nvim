@@ -72,7 +72,7 @@ T['T294 [char] (S2) a tab session is keyed by its tab\'s directory'] = function(
 	local tab = child.lua('return vim.fn.getcwd(-1, 0)')
 	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'),
 		{ true })
-	eq(S2.main_file(session_dir(), tab, 't') ~= nil, true)
+	eq(S2.main_file(session_dir(), tab, 't', true) ~= nil, true)
 end
 
 -- Loading -------------------------------------------------------------------------
@@ -604,7 +604,7 @@ T['T563 [char] (S2) a save reads its main file once'] = function()
 	child.settle()
 	local tab_save = 'require("frogman").save_session("t", { tab = vim.api.nvim_get_current_tabpage() })'
 	eq(child.lua('return { pcall(loadstring(...)) }', { tab_save }), { true })
-	local tab = dir .. S2.main_file(dir, child.lua('return vim.fn.getcwd(-1, 0)'), 't')
+	local tab = dir .. S2.main_file(dir, child.lua('return vim.fn.getcwd(-1, 0)'), 't', true)
 	child.cmd('tabprevious')
 	eq(reads_during(whole, 'require("frogman").save_session(vim.fn.getcwd())'), { true, 1 })
 	child.cmd('tabnext')
@@ -1193,10 +1193,10 @@ T['T541 [char] (S1 Load, S2) a load fixes a session file that broke its own rule
 	child.lua([[
 		local crypto = require('frogman.domains.storage.crypto')
 		local dir, name = vim.fn.getcwd(-1, -1), vim.fn.getcwd()
-		local path = require('frogman.configs').session_dir .. vim.fn.sha256(dir .. "\n" .. name)
+		local path = _G.FRG_TEST.session_path(dir, name)
 		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
 		local salt = bytes:sub(5, 4 + crypto.salt_length)
-		local data = require('frogman.domains.storage.routines').read_session(dir, name)
+		local data = _G.FRG_TEST.read_session(dir, name)
 		local x = _G.FRG_TEST.root .. '/x.txt'
 		local h = vim.fn.sha256(x .. "\n"):sub(1, 16)
 		data.paths[h] = x
@@ -1244,10 +1244,10 @@ T['T928 [char] (S1 Load, M5, I22, DESK.md:758) a session file holding a closed h
 	child.lua([[
 		local crypto = require('frogman.domains.storage.crypto')
 		local dir, name = vim.fn.getcwd(-1, -1), vim.fn.getcwd()
-		local path = require('frogman.configs').session_dir .. vim.fn.sha256(dir .. "\n" .. name)
+		local path = _G.FRG_TEST.session_path(dir, name)
 		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
 		local salt = bytes:sub(5, 4 + crypto.salt_length)
-		local data = require('frogman.domains.storage.routines').read_session(dir, name)
+		local data = _G.FRG_TEST.read_session(dir, name)
 		table.insert(data.closed, 1, data.closed[#data.closed]) -- c's hash, twice
 		local header = "CDV1" .. salt
 		local out = header .. crypto.seal(crypto.derive_key(dir, salt), vim.json.encode(data), header)
@@ -1702,7 +1702,7 @@ T['T478 [char] (S2) the migration script finds a tab session\'s old file under i
 	eq({ left = vim.fn.filereadable(project_old), marked = vim.fn.filereadable(project_old .. '.migrated') }, { left = 1, marked = 0 })
 	local got = child.lua([[
 		local tab, e, b = ...
-		local data = require('frogman.domains.storage.routines').read_session(tab, tab)
+		local data = _G.FRG_TEST.read_session(tab, tab)
 		return { scope = data and data.scope, e = data ~= nil and vim.tbl_contains(data.closed, e), b = data ~= nil and vim.tbl_contains(data.closed, b) }
 	]], { tab, hash(root .. '/e.txt'), hash(root .. '/b.txt') })
 	eq(got, { scope = 'tab', e = true, b = false })
@@ -1784,7 +1784,7 @@ T['T646 [char] (S2) the migration script converts both sessions whose old file i
 	local both = child.lua([[
 		local root, elsewhere = ...
 		local st = require('frogman.domains.storage.routines')
-		return st.session_exists(root, root) and st.session_exists(root, elsewhere)
+		return st.session_exists(root, root) and st.session_exists(root, elsewhere, true)
 	]], { root, elsewhere })
 	eq({ dry = dry.stdout:find('would convert 2 session', 1, true) ~= nil, real = real.stdout:find('converted 2 session', 1, true) ~= nil, both = both },
 		{ dry = true, real = true, both = true })
@@ -1958,7 +1958,7 @@ T['T340 [char] (S2) a load that finds only a file named the old way points to th
 end
 
 -- T340's old-named file, and the plugin's own directory, the test run's, on the child's runtimepath.
-T['T648 [char] (S2) the WARN gives the migration script\'s command as it runs in this install'] = function()
+T['T648 [char] (S2) the WARN gives the migration script\'s command as it runs in this install, its path quoted'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	local root = S2.cwd(child)
@@ -1969,7 +1969,25 @@ T['T648 [char] (S2) the WARN gives the migration script\'s command as it runs in
 	child.messages()
 	eq(Misc.load(child), { true })
 	child.settle(300)
-	eq(S2.has(child.messages(), 'nvim --clean -l ' .. vim.fn.getcwd() .. '/scripts/migrate_sessions.lua'), true)
+	eq(S2.has(child.messages(), 'nvim --clean -l ' .. vim.fn.shellescape(vim.fn.getcwd() .. '/scripts/migrate_sessions.lua')), true)
+end
+
+-- T648's route with libcrypto_path set: the command names the session folder and the library, each quoted.
+T['T1215 [char] (S2) the WARN\'s command carries the session folder and libcrypto_path that setup sets, each quoted'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	local root = S2.cwd(child)
+	vim.fn.writefile({ '{"buffers":{"window":[],"global":[]},"windows":[],"closed":[],"noname_content":[]}' },
+		s.session_dir .. vim.fn.sha256(root .. '\n'):sub(1, 32) .. '.json')
+	S2.start(child, s)
+	child.lua('_G.FRG_TEST.setup({ libcrypto_path = _G.FRG_TEST.root .. "/nowhere/libcrypto.so.3" })')
+	Misc.restore(child, { 'a' }, 'a')
+	child.messages()
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	local set = child.lua('local c = require("frogman.configs"); return { dir = c.session_dir, lib = c.libcrypto_path }')
+	eq(S2.has(child.messages(), 'nvim --clean -l ' .. vim.fn.shellescape(vim.fn.getcwd() .. '/scripts/migrate_sessions.lua')
+		.. ' --session-dir ' .. vim.fn.shellescape(set.dir) .. ' --libcrypto-path ' .. vim.fn.shellescape(set.lib)), true)
 end
 
 -- Errors and drift ----------------------------------------------------------------
@@ -2080,7 +2098,7 @@ T['T321 [char] (S2) saves are snapshots: a whole-editor save merges the pools by
 	eq(S2.save(child), { true })
 	local function in_file()
 		return child.lua([[
-			local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+			local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil)
 			local out = {}
 			for _, h in ipairs(saved.closed or {}) do
 				table.insert(out, vim.fn.fnamemodify(saved.paths[h] or h, ':t:r'))
@@ -2176,7 +2194,7 @@ T['T323 [char] (S2) a tab-session save refreshes the unnamed session\'s records 
 		{ true })
 	-- the whole editor's file, as the load reads it
 	eq(child.lua([[
-		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil)
 		local x = require('frogman.domains.history').get_hash_from_filepath(vim.fn.getcwd(-1, -1) .. '/x.txt')
 		return vim.tbl_contains(saved.closed or {}, x)
 	]]), true)
@@ -2385,18 +2403,20 @@ T['T354 [char] (S2) a tab session with no file, loaded with the hint, starts onl
 end
 
 -- The hint is read (T354, T367); a usable file's scope wins over it.
-T['T355 [char] (S2) a file\'s scope wins over the hint'] = function()
+T['T355 [char] (S2, DESK.md:2391) a load with the hint reads the tab session\'s own file alone: the whole editor\'s file of that name says nothing, and the tab starts fresh'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e c', ':e d' })
 	eq(Misc.save(child), { true })
 	S2.start(child, s)
 	Misc.restore(child, { 'c', 'd' }, 'd')
+	child.messages()
 	local got = child.lua('return { pcall(require("frogman").load_session, vim.fn.getcwd(), { tab = vim.api.nvim_get_current_tabpage() }) }')
 	child.settle(300)
-	eq({ got = got, slots = child.slots(),
-		editor = child.lua('return require("frogman.domains.history").routines.current_pool().id') },
-		{ got = { true }, slots = '⦉c⦊ [d] ⟦-⟧', editor = '' })
+	local cwd = S2.cwd(child)
+	eq({ got = got, slots = child.slots(), said = S2.has(child.messages(), 'migration script'),
+		pool = child.lua('return require("frogman.domains.history").routines.current_pool().id') },
+		{ got = { true }, slots = '⦉-⦊ [d] ⟦-⟧', said = false, pool = cwd .. '\n' .. cwd })
 end
 
 -- The session directory is read-only, so the records can't be written: the
@@ -2531,7 +2551,7 @@ T['T360 [char] (S2) a load cancels a write still pending, so the teardown\'s clo
 	]])
 	child.settle(1500)
 	local closed = child.lua([[
-		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 'one')
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), 'one')
 		local out = {}
 		for _, h in ipairs(saved.closed or {}) do
 			table.insert(out, vim.fn.fnamemodify(saved.paths[h] or h, ':t:r'))
@@ -2568,7 +2588,7 @@ T['T566 [char] (S2) a No Name edit marks only the sessions whose files hold its 
 	child.cmd('enew')
 	child.settle(1500)
 	local dir, cwd = s.session_dir, S2.cwd(child)
-	local whole, tab = dir .. S2.main_file(dir, cwd, nil), dir .. S2.main_file(dir, cwd, 't')
+	local whole, tab = dir .. S2.main_file(dir, cwd, nil), dir .. S2.main_file(dir, cwd, 't', true)
 	local before = { whole = S2.read(whole), tab = S2.read(tab) }
 	child.type_keys('i', 'draft', '<Esc>')
 	child.settle(1500)
@@ -2584,7 +2604,7 @@ T['T599 [char] (S2) a tab session keeps owning a No Name text its tab visited af
 	local function texts()
 		eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
 		return child.lua([[
-			local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 't')
+			local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), 't')
 			local n = 0
 			for _ in pairs(saved.noname_content or {}) do n = n + 1 end
 			return n
@@ -2615,7 +2635,7 @@ T['T600 [char] (S2) a session whose last write held a No Name text no longer its
 	child.settle(1500)
 	local function editor_texts()
 		return child.lua([[
-			local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+			local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil)
 			local n = 0
 			for _ in pairs(saved.noname_content or {}) do n = n + 1 end
 			return n
@@ -2767,7 +2787,7 @@ T['T365 [char] (S2) a whole-editor switch keeps the manager\'s teardown out of a
 	]])
 	child.settle(1500)
 	local closed = child.lua([[
-		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 't')
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), 't')
 		local out = {}
 		for _, h in ipairs(saved.closed or {}) do
 			table.insert(out, vim.fn.fnamemodify(saved.paths[h] or h, ':t:r'))
@@ -2930,7 +2950,7 @@ local LIST_OF = [[
 
 -- The whole editor's file, as names: its closed list, and each detached list.
 local EDITOR_FILE = [[
-	local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+	local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil)
 	local function names(hashes)
 		local out = {}
 		for _, h in ipairs(hashes or {}) do
@@ -3022,7 +3042,7 @@ T['T381 [char] (S2) a detached list left with no tab goes into the whole editor\
 	]])
 	local file = child.lua(EDITOR_FILE)
 	local path = child.lua([[
-		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil)
 		for _, list in ipairs(saved.detached or {}) do
 			for _, h in ipairs(list.closed) do
 				if (saved.paths[h] or ''):match('e%.txt$') then return true end
@@ -3373,7 +3393,7 @@ T['T574 [char] (S2) a No Name text moved from a list in the file alone onto a ta
 	child.settle(600)
 	local lost = S2.has(child.messages(), "so that text is lost")
 	local in_file = child.lua([[
-		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 't')
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), 't')
 		for _, h in ipairs(saved and saved.closed or {}) do
 			if (saved.noname_content or {})[h] then return true end
 		end
@@ -3438,7 +3458,7 @@ local WHOLE_HELD = [[
 	local scope = require('frogman.domains.marks').data.scopes.session['']
 	local n = 0
 	for _, g in ipairs(scope and scope.groups or {}) do if g.held then n = n + 1 end end
-	local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+	local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil)
 	local f = 0
 	for _, g in ipairs(saved and saved.marks or {}) do if g.held then f = f + 1 end end
 	return { groups = n, snapshots = #require('frogman.domains.snapshots').routines.held_in(''),
@@ -4580,7 +4600,7 @@ end
 -- A detached list's copy of its session's marks as the whole editor's file holds it: its closed files' count and
 -- its own groups' marks by file letter; nil when the file holds no such list.
 local DETACHED_MARKS = [[
-	local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil)
+	local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil)
 	for _, list in ipairs(saved and saved.detached or {}) do
 		if list.label == ... then
 			local marks = {}
@@ -4616,7 +4636,7 @@ local EDITOR_HELD = [[
 			table.insert(memory, what(g.name) .. ' ' .. table.concat(marks, ','))
 		end
 	end
-	local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil) or {}
+	local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil) or {}
 	local file = {}
 	for _, g in ipairs(saved.marks or {}) do
 		if g.held then
@@ -5001,7 +5021,7 @@ T['T1109 [char] (S2, M15, DESK.md:1214) a detached list kept with no tab after a
 	local saved = child.lua([[
 		vim.cmd('edit e.txt') -- e off every list; the records write waits for the next tick
 		local ok = pcall(require('frogman').save_session)
-		local file = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil) or {}
+		local file = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil) or {}
 		local listed, held = false, 0
 		for _, list in ipairs(file.detached or {}) do
 			if list.label == 't_DETACHED' then listed = true end
@@ -5019,7 +5039,7 @@ end
 
 -- A session file's closed list, its files by letter, sorted: the named session's.
 local FILE_CLOSED = [[
-	local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), ...) or {}
+	local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), ...) or {}
 	local out = {}
 	for _, h in ipairs(saved.closed or {}) do
 		table.insert(out, vim.fn.fnamemodify((saved.paths or {})[h] or h, ':t:r'))
@@ -5455,6 +5475,457 @@ T['T1200 [char] (S2, DESK.md:2391, :2392) after Neovim\'s :restart session, a wh
 	child.settle(300)
 	eq({ loads = S2.loads(child), session = child.lua('local s = require("frogman.domains.storage").data.editor_session; return s and s.name') },
 		{ loads = 3, session = 'two' })
+end
+
+-- Separate files for a tab session and the whole editor's session of one name (DESK.md:2391, :2392) ----------------
+
+-- A tab session's file moved to the name it shared with the whole editor's session, as saves wrote it before.
+local function to_shared_name(name)
+	child.lua([[
+		local st, name = require('frogman.domains.storage').routines, ...
+		local dir = vim.fn.getcwd(-1, -1)
+		local own, shared = st.session_path(dir, name, true), st.session_path(dir, name)
+		assert(os.rename(own, shared))
+		if vim.uv.fs_stat(own .. '.d') then assert(os.rename(own .. '.d', shared .. '.d')) end
+	]], { name })
+end
+
+T['T1201 [char] (S1, S2, DESK.md:2391, :2392) a tab session and the whole editor\'s session of one name have a file each'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child, 'work'), { true })
+	child.cmd('tabnew')
+	child.steps({ ':e c', ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "work", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	local got = child.lua([[
+		local st = require('frogman.domains.storage').routines
+		local dir = vim.fn.getcwd(-1, -1)
+		local whole, tab = st.read_session(dir, 'work'), st.read_session(dir, 'work', true)
+		return { whole = whole and whole.scope or false, tab = tab and tab.scope or false }
+	]])
+	eq(got, { whole = 'editor', tab = 'tab' })
+end
+
+T['T1202 [char] (S1, S2, DESK.md:2391, :2392) a tab session\'s load that finds only a file under the shared name starts the tab fresh and names the script'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "old", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	to_shared_name('old')
+	S2.start(child, s)
+	child.messages()
+	child.lua('require("frogman").load_session("old", { tab = vim.api.nvim_get_current_tabpage() })')
+	child.settle(300)
+	local told = #vim.tbl_filter(function(m)
+		return m.msg:find("has the name it shared with the whole editor's session", 1, true) ~= nil and m.msg:find('migrate_sessions.lua', 1, true) ~= nil
+	end, child.messages())
+	eq(told, 1)
+end
+
+T['T1207 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint that finds only a tab session\'s file under the shared name starts the tab it runs in fresh, the whole editor\'s session left as it was'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "old", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	to_shared_name('old')
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child, 'work'), { true })
+	child.messages()
+	child.lua('require("frogman").load_session("old")')
+	child.settle(300)
+	local told = #vim.tbl_filter(function(m)
+		return m.msg:find("has the name it shared with the whole editor's session", 1, true) ~= nil and m.msg:find('migrate_sessions.lua', 1, true) ~= nil
+	end, child.messages())
+	eq({ told = told, session = child.lua('local s = require("frogman.domains.storage").data.editor_session; return s and s.name'),
+		pool = child.lua('return require("frogman.domains.history").routines.current_pool().id') },
+		{ told = 1, session = 'work', pool = 'old\n' .. s.root })
+end
+
+T['T1208 [char] (S2, DESK.md:2391, :2392) the migration script leaves a tab session\'s file whose own name has a texts folder already, its own folder with it'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c' })
+	S2.noname(child, { 'draft' })
+	child.steps({ ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	to_shared_name('t')
+	local paths = child.lua([[
+		local st = require('frogman.domains.storage').routines
+		local dir = vim.fn.getcwd(-1, -1)
+		return { own = st.session_path(dir, 't', true), shared = st.session_path(dir, 't') }
+	]])
+	-- a texts folder under the tab session's own name, with no main file beside it
+	vim.fn.mkdir(paths.own .. '.d', 'p')
+	vim.fn.writefile({ 'stray' }, paths.own .. '.d/stray')
+	local resession_dir = vim.fn.stdpath('data') .. '/frogman_test_sessions/'
+	vim.fn.delete(resession_dir, 'rf')
+	vim.fn.mkdir(resession_dir, 'p')
+	vim.fn.writefile({ vim.json.encode({ global = { cwd = s.root }, tab_scoped = true, tabs = { { cwd = s.root } }, buffers = {} }) }, resession_dir .. 't.json')
+	local run = vim.system({ vim.v.progpath, '--clean', '-l', 'scripts/migrate_sessions.lua', '--resession-dir', 'frogman_test_sessions',
+		'--session-dir', s.session_dir }, { text = true }):wait()
+	eq({ code = run.code, left = (run.stdout or ''):find('renamed 0 tab session file(s) to their own names; 1 left', 1, true) ~= nil,
+		shared = vim.uv.fs_stat(paths.shared) ~= nil, shared_d = vim.uv.fs_stat(paths.shared .. '.d') ~= nil, own = vim.uv.fs_stat(paths.own) ~= nil },
+		{ code = 0, left = true, shared = true, shared_d = true, own = false })
+end
+
+T['T1209 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint in a tab with a :tcd of its own finds a tab session\'s file there under the shared name, starts that tab fresh and names the script'] = function()
+	local s = S2.shared()
+	vim.fn.mkdir(s.root .. '/sub', 'p')
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.cmd('tcd sub')
+	child.steps({ ':e ../c.txt', ':e ../d.txt' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	-- the file moved to the name it shared with the whole editor's, in the tab's own directory
+	child.lua([[
+		local st = require('frogman.domains.storage').routines
+		local dir = vim.fn.getcwd(-1, 0)
+		local own, shared = st.session_path(dir, 't', true), st.session_path(dir, 't')
+		assert(os.rename(own, shared))
+		if vim.uv.fs_stat(own .. '.d') then assert(os.rename(own .. '.d', shared .. '.d')) end
+	]])
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child, 'work'), { true })
+	child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd tcd sub')
+		vim.cmd('noautocmd edit ../d.txt')
+	]])
+	child.messages()
+	child.lua('require("frogman").load_session("t")')
+	child.settle(300)
+	local told = #vim.tbl_filter(function(m)
+		return m.msg:find("has the name it shared with the whole editor's session", 1, true) ~= nil and m.msg:find('migrate_sessions.lua', 1, true) ~= nil
+	end, child.messages())
+	eq({ told = told, session = child.lua('local s = require("frogman.domains.storage").data.editor_session; return s and s.name'),
+		pool = child.lua('return require("frogman.domains.history").routines.current_pool().id') },
+		{ told = 1, session = 'work', pool = 't\n' .. s.root .. '/sub' })
+end
+
+T['T1210 [char] (S2, DESK.md:2391, :2392) a dry run counts a tab session\'s file under the shared name still in cavediver\'s folder, as the real run renames it'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	to_shared_name('t')
+	local shared = child.lua('return require("frogman.domains.storage").routines.session_path(vim.fn.getcwd(-1, -1), "t")')
+	local sandbox = vim.env.FRG_TEST_SANDBOX
+	local data = vim.fn.stdpath('data')
+	eq(data:sub(1, #sandbox + 1) == sandbox .. '/', true)
+	local old_sessions, new_sessions = data .. '/cavediver/sessions/', data .. '/frogman/sessions/'
+	vim.fn.mkdir(old_sessions, 'p')
+	-- the file in cavediver's folder, as an install from before the rename keeps it
+	vim.fn.rename(shared, old_sessions .. vim.fs.basename(shared))
+	if vim.uv.fs_stat(shared .. '.d') then vim.fn.rename(shared .. '.d', old_sessions .. vim.fs.basename(shared) .. '.d') end
+	local resession_dir = data .. '/frogman_test_sessions/'
+	vim.fn.delete(resession_dir, 'rf')
+	vim.fn.mkdir(resession_dir, 'p')
+	vim.fn.writefile({ vim.json.encode({ global = { cwd = s.root }, tab_scoped = true, tabs = { { cwd = s.root } }, buffers = {} }) }, resession_dir .. 't.json')
+	local before = {}
+	for _, entry in ipairs(vim.fn.isdirectory(new_sessions) == 1 and vim.fn.readdir(new_sessions) or {}) do
+		before[entry] = true
+	end
+	local function run(...)
+		return vim.system({ vim.v.progpath, '--clean', '-l', 'scripts/migrate_sessions.lua', '--resession-dir', 'frogman_test_sessions', ... },
+			{ text = true }):wait()
+	end
+	local dry = run('--dry-run')
+	local real = run()
+	for _, entry in ipairs(vim.fn.isdirectory(new_sessions) == 1 and vim.fn.readdir(new_sessions) or {}) do
+		if not before[entry] then vim.fn.delete(new_sessions .. entry, 'rf') end
+	end
+	vim.fn.delete(data .. '/cavediver', 'rf')
+	eq({ dry = dry.stdout:find('would rename 1 tab session file(s)', 1, true) ~= nil,
+		real = real.stdout:find('renamed 1 tab session file(s)', 1, true) ~= nil, code = real.code },
+		{ dry = true, real = true, code = 0 })
+end
+
+T['T1211 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint in a tab with a :tcd of its own whose tab session\'s file there fails to read starts that tab fresh, the whole editor\'s session left as it was'] = function()
+	local s = S2.shared()
+	vim.fn.mkdir(s.root .. '/sub', 'p')
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.cmd('tcd sub')
+	child.steps({ ':e ../c.txt', ':e ../d.txt' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	local own = child.lua('return require("frogman.domains.storage").routines.session_path(vim.fn.getcwd(-1, 0), "t", true)')
+	-- a byte of its seal changed: the file fails its integrity check
+	local bytes = S2.read(own)
+	S2.write(own, bytes:sub(1, -2) .. string.char((bytes:byte(-1) + 1) % 256))
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child, 'work'), { true })
+	child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd tcd sub')
+		vim.cmd('noautocmd edit ../d.txt')
+	]])
+	child.messages()
+	child.lua('require("frogman").load_session("t")')
+	child.settle(300)
+	eq({ told = S2.has(child.messages(), 'integrity check'),
+		session = child.lua('local s = require("frogman.domains.storage").data.editor_session; return s and s.name'),
+		pool = child.lua('return require("frogman.domains.history").routines.current_pool().id') },
+		{ told = true, session = 'work', pool = 't\n' .. s.root .. '/sub' })
+end
+
+T['T1212 [char] (S2, DESK.md:2391, :2392) a dry run doesn\'t count a tab session\'s file in cavediver\'s folder whose name frogman\'s folder has, as the real run\'s move leaves it there'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	to_shared_name('t')
+	local shared = child.lua('return require("frogman.domains.storage").routines.session_path(vim.fn.getcwd(-1, -1), "t")')
+	local sandbox = vim.env.FRG_TEST_SANDBOX
+	local data = vim.fn.stdpath('data')
+	eq(data:sub(1, #sandbox + 1) == sandbox .. '/', true)
+	local old_sessions, new_sessions = data .. '/cavediver/sessions/', data .. '/frogman/sessions/'
+	vim.fn.mkdir(old_sessions, 'p')
+	vim.fn.mkdir(new_sessions, 'p')
+	local before = {}
+	for _, entry in ipairs(vim.fn.readdir(new_sessions)) do
+		before[entry] = true
+	end
+	-- the tab session's file in cavediver's folder, and the whole editor's of that name in frogman's
+	vim.fn.rename(shared, old_sessions .. vim.fs.basename(shared))
+	if vim.uv.fs_stat(shared .. '.d') then vim.fn.rename(shared .. '.d', old_sessions .. vim.fs.basename(shared) .. '.d') end
+	eq(S2.save(child, 't'), { true })
+	vim.fn.rename(shared, new_sessions .. vim.fs.basename(shared))
+	local resession_dir = data .. '/frogman_test_sessions/'
+	vim.fn.delete(resession_dir, 'rf')
+	vim.fn.mkdir(resession_dir, 'p')
+	vim.fn.writefile({ vim.json.encode({ global = { cwd = s.root }, tab_scoped = true, tabs = { { cwd = s.root } }, buffers = {} }) }, resession_dir .. 't.json')
+	local function run(...)
+		return vim.system({ vim.v.progpath, '--clean', '-l', 'scripts/migrate_sessions.lua', '--resession-dir', 'frogman_test_sessions', ... },
+			{ text = true }):wait()
+	end
+	local dry = run('--dry-run')
+	local real = run()
+	for _, entry in ipairs(vim.fn.readdir(new_sessions)) do
+		if not before[entry] then vim.fn.delete(new_sessions .. entry, 'rf') end
+	end
+	vim.fn.delete(data .. '/cavediver', 'rf')
+	eq({ dry = dry.stdout:find('would rename 0 tab session file(s)', 1, true) ~= nil,
+		real = real.stdout:find('renamed 0 tab session file(s)', 1, true) ~= nil },
+		{ dry = true, real = true })
+end
+
+T['T1213 [char] (S2, DESK.md:2391, :2392) a tab session with no resession file is renamed by the warning\'s own command, run as it reads with a session folder of its own, and a load reads it'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "notes", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	to_shared_name('notes')
+	S2.start(child, s)
+	child.messages()
+	child.lua('require("frogman").load_session("notes", { tab = vim.api.nvim_get_current_tabpage() })')
+	child.settle(300)
+	local warn
+	for _, m in ipairs(child.messages()) do
+		if m.msg:find("has the name it shared with the whole editor's session", 1, true) then warn = m.msg end
+	end
+	-- the warning's command as it reads, nvim this binary, pointed at no resession sessions: the test's own
+	-- session folder comes from the warning
+	local command = warn and warn:match('Run the migration script to rename it, nvim (.-); the tab starts fresh')
+	eq(command ~= nil, true)
+	local run = vim.system({ 'sh', '-c', vim.fn.shellescape(vim.v.progpath) .. ' ' .. command .. ' --resession-dir frogman_test_none' },
+		{ text = true }):wait()
+	S2.start(child, s)
+	Misc.restore(child, { 'c', 'd' }, 'd')
+	child.lua('require("frogman").load_session("notes", { tab = vim.api.nvim_get_current_tabpage() })')
+	child.settle(300)
+	eq({ code = run.code, renamed = (run.stdout or ''):find('renamed 1 tab session file', 1, true) ~= nil, slots = child.slots() },
+		{ code = 0, renamed = true, slots = '⦉c⦊ [d] ⟦-⟧' })
+end
+
+T['T1214 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint whose whole editor\'s file can\'t be read says so and starts the whole editor fresh, the tab session of that name left unread'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child, 'work'), { true })
+	child.cmd('tabnew')
+	child.steps({ ':e c', ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "work", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	local whole = child.lua('return require("frogman.domains.storage").routines.session_path(vim.fn.getcwd(-1, -1), "work")')
+	-- a byte of the whole editor's seal changed: its file fails its integrity check
+	local bytes = S2.read(whole)
+	S2.write(whole, bytes:sub(1, -2) .. string.char((bytes:byte(-1) + 1) % 256))
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	child.messages()
+	eq(S2.load(child, 'work'), { true })
+	child.settle(300)
+	eq({ told = S2.has(child.messages(), 'integrity check'),
+		pool = child.lua('return require("frogman.domains.history").routines.current_pool().id') },
+		{ told = true, pool = '' })
+end
+
+T['T1217 [char] (S2, DESK.md:2391, :2392) a load with the hint whose file is still in cavediver\'s folder under the name it shared points to the migration script'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	eq(child.lua([[
+		local sandbox = ...
+		local data = vim.fn.stdpath('data')
+		if data:sub(1, #sandbox + 1) ~= sandbox .. '/' then return 'outside the sandbox' end
+		_G.FRG_TEST.setup({ session_dir = data .. '/frogman/sessions/' })
+		local old = data .. '/cavediver/sessions/'
+		vim.fn.mkdir(old, 'p')
+		-- under the name a tab session and the whole editor's shared before each had one of its own
+		vim.fn.writefile({ 'x' }, old .. vim.fn.sha256(vim.fn.getcwd(-1, -1) .. '\n' .. vim.fn.getcwd()))
+		return 'planted'
+	]], { vim.env.FRG_TEST_SANDBOX }), 'planted')
+	child.messages()
+	child.lua('require("frogman").load_session(vim.fn.getcwd(), { tab = vim.api.nvim_get_current_tabpage() })')
+	child.settle(300)
+	local said = S2.has(child.messages(), "frogman: this session's file is still in cavediver's folder. Run the migration script to move it, nvim --clean -l ")
+	child.lua('vim.fn.delete(vim.fn.stdpath("data") .. "/cavediver", "rf")')
+	eq(said, true)
+end
+
+-- A tab session's file under the tab session's own name, a byte of its seal changed.
+local function damage_own(name)
+	local own = child.lua('return require("frogman.domains.storage").routines.session_path(vim.fn.getcwd(-1, -1), ..., true)', { name })
+	local shared = child.lua('return require("frogman.domains.storage").routines.session_path(vim.fn.getcwd(-1, -1), ...)', { name })
+	local bytes = S2.read(shared)
+	S2.write(own, bytes:sub(1, -2) .. string.char((bytes:byte(-1) + 1) % 256))
+end
+
+T['T1218 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint that finds a tab session\'s file under the shared name and a damaged one under its own says the damage and starts the tab fresh'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "old", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	to_shared_name('old')
+	damage_own('old')
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child, 'work'), { true })
+	child.messages()
+	child.lua('require("frogman").load_session("old")')
+	child.settle(300)
+	local msgs = child.messages()
+	eq({ damage = S2.has(msgs, 'integrity check'), old_name = S2.has(msgs, "has the name it shared with the whole editor's session"),
+		session = child.lua('local s = require("frogman.domains.storage").data.editor_session; return s and s.name'),
+		pool = child.lua('return require("frogman.domains.history").routines.current_pool().id') },
+		{ damage = true, old_name = false, session = 'work', pool = 'old\n' .. s.root })
+end
+
+T['T1219 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint that finds only a damaged tab session\'s file under its own name says the damage and starts the tab fresh'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "old", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	to_shared_name('old')
+	damage_own('old')
+	child.lua('assert(os.remove(require("frogman.domains.storage").routines.session_path(vim.fn.getcwd(-1, -1), "old")))')
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b' })
+	eq(S2.save(child, 'work'), { true })
+	child.messages()
+	child.lua('require("frogman").load_session("old")')
+	child.settle(300)
+	eq({ damage = S2.has(child.messages(), 'integrity check'),
+		session = child.lua('local s = require("frogman.domains.storage").data.editor_session; return s and s.name'),
+		pool = child.lua('return require("frogman.domains.history").routines.current_pool().id') },
+		{ damage = true, session = 'work', pool = 'old\n' .. s.root })
+end
+
+T['T1220 [char] (S2, DESK.md:2391, :2392) a load with the hint says nothing of cavediver\'s copy under the name it shared while frogman\'s folder has that name, the move leaving it'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	eq(child.lua([[
+		local sandbox = ...
+		local data = vim.fn.stdpath('data')
+		if data:sub(1, #sandbox + 1) ~= sandbox .. '/' then return 'outside the sandbox' end
+		_G.FRG_TEST.setup({ session_dir = data .. '/frogman/sessions/' })
+		return 'set'
+	]], { vim.env.FRG_TEST_SANDBOX }), 'set')
+	child.steps({ ':e a', ':e b' })
+	eq(Misc.save(child), { true })
+	child.lua([[
+		local old = vim.fn.stdpath('data') .. '/cavediver/sessions/'
+		vim.fn.mkdir(old, 'p')
+		-- the whole editor's file of this name in frogman's folder, and a copy of that name in cavediver's
+		vim.fn.writefile({ 'x' }, old .. vim.fn.sha256(vim.fn.getcwd(-1, -1) .. '\n' .. vim.fn.getcwd()))
+	]])
+	child.messages()
+	child.lua('require("frogman").load_session(vim.fn.getcwd(), { tab = vim.api.nvim_get_current_tabpage() })')
+	child.settle(300)
+	local said = S2.has(child.messages(), "still in cavediver's folder")
+	child.lua([[
+		vim.fn.delete(vim.fn.stdpath("data") .. "/cavediver", "rf")
+		os.remove(require("frogman.domains.storage").routines.session_path(vim.fn.getcwd(-1, -1), vim.fn.getcwd()))
+	]])
+	eq(said, false)
+end
+
+T['T1203 [char] (S2, DESK.md:2391, :2392) the migration script renames a tab session\'s file to its own name, its texts with it, and a load reads it'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c' })
+	S2.noname(child, { 'draft' })
+	child.steps({ ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	to_shared_name('t')
+	local root = s.root
+	local resession_dir = vim.fn.stdpath('data') .. '/frogman_test_sessions/'
+	vim.fn.delete(resession_dir, 'rf')
+	vim.fn.mkdir(resession_dir, 'p')
+	vim.fn.writefile({ vim.json.encode({ global = { cwd = root }, tab_scoped = true, tabs = { { cwd = root } }, buffers = {} }) }, resession_dir .. 't.json')
+	local run = vim.system({ vim.v.progpath, '--clean', '-l', 'scripts/migrate_sessions.lua', '--resession-dir', 'frogman_test_sessions',
+		'--session-dir', s.session_dir }, { text = true }):wait()
+	S2.start(child, s)
+	Misc.restore(child, { 'c', 'd' }, 'd')
+	child.lua('require("frogman").load_session("t", { tab = vim.api.nvim_get_current_tabpage() })')
+	child.settle(300)
+	eq({ code = run.code, renamed = (run.stdout or ''):find('renamed 1 tab session file', 1, true) ~= nil, d = child.slots():match('%[(%a)%]'),
+		text = S2.holding(child, 'draft') }, { code = 0, renamed = true, d = 'd', text = 1 })
+end
+
+T['T1204 [char] (S1, S2, DESK.md:2391, :2392) a tab session and the whole editor\'s session of one name keep their own records'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e x' })
+	eq(S2.save(child, 'work'), { true })
+	child.cmd('tabnew')
+	child.steps({ ':e c', ':e d', ':e t' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "work", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	child.cmd('bdelete d.txt')
+	child.settle(300)
+	child.cmd('tabprevious')
+	child.cmd('bdelete b.txt')
+	child.settle(1500) -- each session's records written
+	S2.start(child, s)
+	Misc.restore(child, { 'a', 'x' }, 'x')
+	eq(S2.load(child, 'work'), { true })
+	child.settle(300)
+	local whole = child.closed()
+	S2.start(child, s)
+	Misc.restore(child, { 'c', 't' }, 't')
+	child.lua('require("frogman").load_session("work", { tab = vim.api.nvim_get_current_tabpage() })')
+	child.settle(300)
+	local tab = child.lua([[
+		local H = require('frogman.domains.history')
+		local names = {}
+		for _, id in ipairs(H.routines.current_pool().closed) do
+			table.insert(names, vim.fn.fnamemodify(H.get_filepath_from_handle(id) or '', ':t:r'))
+		end
+		return table.concat(names, ',')
+	]]) -- the tab session's own list, not the editor's
+	eq({ whole = whole, tab = tab }, { whole = 'b', tab = 'd' })
+end
+
+T['T1206 [char] (S1, S2, DESK.md:2391, :2392) a load without the hint still finds a tab session\'s file, under its own name'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e c', ':e d' })
+	eq(child.lua('return { pcall(require("frogman").save_session, "u", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
+	S2.start(child, s)
+	eq(S2.load_tab_session(child, 'u'), { true })
+	eq(child.slots(), '⦉c⦊ [d] ⟦-⟧')
 end
 
 return T

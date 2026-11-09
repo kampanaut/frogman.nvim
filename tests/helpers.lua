@@ -77,6 +77,28 @@ local function map(m)
 	return '{' .. table.concat(keys, ' ') .. '}'
 end
 
+-- Whether a case's read of a session's file means the tab session's: `tab` given says so; without it, the one
+-- of the two files that's there. Both there is the case's to say, and the whole editor's name holding a tab
+-- session's data is what a file each ends, so either raises.
+local function tab_file(dir, name, tab)
+	if tab ~= nil then
+		return tab
+	end
+	local st = require('frogman.domains.storage.routines')
+	local has_tab = vim.uv.fs_stat(st.session_path(dir, name, true)) ~= nil
+	local has_editor = vim.uv.fs_stat(st.session_path(dir, name)) ~= nil
+	if has_tab and has_editor then
+		error("both a tab session's file and the whole editor's are there for " .. tostring(name) .. ": the case says which", 2)
+	end
+	if has_editor then
+		local ok, data = pcall(st.read_session, dir, name)
+		if ok and type(data) == "table" and data.scope == "tab" then
+			error("the whole editor's file for " .. tostring(name) .. " holds a tab session", 2)
+		end
+	end
+	return has_tab
+end
+
 _G.FRG_TEST = {
 	root = root,
 	-- set up again with the options given, layered over this child's own (_G.FRG_BASE)
@@ -102,6 +124,16 @@ _G.FRG_TEST = {
 	end,
 	shown = function(winid)
 		return vim.fn.fnamemodify(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(winid or 0)), ':t:r')
+	end,
+	-- a session's main file by name, the tab session's or the whole editor's as tab_file picks it
+	session_path = function(dir, name, tab)
+		return require('frogman.domains.storage.routines').session_path(dir, name, tab_file(dir, name, tab))
+	end,
+	read_session = function(dir, name, tab)
+		return require('frogman.domains.storage.routines').read_session(dir, name, tab_file(dir, name, tab))
+	end,
+	read_trail = function(dir, name, day, tab)
+		return require('frogman.domains.storage.routines').read_trail(dir, name, day, tab_file(dir, name, tab))
 	end,
 	ordered = function()
 		local out = {}

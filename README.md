@@ -337,8 +337,13 @@ This plugin was called cavediver before. Do these once, in this order, before yo
     of your own, the session files aren't moved. If your setup sets them, pass `--session-dir`, `--resession-dir` and
     `--libcrypto-path` too.
 
+    It also gives each tab session's file a name of its own: a tab session and the whole editor's session with one
+    name shared a file before. resession's tab sessions are found through its list; `--tab-session <directory>
+    [<name>]` names one it doesn't list, and can be given more than once.
+
     Run it before your first session: a session started first saves a fresh file, and the script won't convert over
-    it unless you pass `--replace`. A load that finds an old file tells you the command, with the path for your install.
+    it unless you pass `--replace`. A load that finds an old file tells you the command, with the path for your
+    install, the folder and library your setup sets, and, for a tab session's file, the session itself.
 
 ## Configuration Defaults
 

@@ -748,7 +748,7 @@ local PAGE = [==[
 local name, day = ...
 if name == vim.NIL then name = nil end
 if day == vim.NIL then day = nil end
-local steps = require('frogman.domains.storage').routines.read_trail(vim.fn.getcwd(-1, -1), name, day or os.date('%Y-%m-%d'))
+local steps = _G.FRG_TEST.read_trail(vim.fn.getcwd(-1, -1), name, day or os.date('%Y-%m-%d'))
 if steps == nil then return vim.NIL end
 local out = {}
 for _, step in ipairs(steps) do
@@ -1478,6 +1478,41 @@ T['T1197 [char] (A27, DESK.md:2391, :2392) the trail\'s view reads its page list
 	child.settle(100)
 	local text = table.concat(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), '\n')
 	eq({ day = text:find('02 Jan 2026', 1, true) ~= nil, step = text:find('old.txt', 1, true) ~= nil }, { day = true, step = true }) -- the header's date
+end
+T['T1205 [char] (A27, DESK.md:2391, :2392) the trail\'s view keeps the days it had when the main file stops reading'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e x' })
+	child.cmd('bdelete a.txt')
+	child.settle(300)
+	eq(S2.save(child), { true })
+	child.lua([[
+		local st, crypto = require('frogman.domains.storage').routines, require('frogman.domains.storage.crypto')
+		local dir = vim.fn.getcwd(-1, -1)
+		local main = require('frogman.configs').session_dir .. vim.fn.sha256(dir)
+		local f = io.open(main, 'rb'); local bytes = f:read('*a'); f:close()
+		local salt = bytes:sub(5, 4 + crypto.salt_length)
+		local key = st.key_for(dir, salt)
+		local day = '2026-01-02'
+		local page = { steps = { { seq = 1, time = os.time({ year = 2026, month = 1, day = 2, hour = 10 }), epoch = '1.000000-0001',
+			cause = 'keymap', trigger = 'earlier', names = {}, events = {}, moves = { { kind = 'closed', name = 'old.txt', lists = { 'editor' } } } } } }
+		st.write_atomic(main .. '.d/planted.trail', crypto.seal(key, vim.json.encode(page), 'CDV1trail\n' .. day))
+		local data = st.read_session(dir, nil)
+		data.trail[day] = 'planted.trail'
+		local header = 'CDV1' .. salt
+		st.write_atomic(main, header .. crypto.seal(key, vim.json.encode(data), header))
+	]])
+	child.cmd('FrogmanTrail')
+	child.settle(100)
+	-- the main file's bytes broken, as a write cut short leaves it
+	child.lua([[
+		local main = require('frogman.configs').session_dir .. vim.fn.sha256(vim.fn.getcwd(-1, -1))
+		local f = io.open(main, 'wb'); f:write('not a session'); f:close()
+	]])
+	child.type_keys('H')
+	child.settle(100)
+	local text = table.concat(child.lua('return vim.api.nvim_buf_get_lines(0, 0, -1, false)'), '\n')
+	eq({ day = text:find('02 Jan 2026', 1, true) ~= nil, step = text:find('old.txt', 1, true) ~= nil }, { day = true, step = true })
 end
 
 return T

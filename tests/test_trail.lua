@@ -344,10 +344,10 @@ T['T547 [char] (A27, S2) under the ascii set, a loaded move\'s file name keeps i
 	child.lua([[
 		local crypto = require('frogman.domains.storage.crypto')
 		local dir, name = vim.fn.getcwd(-1, -1), vim.fn.getcwd()
-		local path = require('frogman.configs').session_dir .. vim.fn.sha256(dir .. "\n" .. name)
+		local path = _G.FRG_TEST.session_path(dir, name)
 		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
 		local salt = bytes:sub(5, 4 + crypto.salt_length)
-		local data = require('frogman.domains.storage.routines').read_session(dir, name)
+		local data = _G.FRG_TEST.read_session(dir, name)
 		local x = _G.FRG_TEST.root .. '/notes · v2.md'
 		local h = vim.fn.sha256(x .. "\n"):sub(1, 16)
 		data.paths[h] = x

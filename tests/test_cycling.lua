@@ -1435,7 +1435,7 @@ T['T493 [char] a replayed editor writes no records as a tab session\'s tab close
 	eq(child.lua('return { pcall(require("frogman").save_session, "t", { tab = vim.api.nvim_get_current_tabpage() }) }'), { true })
 	local main = child.lua([[
 		local dir = require('frogman.configs').session_dir
-		local want = vim.fn.sha256(vim.fn.getcwd(-1, -1) .. '\n' .. 't')
+		local want = vim.fs.basename(_G.FRG_TEST.session_path(vim.fn.getcwd(-1, -1), 't'))
 		for _, f in ipairs(vim.fn.readdir(dir)) do
 			if f:sub(1, #want) == want and not f:match('%.d$') then return dir .. f end
 		end

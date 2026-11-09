@@ -150,15 +150,15 @@ end
 -- The prefixes a session's main file name may start with:
 -- sha256(directory .. "\n" .. name) for a named session (the separator
 -- decided 2026-10-21, T255). A nameless save is sha256(directory) alone
--- (decided 2026-10-21, T292).
-S2.session_names = function(directory, name)
-	if name then return { vim.fn.sha256(directory .. '\n' .. name) } end
-	return { vim.fn.sha256(directory) } -- a nameless save: sha256(directory) alone (decided 2026-10-21)
+-- (decided 2026-10-21, T292). A tab session's has "tab\n" before what's hashed.
+S2.session_names = function(directory, name, tab)
+	local named = name and (directory .. '\n' .. name) or directory -- a nameless save: the directory alone
+	return { vim.fn.sha256(tab and ('tab\n' .. named) or named) }
 end
 
 -- The file in `dir` whose name starts with one of S2.session_names, or nil.
-S2.main_file = function(dir, directory, name)
-	for _, want in ipairs(S2.session_names(directory, name)) do
+S2.main_file = function(dir, directory, name, tab)
+	for _, want in ipairs(S2.session_names(directory, name, tab)) do
 		for _, f in ipairs(Misc.files_in(dir)) do
 			if f:sub(1, #want) == want then return f end
 		end

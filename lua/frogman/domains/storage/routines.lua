@@ -1405,26 +1405,40 @@ local function load_closed_buffers(closed_buffers, noname_content, key, scratch_
 	-- print_table(history.routines.pools()[""].closed)
 end
 
----Get a session's file path from its directory and name.
+---Get a session's file path from its directory, its name and whether it's a tab session.
 ---
----The file is named after a hash of the two, in the configured session directory. Nothing is made:
----the directory comes with the first write into it.
+---The file is named after a hash of the three, in the configured session directory, so a tab session
+---and the whole editor's session of one name have a file each. Nothing is made: the directory comes
+---with the first write into it.
 ---
 ---@param directory string The session's directory
 ---@param name string|nil The session's name (nil for a nameless save)
+---@param tab boolean|nil Whether it's a tab session's file
 ---@return string project_filepath Path of the session's main file
-local function get_session_filepath(directory, name)
+local function get_session_filepath(directory, name, tab)
 	if not directory then
 		require('frogman.domains.ledger').never("No directory provided to get_session_filepath")
 	end
 
-	-- the separator keeps a session "a" in /proj apart from a nameless save in /proja
-	local session_hash = vim.fn.sha256(name and (directory .. "\n" .. name) or directory)
+	-- the separator keeps a session "a" in /proj apart from a nameless save in /proja, and the prefix a tab
+	-- session's file apart from the whole editor's
+	local named = name and (directory .. "\n" .. name) or directory
+	local session_hash = vim.fn.sha256(tab and ("tab\n" .. named) or named)
 
 	local session_dir = configs.session_dir
 	local project_filepath = session_dir .. session_hash
 
 	return project_filepath
+end
+
+M.session_path = get_session_filepath -- the migration script names files by the same rule
+
+---Get the main file of a session frogman knows, by its scope: a tab session's own, or the whole editor's.
+---
+---@param session {name: string|nil, directory: string, scope: "editor"|"tab"|nil} The session
+---@return string file_path
+local function session_file(session)
+	return get_session_filepath(session.directory, session.name, session.scope == "tab")
 end
 
 -- each key once it's made, by directory and salt, { key, file }: another editor's save can give a file
@@ -1740,10 +1754,11 @@ end
 ---
 ---@param directory string The session's directory
 ---@param name string|nil The session's name (nil for a nameless save)
+---@param tab boolean|nil Whether it's a tab session's file
 ---@return table|nil saved_data The decoded data, or nil if it can't be read
 ---@return string|nil problem Why not, as `read_session_file()` says it
-function M.read_session(directory, name)
-	local saved_data, _, problem = read_session_file(get_session_filepath(directory, name), directory)
+function M.read_session(directory, name, tab)
+	local saved_data, _, problem = read_session_file(get_session_filepath(directory, name, tab), directory)
 	return saved_data, problem
 end
 
@@ -1753,29 +1768,61 @@ local prepared = nil
 ---Read a session's file for the load about to run.
 ---
 ---The read is kept for `M.load_history()`, and its scope decides how the storage machine moves. A
----file's own scope wins over the hint, and with no usable file the hint decides.
+---tab session's load, with the hint or `tab_file`, looks under the tab session's name alone; any
+---other looks under the whole editor's, then, with no file of its own kind there, under a tab
+---session's. A file of its own kind, or a tab session's under its own name, that can't be used
+---ends the look, for the load to say why. A tab session's file found only under the name it shared
+---with the whole editor's is noted, for the load to say so and start the tab fresh, with the hint
+---or without it.
 ---
 ---@param directory string The session's directory
 ---@param name string|nil The session's name (nil for a nameless save)
 ---@param hint integer|nil The tab the call names (load_session's `{ tab = … }`), which makes it
 ---a tab session loading into that tab
+---@param tab_file boolean|nil Whether a tab session's file was found in the tab's own directory
 ---@return boolean tab_session True if it's a tab session's load
-function M.prepare_load(directory, name, hint)
-	-- this runs before the storage machine moves, outside its hooks' catch: a failure here (libcrypto
-	-- missing, a session directory that can't be made) is kept for the load's hook to raise
-	local ok, saved_data, key, problem, fixed = xpcall(function()
-		return read_session_file(get_session_filepath(directory, name), directory)
-	end, debug.traceback)
-	if not ok then
-		prepared = { directory = directory, name = name, err = saved_data, hint = hint }
-		return hint ~= nil
+function M.prepare_load(directory, name, hint, tab_file)
+	-- a tab session's load looks under the tab session's own name alone, any other under the whole editor's,
+	-- then, with no file of its own kind there, under a tab session's; a tab session's file under the name it
+	-- shared with the whole editor's, from before the two had one each, isn't read for its data, and neither is
+	-- the whole editor's own file at a tab session's load
+	local tab = hint ~= nil or tab_file == true
+	local own, other = get_session_filepath(directory, name, tab), get_session_filepath(directory, name, not tab)
+	local shared, tab_path = tab and other or own, tab and own or other
+	local old_name = false
+	for _, file_path in ipairs({ own, other }) do
+		-- this runs before the storage machine moves, outside its hooks' catch: a failure here (libcrypto
+		-- missing, a session directory that can't be made) is kept for the load's hook to raise
+		local ok, saved_data, key, problem, fixed = xpcall(function()
+			return read_session_file(file_path, directory)
+		end, debug.traceback)
+		if not ok then
+			prepared = { directory = directory, name = name, err = saved_data, hint = hint, file_path = own }
+			return tab
+		end
+		if saved_data and saved_data.paths and saved_data.buffers and saved_data.windows then
+			if file_path == shared and saved_data.scope == "tab" then
+				old_name = true -- noted, for the load to say so
+			elseif file_path == shared and tab then
+				-- the whole editor's own file, at a tab session's load: nothing said of it
+			else
+				prepared = { directory = directory, name = name, saved_data = saved_data, key = key, problem = problem,
+					hint = hint, fixed = fixed, file_path = file_path }
+				return saved_data.scope == "tab" -- the file's scope decides the route
+			end
+		elseif problem ~= "missing" and (file_path == own or file_path == tab_path) then
+			-- a file of its own kind, or a tab session's under its own name, that can't be used: the load says why
+			-- and looks no further, a tab session's taking the tab's route
+			prepared = { directory = directory, name = name, problem = problem, hint = hint, file_path = file_path,
+				old_name = old_name, tab = tab or file_path == tab_path or old_name }
+			return prepared.tab
+		end
 	end
-	prepared = { directory = directory, name = name, saved_data = saved_data, key = key, problem = problem, hint = hint,
-		fixed = fixed }
-	if saved_data and saved_data.paths and saved_data.buffers and saved_data.windows then
-		return saved_data.scope == "tab" -- a file's scope wins over the hint
-	end
-	return hint ~= nil
+	-- with no data the route is the tab's when the hint, a tab session's file in the tab's own directory or one
+	-- under the shared name says so, and the load's tab starts fresh
+	prepared = { directory = directory, name = name, problem = "missing", hint = hint, file_path = own,
+		old_name = old_name, tab = tab or old_name }
+	return prepared.tab
 end
 
 ---Keep the teardown's closes off the list of the tab session in a tab a load is about to take, that session
@@ -1797,9 +1844,10 @@ end
 ---
 ---@param directory string The session's directory
 ---@param name string|nil The session's name (nil for a nameless save)
+---@param tab boolean|nil Whether it's a tab session's file
 ---@return boolean exists True if the session's main file is there
-function M.session_exists(directory, name)
-	return vim.uv.fs_stat(get_session_filepath(directory, name)) ~= nil
+function M.session_exists(directory, name, tab)
+	return vim.uv.fs_stat(get_session_filepath(directory, name, tab)) ~= nil
 end
 
 -- Detached lists ----------------------------------------------------------------------------------
@@ -1813,11 +1861,11 @@ end
 ---Get the detached lists the whole editor's file holds.
 ---@return table[] lists The file's detached lists, or none if there's no such session or file
 local function file_detached_lists()
-	local session = data.unnamed or data.editor_session
+	local session = data.unnamed or data.editor_session -- the whole editor's, its table with no scope
 	if session == nil then
 		return {}
 	end
-	local saved = read_session_file(get_session_filepath(session.directory, session.name), session.directory)
+	local saved = read_session_file(get_session_filepath(session.directory, session.name, false), session.directory)
 	return saved and saved.detached or {}
 end
 
@@ -2161,7 +2209,11 @@ function M.load_history(cwd, name)
 	if not cwd then
 		error("Invalid current working directory.")
 	end
-	local file_path = get_session_filepath(cwd, name)
+	-- the file the load read before it started, a tab session's own when it's one
+	local this = prepared and prepared.directory == cwd and prepared.name == name
+	local file_path = this and prepared.file_path or get_session_filepath(cwd, name)
+	local old_name = this and prepared.old_name
+	local tab_route = this and prepared.tab -- the tab's route with no data, as prepare_load chose it
 	-- an arrival queued before this load (the restore's own buffers flashing by) is noise the load
 	-- replaces, so it's dropped when it settles.
 	history.data.loads = history.data.loads + 1
@@ -2181,25 +2233,43 @@ function M.load_history(cwd, name)
 		saved_data, key, problem, fixed = read_session_file(file_path, cwd)
 	end
 	prepared = nil
-	-- the migration script as it runs in this install: its path in the plugin's directory, on the runtimepath
+	-- the tab that starts fresh, with no data: the hint's, or, on the tab's route without the hint, the tab the
+	-- load runs in
+	local fresh_tab = saved_data == nil and (hint or tab_route and vim.api.nvim_get_current_tabpage()) or nil
+	-- the migration script as it runs in this install: its path in the plugin's directory, on the runtimepath,
+	-- the session folder when it isn't the script's own default, and the libcrypto setup names, each quoted,
+	-- so the command runs as it reads
+	local default_dir = vim.fn.stdpath("data") .. "/frogman/sessions/"
 	local migrate = "nvim --clean -l " ..
-		(vim.api.nvim_get_runtime_file("scripts/migrate_sessions.lua", false)[1] or "scripts/migrate_sessions.lua")
+		vim.fn.shellescape(vim.api.nvim_get_runtime_file("scripts/migrate_sessions.lua", false)[1] or "scripts/migrate_sessions.lua") ..
+		(configs.session_dir ~= default_dir and (" --session-dir " .. vim.fn.shellescape(configs.session_dir)) or "") ..
+		(configs.libcrypto_path and (" --libcrypto-path " .. vim.fn.shellescape(configs.libcrypto_path)) or "")
 	-- cavediver's sessions folder, from before the rename, while session_dir is left as it is: the migration
 	-- script moves what it holds
-	local cavediver_dir = configs.session_dir == vim.fn.stdpath("data") .. "/frogman/sessions/"
-		and vim.fn.stdpath("data") .. "/cavediver/sessions/"
-	local old_name = vim.fn.sha256(cwd .. "\n"):sub(1, 32) .. ".json"
+	local cavediver_dir = configs.session_dir == default_dir and vim.fn.stdpath("data") .. "/cavediver/sessions/"
+	-- a file the script's move takes from cavediver's folder: there, and not in frogman's under that name, which
+	-- the move leaves it beside
+	local function moved_by_script(dir, base)
+		return vim.uv.fs_stat(dir .. base) ~= nil and vim.uv.fs_stat(configs.session_dir .. base) == nil
+	end
+	local unencrypted_name = vim.fn.sha256(cwd .. "\n"):sub(1, 32) .. ".json"
 	if problem == "newer" then
 		vim.notify("frogman: this session's file was made by a newer frogman. It's left alone, and the session starts fresh.", vim.log.levels.WARN)
 	elseif problem == "unencrypted" then
 		vim.notify("frogman: this session's file is in the format from before encryption. Run the migration script to convert it, " .. migrate .. "; the session starts fresh.", vim.log.levels.WARN)
 	elseif problem == "integrity" then
 		vim.notify("frogman: this session's file failed its integrity check (edited or corrupted). The session starts fresh, and the next save replaces the file.", vim.log.levels.WARN)
-	elseif problem == "missing" and cavediver_dir and vim.uv.fs_stat(cavediver_dir .. vim.fs.basename(file_path)) then
+	elseif problem == "missing" and cavediver_dir and (vim.uv.fs_stat(cavediver_dir .. vim.fs.basename(file_path))
+		or moved_by_script(cavediver_dir, vim.fs.basename(get_session_filepath(cwd, name)))) then
 		-- cavediver's folder still has it: left there until the migration script moves it
 		vim.notify("frogman: this session's file is still in cavediver's folder. Run the migration script to move it, " .. migrate .. "; the session starts fresh.", vim.log.levels.WARN)
-	elseif problem == "missing" and (vim.uv.fs_stat(configs.session_dir .. old_name)
-		or cavediver_dir and vim.uv.fs_stat(cavediver_dir .. old_name)) then
+	elseif problem == "missing" and old_name then
+		-- a tab session's file under the name it shared with the whole editor's: left as it is, the command naming
+		-- the session, so it renames that file whether or not resession lists the session
+		local session = " --tab-session " .. vim.fn.shellescape(cwd) .. (name and (" " .. vim.fn.shellescape(name)) or "")
+		vim.notify("frogman: this tab session's file has the name it shared with the whole editor's session. Run the migration script to rename it, " .. migrate .. session .. "; the tab starts fresh.", vim.log.levels.WARN)
+	elseif problem == "missing" and (vim.uv.fs_stat(configs.session_dir .. unencrypted_name)
+		or cavediver_dir and vim.uv.fs_stat(cavediver_dir .. unencrypted_name)) then
 		-- a file named the way it was before sessions had names and were encrypted, in either folder: left as it is
 		vim.notify("frogman: this session has a file from before encryption. Run the migration script to convert it, " .. migrate .. "; the session starts fresh.", vim.log.levels.WARN)
 	end
@@ -2210,7 +2280,8 @@ function M.load_history(cwd, name)
 	fixed = saved_data and fixed or {}
 
 	-- why there's no data, for the trail
-	local why = ({ missing = "no session file", newer = "made by a newer frogman", unencrypted = "from before encryption",
+	local why = old_name and problem == "missing" and "its file still has the name it shared with the whole editor's"
+		or ({ missing = "no session file", newer = "made by a newer frogman", unencrypted = "from before encryption",
 		integrity = "failed its integrity check" })[problem] or "its file holds no session"
 	local ledger = require('frogman.domains.ledger')
 	if #fixed > 0 then
@@ -2243,10 +2314,10 @@ function M.load_history(cwd, name)
 		-- the parts kept apart too, so the trail joins them with its own dot, and a name in one keeps its own
 		ledger.move("loaded", { name = vim.fn.fnamemodify(name or cwd, ":t"), words = table.concat(parts, " · "), parts = parts })
 	end
-	if (saved_data == nil and hint) or (saved_data and saved_data.scope == "tab") then
+	if fresh_tab or (saved_data and saved_data.scope == "tab") then
 		-- either tab route drops the tab's triquetras and attaches history: a cycle ends first, and so
 		-- does a snapshot showing: forgotten in the tab, as its windows start over, cancelled elsewhere
-		local tabpage = hint or vim.api.nvim_get_current_tabpage()
+		local tabpage = fresh_tab or hint or vim.api.nvim_get_current_tabpage()
 		local preview = require('frogman.domains.snapshots').preview
 		local shown_in = preview.window()
 		if shown_in and vim.api.nvim_win_is_valid(shown_in) and vim.api.nvim_win_get_tabpage(shown_in) == tabpage then
@@ -2268,8 +2339,8 @@ function M.load_history(cwd, name)
 			end
 		end
 	end
-	if saved_data == nil and hint then
-		start_tab_fresh(cwd, name, hint)
+	if fresh_tab then
+		start_tab_fresh(cwd, name, fresh_tab)
 		ledger.move("fresh", { name = vim.fn.fnamemodify(name or cwd, ":t"), words = "the tab started fresh: " .. why })
 	elseif saved_data and saved_data.scope == "tab" then
 		local matched = load_tab_session(saved_data, key, file_path, cwd, name, hint or vim.api.nvim_get_current_tabpage())
@@ -2742,8 +2813,8 @@ end
 ---@param directory string The session's directory
 ---@param name string|nil The session's name (nil for a nameless save)
 ---@return string[] days The days, `YYYY-MM-DD`, or none if the file can't be read
-function M.trail_days(directory, name)
-	local saved = read_session_file(get_session_filepath(directory, name), directory)
+function M.trail_days(directory, name, tab)
+	local saved = read_session_file(get_session_filepath(directory, name, tab), directory)
 	local days = vim.tbl_keys(saved and saved.trail or {})
 	table.sort(days)
 	return days
@@ -2753,9 +2824,10 @@ end
 ---@param directory string The session's directory
 ---@param name string|nil The session's name (nil for a nameless save)
 ---@param day string The page's day, `YYYY-MM-DD`
+---@param tab boolean|nil Whether it's a tab session's file
 ---@return table[]|nil steps The page's steps oldest first, or nil if it's missing or unreadable
-function M.read_trail(directory, name, day)
-	local file_path = get_session_filepath(directory, name)
+function M.read_trail(directory, name, day, tab)
+	local file_path = get_session_filepath(directory, name, tab)
 	local saved, key = read_session_file(file_path, directory)
 	local page = saved and saved.trail and saved.trail[day]
 	if not page then
@@ -2963,7 +3035,7 @@ local function rewrite_records(session, fill)
 	if data.replayed then
 		return true -- a replayed editor isn't a session: nothing waits to be written, and nothing is
 	end
-	local file_path = get_session_filepath(session.directory, session.name)
+	local file_path = session_file(session)
 	local bytes = read_file(file_path)
 	if bytes == nil then
 		return false, "missing"
@@ -3170,9 +3242,9 @@ local function records_file(session_id)
 	local pool = history.data.pools[session_id]
 	if session_id == "" or (pool and pool.detached) then
 		local session = whole_editor_session()
-		return session and get_session_filepath(session.directory, session.name) or nil
+		return session and session_file(session) or nil
 	end
-	return pool and pool.directory and get_session_filepath(pool.directory, pool.name) or nil
+	return pool and pool.directory and get_session_filepath(pool.directory, pool.name, true) or nil
 end
 
 ---Put what a closing window or plain tab holds onto its entry in its session's file, as it stands, for the
@@ -3233,7 +3305,7 @@ function M.file_only_lists()
 	if session == nil then
 		return {}
 	end
-	local file_path = get_session_filepath(session.directory, session.name)
+	local file_path = session_file(session)
 	local saved, key = read_session_file(file_path, session.directory)
 	if not saved or not saved.detached then
 		return {}
@@ -3272,7 +3344,7 @@ function M.file_only_closed()
 	if session == nil then
 		return closed
 	end
-	local saved = read_session_file(get_session_filepath(session.directory, session.name), session.directory)
+	local saved = read_session_file(session_file(session), session.directory)
 	if not saved or not saved.detached then
 		return closed
 	end
@@ -3421,7 +3493,7 @@ settle_days = function(file_path, steps)
 	end
 	local sessions = {}
 	for _, session in ipairs(known_sessions()) do
-		table.insert(sessions, { file = get_session_filepath(session.directory, session.name), owner = session.owner,
+		table.insert(sessions, { file = session_file(session), owner = session.owner,
 			key = ledger.session_of(session.name, session.directory) })
 	end
 	for _, day in ipairs(ledger.trail_days()) do
@@ -3475,7 +3547,7 @@ end
 forget_closed_keys = function()
 	local open = {}
 	for _, session in ipairs(known_sessions()) do
-		local id = key_of[get_session_filepath(session.directory, session.name)]
+		local id = key_of[session_file(session)]
 		if id then
 			open[id] = true
 		end
@@ -3614,9 +3686,9 @@ function M.keep_session_left(tabpage, directory, name)
 			due[(pool and pool.detached) and "" or id] = true -- a detached list's records are the whole editor's
 		end
 	end
-	local reads, wrote = get_session_filepath(directory, name), false
+	local reads, wrote = get_session_filepath(directory, name, tabpage ~= nil), false
 	for _, session in ipairs(known_sessions()) do
-		local file_path = get_session_filepath(session.directory, session.name)
+		local file_path = session_file(session)
 		if tabpage == nil or due[session.id] or closes_waiting(file_path) then
 			local ok, problem = write_session_left(session)
 			wrote = wrote or (ok and file_path == reads)
@@ -3788,7 +3860,7 @@ function M.noname_text_changed(filehash)
 	end
 	noname_edited[filehash] = true
 	for _, session in ipairs(known_sessions()) do
-		local held = noname_held[get_session_filepath(session.directory, session.name)]
+		local held = noname_held[session_file(session)]
 		if owned(session.owner, history.get_handle_from_hash(filehash)) or (held and held[filehash]) then
 			M.records_changed(session.id)
 		end
@@ -3866,7 +3938,7 @@ function M.save_history(cwd, name, tab)
 	-- Run cleanup before saving to ensure clean state
 	history.cleanup_system()
 
-	local file_path = get_session_filepath(cwd, name)
+	local file_path = get_session_filepath(cwd, name, tab ~= nil)
 	vim.fn.mkdir(configs.session_dir, "p") -- made at its first write, as the umask allows, before a text's folder in it
 	-- one read: the salt, the detached lists and the trail's pages come from the same bytes
 	local bytes = read_file(file_path)
@@ -4028,7 +4100,7 @@ end
 function M.trail_session()
 	local pool = history.routines.current_pool()
 	if pool.id ~= "" and not pool.detached then
-		return { name = pool.name, directory = pool.directory }, pool
+		return { name = pool.name, directory = pool.directory, scope = "tab" }, pool
 	end
 	local session = whole_editor_session()
 	if session then
@@ -4045,8 +4117,8 @@ end
 
 ---Make a reader of the current tab's trail.
 ---
----The session's main file is read once, and each page once, when it's asked for, so a view reads
----only the pages it shows. A day's steps are the page's steps from editors before this one and this
+---The session's main file is read as the reader is made and again whenever it changed since, and each
+---page once, when it's asked for, so a view reads only the pages it shows. A day's steps are the page's steps from editors before this one and this
 ---editor's the ledger let go (`page_keeps`), and this editor's in memory that the session's file
 ---keeps, by the same rule its pages are written by, all in the order of their time, another editor's
 ---falling between this one's. The page is kept as read, and sorted at each call, so a day the ledger
@@ -4056,7 +4128,7 @@ end
 function M.trail_reader()
 	local ledger = require('frogman.domains.ledger')
 	local session, owner = M.trail_session()
-	local file_path = session and get_session_filepath(session.directory, session.name)
+	local file_path = session and session_file(session)
 	local key, trail, stamp = nil, {}, nil
 	local whole = session and ledger.session_of(session.name, session.directory)
 	local pages = {}
@@ -4071,9 +4143,11 @@ function M.trail_reader()
 		if now == stamp then
 			return
 		end
-		stamp = now
-		local saved
-		saved, key = read_session_file(file_path, session.directory)
+		local saved, read_key = read_session_file(file_path, session.directory)
+		if saved == nil and stamp ~= nil then
+			return -- a read that fails keeps the list the last one gave, tried again at the next look
+		end
+		stamp, key = now, read_key
 		local fresh = saved and saved.trail or {}
 		for day, page in pairs(fresh) do
 			if trail[day] ~= page then
@@ -4181,7 +4255,7 @@ end
 ---@param texts table<Filehash, NoNameBufferContent> The No Name texts, `reopen` marking open ones
 ---@return nil
 function M.write_session(directory, name, storage, texts)
-	local file_path = get_session_filepath(directory, name)
+	local file_path = get_session_filepath(directory, name, storage.scope == "tab")
 	vim.fn.mkdir(configs.session_dir, "p") -- made at its first write, as the umask allows, before a text's folder in it
 	local key, salt = session_key(file_path, directory, read_file(file_path))
 	local noname_content, kept = write_noname_texts(texts, key, file_path .. ".d/")

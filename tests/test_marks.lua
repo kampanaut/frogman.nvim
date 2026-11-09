@@ -230,7 +230,7 @@ end
 -- and its marks by file letter.
 local ENTRY_GROUPS = [[
 	local name = ...
-	local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), name ~= '' and name or nil) or {}
+	local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), name ~= '' and name or nil) or {}
 	local out = {}
 	for _, entry in ipairs(saved.windows or {}) do
 		if type(entry) == 'table' and type(entry[10]) == 'table' then
@@ -251,7 +251,7 @@ local ENTRY_GROUPS = [[
 
 -- The groups of each tab entry of the whole editor's file, the same way.
 local TAB_GROUPS = [[
-	local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil) or {}
+	local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil) or {}
 	local out = {}
 	for _, tab in ipairs(saved.tabs or {}) do
 		local groups = {}
@@ -557,7 +557,7 @@ T['T732 [char] (M15, M5) a detached list keeps a copy of its session\'s marks, a
 	]])
 	eq(S2.save(child), { true })
 	local on_entry = child.lua([[
-		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil)
 		for _, l in ipairs(saved.detached or {}) do
 			if l.label == 't_DETACHED' then return l.marks ~= nil and l.marks[1] ~= nil end
 		end
@@ -589,10 +589,10 @@ T['T733 [char] (M15, S1 Load) a load leaves out a mark no path names'] = functio
 	child.lua([[
 		local crypto = require('frogman.domains.storage.crypto')
 		local dir, name = vim.fn.getcwd(-1, -1), vim.fn.getcwd()
-		local path = require('frogman.configs').session_dir .. vim.fn.sha256(dir .. "\n" .. name)
+		local path = _G.FRG_TEST.session_path(dir, name)
 		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
 		local salt = bytes:sub(5, 4 + crypto.salt_length)
-		local data = require('frogman.domains.storage.routines').read_session(dir, name)
+		local data = _G.FRG_TEST.read_session(dir, name)
 		data.marks[1].marks.s = 'deadbeefdeadbeef' -- a mark no path names
 		local header = "CDV1" .. salt
 		local out = header .. crypto.seal(crypto.derive_key(dir, salt), vim.json.encode(data), header)
@@ -1162,7 +1162,7 @@ T['T885 [char] (M15, M16, M11) a close\'s hold-over is settle work'] = function(
 		vim.api.nvim_exec_autocmds('VimLeavePre', {})
 	]])
 	local saved = child.lua([[
-		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil)
 		local c = require('frogman.domains.history').routines.get_filehash(_G.FRG_TEST.root .. '/c.txt')
 		local groups, snapshots = 0, 0
 		for _, g in ipairs(saved and saved.marks or {}) do
@@ -1186,7 +1186,7 @@ T['T886 [char] (S1 Records, M15, M16) a session\'s marks and held-over snapshots
 	child.cmd('close')
 	child.settle(1500)
 	eq(child.lua([[
-		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil)
 		local H = require('frogman.domains.history')
 		local b = H.routines.get_filehash(_G.FRG_TEST.root .. '/b.txt')
 		local c = H.routines.get_filehash(_G.FRG_TEST.root .. '/c.txt')
@@ -1250,7 +1250,7 @@ T['T892 [char] (M15, M16, DESK.md:1203, :1938) a tab session\'s window closed wh
 		local Mk, Sn = require('frogman.domains.marks'), require('frogman.domains.snapshots')
 		local held = 0
 		for _, g in ipairs((Mk.data.scopes.session[id] or { groups = {} }).groups) do if g.held then held = held + 1 end end
-		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 't') or {}
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), 't') or {}
 		local filed = 0
 		for _, entry in ipairs(saved.windows or {}) do
 			if type(entry) == 'table' and type(entry[11]) == 'table' then filed = filed + #entry[11] end
@@ -1640,7 +1640,7 @@ T['T862 [char] (M15, M16) a window closed ahead of its tab session\'s close is h
 	child.cmd('only | tabclose')
 	child.settle(500)
 	eq(child.lua([[
-		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), 't')
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), 't')
 		local n = 0
 		for _, g in ipairs(saved and saved.marks or {}) do if g.held then n = n + 1 end end
 		return { groups = n, snapshots = #(saved and saved.snapshots or {}) }
@@ -1766,7 +1766,7 @@ end
 -- t_DETACHED's marks in the whole editor's saved file, alias -> file stem, or false when it isn't there.
 local function detached_marks()
 	return child.lua([[
-		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil)
 		for _, l in ipairs(saved.detached or {}) do
 			if l.label == 't_DETACHED' then
 				local out = {}
@@ -1797,7 +1797,7 @@ local function editor_held()
 				table.insert(memory, what(g.name) .. ' ' .. table.concat(marks, ','))
 			end
 		end
-		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil) or {}
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil) or {}
 		local file = {}
 		for _, g in ipairs(saved.marks or {}) do
 			if g.held then
@@ -1853,7 +1853,7 @@ T['T825 [char] (M15, S1 Save) the tabs key carries no window count'] = function(
 	child.steps({ "<M-'><M-2>", ':e b', ADD .. 'a>', ':e a' })
 	eq(S2.save(child), { true })
 	eq(child.lua([[
-		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil)
 		local keys = vim.tbl_keys((saved.tabs or {})[1] or {})
 		table.sort(keys)
 		return keys
@@ -1926,7 +1926,7 @@ T['T832 [char] (M15, S1 Records) the records write takes off only the entry the 
 		local path = require('frogman.configs').session_dir .. vim.fn.sha256(dir)
 		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
 		local salt = bytes:sub(5, 4 + crypto.salt_length)
-		local data = require('frogman.domains.storage.routines').read_session(dir, nil)
+		local data = _G.FRG_TEST.read_session(dir, nil)
 		local e = H.routines.get_filehash(_G.FRG_TEST.root .. '/e.txt')
 		data.paths[e] = _G.FRG_TEST.root .. '/e.txt'
 		local stranger = vim.deepcopy(data.windows[2])
@@ -1938,7 +1938,7 @@ T['T832 [char] (M15, S1 Records) the records write takes off only the entry the 
 	]])
 	S2.start(child, s) -- the quit writes the records
 	local kept = child.lua([[
-		local data = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil)
+		local data = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil)
 		local entry = data.windows[1]
 		return type(entry[10]) == 'table' and entry[10][1] ~= nil
 	]])
@@ -3337,7 +3337,7 @@ end
 -- A session file's own marks and held-over snapshots, by file and header: { marks = { "a=c" ... }, held = { ... } }
 local FILE_MARKS = [[
 	local name = ...
-	local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), name) or {}
+	local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), name) or {}
 	local out = { marks = {}, held = {}, snapshots = #(saved.snapshots or {}) }
 	for _, g in ipairs(saved.marks or {}) do
 		for alias, h in pairs(g.marks or {}) do
@@ -3649,7 +3649,7 @@ T['T1029 [char] (M15, S1 Load, DESK.md:1203, :1208) an entry no window takes hol
 	local held = untimed(child.lua(GROUPS_IN_ORDER, { '' }))
 	S2.start(child, s) -- the quit writes the records
 	local carrying = child.lua([[
-		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil) or {}
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil) or {}
 		local n = 0
 		for _, entry in ipairs(saved.windows or {}) do
 			if type(entry) == 'table' and entry[10] ~= nil then n = n + 1 end
@@ -3783,7 +3783,7 @@ T['T1034 [char] (M15, S1 Load, DESK.md:1203, :1208) a saved tab no tab takes hol
 	local held = untimed(child.lua(GROUPS_IN_ORDER, { '' }))
 	S2.start(child, s) -- the quit writes the records
 	local tabs = child.lua([[
-		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), nil) or {}
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil) or {}
 		return #(saved.tabs or {})
 	]])
 	eq({ n = #held, first = held[1], typed = (held[2] or ''):find('^held held over · .+, loaded $') ~= nil, tabs = tabs },
@@ -3973,10 +3973,10 @@ T['T1042 [char] (M15, S1 Load, DESK.md:1225) a load where the session is open ho
 	child.lua([[
 		local crypto = require('frogman.domains.storage.crypto')
 		local dir = vim.fn.getcwd(-1, -1)
-		local path = require('frogman.configs').session_dir .. vim.fn.sha256(dir .. "\n" .. "t")
+		local path = _G.FRG_TEST.session_path(dir, 't')
 		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
 		local salt = bytes:sub(5, 4 + crypto.salt_length)
-		local data = require('frogman.domains.storage.routines').read_session(dir, 't')
+		local data = _G.FRG_TEST.read_session(dir, 't')
 		data.marks = data.marks or {}
 		table.insert(data.marks, { name = 'notes', marks = {} })
 		local header = "CDV1" .. salt
@@ -4283,7 +4283,7 @@ T['T1054 [char] (M15, S1 Records, DESK.md:1203) a close whose entry another edit
 		local path = require('frogman.configs').session_dir .. vim.fn.sha256(dir)
 		local fh = assert(io.open(path, 'rb')); local bytes = fh:read('*a'); fh:close()
 		local salt = bytes:sub(5, 4 + crypto.salt_length)
-		local data = require('frogman.domains.storage.routines').read_session(dir, nil)
+		local data = _G.FRG_TEST.read_session(dir, nil)
 		local e = H.routines.get_filehash(_G.FRG_TEST.root .. '/e.txt')
 		data.paths[e] = _G.FRG_TEST.root .. '/e.txt'
 		for _, entry in ipairs(data.windows) do
@@ -4448,7 +4448,7 @@ T['T1062 [char] (M15, DESK.md:1203) a tab session\'s close whose write fails kee
 		for id, pool in pairs(H.data.pools) do
 			if id ~= '' and not pool.detached and next(pool.tabs) == nil then kept_pool = true end
 		end
-		local file = require('frogman.configs').session_dir .. vim.fn.sha256(vim.fn.getcwd(-1, -1) .. "\n" .. "t")
+		local file = _G.FRG_TEST.session_path(vim.fn.getcwd(-1, -1), 't')
 		local known = require('frogman.domains.storage.data').entries[file]
 		local closes = {}
 		for _, slot in pairs(known and known.windows or {}) do
@@ -4559,7 +4559,7 @@ end
 
 -- A session file's closed list, each entry by its file's letter.
 local CLOSED_IN = [[
-	local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), ...) or {}
+	local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), ...) or {}
 	local out = {}
 	for _, h in ipairs(saved.closed or {}) do
 		table.insert(out, vim.fn.fnamemodify((saved.paths or {})[h] or h, ':t:r'))
@@ -4571,8 +4571,8 @@ local CLOSED_IN = [[
 local PAGES_THERE = [[
 	local name = ...
 	local dir = vim.fn.getcwd(-1, -1)
-	local saved = require('frogman.domains.storage').routines.read_session(dir, name) or {}
-	local main = require('frogman.configs').session_dir .. vim.fn.sha256(name and (dir .. "\n" .. name) or dir)
+	local saved = _G.FRG_TEST.read_session(dir, name) or {}
+	local main = _G.FRG_TEST.session_path(dir, name)
 	local n, there = 0, 0
 	for _, page in pairs(saved.trail or {}) do
 		n = n + 1
@@ -4770,7 +4770,7 @@ T['T1078 [char] (M15, S2, DESK.md:1205, :1214) a switch writes a detached list\'
 	eq(switch({ split }, {}, 'next'), { true })
 	child.settle(300)
 	eq(child.lua([[
-		local saved = require('frogman.domains.storage.routines').read_session(vim.fn.getcwd(-1, -1), nil) or {}
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), nil) or {}
 		for _, l in ipairs(saved.detached or {}) do
 			if l.label == 't_DETACHED' then
 				local held = {}
@@ -5050,7 +5050,7 @@ T['T1092 [char] (M15, S1 Records, DESK.md:1205, :541) a marked No Name text the 
 	]], { buf })
 	child.settle(300)
 	local reopen = child.lua([[
-		local saved = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 'left') or {}
+		local saved = _G.FRG_TEST.read_session(vim.fn.getcwd(-1, -1), 'left') or {}
 		local entry = (saved.noname_content or {})[...]
 		return entry ~= nil and entry.reopen == true
 	]], { got.hash })
