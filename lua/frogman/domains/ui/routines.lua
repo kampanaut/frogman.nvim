@@ -1497,7 +1497,7 @@ function M.get_smart_basename(id)
 	local name
 
 	-- Handle invalid buffers
-	if bufnr then
+	if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
 		-- Fast path: return cached if available
 		if data.display_name_cache[id] then
 			return data.display_name_cache[id]

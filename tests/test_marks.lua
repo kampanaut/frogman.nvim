@@ -5528,4 +5528,32 @@ T['T1132 [char] (M15, DESK.md:1243) a scope kept twice leaves no undo file behin
 	eq(child.lua(count), before)
 end
 
+
+-- Review round 9 ------------------------------------------------------------------------------------------
+
+T['T1227 [char] (M15, review round 9) :tabclose typed in the marks pop-up holding edits refuses with E445, the pop-up kept, focused'] = function()
+	-- Neovim 0.12.6 loops inside :tabclose with a current float on a modified buffer that can't be hidden, so
+	-- the case runs in an editor of its own, killed past ten seconds
+	local r = Helpers.spawn_editor([[
+vim.cmd('edit a.txt')
+vim.cmd('tabnew f.txt')
+require('frogman').mark_add('o')
+vim.cmd('edit d.txt')
+require('frogman').mark_add('o')
+require('frogman.settle').drain()
+vim.wait(100)
+
+local float = vim.api.nvim_get_current_win()
+local before = { float = vim.api.nvim_win_get_config(float).relative ~= '', modified = vim.bo.modified }
+local ok, err = pcall(vim.cmd, 'tabclose')
+vim.wait(50)
+io.stdout:write(vim.json.encode({ before = before, ok = ok, err = tostring(err):match('E%d+') or '',
+	tabs = #vim.api.nvim_list_tabpages(), back = vim.api.nvim_get_current_win() == float,
+	modified = vim.bo[vim.api.nvim_win_get_buf(float)].modified }) .. '\n')
+vim.cmd('qa!')
+]])
+	local decoded = (r.out ~= '' and pcall(vim.json.decode, r.out)) and vim.json.decode(r.out) or r.out
+	eq({ code = r.code, out = decoded }, { code = 0, out = { before = { float = true, modified = true }, ok = false, err = 'E445', tabs = 2, back = true, modified = true } })
+end
+
 return T

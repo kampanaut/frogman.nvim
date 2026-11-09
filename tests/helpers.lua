@@ -278,4 +278,16 @@ Helpers.new_child = function()
 	return child
 end
 
+-- Run a script in an editor of its own, set up as a child is (CHILD_SETUP), and kill it once it runs
+-- past `timeout` ms, as one that hangs runs on, so a hang fails the case and not the run. Gives its
+-- exit code and what it printed, trimmed.
+function Helpers.spawn_editor(script, timeout)
+	local file = vim.fn.tempname() .. '.lua'
+	vim.fn.writefile(vim.split('assert(loadstring(' .. string.format('%q', CHILD_SETUP) .. '))({})\n' .. script, '\n'), file)
+	local r = vim.system({ vim.v.progpath, '--headless', '-u', 'scripts/minimal_init.lua', '-c', 'luafile ' .. file },
+		{ text = true }):wait(timeout or 10000)
+	vim.fn.delete(file)
+	return { code = r.code, out = vim.trim(r.stdout or '') }
+end
+
 return Helpers

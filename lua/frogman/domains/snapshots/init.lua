@@ -96,6 +96,13 @@ function M.init_autocmds(group)
 			end
 		end,
 	})
+	-- a buffer the snapshot shows deleted, by :bdelete or :bwipeout, ends the preview once the editor settles
+	vim.api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {
+		group = group,
+		callback = function(args)
+			M.preview.deleted(args.buf)
+		end,
+	})
 	-- a write of a borrowed buffer is an edit, kept open when the preview ends
 	vim.api.nvim_create_autocmd("BufWritePost", {
 		group = group,

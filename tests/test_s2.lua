@@ -5993,4 +5993,34 @@ T['T1206 [char] (S1, S2, DESK.md:2446) a load without the hint still finds a tab
 	eq(child.slots(), '⦉c⦊ [d] ⟦-⟧')
 end
 
+
+-- Review round 9 ------------------------------------------------------------------------------------------
+
+T['T1228 [char] (S2 Closed-stack picker, review round 9) :tabclose typed in the closed lists holding edits refuses with E445, the lists kept, focused'] = function()
+	-- as T1227, in an editor of its own, killed past ten seconds
+	local r = Helpers.spawn_editor([[
+vim.cmd('edit a.txt')
+vim.cmd('edit b.txt')
+vim.cmd('bdelete a.txt')
+vim.cmd('tabnew c.txt')
+require('frogman.settle').drain()
+require('frogman').open_closed_lists()
+require('frogman.settle').drain()
+vim.wait(100)
+vim.api.nvim_buf_set_lines(0, -1, -1, false, { 'typo.txt' })
+vim.wait(50)
+
+local float = vim.api.nvim_get_current_win()
+local before = { float = vim.api.nvim_win_get_config(float).relative ~= '', modified = vim.bo.modified }
+local ok, err = pcall(vim.cmd, 'tabclose')
+vim.wait(50)
+io.stdout:write(vim.json.encode({ before = before, ok = ok, err = tostring(err):match('E%d+') or '',
+	tabs = #vim.api.nvim_list_tabpages(), back = vim.api.nvim_get_current_win() == float,
+	modified = vim.bo[vim.api.nvim_win_get_buf(float)].modified }) .. '\n')
+vim.cmd('qa!')
+]])
+	local decoded = (r.out ~= '' and pcall(vim.json.decode, r.out)) and vim.json.decode(r.out) or r.out
+	eq({ code = r.code, out = decoded }, { code = 0, out = { before = { float = true, modified = true }, ok = false, err = 'E445', tabs = 2, back = true, modified = true } })
+end
+
 return T

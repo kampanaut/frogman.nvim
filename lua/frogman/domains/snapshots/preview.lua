@@ -40,6 +40,28 @@ function M.window()
 	return showing and showing.window
 end
 
+---Note that the buffer a snapshot shows is being deleted, so the preview ends once the editor settles, as
+---a cancel ends it, saying why.
+---
+---@param bufnr Bufnr The buffer being deleted
+---@return nil
+function M.deleted(bufnr)
+	if not showing or showing.ending or not vim.api.nvim_win_is_valid(showing.window)
+		or vim.api.nvim_win_get_buf(showing.window) ~= bufnr then
+		return
+	end
+	local name = vim.api.nvim_buf_get_name(bufnr)
+	showing.ending = name == "" and "[No Name]" or vim.fn.fnamemodify(name, ":t")
+	local was = showing
+	require('frogman.settle').later("preview ended", function()
+		if showing == was then
+			M.cancel()
+			vim.notify("frogman: " .. was.ending .. " was deleted while the snapshot showed it, so the preview ended.",
+				vim.log.levels.INFO)
+		end
+	end)
+end
+
 ---Get the handles of a snapshot's slots, by the live slots' rule.
 ---
 ---A file a rename left in two of its slots stays in the current, and the secondary keeps one the
@@ -235,8 +257,8 @@ end
 
 ---Give one buffer the preview made or borrowed back to what it was: a placeholder or one the borrow
 ---made is wiped, one that was there unloaded is unloaded again, as a file closed with :bdelete leaves
----its buffer, and one already loaded is left; each listed again only if it was. One a window still
----shows stays.
+---its buffer, unless it's been unloaded since, and one already loaded is left; one the borrow listed is
+---unlisted again, and one unlisted since, as :bdelete leaves it, stays so. One a window still shows stays.
 ---
 ---@param made Borrowed What the preview made or borrowed
 ---@return nil
@@ -249,10 +271,10 @@ local function give_back(made)
 		vim.api.nvim_buf_delete(buf, { force = true })
 		return
 	end
-	if vim.bo[buf].buflisted ~= (made.listed == true) then
+	if vim.bo[buf].buflisted and not made.listed then
 		-- quietly: unlisting fires BufDelete, which would land a window still showing it elsewhere
 		vim.api.nvim_buf_call(buf, function()
-			vim.cmd(made.listed and "noautocmd setlocal buflisted" or "noautocmd setlocal nobuflisted")
+			vim.cmd("noautocmd setlocal nobuflisted")
 		end)
 	end
 	if #vim.fn.win_findbuf(buf) > 0 then
@@ -260,7 +282,7 @@ local function give_back(made)
 	end
 	if made.was == "made" then
 		vim.api.nvim_buf_delete(buf, { force = true })
-	elseif made.was == "unloaded" then
+	elseif made.was == "unloaded" and vim.api.nvim_buf_is_loaded(buf) then
 		vim.api.nvim_buf_delete(buf, { unload = true })
 	end
 end

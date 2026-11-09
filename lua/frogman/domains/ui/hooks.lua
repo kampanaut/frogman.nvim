@@ -119,6 +119,32 @@ function M.init_autocmds(group)
 		end,
 	})
 
+	-- :tabclose with one of frogman's floats current, holding edits its buffer can't be hidden with, loops
+	-- inside Neovim (0.12.6): the focus goes to a window of its tab for the command, so Neovim refuses with
+	-- E445 as for any window holding changes, and comes back to the float once the command is over
+	vim.api.nvim_create_autocmd("TabClosedPre", {
+		group = group,
+		callback = function()
+			local float = vim.api.nvim_get_current_win()
+			local buf = vim.api.nvim_win_get_buf(float)
+			if vim.api.nvim_win_get_config(float).relative == "" or not vim.bo[buf].modified
+				or not vim.api.nvim_buf_get_name(buf):match("^frogman://") then
+				return
+			end
+			for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(vim.api.nvim_win_get_tabpage(float))) do
+				if vim.api.nvim_win_get_config(winid).relative == "" then
+					vim.cmd("noautocmd lua vim.api.nvim_set_current_win(" .. winid .. ")")
+					vim.schedule(function()
+						if vim.api.nvim_win_is_valid(float) then
+							vim.cmd("noautocmd lua vim.api.nvim_set_current_win(" .. float .. ")")
+						end
+					end)
+					return
+				end
+			end
+		end,
+	})
+
 	-- a colorscheme's :hi clear removes every group it doesn't define, so they're defined again; one the
 	-- colorscheme defines, or a ColorScheme autocmd made before this one, stays theirs
 	vim.api.nvim_create_autocmd("ColorScheme", {

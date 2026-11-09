@@ -3007,4 +3007,104 @@ T['T1199 [char] (M16, DESK.md:1998) the list draws the queue\'s head in the prim
 	eq(d, 'FrogmanOrderPrimary')
 end
 
+
+-- Review round 9: a buffer the snapshot shows deleted, the preview ending
+-- ------------------------------------------------------------------------------------
+
+local ENDED = 'frogman: d.txt was deleted while the snapshot showed it, so the preview ended.'
+
+-- What the preview's end left: whether one shows, what the window shows and its slots, what was said of the
+-- preview, and the dump written since `before`, if any.
+local function after_end(win, before)
+	return {
+		active = child.lua('return require("frogman.domains.snapshots").preview.active()'),
+		shown = child.shown(win),
+		slots = child.slots(win),
+		said = vim.tbl_filter(function(m) return m:find('preview', 1, true) or m:find('Failed', 1, true) end, said()),
+		dumped = child.dumped_since(before),
+	}
+end
+
+T['T1230 [char] (M16, review round 9) :bdelete of the open file a snapshot shows ends the preview, saying why, and history attaches'] = function()
+	local win = previewing()
+	eq(child.shown(win), 'd')
+	local before = child.dump_files()
+	child.messages()
+	child.cmd('bdelete')
+	child.settle(300)
+	eq(after_end(win, before), { active = false, shown = 'e', slots = '⦉a⦊ [e] ⟦b⟧', said = { ENDED } })
+	child.steps({ ':e c' })
+	eq(child.slots(win), '⦉e⦊ [c] ⟦b⟧')
+end
+
+-- T762's snapshot shown in its window with d closed beforehand, so the preview borrows d.
+local function previewing_borrowed()
+	taken()
+	child.steps({ ':e a', ':e e' })
+	child.cmd('bdelete ' .. child.lua('return _G.FRG_TEST.root') .. '/d.txt')
+	child.settle()
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	eq(child.shown(win), 'd')
+	return win
+end
+
+T['T1231 [char] (M16, review round 9) :bdelete of a borrowed file a snapshot shows ends the preview, saying why, and history attaches'] = function()
+	local win = previewing_borrowed()
+	local before = child.dump_files()
+	child.messages()
+	child.cmd('bdelete')
+	child.settle(300)
+	eq(after_end(win, before), { active = false, shown = 'e', slots = '⦉a⦊ [e] ⟦b⟧', said = { ENDED } })
+	child.steps({ ':e c' })
+	eq(child.slots(win), '⦉e⦊ [c] ⟦b⟧')
+end
+
+T['T1232 [char] (M16, review round 9) a borrowed buffer unloaded while the preview shows another is given back as it is, and history attaches'] = function()
+	local win = previewing_borrowed()
+	child.step('<M-m>')
+	child.settle(100)
+	child.cmd('bunload ' .. child.lua('return _G.FRG_TEST.root') .. '/d.txt')
+	child.settle()
+	local before = child.dump_files()
+	child.messages()
+	child.steps({ LIST })
+	child.settle(100)
+	child.step('q')
+	child.settle(100)
+	eq(after_end(win, before), { active = false, shown = 'e', slots = '⦉a⦊ [e] ⟦b⟧', said = {} })
+	child.steps({ ':e c' })
+	eq(child.slots(win), '⦉e⦊ [c] ⟦b⟧')
+end
+
+T['T1233 [char] (M16, M12, review round 9) a refresh between the deleted buffer of a preview and the end of the preview finds nothing impossible'] = function()
+	local win = previewing()
+	local before = child.dump_files()
+	child.messages()
+	child.lua('vim.cmd("bdelete"); require("frogman").set_cache_from_window_triquetra(...)', { win })
+	child.settle(300)
+	eq(after_end(win, before), { active = false, shown = 'e', slots = '⦉a⦊ [e] ⟦b⟧', said = { ENDED } })
+end
+
+T['T1234 [char] (M16, review round 9) a buffer listed before the preview borrowed it, deleted while it shows, stays unlisted'] = function()
+	-- x listed, not loaded, frogman not knowing it, before the preview begins
+	taken()
+	child.steps({ ':e a', ':e e' })
+	child.cmd('badd x.txt')
+	local win = child.lua('return vim.api.nvim_get_current_win()')
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	child.cmd('edit x.txt')
+	child.settle(300)
+	eq(child.shown(win), 'x')
+	child.cmd('bdelete')
+	child.settle(300)
+	eq({ active = child.lua('return require("frogman.domains.snapshots").preview.active()'),
+		listed = child.lua('return vim.bo[vim.fn.bufnr("x.txt")].buflisted') },
+		{ active = false, listed = false })
+end
+
 return T

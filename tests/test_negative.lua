@@ -999,4 +999,16 @@ end
 T['T249 [char] (A1, A11) no note names its own buffer, over random walks: one window'] = function() self_walks(false, 7000) end
 T['T249 [char] (A1, A11) no note names its own buffer, over random walks: several windows'] = function() self_walks(true, 11000) end
 
+
+T['T1229 [char] (M12, review round 9) :bwipeout of a buffer another window shows writes no dump, and nothing is said'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('vsplit')
+	child.settle()
+	local before = child.dump_files()
+	child.messages()
+	child.cmd('bwipeout')
+	child.settle(400)
+	eq({ messages = Extra.at_least(child.messages()), dumped = child.dumped_since(before) }, { messages = {} })
+end
+
 return T
