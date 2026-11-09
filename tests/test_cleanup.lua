@@ -570,7 +570,7 @@ end
 
 -- R4: the draft shown again and turned nofile on one command line, so its arrival waits in the queue
 -- ahead of the buftype undo, and is judged with the buffer already untracked.
-T['T938 [char] (I10, M5, DESK.md:840, repro R4) a No Name text turned untracked in its arrival\'s batch is closed with its text'] = function()
+T['T938 [char] (I10, M5, DESK.md:873, repro R4) a No Name text turned untracked in its arrival\'s batch is closed with its text'] = function()
 	child.cmd('set hidden')
 	child.steps({ ':e a', ':enew' })
 	local d = child.lua('return vim.api.nvim_get_current_buf()')
@@ -591,7 +591,7 @@ end
 
 -- T938's race with a file: a shown again and turned nofile on one command line. Judged once the
 -- editor settles, the window shows something untracked, so nothing is slotted or recorded (P2).
-T['T939 [char] (I10, P2, DESK.md:840) a file turned untracked in its arrival\'s batch is no arrival, and is closed'] = function()
+T['T939 [char] (I10, P2, DESK.md:873) a file turned untracked in its arrival\'s batch is no arrival, and is closed'] = function()
 	child.steps({ ':e a', ':e b' })
 	local a = child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/a.txt")')
 	local visit = [[
@@ -607,7 +607,7 @@ T['T939 [char] (I10, P2, DESK.md:840) a file turned untracked in its arrival\'s 
 end
 
 -- T938's race with an empty No Name buffer, which only the window's ternary holds.
-T['T940 [char] (I10, M5, DESK.md:840) an empty No Name buffer turned untracked in its arrival\'s batch is let go'] = function()
+T['T940 [char] (I10, M5, DESK.md:873) an empty No Name buffer turned untracked in its arrival\'s batch is let go'] = function()
 	child.cmd('set hidden')
 	child.steps({ ':e a', ':enew' })
 	local e = child.lua('return vim.api.nvim_get_current_buf()')
@@ -706,7 +706,7 @@ T['T705 [char] (M6 Arrivals, I10) a current slot closed since the arrival falls 
 	eq({ child.slots(), child.closed():match('^a,') ~= nil }, { '⦉-⦊ [c] ⟦-⟧', true })
 end
 
-T['T893 [char] (M6 Arrivals, DESK.md:837, repro R1) a move since an arrival doesn\'t stop its undo'] = function()
+T['T893 [char] (M6 Arrivals, DESK.md:870, repro R1) a move since an arrival doesn\'t stop its undo'] = function()
 	child.steps({ ':e c', ':e a' })
 	eq(child.slots(), '⦉c⦊ [a] ⟦-⟧')
 	child.steps({ ':e x' })
@@ -723,7 +723,7 @@ end
 
 -- c moves onto b's name while b is closed and held by its list, so b's handle gives way to c's in the
 -- windows and in the arrival's copies alike.
-T['T897 [char] (M6 Arrivals, DESK.md:830, :837) a move onto a held name since an arrival doesn\'t stop its undo'] = function()
+T['T897 [char] (M6 Arrivals, DESK.md:863, :870) a move onto a held name since an arrival doesn\'t stop its undo'] = function()
 	child.steps({ ':e b', ':e c', ':e a' })
 	child.cmd('bdelete ' .. child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/b.txt")'))
 	child.settle()
@@ -740,7 +740,7 @@ T['T897 [char] (M6 Arrivals, DESK.md:830, :837) a move onto a held name since an
 	eq({ child.slots(), child.lua('return vim.bo.buftype') }, { '⦉b⦊ [a] ⟦-⟧', 'nofile' })
 end
 
-T['T894 [char] (M6 Arrivals, DESK.md:837, repro R2) a file let go and known again doesn\'t come back into an undone arrival'] = function()
+T['T894 [char] (M6 Arrivals, DESK.md:870, repro R2) a file let go and known again doesn\'t come back into an undone arrival'] = function()
 	local S2 = dofile('tests/helpers_s2.lua')
 	child.steps({ ':e c', ':e a', ':e x' })
 	child.cmd('bdelete c.txt')
@@ -763,7 +763,7 @@ T['T894 [char] (M6 Arrivals, DESK.md:837, repro R2) a file let go and known agai
 	eq(child.slots(w), '⦉-⦊ [a] ⟦-⟧')
 end
 
-T['T934 [char] (M6 Arrivals, DESK.md:832, :837) an arrival whose copy after held a file let go since is dropped, and its window keeps its slots'] = function()
+T['T934 [char] (M6 Arrivals, DESK.md:865, :870) an arrival whose copy after held a file let go since is dropped, and its window keeps its slots'] = function()
 	local S2 = dofile('tests/helpers_s2.lua')
 	child.steps({ ':e x', ':e a' })
 	child.cmd('bdelete x.txt')
@@ -792,7 +792,7 @@ T['T702 [char] (I10, A21) a cleanup pass leaves the closed file in the current s
 	eq({ child.slots(), child.lua('return vim.api.nvim_get_current_buf()') }, { '⦉c⦊ [d] ⟦b⟧', nofile })
 end
 
-T['T909 [char] (A22, DESK.md:844) a cleanup tick runs what\'s queued to settle first'] = function()
+T['T909 [char] (A22, DESK.md:877) a cleanup tick runs what\'s queued to settle first'] = function()
 	local order = child.lua([[
 		_G.FRG_ORDER = {}
 		local routines = require('frogman.domains.history.routines')

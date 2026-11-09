@@ -196,8 +196,8 @@ end
 
 -- A whole-editor load from idle starts with the file's snapshots alone, each once: reloading the session left,
 -- whose write as the load began put the window's snapshots onto its entry as they stood, the one taken since
--- the save among them (DESK.md:1282).
-T['T768 [char] (M16, S1, DESK.md:1282) a whole-editor load from idle starts with the file\'s snapshots alone, the session left\'s written first'] = function()
+-- the save among them (DESK.md:1315).
+T['T768 [char] (M16, S1, DESK.md:1315) a whole-editor load from idle starts with the file\'s snapshots alone, the session left\'s written first'] = function()
 	taken()
 	eq(S2.save(child), { true })
 	child.steps({ ':e e', TAKE, ':e d' }) -- back on d, so the window takes its entry
@@ -695,7 +695,7 @@ end
 -- Saved on its window, then held over before the quit's records: one snapshot comes back, the window's
 -- when the window left takes the split's entry (the split back on b), the held copy going as the window
 -- takes it, or held over when it doesn't (on x).
-T['T797 [char] (M16, S1 Load, DESK.md:1287) a snapshot held over after its save comes back once'] = function()
+T['T797 [char] (M16, S1 Load, DESK.md:1320) a snapshot held over after its save comes back once'] = function()
 	local got = {}
 	for _, last in ipairs({ ':e b', ':e x' }) do
 		local s = S2.shared()
@@ -736,7 +736,7 @@ end
 
 -- A tab session's snapshot of a No Name text held over at one load, its entry taken back at the next: the copy is
 -- the same snapshot, known by its files, not by the hash the file had for the text, so the window takes it.
-T['T1225 [char] (M16, DESK.md:1287) a held-over snapshot of a No Name text goes when its window takes the entry back, the window taking it'] = function()
+T['T1225 [char] (M16, DESK.md:1320) a held-over snapshot of a No Name text goes when its window takes the entry back, the window taking it'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.cmd('tabnew')
@@ -1257,7 +1257,7 @@ local function list_lines()
 	return child.lua('return vim.api.nvim_buf_get_lines(vim.fn.bufnr("frogman://snapshots"), 0, -1, false)')
 end
 
-T['T833 [char] (M16, DESK.md:2035) a held-over header is a line the list keeps, a pasted copy of it staying'] = function()
+T['T833 [char] (M16, DESK.md:2068) a held-over header is a line the list keeps, a pasted copy of it staying'] = function()
 	split_held_over()
 	child.steps({ LIST })
 	local drawn = list_lines()
@@ -1621,7 +1621,7 @@ T['T820 [char] (M2 Holders, M16) a path no holder takes is forgotten once the ed
 	]]) }, { n = 1, q = false })
 end
 
-T['T933 [char] (M16, DESK.md:832) a snapshot\'s notes let go of a file as it is let go'] = function()
+T['T933 [char] (M16, DESK.md:865) a snapshot\'s notes let go of a file as it is let go'] = function()
 	child.steps({ ':e a', ':e b', ':e c' })
 	eq(child.notes(), 'dtm{b>a} dsm{}')
 	-- a closed first, so the order the snapshot keeps, the bufferline's, leaves it out: its notes alone name a
@@ -1653,7 +1653,7 @@ T['T933 [char] (M16, DESK.md:832) a snapshot\'s notes let go of a file as it is 
 	eq({ before = before, let_go = let_go, after = naming() }, { before = 1, let_go = true, after = 0 })
 end
 
-T['T884 [char] (M15, M16, DESK.md:1285) a window gone without its WinClosed in a tab session\'s tab is held over in that session\'s scope, under what it showed'] = function()
+T['T884 [char] (M15, M16, DESK.md:1318) a window gone without its WinClosed in a tab session\'s tab is held over in that session\'s scope, under what it showed'] = function()
 	local s = S2.shared()
 	eq(S2.save_tab_session(child, s, 't'), { true })
 	S2.start(child, s)
@@ -1682,7 +1682,7 @@ T['T884 [char] (M15, M16, DESK.md:1285) a window gone without its WinClosed in a
 	]], { id }), { t = { groups = 1, snapshots = 1 }, editor = { groups = 0, snapshots = 0 } })
 end
 
-T['T821 [char] (M15, M16, DESK.md:1285) a window closed without its WinClosed has its marks and snapshots held over at the next cleanup pass, under what it showed'] = function()
+T['T821 [char] (M15, M16, DESK.md:1318) a window closed without its WinClosed has its marks and snapshots held over at the next cleanup pass, under what it showed'] = function()
 	child.steps({ ':e a', ':e b' })
 	child.cmd('split')
 	child.settle()
@@ -1890,7 +1890,7 @@ local function b_over_a()
 	child.settle(300)
 end
 
-T['T902 [char] (M16, A20, DESK.md:2043) a rename onto a name a snapshot holds applies the live slots\' rule as it settles'] = function()
+T['T902 [char] (M16, A20, DESK.md:2076) a rename onto a name a snapshot holds applies the live slots\' rule as it settles'] = function()
 	child.steps({ ':e a', ':e b', '<M-f>', ':e a', TAKE, ':e c' })
 	local win = child.lua('return vim.api.nvim_get_current_win()')
 	b_over_a()
@@ -1911,7 +1911,7 @@ T['T902 [char] (M16, A20, DESK.md:2043) a rename onto a name a snapshot holds ap
 		{ slots = '⦉-⦊ [a] ⟦-⟧', order = 'a', saved = { current = true, secondary = false, order = 1 }, cleared = true })
 end
 
-T['T903 [char] (M16, A20, DESK.md:2043) where the current doesn\'t hold the file, the slot the moved file was in keeps it'] = function()
+T['T903 [char] (M16, A20, DESK.md:2076) where the current doesn\'t hold the file, the slot the moved file was in keeps it'] = function()
 	child.steps({ ':e a', ':e x', '<M-f>', ':e b', ':e x' })
 	eq(child.slots(), '⦉b⦊ [x] ⟦a⟧')
 	child.steps({ TAKE })
@@ -1919,7 +1919,7 @@ T['T903 [char] (M16, A20, DESK.md:2043) where the current doesn\'t hold the file
 	eq(snapshots()[1].slots, '⦉a⦊ [x] ⟦-⟧')
 end
 
-T['T904 [char] (M16, S1 Load, DESK.md:2043) a saved snapshot holding one file twice gets the rule at its next load'] = function()
+T['T904 [char] (M16, S1 Load, DESK.md:2076) a saved snapshot holding one file twice gets the rule at its next load'] = function()
 	local got = {}
 	for _, twice in ipairs({ 'ternary', 'secondary' }) do
 		local s = S2.shared()
@@ -1954,7 +1954,7 @@ end
 
 -- R9s: a snapshot taken in a tab session's tab after its last save, the tab closed with nothing saving at
 -- the close: it goes onto its window's entry in t's file, and the next load gives it back to the window.
-T['T1059 [char] (M16, DESK.md:2032, repro R9s) a snapshot taken after a tab session\'s last save comes back after its tab closes'] = function()
+T['T1059 [char] (M16, DESK.md:2065, repro R9s) a snapshot taken after a tab session\'s last save comes back after its tab closes'] = function()
 	local s = S2.shared()
 	tab_session(s)
 	local id = child.lua('return require("frogman.domains.history").data.tab_pools[vim.api.nvim_get_current_tabpage()]')
@@ -1970,7 +1970,7 @@ T['T1059 [char] (M16, DESK.md:2032, repro R9s) a snapshot taken after a tab sess
 end
 
 -- A snapshot pasted into a window frogman never took in, not committed, goes with the window at its close.
-T['T1063 [char] (M16, DESK.md:2031) a snapshot pasted into a window frogman never took in goes at its close'] = function()
+T['T1063 [char] (M16, DESK.md:2064) a snapshot pasted into a window frogman never took in goes at its close'] = function()
 	local one = two_windows()
 	in_list(one, 'yy')
 	child.cmd('help')
@@ -1986,7 +1986,7 @@ end
 -- A window with snapshots and no marks, closed after a save: its snapshots go onto its entry as they stand, one
 -- taken since the save among them, nothing held over; the entry, `[10]` null in the file, is known again as the
 -- file holds it.
-T['T1066 [char] (M16, DESK.md:2032) a window closed with a saved entry puts its snapshots onto it as they stand, nothing held over'] = function()
+T['T1066 [char] (M16, DESK.md:2065) a window closed with a saved entry puts its snapshots onto it as they stand, nothing held over'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -2011,7 +2011,7 @@ end
 -- A switch with nothing wired to save at it: a snapshot taken since the session's last save, its window closed
 -- by the switch's teardown with the load in the same call: the session left's file holds it on the window's
 -- entry, none held over.
-T['T1070 [char] (M16, DESK.md:1282) a switch keeps a window\'s snapshot taken since the last save on its entry in the session left\'s file'] = function()
+T['T1070 [char] (M16, DESK.md:1315) a switch keeps a window\'s snapshot taken since the last save on its entry in the session left\'s file'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -2038,7 +2038,7 @@ end
 
 -- A window the switch's teardown leaves standing: its snapshot taken since the session's last save goes onto its
 -- entry in the session left's file as it stands, as a closed window's does.
-T['T1086 [char] (M16, DESK.md:1282) a window the switch leaves standing keeps its snapshot taken since the last save on its entry'] = function()
+T['T1086 [char] (M16, DESK.md:1315) a window the switch leaves standing keeps its snapshot taken since the last save on its entry'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -2069,7 +2069,7 @@ end
 -- A switch whose teardown closes a window without its events (noautocmd), the load in the same call: the window's
 -- snapshot taken since the session's last save goes onto its entry in the session left's file as a closed
 -- window's does, none held over.
-T['T1090 [char] (M16, DESK.md:1282, :2032) a switch keeps the snapshot of a window it closes without its events on its entry'] = function()
+T['T1090 [char] (M16, DESK.md:1315, :2065) a switch keeps the snapshot of a window it closes without its events on its entry'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -2096,11 +2096,11 @@ T['T1090 [char] (M16, DESK.md:1282, :2032) a switch keeps the snapshot of a wind
 end
 
 
--- The list's guards (DESK.md:2035, :1822, :1827): a held-over header missing at the write refuses it, a pasted copy
+-- The list's guards (DESK.md:2068, :1855, :1860): a held-over header missing at the write refuses it, a pasted copy
 -- of one stays and is asked about, the directory question stops once an answer opens nothing new, and with its
 -- window gone q and <C-c> leave, the edits dropped.
 
-T['T1138 [char] (M16, DESK.md:2035) a held-over header deleted and written on one command line refuses the write, the cursor on its first line'] = function()
+T['T1138 [char] (M16, DESK.md:2068) a held-over header deleted and written on one command line refuses the write, the cursor on its first line'] = function()
 	split_held_over()
 	local win = child.lua('return vim.api.nvim_get_current_win()')
 	child.steps({ LIST })
@@ -2119,7 +2119,7 @@ T['T1138 [char] (M16, DESK.md:2035) a held-over header deleted and written on on
 		{ got = { cursor = 1, modified = true }, told = 1, held = 1, own = 0, lines = drawn })
 end
 
-T['T1139 [char] (M16, DESK.md:2035, :1822) a pasted copy of a held-over header is asked about at the write, and Yes leaves it out, the lines under it with the group above'] = function()
+T['T1139 [char] (M16, DESK.md:2068, :1855) a pasted copy of a held-over header is asked about at the write, and Yes leaves it out, the lines under it with the group above'] = function()
 	split_held_over()
 	local win = child.lua('return vim.api.nvim_get_current_win()')
 	child.steps({ TAKE })
@@ -2144,7 +2144,7 @@ T['T1139 [char] (M16, DESK.md:2035, :1822) a pasted copy of a held-over header i
 			yes = { own = true, held = true, modified = false } })
 end
 
-T['T1140 [char] (M16, DESK.md:1827) q and <C-c> in the list with its window gone leave, the edits dropped, saying so'] = function()
+T['T1140 [char] (M16, DESK.md:1860) q and <C-c> in the list with its window gone leave, the edits dropped, saying so'] = function()
 	local got = {}
 	for _, key in ipairs({ 'q', '<C-c>' }) do
 		child.setup()
@@ -2160,14 +2160,14 @@ T['T1140 [char] (M16, DESK.md:1827) q and <C-c> in the list with its window gone
 	eq(got, { q = left, ['<C-c>'] = left })
 end
 
-T['T1141 [char] (M16, DESK.md:1822) the directory question stops once an answer opens nothing new'] = function()
+T['T1141 [char] (M16, DESK.md:1855) the directory question stops once an answer opens nothing new'] = function()
 	local one, split = two_windows()
 	local line = line_from(one, '/elsewhere/project', 'elsewhere')
 	local asked = written_with(split, { line }, { '/nowhere/at/all', '/nowhere/again' })
 	eq({ input = #asked.input, confirm = #asked.confirm, n = #snapshots(split) }, { input = 1, confirm = 1, n = 0 })
 end
 
-T['T1146 [char] (M16, DESK.md:2035) the one held-over header deleted with a copy of it below is taken back'] = function()
+T['T1146 [char] (M16, DESK.md:2068) the one held-over header deleted with a copy of it below is taken back'] = function()
 	split_held_over()
 	local win = child.lua('return vim.api.nvim_get_current_win()')
 	child.steps({ LIST })
@@ -2181,7 +2181,7 @@ T['T1146 [char] (M16, DESK.md:2035) the one held-over header deleted with a copy
 	eq({ n = #copied, after = after, own = #snapshots(win), held = #held('') }, { n = 3, after = copied, own = 0, held = 1 })
 end
 
-T['T1148 [char] (M16, DESK.md:2035) keys typed ahead with the list\'s open key meet the header it drew: the header deleted past its copy refuses'] = function()
+T['T1148 [char] (M16, DESK.md:2068) keys typed ahead with the list\'s open key meet the header it drew: the header deleted past its copy refuses'] = function()
 	split_held_over()
 	local win = child.lua('return vim.api.nvim_get_current_win()')
 	child.messages()
@@ -2193,7 +2193,7 @@ T['T1148 [char] (M16, DESK.md:2035) keys typed ahead with the list\'s open key m
 	eq({ told = told, own = #snapshots(win), held = #held('') }, { told = 1, own = 0, held = 1 })
 end
 
--- Snapshots' moves in the trail (DESK.md:2030) -------------------------------------------------------------------
+-- Snapshots' moves in the trail (DESK.md:2063) -------------------------------------------------------------------
 
 -- Today's moves of a kind, each as its window, its words and its row's slots by file name.
 local function moves_of(kind)
@@ -2215,7 +2215,7 @@ local function moves_of(kind)
 	]], { kind })
 end
 
-T['T1154 [char] (M16, A27, DESK.md:2030) taking a snapshot is a move in the trail'] = function()
+T['T1154 [char] (M16, A27, DESK.md:2063) taking a snapshot is a move in the trail'] = function()
 	taken()
 	local trail = child.lua([[
 		vim.cmd('FrogmanTrail')
@@ -2225,14 +2225,14 @@ T['T1154 [char] (M16, A27, DESK.md:2030) taking a snapshot is a move in the trai
 		{ moves = { { window = 'win 1', words = 'snapshot taken' } }, drawn = true })
 end
 
-T['T1155 [char] (M16, A27, DESK.md:2030) committing a snapshot is a move in the trail, the window\'s slots before and after'] = function()
+T['T1155 [char] (M16, A27, DESK.md:2063) committing a snapshot is a move in the trail, the window\'s slots before and after'] = function()
 	previewing()
 	child.step('<M-v>')
 	child.settle(100)
 	eq(moves_of('committed'), { { window = 'win 1', words = 'snapshot committed', before = '⦉a⦊ [e] ⟦b⟧', after = '⦉c⦊ [d] ⟦b⟧' } })
 end
 
--- The preview over a closed current, and the commit's way back (DESK.md:2037, :2038, :2039, :2040, :2042) --------
+-- The preview over a closed current, and the commit's way back (DESK.md:2070, :2071, :2072, :2073, :2075) --------
 
 -- Whether a message since the last read says the cleanup healed a window.
 local function healed()
@@ -2255,7 +2255,7 @@ local function note(win, map, file)
 	]], { win, map, file })
 end
 
-T['T1156 [char] (M16, DESK.md:2037, :2038, repro R5) a preview leaves the slots alone when the window\'s current is closed'] = function()
+T['T1156 [char] (M16, DESK.md:2070, :2071, repro R5) a preview leaves the slots alone when the window\'s current is closed'] = function()
 	child.steps({ ':e a', ':e d', TAKE, ':e a' })
 	local win = child.lua('return vim.api.nvim_get_current_win()')
 	eq(child.slots(win), '⦉d⦊ [a] ⟦-⟧')
@@ -2274,7 +2274,7 @@ T['T1156 [char] (M16, DESK.md:2037, :2038, repro R5) a preview leaves the slots 
 		{ during = { slots = '⦉d⦊ [a] ⟦-⟧', shown = 'd' }, after = '⦉d⦊ [a] ⟦-⟧', healed = false })
 end
 
-T['T1157 [char] (M16, DESK.md:2039, repro R6) a commit with the snapshot\'s current closed lands by the pick rules'] = function()
+T['T1157 [char] (M16, DESK.md:2072, repro R6) a commit with the snapshot\'s current closed lands by the pick rules'] = function()
 	taken()
 	child.steps({ ':e a', ':e e' })
 	local win = child.lua('return vim.api.nvim_get_current_win()')
@@ -2293,7 +2293,7 @@ T['T1157 [char] (M16, DESK.md:2039, repro R6) a commit with the snapshot\'s curr
 		{ slots = '⦉c⦊ [a] ⟦b⟧', note = 'd', healed = false })
 end
 
-T['T1158 [char] (M16, DESK.md:2040) a commit onto the window\'s own current leaves swap notes for the arrangement it replaced'] = function()
+T['T1158 [char] (M16, DESK.md:2073) a commit onto the window\'s own current leaves swap notes for the arrangement it replaced'] = function()
 	taken()
 	child.steps({ ':e x', ':e e', ':e d' })
 	local win = child.lua('return vim.api.nvim_get_current_win()')
@@ -2315,7 +2315,7 @@ T['T1158 [char] (M16, DESK.md:2040) a commit onto the window\'s own current leav
 		{ committed = '⦉c⦊ [d] ⟦b⟧', ternary = 'e', secondary = 'x' })
 end
 
-T['T1159 [char] (M16, DESK.md:2042, repro R7) in the window view the bufferline draws the laid-in order at the commit'] = function()
+T['T1159 [char] (M16, DESK.md:2075, repro R7) in the window view the bufferline draws the laid-in order at the commit'] = function()
 	child.lua('_G.FRG_TEST.setup({ bufferline = { history_view = "window" } })')
 	taken()
 	child.steps({ ':e a', ':e e' })
@@ -2335,7 +2335,7 @@ T['T1159 [char] (M16, DESK.md:2042, repro R7) in the window view the bufferline 
 		{ win = true, ordered = 'd,c,b,a,e,x,f' })
 end
 
--- :e during a preview, and what counts as an edit (DESK.md:2037, repros R8, P5) ----------------------------
+-- :e during a preview, and what counts as an edit (DESK.md:2070, repros R8, P5) ----------------------------
 
 -- A buffer's state by its number: whether it's there, loaded, listed and taken in.
 local function buffer_state(bufnr)
@@ -2347,7 +2347,7 @@ local function buffer_state(bufnr)
 	]], { bufnr })
 end
 
-T['T1160 [char] (M16, DESK.md:2037, repro R8) :e onto a closed file of the order borrows it, and a cancel gives it back'] = function()
+T['T1160 [char] (M16, DESK.md:2070, repro R8) :e onto a closed file of the order borrows it, and a cancel gives it back'] = function()
 	local win = shown_with_closed('c')
 	child.cmd('edit c.txt')
 	child.settle(100)
@@ -2360,7 +2360,7 @@ T['T1160 [char] (M16, DESK.md:2037, repro R8) :e onto a closed file of the order
 			after = { valid = true, loaded = false, listed = false, taken = false }, still = { taken = false, listed = true } })
 end
 
-T['T1161 [char] (M16, DESK.md:2037) :e onto a closed file outside the order borrows it too'] = function()
+T['T1161 [char] (M16, DESK.md:2070) :e onto a closed file outside the order borrows it too'] = function()
 	taken()
 	child.steps({ ':e a', ':e x', ':e e' })
 	child.cmd('bdelete x.txt')
@@ -2379,7 +2379,7 @@ T['T1161 [char] (M16, DESK.md:2037) :e onto a closed file outside the order borr
 		{ taken = false, back = 'e', after = { valid = true, loaded = false, listed = false, taken = false }, x = { taken = false, listed = true } })
 end
 
-T['T1162 [char] (M16, DESK.md:2037) :e onto a file frogman never knew borrows it, and a cancel wipes what :e made'] = function()
+T['T1162 [char] (M16, DESK.md:2070) :e onto a file frogman never knew borrows it, and a cancel wipes what :e made'] = function()
 	local win = shown_with_closed('c')
 	child.cmd('edit t.txt')
 	child.settle(100)
@@ -2391,7 +2391,7 @@ T['T1162 [char] (M16, DESK.md:2037) :e onto a file frogman never knew borrows it
 		{ name = 't.txt', taken = false, back = 'e', after = { valid = false }, known = { taken = false, listed = false } })
 end
 
-T['T1163 [char] (M16, DESK.md:2037) <M-v> on a file :e borrowed opens it for real'] = function()
+T['T1163 [char] (M16, DESK.md:2070) <M-v> on a file :e borrowed opens it for real'] = function()
 	local win = shown_with_closed('c')
 	child.cmd('edit c.txt')
 	child.settle(100)
@@ -2400,7 +2400,7 @@ T['T1163 [char] (M16, DESK.md:2037) <M-v> on a file :e borrowed opens it for rea
 	eq({ c = state('c'), slots = child.slots(win) }, { c = { taken = true, listed = false }, slots = '⦉d⦊ [c] ⟦b⟧' })
 end
 
-T['T1164 [char] (M16, DESK.md:2037) :e onto a file gone from disk shows its placeholder, and <M-v> refuses there'] = function()
+T['T1164 [char] (M16, DESK.md:2070) :e onto a file gone from disk shows its placeholder, and <M-v> refuses there'] = function()
 	local win = shown_with_closed('c')
 	child.lua('os.remove(_G.FRG_TEST.root .. "/c.txt")')
 	child.lua('require("frogman.domains.history").routines.cleanup_system()')
@@ -2417,7 +2417,7 @@ T['T1164 [char] (M16, DESK.md:2037) :e onto a file gone from disk shows its plac
 		{ full = 'frogman://gone/c.txt', lines = { '[This file has been deleted off the disk]' }, refused = 1, still = true, slots = '⦉a⦊ [e] ⟦b⟧' })
 end
 
-T['T1165 [char] (M16, DESK.md:2037, repro P5) a borrowed buffer whose lines are rewritten unchanged is given back'] = function()
+T['T1165 [char] (M16, DESK.md:2070, repro P5) a borrowed buffer whose lines are rewritten unchanged is given back'] = function()
 	shown_with_closed('b')
 	step_to('b.txt')
 	local bufnr = child.lua([[
@@ -2431,7 +2431,7 @@ T['T1165 [char] (M16, DESK.md:2037, repro P5) a borrowed buffer whose lines are 
 	eq({ b = state('b'), after = buffer_state(bufnr) }, { b = { taken = false, listed = true }, after = { valid = true, loaded = false, listed = false, taken = false } })
 end
 
-T['T1166 [char] (M16, DESK.md:2037, repro P5) a borrowed buffer reloaded with :e! is given back'] = function()
+T['T1166 [char] (M16, DESK.md:2070, repro P5) a borrowed buffer reloaded with :e! is given back'] = function()
 	shown_with_closed('b')
 	step_to('b.txt')
 	local bufnr = child.lua('return vim.api.nvim_get_current_buf()')
@@ -2442,7 +2442,7 @@ T['T1166 [char] (M16, DESK.md:2037, repro P5) a borrowed buffer reloaded with :e
 	eq({ b = state('b'), after = buffer_state(bufnr) }, { b = { taken = false, listed = true }, after = { valid = true, loaded = false, listed = false, taken = false } })
 end
 
-T['T1167 [char] (M16, DESK.md:2037) a borrowed buffer has a tab while it\'s borrowed, dimmed, and a closed file not stepped onto has none'] = function()
+T['T1167 [char] (M16, DESK.md:2070) a borrowed buffer has a tab while it\'s borrowed, dimmed, and a closed file not stepped onto has none'] = function()
 	taken()
 	child.steps({ ':e a', ':e e' })
 	child.cmd('bdelete b.txt')
@@ -2472,9 +2472,9 @@ T['T1167 [char] (M16, DESK.md:2037) a borrowed buffer has a tab while it\'s borr
 			back = { tab = false } })
 end
 
--- <M-,> and saves while a snapshot shows (DESK.md:2037) ---------------------------------------------------
+-- <M-,> and saves while a snapshot shows (DESK.md:2070) ---------------------------------------------------
 
-T['T1168 [char] (M16, A17, DESK.md:2037) <M-,> while a snapshot shows leaves it and goes to the window before'] = function()
+T['T1168 [char] (M16, A17, DESK.md:2070) <M-,> while a snapshot shows leaves it and goes to the window before'] = function()
 	taken()
 	local win = child.lua('return vim.api.nvim_get_current_win()')
 	child.cmd('vsplit')
@@ -2495,7 +2495,7 @@ T['T1168 [char] (M16, A17, DESK.md:2037) <M-,> while a snapshot shows leaves it 
 		{ active = false, at = true, shown = 'e', slots = '⦉a⦊ [e] ⟦b⟧', refused = 0 })
 end
 
-T['T1169 [char] (M16, S1, DESK.md:2037) a session save while a snapshot shows raises, so a session manager\'s save through it stops'] = function()
+T['T1169 [char] (M16, S1, DESK.md:2070) a session save while a snapshot shows raises, so a session manager\'s save through it stops'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	previewing()
@@ -2505,7 +2505,7 @@ T['T1169 [char] (M16, S1, DESK.md:2037) a session save while a snapshot shows ra
 		{ ok = false, told = true, file = false, active = true })
 end
 
-T['T1221 [char] (M16, S1, DESK.md:2037) cancel_preview leaves a snapshot showing as a cancel does, so a switch\'s save after it goes through'] = function()
+T['T1221 [char] (M16, S1, DESK.md:2070) cancel_preview leaves a snapshot showing as a cancel does, so a switch\'s save after it goes through'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	local win = previewing()
@@ -2519,7 +2519,7 @@ T['T1221 [char] (M16, S1, DESK.md:2037) cancel_preview leaves a snapshot showing
 		{ idle = { true }, left = { active = false, shown = 'e', slots = '⦉a⦊ [e] ⟦b⟧' }, saved = { true }, file = true })
 end
 
-T['T1223 [char] (M16, S1, DESK.md:2037) a snapshot showing in a tab that closes is left from TabClosedPre while its window still stands, and the tab closes clean'] = function()
+T['T1223 [char] (M16, S1, DESK.md:2070) a snapshot showing in a tab that closes is left from TabClosedPre while its window still stands, and the tab closes clean'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.cmd('tabnew')
@@ -2540,7 +2540,7 @@ T['T1223 [char] (M16, S1, DESK.md:2037) a snapshot showing in a tab that closes 
 		{ seen = { ok = true, active = false }, tabs = 1, gone = true, errors = 0, active = false })
 end
 
-T['T1170 [char] (M16, S1, DESK.md:2037) a save as the editor quits ends the snapshot showing first, then saves'] = function()
+T['T1170 [char] (M16, S1, DESK.md:2070) a save as the editor quits ends the snapshot showing first, then saves'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	local win = previewing()
@@ -2559,7 +2559,7 @@ T['T1170 [char] (M16, S1, DESK.md:2037) a save as the editor quits ends the snap
 		{ at_save = { ok = true, active = false, shown = 'e' }, file = true, slots = '⦉a⦊ [e] ⟦b⟧' })
 end
 
-T['T1171 [char] (M16, S1, DESK.md:2037) a session manager\'s save as the editor really quits, ahead of frogman\'s own quit handler, ends the snapshot showing first'] = function()
+T['T1171 [char] (M16, S1, DESK.md:2070) a session manager\'s save as the editor really quits, ahead of frogman\'s own quit handler, ends the snapshot showing first'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	local win = previewing()
@@ -2585,9 +2585,9 @@ T['T1171 [char] (M16, S1, DESK.md:2037) a session manager\'s save as the editor 
 		{ seen = { exiting = true, ok = true, active = false, shown = 'e' }, file = true })
 end
 
--- A preview's end when what it left can't come back, and at a load (DESK.md:2037, :2038) ------------
+-- A preview's end when what it left can't come back, and at a load (DESK.md:2070, :2071) ------------
 
-T['T1172 [char] (M16, DESK.md:2038) a cancel whose earlier buffer is gone shows the window\'s current slot, reopened'] = function()
+T['T1172 [char] (M16, DESK.md:2071) a cancel whose earlier buffer is gone shows the window\'s current slot, reopened'] = function()
 	local win = previewing()
 	child.cmd('bwipeout ' .. child.lua('return _G.FRG_TEST.root') .. '/e.txt')
 	child.settle()
@@ -2598,7 +2598,7 @@ T['T1172 [char] (M16, DESK.md:2038) a cancel whose earlier buffer is gone shows 
 		{ shown = 'e', slots = '⦉a⦊ [e] ⟦b⟧', e = { taken = true, listed = false }, active = false })
 end
 
-T['T1173 [char] (M16, DESK.md:2038) a cancel whose earlier buffer is gone, in a window with no slots, shows an empty buffer'] = function()
+T['T1173 [char] (M16, DESK.md:2071) a cancel whose earlier buffer is gone, in a window with no slots, shows an empty buffer'] = function()
 	split_held_over()
 	child.cmd('help')
 	child.settle()
@@ -2619,7 +2619,7 @@ T['T1173 [char] (M16, DESK.md:2038) a cancel whose earlier buffer is gone, in a 
 	]], { help }), { name = '', lines = { '' }, bt = '', active = false })
 end
 
-T['T1174 [char] (M16, S1 Load, DESK.md:2037) a tab session\'s load into the preview\'s tab opens a borrowed file you edited'] = function()
+T['T1174 [char] (M16, S1 Load, DESK.md:2070) a tab session\'s load into the preview\'s tab opens a borrowed file you edited'] = function()
 	shown_with_closed('b')
 	step_to('b.txt')
 	child.lua('vim.api.nvim_buf_set_lines(0, -1, -1, false, { "added" })')
@@ -2632,7 +2632,7 @@ T['T1174 [char] (M16, S1 Load, DESK.md:2037) a tab session\'s load into the prev
 		{ b = { taken = true, listed = false }, told = 1, active = false })
 end
 
-T['T1175 [char] (M16, S1 Load, DESK.md:2038) a whole-editor load puts the preview\'s window back on what it showed'] = function()
+T['T1175 [char] (M16, S1 Load, DESK.md:2071) a whole-editor load puts the preview\'s window back on what it showed'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	taken()
@@ -2653,7 +2653,7 @@ T['T1175 [char] (M16, S1 Load, DESK.md:2038) a whole-editor load puts the previe
 		{ shown = 'e', active = false, borrowed = { valid = true, loaded = false, listed = false, taken = false } })
 end
 
-T['T1176 [char] (M16, S1 Load, DESK.md:2038) a whole-editor load from bare that starts fresh puts the preview\'s window back too'] = function()
+T['T1176 [char] (M16, S1 Load, DESK.md:2071) a whole-editor load from bare that starts fresh puts the preview\'s window back too'] = function()
 	local win = previewing()
 	child.lua('require("frogman").load_session("nothing-here")')
 	child.settle(300)
@@ -2661,7 +2661,7 @@ T['T1176 [char] (M16, S1 Load, DESK.md:2038) a whole-editor load from bare that 
 		{ shown = 'e', active = false })
 end
 
-T['T1177 [char] (M16, M5, DESK.md:2037) a borrowed No Name text whose read fails stays on the closed lists'] = function()
+T['T1177 [char] (M16, M5, DESK.md:2070) a borrowed No Name text whose read fails stays on the closed lists'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	child.steps({ ':e a' })
@@ -2692,7 +2692,7 @@ T['T1177 [char] (M16, M5, DESK.md:2037) a borrowed No Name text whose read fails
 	eq({ before = before, after = texts_on_list(), lost = lost }, { before = 1, after = 1, lost = 1 })
 end
 
-T['T1178 [char] (M16, M14, DESK.md:2037) :e onto a file gone from disk during a preview leaves nothing counting the file never written'] = function()
+T['T1178 [char] (M16, M14, DESK.md:2070) :e onto a file gone from disk during a preview leaves nothing counting the file never written'] = function()
 	shown_with_closed('c')
 	child.lua('os.remove(_G.FRG_TEST.root .. "/c.txt")')
 	child.lua('require("frogman.domains.history").routines.cleanup_system()')
@@ -2711,9 +2711,9 @@ T['T1178 [char] (M16, M14, DESK.md:2037) :e onto a file gone from disk during a 
 	]]), { taken = true, unwritten = false })
 end
 
--- The fresh check's findings (DESK.md:2037, :2038) -------------------------------------------------------
+-- The fresh check's findings (DESK.md:2070, :2071) -------------------------------------------------------
 
-T['T1179 [char] (M16, DESK.md:2038) a cancel whose earlier buffer was deleted with :bdelete shows the current slot, reopened'] = function()
+T['T1179 [char] (M16, DESK.md:2071) a cancel whose earlier buffer was deleted with :bdelete shows the current slot, reopened'] = function()
 	local win = previewing()
 	child.cmd('bdelete ' .. child.lua('return _G.FRG_TEST.root') .. '/e.txt')
 	child.settle()
@@ -2723,7 +2723,7 @@ T['T1179 [char] (M16, DESK.md:2038) a cancel whose earlier buffer was deleted wi
 		{ shown = 'e', slots = '⦉a⦊ [e] ⟦b⟧', e = { taken = true, listed = false } })
 end
 
-T['T1180 [char] (M16, DESK.md:2038) a cancel by a window jump reopens the current slot with its visit in the preview\'s window'] = function()
+T['T1180 [char] (M16, DESK.md:2071) a cancel by a window jump reopens the current slot with its visit in the preview\'s window'] = function()
 	taken()
 	local win = child.lua('return vim.api.nvim_get_current_win()')
 	child.cmd('vsplit')
@@ -2748,7 +2748,7 @@ T['T1180 [char] (M16, DESK.md:2038) a cancel by a window jump reopens the curren
 	]], { win, other }), { shown = 'e', own = true, other = false })
 end
 
-T['T1181 [char] (M16, DESK.md:2037) a borrowed buffer another window still shows at the end goes back unlisted'] = function()
+T['T1181 [char] (M16, DESK.md:2070) a borrowed buffer another window still shows at the end goes back unlisted'] = function()
 	shown_with_closed('b')
 	step_to('b.txt')
 	local bufnr = child.lua('return vim.api.nvim_get_current_buf()')
@@ -2758,7 +2758,7 @@ T['T1181 [char] (M16, DESK.md:2037) a borrowed buffer another window still shows
 		{ active = false, b = { taken = false, listed = true }, after = { valid = true, loaded = true, listed = false, taken = false } })
 end
 
-T['T1182 [char] (M16, DESK.md:2037) two :e in one batch during a preview borrow both, and the cancel gives both back'] = function()
+T['T1182 [char] (M16, DESK.md:2070) two :e in one batch during a preview borrow both, and the cancel gives both back'] = function()
 	shown_with_closed('c')
 	local c = child.lua('return vim.fn.bufnr(_G.FRG_TEST.root .. "/c.txt")')
 	child.cmd('edit c.txt | edit t.txt')
@@ -2770,7 +2770,7 @@ T['T1182 [char] (M16, DESK.md:2037) two :e in one batch during a preview borrow 
 		{ c = { valid = true, loaded = false, listed = false, taken = false }, t = { valid = false }, still = { taken = false, listed = true } })
 end
 
-T['T1183 [char] (M16, S1 Load, DESK.md:2038) a whole-editor load whose preview\'s earlier buffer is gone puts the window on its current slot'] = function()
+T['T1183 [char] (M16, S1 Load, DESK.md:2071) a whole-editor load whose preview\'s earlier buffer is gone puts the window on its current slot'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	taken()
@@ -2788,7 +2788,7 @@ T['T1183 [char] (M16, S1 Load, DESK.md:2038) a whole-editor load whose preview\'
 		{ shown = 'e', active = false })
 end
 
-T['T1198 [char] (M16, DESK.md:2038) a cancel whose earlier buffer is gone, the current slot borrowed, opens it for real'] = function()
+T['T1198 [char] (M16, DESK.md:2071) a cancel whose earlier buffer is gone, the current slot borrowed, opens it for real'] = function()
 	child.steps({ ':e a', ':e d', TAKE, ':e a' })
 	local win = child.lua('return vim.api.nvim_get_current_win()')
 	local scratch = child.lua('local b = vim.api.nvim_create_buf(false, true); vim.api.nvim_win_set_buf(..., b); return b', { win })
@@ -2809,7 +2809,7 @@ T['T1198 [char] (M16, DESK.md:2038) a cancel whose earlier buffer is gone, the c
 		{ shown = 'a', a = { taken = true, listed = false }, slots = '⦉d⦊ [a] ⟦-⟧', told = 0 })
 end
 
--- The list's row: the order by the snapshot's roles, and +N past the window's edge (DESK.md:2035, repro R19) -
+-- The list's row: the order by the snapshot's roles, and +N past the window's edge (DESK.md:2068, repro R19) -
 
 -- The open list's first line as drawn: each chunk's text and highlight.
 local function row_chunks()
@@ -2825,7 +2825,7 @@ local function row_chunks()
 	]])
 end
 
-T['T1184 [char] (M16, DESK.md:2035) the list draws the stored order in the snapshot\'s own roles, the primary first as cokeline has it'] = function()
+T['T1184 [char] (M16, DESK.md:2068) the list draws the stored order in the snapshot\'s own roles, the primary first as cokeline has it'] = function()
 	child.lua('vim.o.columns = 200') -- room for the whole row
 	taken()
 	child.steps({ LIST })
@@ -2845,7 +2845,7 @@ T['T1184 [char] (M16, DESK.md:2035) the list draws the stored order in the snaps
 			defined = { FrogmanOrderPrimary = true, FrogmanOrderTernary = true, FrogmanOrderSecondary = true, FrogmanOrderOpen = true } })
 end
 
-T['T1185 [char] (M16, DESK.md:2035, repro R19) a long row draws whole entries, then +N'] = function()
+T['T1185 [char] (M16, DESK.md:2068, repro R19) a long row draws whole entries, then +N'] = function()
 	child.lua([[
 		for i = 1, 25 do
 			local f = io.open(string.format('%s/f%02d.txt', _G.FRG_TEST.root, i), 'w'); f:write('x\n'); f:close()
@@ -2872,9 +2872,9 @@ T['T1185 [char] (M16, DESK.md:2035, repro R19) a long row draws whole entries, t
 	eq({ fit = fit, more = more ~= nil and more > 0, whole = whole }, { fit = true, more = true, whole = true })
 end
 
--- Copying between windows (DESK.md:2036, repro R20) --------------------------------------------------------
+-- Copying between windows (DESK.md:2069, repro R20) --------------------------------------------------------
 
-T['T1186 [char] (M16, DESK.md:2036) a window\'s own line moved under a held-over header is copied there, the original staying'] = function()
+T['T1186 [char] (M16, DESK.md:2069) a window\'s own line moved under a held-over header is copied there, the original staying'] = function()
 	split_held_over()
 	local win = child.lua('return vim.api.nvim_get_current_win()')
 	child.steps({ TAKE })
@@ -2889,7 +2889,7 @@ T['T1186 [char] (M16, DESK.md:2036) a window\'s own line moved under a held-over
 	eq({ own = #got, kept = got[1] and got[1].id == own, held = #h, copied = copied }, { own = 1, kept = true, held = 2, copied = 1 })
 end
 
-T['T1187 [char] (M16, DESK.md:2036) two entries of a rebuilt line that resolve to one file keep it once'] = function()
+T['T1187 [char] (M16, DESK.md:2069) two entries of a rebuilt line that resolve to one file keep it once'] = function()
 	local one, split = two_windows()
 	local line = changed_line(one, 'd.editor = "another editor"; d.id = "elsewhere"; for i, f in ipairs(d.files) do f.handle = 90000 + i end; '
 		.. 'table.insert(d.files, { path = d.files[d.c].path, handle = 99998 }); d.s = #d.files')
@@ -2898,7 +2898,7 @@ T['T1187 [char] (M16, DESK.md:2036) two entries of a rebuilt line that resolve t
 	eq({ n = #got, slots = got[1] and got[1].slots }, { n = 1, slots = '⦉c⦊ [d] ⟦-⟧' })
 end
 
-T['T1188 [char] (M16, M14, DESK.md:2036, repro R20) a rebuilt line naming a file not on disk tags it gone at once'] = function()
+T['T1188 [char] (M16, M14, DESK.md:2069, repro R20) a rebuilt line naming a file not on disk tags it gone at once'] = function()
 	local one, split = two_windows()
 	local line = changed_line(one, 'd.editor = "another editor"; d.id = "elsewhere"; for i, f in ipairs(d.files) do f.handle = 90000 + i; '
 		.. 'if f.path:match("/a%.txt$") then f.path = f.path:gsub("/a%.txt$", "/nowhere.txt") end end')
@@ -2910,7 +2910,7 @@ T['T1188 [char] (M16, M14, DESK.md:2036, repro R20) a rebuilt line naming a file
 	]]), { known = true, tagged = true })
 end
 
--- A snapshot whose current is gone falls back (DESK.md:2031) -----------------------------------------------
+-- A snapshot whose current is gone falls back (DESK.md:2064) -----------------------------------------------
 
 -- A saved session holding a snapshot whose current is a No Name text, ternary a; a fresh editor loads it, and the
 -- text's file is deleted. Returns the shared project.
@@ -2938,7 +2938,7 @@ local function text_current_lost()
 	return s
 end
 
-T['T1189 [char] (M16, DESK.md:2031) a preview of a snapshot whose current text is lost falls back to its ternary'] = function()
+T['T1189 [char] (M16, DESK.md:2064) a preview of a snapshot whose current text is lost falls back to its ternary'] = function()
 	text_current_lost()
 	local win = child.lua('return vim.api.nvim_get_current_win()')
 	child.steps({ LIST })
@@ -2948,7 +2948,7 @@ T['T1189 [char] (M16, DESK.md:2031) a preview of a snapshot whose current text i
 		slots = snapshots(win)[1].slots }, { active = true, shown = 'a', slots = '⦉-⦊ [a] ⟦-⟧' })
 end
 
-T['T1190 [char] (M16, S1, DESK.md:2031) a save keeps a snapshot whose current text is lost, its current fallen back'] = function()
+T['T1190 [char] (M16, S1, DESK.md:2064) a save keeps a snapshot whose current text is lost, its current fallen back'] = function()
 	local s = text_current_lost()
 	eq(S2.save(child), { true })
 	S2.start(child, s)
@@ -2962,7 +2962,7 @@ T['T1190 [char] (M16, S1, DESK.md:2031) a save keeps a snapshot whose current te
 	eq({ n = #got, slots = got[1] and got[1].slots, broke = broke }, { n = 1, slots = '⦉-⦊ [a] ⟦-⟧', broke = 0 })
 end
 
-T['T1191 [char] (M16, S1 Load, DESK.md:2031) a file written elsewhere with a snapshot whose current names no path keeps it, fallen back, with no warning'] = function()
+T['T1191 [char] (M16, S1 Load, DESK.md:2064) a file written elsewhere with a snapshot whose current names no path keeps it, fallen back, with no warning'] = function()
 	local s = S2.shared()
 	S2.start(child, s)
 	taken()
@@ -2994,7 +2994,7 @@ T['T1191 [char] (M16, S1 Load, DESK.md:2031) a file written elsewhere with a sna
 	eq({ n = #got, slots = got[1] and got[1].slots, broke = broke }, { n = 1, slots = '⦉-⦊ [c] ⟦b⟧', broke = 0 })
 end
 
-T['T1199 [char] (M16, DESK.md:2035) the list draws the queue\'s head in the primary\'s colour with the switch off, as cokeline does'] = function()
+T['T1199 [char] (M16, DESK.md:2068) the list draws the queue\'s head in the primary\'s colour with the switch off, as cokeline does'] = function()
 	child.lua('vim.o.columns = 200')
 	child.steps({ ':e a', ':e b', ':e c', '<M-f>', ':e d', '<M-;><M-c>', '<M-;><M-x>' })
 	eq(child.primary(), '[d]off')

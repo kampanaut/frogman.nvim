@@ -232,7 +232,7 @@ T['D29 [char] init.lua\'s header says encrypted session persistence, and the XOR
 	}, { true, false, false })
 end
 
-T['T1222 [char] (S2, DESK.md:2037) the README\'s pre_load and TabClosedPre leave a snapshot showing before their saves'] = function()
+T['T1222 [char] (S2, DESK.md:2070) the README\'s pre_load and TabClosedPre leave a snapshot showing before their saves'] = function()
 	local r = read(README)
 	local pre_load = r:match('add_hook%("pre_load", function%(%)(.-)end%)')
 	local tab_closed = r:match('"TabClosedPre", {(.-)}%)')
