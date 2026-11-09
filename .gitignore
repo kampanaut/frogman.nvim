@@ -2,3 +2,8 @@ deps/
 spec-runs/
 what-is-frogman.md
 tests/REVIEW.md
+DESK.md
+BUILD_LEDGER.md
+BUILD_REPORT*.md
+archive/
+build-scratch/
