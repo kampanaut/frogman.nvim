@@ -438,8 +438,9 @@ end
 ---tracks nothing yet but the empty buffer it started on. A dump that spans more than one tab
 ---is refused. Once a replay starts, this editor's state isn't a session, so `save_session`
 ---refuses and no records are written. The result holds `steps`, `driven`, `matched`,
----`resynced`, `mismatches`, `vim_errors` (a driven command's Vim error, noted, the replay going
----on), `failure` (any other error a driven step raised, which stops it), `fired` and `snapshot`.
+---`resynced`, `mismatches`, `vim_errors` (a driven step's Vim error, a command's or a key's, noted,
+---the replay going on), `failure` (any other error a driven step raised, which stops it), `fired`
+---and `snapshot`.
 ---
 ---@param given string The dump's file
 ---@return table|nil result What the replay found, or nil if it was refused
@@ -518,9 +519,9 @@ function M.run(given)
 			local ok, err = pcall(drive)
 			settle.drain()
 			if not ok then
-				-- a command's Vim error is the editor's, as it was where the dump was made: noted, and the replay
-				-- goes on; any other error is frogman's, and stops it
-				local said = step.cause == "command" and dump.vim_error(err)
+				-- a Vim error, a command's or a key's, is the editor's, as it was where the dump was made: noted,
+				-- and the replay goes on; any other error is frogman's, and stops it
+				local said = dump.vim_error(err)
 				if not said then
 					result.failure = { seq = step.seq, trigger = step.trigger, error = tostring(err) }
 					break

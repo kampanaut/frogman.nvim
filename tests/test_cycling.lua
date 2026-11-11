@@ -1498,6 +1498,27 @@ T['T1257 [char] (A26, review round 10) a replay plants a command whose file name
 	})
 end
 
+-- The replaying editor's toggle_secondary made to raise, as the key calls its export as it is when pressed (T641)
+for _, how in ipairs({ 'vim', 'lua' }) do
+	T['T1258 [char] (A26, review round 10) a Vim error in a replayed key is noted and the replay goes on, any other error stops it: ' .. how] = function()
+		local r = made_and_replayed(function()
+			child.steps({ ':e a', ':e b', '<M-f>' })
+			typed(':e c.txt<CR>')
+		end, function()
+			child.lua(how == 'vim' and [[require('frogman').toggle_secondary = function() vim.cmd('buffer zzz.txt') end]]
+				or [[require('frogman').toggle_secondary = function() error('boom') end]])
+		end)
+		local noted = r.vim_errors or {}
+		if how == 'vim' then
+			eq({ failure = r.failure, noted = #noted == 1 and noted[1].trigger == '<M-f>' and noted[1].error:find('E94', 1, true) ~= nil,
+				on = r.driven >= 2 }, { failure = nil, noted = true, on = true })
+		else
+			eq({ stopped = r.failure ~= nil and r.failure.trigger == '<M-f>' and r.failure.error:find('boom', 1, true) ~= nil, noted = #noted },
+				{ stopped = true, noted = 0 })
+		end
+	end
+end
+
 for _, splitright in ipairs({ false, true }) do
 	T['T488 [char] a split reaches the dump and replays, splitright ' .. tostring(splitright)] = function()
 		local r = made_and_replayed(function()
