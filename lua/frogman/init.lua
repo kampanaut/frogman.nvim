@@ -587,7 +587,10 @@ M.replay_dump = function(path)
 	return require('frogman.domains.ledger.replay').run(path)
 end
 M.open_trail = function(name)
-	require('frogman.domains.ui.trail').open(name)
+	-- what's queued to settle runs first, as for the other views, so the trail shows the batch it came in
+	return settle.now(function()
+		require('frogman.domains.ui.trail').open(name)
+	end)
 end
 
 -- Primary buffer management (to be implemented in window domain)

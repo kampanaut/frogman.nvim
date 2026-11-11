@@ -637,8 +637,8 @@ local function file_line(entries, subject, anchor)
 	local back, ahead = start.subject, start.subject
 	if to == start.subject then
 		back = from -- a reopen into this hash: before it, the text went by the one it came from
-	elseif to and start.kind ~= "copied" then
-		ahead = to -- a move or a reopen away: after it, the file goes by its new hash
+	elseif to and (start.kind ~= "copied" or to == subject) then
+		ahead = to -- a move or a reopen away, or the copy the line is the new file's: after it, the file goes by its new hash
 	end
 	for i = at - 1, 1, -1 do
 		local move = entries[i].move
@@ -1126,7 +1126,13 @@ function M.open(query)
 		from = window.data.last_valid_window -- opened from a float: back to the last tracked window
 	end
 	if view then
-		M.leave()
+		-- an earlier trail closes where it is, wherever that is, and the focus stays here: the new one opens
+		-- in this tab, over this window, and reads this tab's trail
+		local earlier = view
+		view = nil
+		if vim.api.nvim_win_is_valid(earlier.win) then
+			vim.api.nvim_win_close(earlier.win, true)
+		end
 	end
 	-- the session's main file read once; a page only when it's shown
 	local reader = require('frogman.domains.storage').routines.trail_reader()
@@ -1150,6 +1156,19 @@ function M.open(query)
 			if view and view.buf == buf then
 				view = nil
 			end
+		end,
+	})
+	-- the trail ends with its float, however that closes: its buffer goes too, from a split that still shows it
+	vim.api.nvim_create_autocmd("WinClosed", {
+		group = "frogman",
+		pattern = tostring(win),
+		once = true,
+		callback = function()
+			vim.schedule(function()
+				if vim.api.nvim_buf_is_valid(buf) then
+					vim.api.nvim_buf_delete(buf, { force = true })
+				end
+			end)
 		end,
 	})
 	local keys = require('frogman.configs').keymaps.views or {}

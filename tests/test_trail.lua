@@ -1004,6 +1004,65 @@ T['T708 [char] (A27) a copy\'s file inherits its source\'s past up to the copy']
 	eq({ g = g:find('4 moves over 1 day', 1, true) ~= nil, b = b:find('4 moves over 1 day', 1, true) ~= nil }, { g = true, b = true })
 end
 
+T['T1244 [char] (A27, review round 10) * on a copy\'s file from a pop-up shows the source\'s past up to the copy, then the copy\'s own'] = function()
+	-- the pop-ups' * comes with no move to start from: the line starts at the copy, found by its new hash
+	child.setup()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('bdelete b.txt')
+	child.settle()
+	child.steps({ ':e b' })
+	child.cmd('saveas g.txt')
+	child.settle(300)
+	child.lua([[
+		local history = require('frogman.domains.history')
+		local id = history.get_handle_from_buffer(vim.fn.bufnr('g.txt'))
+		require('frogman.domains.ui.trail').follow(history.get_hash_from_handle(id), vim.api.nvim_buf_get_name(vim.fn.bufnr('g.txt')))
+	]])
+	child.settle(100)
+	local got = lines()
+	type_in('q')
+	eq(got[1]:find('3 moves over 1 day', 1, true) ~= nil, true)
+end
+
+T['T1245 [char] (A27, review round 10) the trail ends with its float, however it closes, a split still showing it included'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b' })
+	open_trail()
+	local v = view()
+	child.cmd('split')
+	child.settle(100)
+	child.lua('vim.api.nvim_win_close(..., true)', { v.win })
+	child.settle(200)
+	eq({ view = view(), buf = child.lua('return vim.api.nvim_buf_is_valid(...)', { v.buf }) }, { view = vim.NIL, buf = false })
+end
+
+T['T1246 [char] (A27, review round 10) :FrogmanTrail settles frogman\'s queued work first, so a close in the same batch is on it'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b' })
+	child.type_keys('<M-.>:FrogmanTrail<CR>')
+	child.settle(200)
+	local text = table.concat(lines(), '\n')
+	type_in('q')
+	eq({ empty = text:find('no moves', 1, true) ~= nil, closed = text:find('b.txt', 1, true) ~= nil }, { empty = false, closed = true })
+end
+
+T['T1247 [char] (A27, review round 10) a trail opened in another tab opens there, over your window, the earlier one closing where it was'] = function()
+	child.setup()
+	child.steps({ ':e a', ':e b' })
+	open_trail()
+	local first = view()
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ ':e d' })
+	local tab2 = child.lua('return vim.api.nvim_get_current_tabpage()')
+	open_trail()
+	local v = view()
+	eq({ tab = child.lua('return vim.api.nvim_get_current_tabpage()') == tab2,
+		float_tab = child.lua('return vim.api.nvim_win_get_tabpage(...)', { v.win }) == tab2,
+		first_gone = child.lua('return vim.api.nvim_win_is_valid(...)', { first.win }) == false },
+		{ tab = true, float_tab = true, first_gone = true })
+end
+
 T['T709 [char] (A27, M5) a No Name text\'s reopen keeps it one line'] = function()
 	child.setup()
 	child.steps({ ':e a', ':enew' })
