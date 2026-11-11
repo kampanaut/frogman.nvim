@@ -5599,4 +5599,88 @@ T['T1236 [char] (M11) once the settle queue runs dry, the tabline is drawn again
 		{ ran = true, drawn_after = true, pending = 0 })
 end
 
+T['T1238 [char] (M15, review round 10) :tabclose in the marks pop-up holding edits refuses with E445 after its buffer was renamed by hand'] = function()
+	-- the guard knows frogman's floats by their window, not their buffer's name, which :file changes; an editor of its own,
+	-- killed past ten seconds, as T1227
+	local r = Helpers.spawn_editor([[
+vim.cmd('edit a.txt')
+vim.cmd('tabnew f.txt')
+require('frogman').mark_add('o')
+vim.cmd('edit d.txt')
+require('frogman').mark_add('o')
+require('frogman.settle').drain()
+vim.wait(100)
+
+local float = vim.api.nvim_get_current_win()
+vim.cmd('file renamedx')
+local before = { float = vim.api.nvim_win_get_config(float).relative ~= '', modified = vim.bo.modified, name = vim.fn.bufname():match('renamedx') ~= nil }
+local ok, err = pcall(vim.cmd, 'tabclose')
+vim.wait(50)
+io.stdout:write(vim.json.encode({ before = before, ok = ok, err = tostring(err):match('E%d+') or '',
+	tabs = #vim.api.nvim_list_tabpages(), back = vim.api.nvim_get_current_win() == float }) .. '\n')
+vim.cmd('qa!')
+]])
+	local decoded = (r.out ~= '' and pcall(vim.json.decode, r.out)) and vim.json.decode(r.out) or r.out
+	eq({ code = r.code, out = decoded }, { code = 0, out = { before = { float = true, modified = true, name = true }, ok = false, err = 'E445', tabs = 2, back = true } })
+end
+
+T['T1239 [char] (M15, review round 10) a :tabclose N refused from another tab leaves you where you were, and the pop-up its own tab\'s window'] = function()
+	local r = Helpers.spawn_editor([[
+vim.cmd('edit a.txt')
+vim.cmd('tabnew f.txt')
+require('frogman').mark_add('o')
+vim.cmd('edit d.txt')
+require('frogman').mark_add('o')
+require('frogman.settle').drain()
+vim.wait(100)
+
+local float = vim.api.nvim_get_current_win()
+local tab2 = vim.api.nvim_get_current_tabpage()
+vim.cmd('tabprevious')
+local mine = vim.api.nvim_get_current_win()
+local seen = {}
+vim.api.nvim_create_autocmd({ 'TabEnter', 'WinEnter' }, { callback = function(ev) table.insert(seen, ev.event) end })
+local results = {}
+for _, cmd in ipairs({ 'tabclose 2', 'tabonly' }) do
+	local ok, err = pcall(vim.cmd, cmd)
+	vim.wait(100)
+	table.insert(results, { cmd = cmd, ok = ok, err = tostring(err):match('E%d+') or '', here = vim.api.nvim_get_current_win() == mine,
+		kept = vim.api.nvim_tabpage_is_valid(tab2), tab2_on_float = vim.api.nvim_tabpage_is_valid(tab2) and vim.api.nvim_tabpage_get_win(tab2) == float })
+end
+io.stdout:write(vim.json.encode({ results = results, seen = #seen }) .. '\n')
+vim.cmd('qa!')
+]])
+	local decoded = (r.out ~= '' and pcall(vim.json.decode, r.out)) and vim.json.decode(r.out) or r.out
+	local out = type(decoded) == 'table' and decoded or {}
+	local shape = vim.tbl_map(function(x) return { cmd = x.cmd, kept = x.kept, here = x.here, tab2_on_float = x.tab2_on_float } end, out.results or {})
+	eq({ code = r.code, results = shape, seen = out.seen }, { code = 0, results = {
+		{ cmd = 'tabclose 2', kept = true, here = true, tab2_on_float = true },
+		{ cmd = 'tabonly', kept = true, here = true, tab2_on_float = true },
+	}, seen = 0 })
+end
+
+T['T1240 [char] (M15, S2, review round 10) every editable float of frogman\'s is marked as its own, so the :tabclose guard finds it by its window'] = function()
+	child.steps({ ':e a', ':e b', '<M-;><M-c>', '<M-;><M-s>' })
+	local function opened(lua)
+		child.lua(lua)
+		child.settle(100)
+		local r = child.lua([[local w = vim.api.nvim_get_current_win()
+			return { float = vim.api.nvim_win_get_config(w).relative ~= '', own = require('frogman.domains.ui.view').is_own(w) }]])
+		if r.float then
+			child.cmd('close!')
+			child.settle(100)
+		end
+		return r
+	end
+	local seen = {
+		marks = opened('require("frogman").mark_popup()'),
+		snapshots = opened('require("frogman").open_snapshots()'),
+		closed = opened('require("frogman").open_closed_lists()'),
+		primary = opened('require("frogman").open_primary_buffer_history()'),
+	}
+	seen.plain = child.lua('return require("frogman.domains.ui.view").is_own(vim.api.nvim_get_current_win())')
+	local both = { float = true, own = true }
+	eq(seen, { marks = both, snapshots = both, closed = both, primary = both, plain = false })
+end
+
 return T

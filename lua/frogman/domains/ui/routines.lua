@@ -358,6 +358,7 @@ function M.show_primary_buffer_history()
 		title = " Primary Buffer Queue (History) ",
 		title_pos = "center",
 	})
+	require('frogman.domains.ui.view').own(dwin)
 
 	vim.b[dbuf].display_window = dwin
 	-- the buffer goes with its window, however that window closes
@@ -1411,6 +1412,7 @@ function M.show_closed_lists(opts)
 		title = " Closed lists ",
 		title_pos = "center",
 	})
+	require('frogman.domains.ui.view').own(dwin)
 	vim.b[dbuf].display_window = dwin
 	vim.wo[dwin].wrap = false
 	vim.wo[dwin].cursorline = true

@@ -127,22 +127,29 @@ function M.init_autocmds(group)
 
 	-- :tabclose with one of frogman's floats current, holding edits its buffer can't be hidden with, loops
 	-- inside Neovim (0.12.6): the focus goes to a window of its tab for the command, so Neovim refuses with
-	-- E445 as for any window holding changes, and comes back to the float once the command is over
+	-- E445 as for any window holding changes. Once the command is over, a focus still on that window means the
+	-- command was typed in that tab, and it goes back into the float; one elsewhere means it came from another
+	-- tab (`:tabclose N`, `:tabonly`), and only the closing tab's own window goes back to the float, the focus
+	-- staying where it is. The float is known by its window, which a buffer renamed by hand doesn't change.
 	vim.api.nvim_create_autocmd("TabClosedPre", {
 		group = group,
 		callback = function()
 			local float = vim.api.nvim_get_current_win()
 			local buf = vim.api.nvim_win_get_buf(float)
-			if vim.api.nvim_win_get_config(float).relative == "" or not vim.bo[buf].modified
-				or not vim.api.nvim_buf_get_name(buf):match("^frogman://") then
+			if not require('frogman.domains.ui.view').is_own(float) or not vim.bo[buf].modified then
 				return
 			end
-			for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(vim.api.nvim_win_get_tabpage(float))) do
+			local tab = vim.api.nvim_win_get_tabpage(float)
+			for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
 				if vim.api.nvim_win_get_config(winid).relative == "" then
 					vim.cmd("noautocmd lua vim.api.nvim_set_current_win(" .. winid .. ")")
 					vim.schedule(function()
-						if vim.api.nvim_win_is_valid(float) then
+						if not vim.api.nvim_win_is_valid(float) then
+							return -- the tab closed after all
+						elseif vim.api.nvim_get_current_win() == winid then
 							vim.cmd("noautocmd lua vim.api.nvim_set_current_win(" .. float .. ")")
+						elseif vim.api.nvim_tabpage_is_valid(tab) and vim.api.nvim_get_current_tabpage() ~= tab then
+							vim.cmd("noautocmd lua vim.api.nvim_tabpage_set_win(" .. tab .. ", " .. float .. ")")
 						end
 					end)
 					return

@@ -62,6 +62,23 @@ function M.open(opts)
 	return buf, win
 end
 
+---Mark a window as one of frogman's editable floats, so what guards them finds it by the window, whatever
+---its buffer is named since.
+---
+---@param win WinId The float
+---@return nil
+function M.own(win)
+	vim.w[win].frogman_float = true
+end
+
+---Tell whether a window is one of frogman's editable floats.
+---
+---@param win WinId The window to check
+---@return boolean own True for a float `own` marked
+function M.is_own(win)
+	return vim.api.nvim_win_is_valid(win) and vim.w[win].frogman_float == true
+end
+
 ---Open a float on a buffer its caller keeps: when the float closes, `closed` runs, the buffer staying or going
 ---as its 'bufhidden' says.
 ---
@@ -82,6 +99,7 @@ function M.float(buf, opts)
 			opts.closed()
 		end,
 	})
+	M.own(win)
 	vim.wo[win].wrap = false
 	vim.wo[win].cursorline = true
 	for option, value in pairs(opts.window or {}) do
