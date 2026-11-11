@@ -265,6 +265,7 @@ function M.show_primary_buffer_history()
 	local drawn_from = live()
 
 	local dbuf = vim.api.nvim_create_buf(true, false)
+	vim.bo[dbuf].modifiable = true -- an editable view: on, whatever a new buffer takes from a global nomodifiable
 	local dwin
 
 	vim.bo[dbuf].filetype = "frogman-primary-buffer-history"
@@ -1474,6 +1475,7 @@ function M.show_closed_lists(opts)
 	end
 
 	local dbuf = vim.api.nvim_create_buf(false, false)
+	vim.bo[dbuf].modifiable = true -- an editable view: on, whatever a new buffer takes from a global nomodifiable
 	vim.bo[dbuf].buftype = "acwrite"
 	vim.bo[dbuf].swapfile = false
 	vim.bo[dbuf].bufhidden = "wipe" -- the buffer goes with its window, however the window closes

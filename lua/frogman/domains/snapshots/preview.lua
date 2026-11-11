@@ -172,6 +172,7 @@ local function buffer_for(id)
 	if require('frogman.domains.window').routines.is_missing(id) then
 		bufnr = vim.api.nvim_create_buf(false, true)
 		pcall(vim.api.nvim_buf_set_name, bufnr, "frogman://gone/" .. vim.fs.basename(filepath))
+		vim.bo[bufnr].modifiable = true -- a new buffer takes it off with the option off globally
 		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { GONE })
 		vim.bo[bufnr].modifiable = false
 		showing.made[id] = { buf = bufnr, was = "placeholder" }
@@ -191,7 +192,10 @@ local function buffer_for(id)
 			return nil, "lost"
 		end
 		bufnr = vim.api.nvim_create_buf(true, false)
+		local modifiable = vim.bo[bufnr].modifiable
+		vim.bo[bufnr].modifiable = true -- its lines go in with the option off globally too, as a reopen's do
 		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, text.lines)
+		vim.bo[bufnr].modifiable = modifiable
 		vim.bo[bufnr].filetype = text.filetype or ""
 		vim.bo[bufnr].modified = false -- setting its lines marked it
 		showing.made[id] = { buf = bufnr, was = "made", text = true }

@@ -663,4 +663,37 @@ T['T1284 [char] (M12, review round 11) the winbar marks the primary on the slot 
 		{ current = true, primary_on_secondary = true, current_plain = true })
 end
 
+
+-- With 'modifiable' off globally, every new buffer starts off it. Each of frogman's editable views still
+-- opens with its lines, and stays editable: the primary pop-up, the closed lists, the marks pop-up and the
+-- snapshot list.
+T['T1289 [char] (A18, S2, M15, M16; the user, 2026-11-11: "Fix all four (Recommended)") with a global nomodifiable, the four editable views open with their lines and stay editable'] = function()
+	child.steps({ ':e a', '<M-;><M-x>', ':e b', ':e c', '<M-;><M-s>' })
+	child.cmd('bdelete a.txt')
+	child.settle()
+	child.cmd('set nomodifiable')
+	local got = {}
+	for _, export in ipairs({ 'open_primary_buffer_history', 'open_closed_lists', 'mark_popup', 'open_snapshots' }) do
+		got[export] = child.lua([[
+			local export = ...
+			local ok = pcall(require('frogman')[export])
+			vim.wait(100)
+			local out = { ok = ok, lines = false, editable = false }
+			for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+				if vim.api.nvim_win_get_config(w).relative ~= '' then
+					local b = vim.api.nvim_win_get_buf(w)
+					out.lines = vim.api.nvim_buf_get_lines(b, 0, 1, false)[1] ~= ''
+					out.editable = vim.bo[b].modifiable
+					vim.api.nvim_win_close(w, true)
+				end
+			end
+			return out
+		]], { export })
+		child.settle()
+	end
+	child.cmd('set modifiable')
+	local want = { ok = true, lines = true, editable = true }
+	eq(got, { open_primary_buffer_history = want, open_closed_lists = want, mark_popup = want, open_snapshots = want })
+end
+
 return T

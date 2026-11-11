@@ -1066,6 +1066,7 @@ end
 ---@return MarksPopupBuffer record
 local function make(kind, id, conflict)
 	local buf = vim.api.nvim_create_buf(false, false)
+	vim.bo[buf].modifiable = true -- an editable view: on, whatever a new buffer takes from a global nomodifiable
 	vim.bo[buf].buftype = "acwrite"
 	vim.bo[buf].swapfile = false
 	vim.bo[buf].bufhidden = "hide"

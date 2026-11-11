@@ -3141,4 +3141,43 @@ T['T1281 [char] (M16, A26, review round 11) a preview whose snapshot\'s current 
 		{ stepped_off = true, failed = 0, active = true, drawn_closed = true, back = 'd', borrowed = true })
 end
 
+
+-- With 'modifiable' off globally, every new buffer starts off it: the preview still borrows a closed No
+-- Name text with its lines, and still shows a gone file's placeholder with its line.
+T['T1290 [char] (M16, review round 11; the user, 2026-11-11: "Fix both (Recommended)") with a global nomodifiable, a preview borrows a closed No Name text with its lines'] = function()
+	child.steps({ ':e a' })
+	local n = S2.noname(child, { 'draft' })
+	child.steps({ TAKE, ':e b' })
+	child.cmd('bwipeout! ' .. n)
+	child.settle(100)
+	child.cmd('set nomodifiable')
+	local dumps = child.dump_files()
+	child.messages()
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(100)
+	local at = showing()
+	local failed = #vim.tbl_filter(function(m) return m:find('modifiable', 1, true) ~= nil end, said())
+	child.cmd('set modifiable')
+	eq({ lines = at.lines, failed = failed, dumped = child.dumped_since(dumps) }, { lines = { 'draft' }, failed = 0 })
+end
+
+T['T1291 [char] (M16, review round 11; the user, 2026-11-11: "Fix both (Recommended)") with a global nomodifiable, a preview shows a gone file\'s placeholder with its line'] = function()
+	taken()
+	child.steps({ ':e a', ':e e' })
+	child.cmd('bdelete d.txt')
+	child.settle()
+	child.lua('os.remove(_G.FRG_TEST.root .. "/d.txt")')
+	child.cmd('set nomodifiable')
+	local dumps = child.dump_files()
+	child.messages()
+	child.steps({ LIST })
+	child.step('<CR>')
+	child.settle(300)
+	local at = showing()
+	local failed = #vim.tbl_filter(function(m) return m:find('modifiable', 1, true) ~= nil end, said())
+	child.cmd('set modifiable')
+	eq({ lines = at.lines, failed = failed, dumped = child.dumped_since(dumps) }, { lines = { '[This file has been deleted off the disk]' }, failed = 0 })
+end
+
 return T
