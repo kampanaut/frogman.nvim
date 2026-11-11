@@ -1,0 +1,1177 @@
+*frogman.txt*                              Per-window buffer recall for Neovim
+
+==============================================================================
+CONTENTS                                                    *frogman-contents*
+
+ 1. Introduction ......................................... |frogman-intro|
+ 2. Quick start ...................................... |frogman-quickstart|
+ 3. The triquetra ..................................... |frogman-triquetra|
+ 4. Keys ................................................... |frogman-keys|
+ 5. Cycling ............................................. |frogman-cycling|
+ 6. Closing and reopening ............................... |frogman-closing|
+ 7. Marks ................................................. |frogman-marks|
+ 8. Snapshots ......................................... |frogman-snapshots|
+ 9. Sessions ........................................... |frogman-sessions|
+10. The UI ................................................... |frogman-ui|
+11. Files gone from disk ................................ |frogman-missing|
+12. The trail ............................................. |frogman-trail|
+13. When something shouldn't happen ........................ |frogman-dump|
+14. Commands ........................................... |frogman-commands|
+15. Lua functions ............................................ |frogman-api|
+16. Configuration ........................................ |frogman-config|
+17. Highlight groups ................................. |frogman-highlights|
+18. Coming from cavediver ............................. |frogman-cavediver|
+
+==============================================================================
+1. Introduction                                                *frogman-intro*
+
+Frogman manages your buffers with a per-window recall system built around
+how little you can hold in working memory at once.
+
+You jump between A and B, then you have to look at C for a moment. In plain
+Neovim, B is gone the moment you land on C: you can only jump between A and
+C, and getting back to A and B means remembering B's name, right when your
+head is on the problem and not on file names.
+
+Frogman keeps, for every window, the buffers you're juggling in three slots,
+the window's triquetra (|frogman-triquetra|), and shows them in the winbar.
+The slots shift as you move, and whatever a jump pushed out can be restored.
+On top of the triquetra sit three more ways to hold on to a buffer:
+
+- The primary: one buffer per window lifted out of the turnover, with its own
+  key (|frogman-primary|).
+- Marks: buffers under keys you pick, for a window, a tab or the whole
+  session (|frogman-marks|).
+- Snapshots: save points of a window's whole setup (|frogman-snapshots|).
+
+All of it survives a restart, with any session manager, in an encrypted file
+(|frogman-sessions|). Every move frogman makes for you is logged, a page a
+day, in the trail (|frogman-trail|).
+
+                                                        *frogman-recall-tiers*
+The recall tiers ~
+
+- The triquetra is what you're juggling right now. The slots shift as you
+  jump around, but frogman still brings them back after a restart.
+- The primary is the bridge: the one buffer you lift out of the turnover, so
+  it isn't pushed out while you jump around.
+- Marks are long-term recall: there every time, under keys you pick.
+
+You can cross the bridge both ways: mark your primary like any other buffer,
+or press <M-c> on a mark in the marks pop-up to make it the primary.
+Snapshots aren't a tier: a snapshot is a save point of a window's whole setup,
+for when you want to come back to exactly how it was.
+
+                                                        *frogman-requirements*
+Requirements ~
+
+- Neovim 0.12 or newer.
+- nvim-cokeline, for the bufferline (|frogman-bufferline|). Frogman works
+  without it, with much less to see.
+- OpenSSL 3 or 4, installed on the system: its libcrypto encrypts the session
+  files. Hashing uses Neovim's own |sha256()|. When frogman can't find the
+  library, set |frogman-config.libcrypto_path|. Windows is untested: there,
+  point that option at the DLL, such as `libcrypto-3-x64.dll`.
+- telescope.nvim, for adding files in the primary pop-up and for picking a
+  mark's alias and file in the marks pop-up.
+- nvim-window-picker, for picking a window to show a snapshot in when its
+  list's window is gone.
+- A session manager, optional (|frogman-sessions|).
+
+==============================================================================
+2. Quick start                                            *frogman-quickstart*
+
+With lazy.nvim: >lua
+
+    {
+        "kampanaut/frogman.nvim",
+        config = true,
+        dependencies = {
+            "willothy/nvim-cokeline",
+            "nvim-telescope/telescope.nvim",
+            "s1n7ax/nvim-window-picker",
+        },
+    }
+<
+`config = true` calls `require('frogman').setup()` with the defaults
+(|frogman-config|). Any plugin manager works: call |frogman.setup()| once.
+
+Then:
+- Hook frogman into your session manager, so the slots survive a restart
+  (|frogman-sessions|).
+- Set up cokeline, so you can see the visit order (|frogman-cokeline|).
+
+Open a few files and watch the winbar: `⦉N⦊` is the ternary, `[N]` the
+current, `⟦N⟧` the secondary. <M-f> swaps with the secondary, <M-S-f> with
+the ternary. The rest is in |frogman-keys|.
+
+==============================================================================
+3. The triquetra                                           *frogman-triquetra*
+
+Frogman tracks windows showing regular file buffers and No Name buffers. Each
+window has its own triquetra: a current slot, a secondary slot, a ternary
+slot, and a primary queue. The winbar shows the first three: >text
+
+    ⦉32⦊ [7] history/init.lua    ⟦9⟧ window/routines.lua
+<
+- `⦉32⦊` is the ternary buffer's number.
+- `[7] history/init.lua` is the current buffer.
+- `⟦9⟧ window/routines.lua` is the secondary buffer.
+
+A buffer is never in two of a window's current, secondary and ternary slots at
+once. The primary can be any of them.
+
+When a window switches to something frogman doesn't track (help, a terminal,
+a quickfix list), it keeps its triquetra, and the current slot stays on the
+file you were on, so <M-f> brings you back. The winbar shows it like
+`main.lua ← [15 help]`, the visited buffer's number first.
+
+                                                    *frogman-ternary*
+The ternary slot ~
+
+Your previous buffer, basically. It updates every time you jump to a new
+buffer that isn't the secondary: the current buffer becomes the ternary, and
+the new one becomes current. It isn't updated when you pick a buffer while
+cycling (|frogman-cycling|).
+
+                                                    *frogman-secondary*
+The secondary slot ~
+
+Your stow slot: it changes only when you say so. <M-f> swaps the current
+buffer and the secondary. With no secondary, <M-f> fills it: from the ternary
+first ("Ternary slot graduated"), otherwise from the newest buffer in the
+history that isn't the current one.
+
+                                                    *frogman-primary*
+The primary queue ~
+
+The primary is the window's own mark: a buffer of interest you don't want to
+lose. However much you jump, <M-;><M-f> brings it back to the current slot.
+
+Each window keeps a queue of primaries. <M-;><M-c> puts the current buffer at
+the front, and the first entry is always the primary; the others are the ones
+before it. <M-;><M-x> switches the primary on or off (on an empty queue it
+takes the current buffer and switches on, in one press). With the primary
+off, <M-;><M-f> acts like <M-f>.
+
+                                                *frogman-primary-popup*
+<M-;>F opens the queue in a pop-up you edit like any buffer:
+- Delete a line, or move it (delete and paste), and write.
+- Type a readable file's path on a line, and write: frogman registers it.
+  Lines it can't take are asked about first, in one prompt listing them: Yes
+  saves the rest, No goes back to the pop-up with nothing saved.
+- <CR> moves the line under the cursor to the top, which makes it the
+  primary, and writes and closes; gf does the same and stays open.
+- <M-e> adds files through telescope; * opens the trail on the line's file.
+- q and <C-c> write and close; <C-s> writes.
+- A new first line, written, switches the primary on.
+
+The pop-up edits the queue of the window it was opened from, as that queue is
+at each use. If that window is gone, :w refuses, keeping your edits, and q
+leaves, dropping them. If a load replaces the window's queue while the
+pop-up is open, an unedited pop-up is drawn again; an edited one's :w makes
+its lines the queue, the loaded queue's other entries after them.
+
+                                                    *frogman-notes*
+Notes and restores ~
+
+Every jump that pushes a buffer out of a slot leaves a note on the buffer you
+were on: which ternary it had, which secondary. Back on that buffer,
+<M-;><M-r> brings its ternary back, and <M-;><M-t> its secondary. Notes
+follow their files and go when a file is let go.
+
+==============================================================================
+4. Keys                                                         *frogman-keys*
+
+Every key below is a default; change any of them under
+|frogman-config.keymaps|, and set one to false to leave it unmapped. Each key
+first runs the work frogman still has queued, so keys in a macro or a
+mapping act as if typed by hand.
+
+                                                *frogman-key-toggle_secondary*
+<M-f>           Swap the current buffer and the secondary. On a window
+                visiting something untracked, go back to its current slot.
+                With no secondary, fill it (|frogman-secondary|).
+
+                                                *frogman-key-toggle_ternary*
+<M-S-f>         Swap the current buffer and the ternary.
+
+                                                *frogman-key-jump_to_primary*
+<M-;><M-f>      Bring the primary to the current slot; the buffer you were on
+                becomes the ternary. With the primary off, act like <M-f>.
+                While cycling, return to the cycle's starting buffer.
+
+                                                *frogman-key-restore_ternary*
+<M-;><M-r>      Restore the current buffer's ternary from its note.
+
+                                               *frogman-key-restore_secondary*
+<M-;><M-t>      Restore the current buffer's secondary from its note.
+
+                                                *frogman-key-toggle_window*
+<M-,>           Go to the previous window, skipping the filetypes in
+                |frogman-config.toggle_window|.
+
+                                                *frogman-key-cycle_left*
+                                                *frogman-key-cycle_right*
+<M-n>, <M-m>    Start cycling, or step through the bufferline while cycling
+                (|frogman-cycling|).
+
+                                                *frogman-key-cycle_select*
+<M-v>           Pick the buffer you're cycled to and stop cycling.
+
+                                                *frogman-key-set_primary*
+<M-;><M-c>      Put the current buffer at the front of the primary queue.
+
+                                                *frogman-key-toggle_primary*
+<M-;><M-x>      Switch the primary on or off.
+
+                                                *frogman-key-close_buffer*
+<M-.>           Close the current buffer and go to the one before it in the
+                history. Refused for a file with unsaved changes (a No Name
+                buffer's text is kept instead), a buffer shown in another
+                window, and the last one left.
+
+                                              *frogman-key-reopen_last_closed*
+<M-S-w>         Reopen the newest file on the current tab's closed list.
+
+                                    *frogman-key-open_primary_buffer_history*
+<M-;>F          Open the primary pop-up (|frogman-primary-popup|).
+
+                                               *frogman-key-open_closed_lists*
+<M-;>W          Open the closed lists (|frogman-closed-lists|).
+
+                                                *frogman-key-take_snapshot*
+<M-;><M-s>      Take a snapshot of the window (|frogman-snapshots|).
+
+                                                *frogman-key-open_snapshots*
+<M-;>S          Open the window's snapshot list.
+
+                                                *frogman-key-marks*
+<M-'>           The marks prefix (|frogman-marks|):
+                  <M-'><M-a>          jump to the file `a` marks
+                  <M-'><M-'><M-a>     mark the current buffer under `a`
+                  <M-'><M-1>          window mode
+                  <M-'><M-2>          tab mode
+                  <M-'><M-3>          session mode
+                  <M-'><M-e>          the marks pop-up
+                One alias key for each of |frogman-config.marks| `aliases`.
+
+                                                        *frogman-view-keys*
+Inside frogman's own views (the pop-ups, the lists, the trail), from
+`keymaps.views`:
+
+  q, <C-c>      leave (the pop-ups write first)
+  <CR>          act on the line and leave
+  gf            act on the line and stay
+  za            fold
+  H, L          previous and next section or day
+  <C-s>         write
+  s             the trail: search every page for a name
+  *             search the trail for the name under the cursor
+  <M-e>         the primary pop-up: add files through telescope
+  a             the marks pop-up: add a mark, an alias then a file
+  <M-c>         the marks pop-up: make the line's file the primary
+
+==============================================================================
+5. Cycling                                                   *frogman-cycling*
+
+<M-n> and <M-m> call cokeline's cycle and put frogman in cycling mode, which
+the colours of the winbar and the bufferline show. While cycling, frogman
+stops recording visits, so the current slot doesn't change however far you
+cycle.
+
+- <M-v> picks the buffer you're on and stops cycling.
+- <M-;><M-f> goes back to the buffer you started from, still cycling.
+- Going to another window cancels the cycle, and the window goes back to the
+  buffer you started from; so does a batch of keys that goes to another
+  window and back.
+
+A cycle starting on a buffer that is also in the secondary or the ternary
+trades it with the current slot first, so no buffer sits in two slots.
+
+==============================================================================
+6. Closing and reopening                                     *frogman-closing*
+
+<M-.> closes the current buffer and takes you to the one you were on before
+it. Every closed file goes on a closed list: the current tab's, its tab
+session's when it has one (|frogman-tab-sessions|), or the editor's. A file
+closed by a command that closes its tab (`:bdelete` in a tab's only window)
+goes on that tab's list. <M-S-w> reopens the newest file on the current tab's
+list; a file gone from disk stays on it and the next one opens.
+
+A slot keeps a closed file, and using the slot reopens it. A window whose
+current file is deleted lands on its ternary, then its secondary, then its
+primary, then the newest buffer in the history.
+
+An empty No Name buffer is dropped when it's closed, not listed. A No Name
+buffer with text is kept, its text with it, and comes back when reopened.
+
+                                                    *frogman-closed-lists*
+The closed lists ~
+
+|:FrogmanClosed| (or <M-;>W) shows every closed list in one window you edit
+like any buffer: the editor's, each tab session's, and the detached ones
+(|frogman-detached|), each under its header, like `≡editor` or `≡notes`.
+
+- Reorder the lines, move one under another list's header, delete one, and
+  write.
+- <CR> reopens the line's file and leaves; gf reopens it and stays.
+- za folds a list; H and L go to the previous and next list.
+- q writes and leaves; * opens the trail on the line's file.
+
+Opened from a float, the lists act on a window of the float's own tab. Open
+and unedited across a session load, they're drawn again from what the load
+left.
+
+==============================================================================
+7. Marks                                                       *frogman-marks*
+
+A mark keeps a buffer under an alias, and you jump to it from anywhere with
+that alias' key. The prefix is <M-'>. With the default aliases,
+`a s d f u i o p`:
+
+- <M-'><M-'><M-a> marks the current buffer under `a`. The winbar says what
+  happened for a moment.
+- <M-'><M-a> jumps to whatever `a` holds, reopening it if it's closed.
+
+                                                        *frogman-marks-modes*
+Marks live in a scope, and the mode picks which:
+- <M-'><M-1> window mode: the marks of the window you're in.
+- <M-'><M-2> tab mode: the marks of the tab.
+- <M-'><M-3> session mode: the marks of the session.
+
+In a tab session's tab, tab mode and session mode read the same marks. The
+bufferline shows the current mode's marks, a marked buffer with its aliases
+after its name, like `api.lua ⟨a,s⟩`.
+
+A jump to a mark goes like a jump to the primary: the buffer you were on
+becomes the ternary. A jump to the secondary's file is a swap with it, as
+<M-f> makes one. A jump Vim refuses (a modified buffer it can't hide,
+'winfixbuf') changes no slot.
+
+                                                        *frogman-marks-popup*
+The marks pop-up ~
+
+<M-'><M-e> (or |:FrogmanMarks|) opens the current mode's marks in a pop-up you
+edit like any buffer: >text
+
+    marks · window
+    ❖ main
+    a -> api.lua
+    s -> routes/user.lua
+    d ->
+<
+- Each `❖` line is a group's header; the first group is the one the keys
+  use. Type a header to make a group.
+- Edit a row to change what an alias points to, or press `a` to pick an alias
+  and then a file through telescope. A path typed on a row is a path from
+  the current directory; one that is another name of an open file, a symlink
+  to it, is that file.
+- <CR> jumps to the line's file and closes the pop-up; gf jumps and keeps it
+  open; <M-c> makes the line's file the primary of the window you opened the
+  pop-up from.
+- :w writes, q writes and leaves, :q! drops your edits. The mode keys work in
+  here too, and the scope you leave keeps your edits as a draft until you
+  write them.
+- An alias holds one file in a group. Marking a buffer under an alias that's
+  taken opens the pop-up on the conflict, for you to settle.
+
+The write checks the lines first. A row above the first header, or an alias
+holding two files in one group, refuses it. A line naming nothing, a row
+naming no file, a second group of one name, a header deleted with rows left
+under another, and empty headers it can't tell apart are asked about in one
+prompt: Yes writes it as it stands, No writes nothing and puts the cursor on
+the first of them.
+
+An unedited pop-up shows the scope its mode reads, drawn again when that
+changes: a change to the scope, a load, the tab joining a tab session. With
+edits on a tab's marks when the tab joins a tab session, the write puts them
+in the session's marks, held over, and says so; with edits on a session's
+marks when the session moves to another tab, the write puts them in the copy
+this tab keeps (|frogman-detached|), held over, and says so.
+
+                                                    *frogman-held-over*
+Held-over groups ~
+
+When a window or a tab closes, its marks go onto its entry in the session
+file, or, with none, are held over as a group of their own in the session's
+marks, like `❖ held over · window on api.lua · 11-09 14:05`. A tab session
+loaded into a tab holds that tab's own marks over the same way. A held-over
+group stays until you delete its header, and drives the keys only once you
+move it, up or down, in the pop-up.
+
+                                                    *frogman-marks-split*
+A new split starts with no marks, unless |frogman-config.marks| has
+`split_copies = true`: then it starts with a copy of its window's.
+
+==============================================================================
+8. Snapshots                                               *frogman-snapshots*
+
+A snapshot is a save point you make on purpose: the window's slots, its
+notes, its primary queue and the order its bufferline drew. Take one when you
+have a setup you want to come back to.
+
+- <M-;><M-s> takes a snapshot of the window you're in.
+- <M-;>S (or |:FrogmanSnapshots|) opens the window's snapshot list. Each line
+  shows its time, its triquetra and its order.
+
+                                                    *frogman-preview*
+Previewing ~
+
+<CR> on a line shows the snapshot in its window: its slots and its order,
+and nothing gets recorded. <M-n> and <M-m> step through its files; a closed
+one is borrowed, still counted closed, and a file gone from disk shows as a
+placeholder. `:e` in the window borrows what it opens.
+
+- <M-v> takes the snapshot, landing on the buffer you're on.
+- Opening the list again, or going to another window, leaves the preview, and
+  the window goes back to how it was. <M-,> leaves it and goes to the window
+  before.
+- A buffer the preview shows deleted ends the preview, saying so. The
+  snapshot's current deleted while another of its files shows doesn't: it's
+  drawn closed, and borrowed when you step onto it.
+- A file you edited while it was borrowed stays open when the preview ends.
+
+While a snapshot shows, the session can't be saved: a save raises an error.
+So a session manager's switch should call |frogman.cancel_preview()| before
+its saves, and |frogman.previewing()| tells whether one shows.
+
+                                                    *frogman-snapshot-list*
+The snapshot list ~
+
+The list is editable too: delete a line and write to delete that snapshot.
+Each line carries the whole snapshot, so yank a line from one window's list
+and paste it into another window's to copy it there, or cut and paste to
+move it. That's how you duplicate a window's setup. The lines are encrypted
+like the session files, so a line opens in the project it came from, and
+anywhere else asks you for that directory.
+
+A window that closes with no saved entry has its snapshots held over in the
+session, like its marks.
+
+==============================================================================
+9. Sessions                                                 *frogman-sessions*
+
+Frogman saves its state, per session, in an encrypted file under
+|frogman-config.session_dir|: the windows' triquetras, notes, primary queues
+and histories, the closed lists, the No Name texts, the marks, the snapshots,
+the tags of files gone from disk, and the trail's pages. The key is stretched
+from the session's directory, so a file opens only from where it was saved.
+
+It doesn't care which session manager you use. It needs:
+- |frogman.save_session()| called before the editor is torn down,
+- |frogman.load_session()| called after the session manager restored your
+  buffers and windows,
+- the session you're leaving saved before you switch to another one,
+- for tab sessions, the tab's session saved before its tab closes.
+
+The load matches each saved window to a restored window by the file it
+shows. A slot whose file the session manager didn't bring back is closed,
+and reopens when you use it.
+
+                                                    *frogman-resession*
+resession.nvim ~
+>lua
+  {
+    "stevearc/resession.nvim",
+    lazy = false,
+    config = function()
+      local resession = require("resession")
+      local frogman = require("frogman")
+      resession.setup({
+        -- your configuration...
+      })
+      resession.add_hook("pre_save", function(name, opts, tabpage)
+        frogman.save_session(name, { tab = tabpage })
+      end)
+      resession.add_hook("post_load", function(name, opts)
+        -- a tab session (a load that kept the other tabs) fills its tab
+        local tab = not opts.reset and vim.api.nvim_get_current_tabpage()
+        frogman.load_session(name, { tab = tab or nil })
+      end)
+      resession.add_hook("pre_load", function()
+        -- leave a snapshot showing first: a save is refused while one shows
+        frogman.cancel_preview()
+        resession.save_all({ notify = false })
+      end)
+      vim.api.nvim_create_autocmd("TabClosedPre", {
+        callback = function()
+          local info = resession.get_current_session_info()
+          if info and info.tab_scoped and not resession.is_loading() then
+            frogman.cancel_preview()
+            resession.save_tab(info.name, { dir = info.dir, notify = false })
+          end
+        end,
+      })
+    end,
+    dependencies = { "kampanaut/frogman.nvim" },
+  }
+<
+Optional: with resession's `autosave` on, every tick while a snapshot shows
+pops up frogman's refusal. Nothing is saved and nothing breaks; it's noise.
+To skip it, run the timer yourself and pass over the ticks during a
+preview: >lua
+
+    resession.setup({ autosave = { enabled = false } })
+
+    local autosave = vim.uv.new_timer()
+    autosave:start(300000, 300000, vim.schedule_wrap(function()
+        if not require('frogman').previewing() then
+            resession.save_all({ notify = false })
+        end
+    end))
+
+    vim.api.nvim_create_autocmd("VimLeavePre", {
+        callback = function()
+            resession.save_all({ notify = false })
+        end,
+    })
+<
+                                                    *frogman-mksession*
+Native sessions ~
+
+`save_session(vim.v.this_session)` on |SessionWritePost|,
+`load_session(vim.v.this_session)` on |SessionLoadPost|, and `:mksession!`
+before you `:source` another one.
+
+                                                    *frogman-no-session*
+No session manager ~
+
+Call |frogman.save_session()| yourself, on |VimLeavePre| for example, and
+|frogman.load_session()| when you want it back.
+
+                                                    *frogman-tab-sessions*
+Tab sessions ~
+
+A tab session is a session that lives in one tab: `save_session(name, { tab =
+tabpage })` saves only that tab, and `load_session(name, { tab = tabpage })`
+fills only that tab, leaving the others as they are. Its closed list is its
+own, and so are its marks; in its tab, tab mode and session mode read them.
+
+                                                    *frogman-detached*
+A session lives in one tab at a time. Load or save it into another tab and it
+moves there; the tab it left keeps a copy of its list and its marks, a
+detached list named after it, like `notes_DETACHED`, which the closed lists
+show and the whole editor's session file keeps.
+
+                                                    *frogman-libcrypto*
+Encryption ~
+
+The files are sealed with AES-256-GCM through OpenSSL's libcrypto, which
+frogman loads the first time it needs it. If it can't find the library, a
+save or a load stops with an error naming what it tried; set
+|frogman-config.libcrypto_path| to the library's file.
+
+==============================================================================
+10. The UI                                                        *frogman-ui*
+
+                                                    *frogman-winbar*
+The winbar ~
+
+Each tracked window's winbar shows its ternary, current and secondary
+(|frogman-triquetra|), the primary's number in `⦉N⦊` brackets on whichever
+slot holds it, a glyph for modified buffers, and the tag of a file gone from
+disk. While cycling, it changes colour. To place frogman's segment in a
+winbar of your own, set `winbar.own = false` and call
+|frogman.winbar_segment()|. |:FrogmanWinbar| switches it on and off.
+
+                                                    *frogman-bufferline*
+The bufferline ~
+
+The bufferline colours each buffer by its role (current, secondary, ternary,
+primary, marked) and sorts the buffers by visit, the most recent on the left,
+so you can see how you got to where you are without leaning on <C-o> and
+<C-i>. |frogman-config.bufferline| `history_view` picks the order: `"global"`,
+every window's visits, or `"window"`, the current window's own.
+|:FrogmanBufferline| switches it on and off.
+
+                                                    *frogman-cokeline*
+nvim-cokeline setup ~
+>lua
+  {
+    "willothy/nvim-cokeline",
+    config = function()
+      local bl = require('frogman').bufferline
+      require('cokeline').setup({
+        show_if_buffers_are_at_least = 2,
+        fill_hl = 'Normal',
+        buffers = {
+          -- only the buffers frogman tracks
+          filter_valid = function(buffer)
+            return bl.bufnr_is_displayed(buffer.number)
+          end,
+          filter_visible = false,
+          focus_on_delete = 'prev',
+          -- ordered by the visit history
+          new_buffers_position = function(a, b)
+            return bl.compare_buffers(a.number, b.number)
+          end,
+        },
+        mappings = { cycle_prev_next = true },
+        -- the role colours
+        default_hl = {
+          bg = function(buffer)
+            return bl.get_theme_bg_color(buffer.is_focused)
+          end,
+          fg = function(buffer)
+            return bl.get_theme_fg_color(buffer.number, buffer.is_focused)
+          end,
+          bold = function(buffer)
+            return bl.get_buffer_bold(buffer.number)
+          end,
+        },
+        history = { enabled = false },
+        tabs = {
+          placement = "right",
+          components = bl.cokeline.create_tab_components(),
+        },
+        -- the role marks, the missing-file tag and the marks
+        components = bl.cokeline.create_buffer_components(),
+      })
+    end,
+    dependencies = {
+      "nvim-lua/plenary.nvim",
+      "nvim-tree/nvim-web-devicons",
+      "kampanaut/frogman.nvim",
+    },
+  }
+<
+Optional: cokeline doesn't notice |:tabmove|, so its tabs can show in the old
+order. At the end of cokeline's `config` function: >lua
+
+    local cokeline_tabs = require('cokeline.tabs')
+    local get_tabs = cokeline_tabs.get_tabs
+    cokeline_tabs.get_tabs = function()
+        local cached = get_tabs()
+        for i, tabnr in ipairs(vim.api.nvim_list_tabpages()) do
+            if cached[i] == nil or cached[i].number ~= tabnr then
+                cokeline_tabs.fetch_tabs()
+                return require('cokeline.state').tab_cache
+            end
+        end
+        return cached
+    end
+<
+                                                    *frogman-indicators*
+The indicators ~
+
+The role marks and the marks' aliases cokeline draws are the indicators.
+|:FrogmanIndicators| switches them on and off, `roles` or `marks` alone, or
+both.
+
+==============================================================================
+11. Files gone from disk                                     *frogman-missing*
+
+When a file disappears, after a branch switch for example, frogman keeps it
+in its slots and lists and tags it with where you were when it went, like
+`main.lua ⎇feature`. Using it says it isn't on disk. Once the file is back,
+the tag goes. The label comes from `.git/HEAD` by default;
+|frogman-config.label_provider| changes that.
+
+==============================================================================
+12. The trail                                                  *frogman-trail*
+
+|:FrogmanTrail| shows what frogman did for you, a page per day: where a window
+landed after a delete, a note it rewrote, a file it closed onto another tab's
+list, a session it saved or loaded. Each step starts with what set it off, a
+key, an event, the cleanup timer, a load, and the moves it made hang under
+it.
+
+- H and L go to the day before and after.
+- s searches every page for a file's whole story; `:FrogmanTrail {name}` opens
+  on that search. * in the pop-ups and lists opens it on the line's file.
+- q leaves.
+
+The trail shown is the current tab's session's. Opened from a float, it acts
+on a window of the float's own tab. Its header (a tally of the day's moves, a
+gauge of the days) is set by |frogman-config.trail|.
+
+==============================================================================
+13. When something shouldn't happen                             *frogman-dump*
+
+Frogman keeps its last steps in memory, |frogman-config.ledger| `ring` of
+them. When something that shouldn't happen fires (an assertion, a hook
+failing, a broken rule), it writes them to a file under
+`stdpath("state")/frogman/` and shows them in a window, and a warning says
+where the file is. The file is encrypted like the session files, so it opens
+only from the directory it was written in: |:FrogmanDump|.
+
+                                                    *frogman-replay*
+To replay one, start Neovim in that directory with frogman set up, open no
+file and load no session, then run: >vim
+
+    :lua require('frogman').replay_dump('{file}')
+<
+If your config loads a session at startup, start Neovim with a minimal init
+that only sets frogman up (`nvim -u minimal.lua`). An editor that replayed a
+dump doesn't save its session. When it's done it says what it did in one
+line, such as >text
+
+    frogman: replayed 12 steps, 5 driven, 5 matching, 0 resynced
+<
+Driven steps are your keys and window commands, run again and checked against
+the dump; matching ones came out the same; a resync is a step the replay
+first put back where the dump says it began. A Vim error a replayed step
+raises is noted and the replay goes on. If it stopped, the line says where
+and why.
+
+==============================================================================
+14. Commands                                                *frogman-commands*
+
+                                                            *:FrogmanClosed*
+:FrogmanClosed          Open the closed lists (|frogman-closed-lists|).
+
+                                                            *:FrogmanMarks*
+:FrogmanMarks           Open the marks pop-up on the current mode's marks
+                        (|frogman-marks-popup|).
+
+                                                           *:FrogmanSnapshots*
+:FrogmanSnapshots       Open the window's snapshot list (|frogman-snapshots|).
+
+                                                            *:FrogmanTrail*
+:FrogmanTrail [{name}]  Open the trail (|frogman-trail|); with a name, that
+                        name's story across every page.
+
+                                                            *:FrogmanDump*
+:FrogmanDump {file}     Open a dump, decrypted, in a window. Only from the
+                        directory it was written in (|frogman-dump|).
+
+                                                            *:FrogmanWinbar*
+:FrogmanWinbar [{arg}]  Switch the winbar on or off: {arg} is `on`, `off` or
+                        `toggle`, and no argument toggles.
+
+                                                        *:FrogmanBufferline*
+:FrogmanBufferline [{arg}]
+                        Switch the bufferline on or off, as
+                        |:FrogmanWinbar| does the winbar.
+
+                                                        *:FrogmanIndicators*
+:FrogmanIndicators [{kind}] [{arg}]
+                        Switch the indicators on or off, as |:FrogmanWinbar|
+                        does: {kind} `roles` or `marks` names one of them,
+                        the role marks or the marks' aliases; with none,
+                        both.
+
+                                                    *frogman-debug-commands*
+Debug commands, which print frogman's internal state; what they print can
+change between versions:
+
+                                                    *:FrogmanTriquetra*
+                                                    *:FrogmanTriquetraVerbose*
+                                                    *:FrogmanAllTriquetras*
+                                                    *:FrogmanRegistry*
+                                                    *:FrogmanHistoryData*
+                                                    *:FrogmanNavigationData*
+                                                    *:FrogmanWindowData*
+                                                    *:FrogmanUIData*
+:FrogmanTriquetra       The current window's triquetra.
+:FrogmanTriquetraVerbose
+                        The same, with its notes.
+:FrogmanAllTriquetras   Every window's triquetra.
+:FrogmanRegistry        The registry of files and buffers.
+:FrogmanHistoryData     The history domain's data.
+:FrogmanNavigationData  The navigation domain's data.
+:FrogmanWindowData      The window domain's data.
+:FrogmanUIData          The UI domain's data.
+
+==============================================================================
+15. Lua functions                                                *frogman-api*
+
+All of these are fields of `require('frogman')`.
+
+Setup ~
+                                                            *frogman.setup()*
+setup({opts})           Set frogman up, with {opts} over the defaults
+                        (|frogman-config|). Calling it again starts over from
+                        the defaults.
+
+                                                        *frogman.disable()*
+disable()               Turn frogman off: its autocmds, its timers and its
+                        records stop until |frogman.setup()| runs again.
+
+                                                              *frogman.config*
+config                  The settings in use: the defaults with the options
+                        given to |frogman.setup()| over them. Read it; change
+                        settings through |frogman.setup()|.
+
+Sessions ~
+                                                    *frogman.save_session()*
+save_session({name}, {opts})
+                        Save the session. {name} is the session's name as the
+                        session manager passes it, nil for a nameless save.
+                        {opts}.tab is a tab session's tabpage. Refused, with
+                        an error, while a snapshot shows (|frogman-preview|).
+
+                                                    *frogman.load_session()*
+load_session({name}, {opts})
+                        Load the session, after the session manager restored
+                        the buffers and windows. {opts}.tab is the tabpage a
+                        tab session fills.
+
+                                                    *frogman.cancel_preview()*
+cancel_preview()        Leave a snapshot showing, as a cancel does. Call it
+                        before a session manager's saves.
+
+                                                        *frogman.previewing()*
+previewing()            True while a snapshot shows in a window.
+
+Keys ~
+Each key of |frogman-keys| is also a function, for mappings of your own:
+
+                                                  *frogman.toggle_secondary()*
+                                                    *frogman.toggle_ternary()*
+                                                   *frogman.jump_to_primary()*
+                                                   *frogman.restore_ternary()*
+                                                 *frogman.restore_secondary()*
+                                                    *frogman.toggle_window()*
+                                                    *frogman.cycle_left()*
+                                                    *frogman.cycle_right()*
+                                                    *frogman.cycle_select()*
+                                                    *frogman.set_primary()*
+                                                    *frogman.toggle_primary()*
+                                                    *frogman.delete_buffer()*
+                                                *frogman.reopen_last_closed()*
+                                *frogman.open_primary_buffer_history()*
+                                                 *frogman.open_closed_lists()*
+                                                    *frogman.take_snapshot()*
+                                                    *frogman.open_snapshots()*
+toggle_secondary()              <M-f>
+toggle_ternary()                <M-S-f>
+jump_to_primary()               <M-;><M-f>
+restore_ternary()               <M-;><M-r>
+restore_secondary()             <M-;><M-t>
+toggle_window()                 <M-,>
+cycle_left(), cycle_right()     <M-n>, <M-m>
+cycle_select()                  <M-v>
+set_primary()                   <M-;><M-c>
+toggle_primary()                <M-;><M-x>
+delete_buffer()                 <M-.>
+reopen_last_closed()            <M-S-w>
+open_primary_buffer_history()   <M-;>F
+open_closed_lists()             <M-;>W
+take_snapshot()                 <M-;><M-s>
+open_snapshots()                <M-;>S
+
+Marks ~
+                                                        *frogman.mark_mode()*
+mark_mode({mode})       Switch the marks to `"window"`, `"tab"` or
+                        `"session"` mode.
+
+                                                        *frogman.mark_jump()*
+mark_jump({alias})      Jump to the file {alias} marks in the current mode.
+
+                                                        *frogman.mark_add()*
+mark_add({alias})       Mark the current buffer under {alias}.
+
+                                                        *frogman.mark_popup()*
+mark_popup()            Open the marks pop-up.
+
+The trail and dumps ~
+                                                        *frogman.open_trail()*
+open_trail({name})      Open the trail; with {name}, on that name's search.
+
+                                                       *frogman.replay_dump()*
+replay_dump({path})     Replay a dump (|frogman-replay|).
+
+State ~
+                                                    *frogman.is_cycling()*
+is_cycling()            True while cycling.
+
+                                                *frogman.get_storage_state()*
+                                              *frogman.get_navigation_state()*
+                                                *frogman.get_history_state()*
+get_storage_state(), get_navigation_state(), get_history_state()
+                        The state of each of frogman's machines, a string.
+
+                                              *frogman.get_window_triquetra()*
+get_window_triquetra({winid})
+                        The window's triquetra, its slots and notes holding
+                        file handles (numbers).
+
+                                                *frogman.get_all_triquetras()*
+get_all_triquetras()    Every window's triquetra, by window id.
+
+                                                *frogman.get_buffer_history()*
+get_buffer_history()    The visit history, keyed by file handle.
+
+                                                *frogman.get_smart_basename()*
+get_smart_basename({handle})
+                        A file's shortest name that tells it apart from the
+                        other open files, as the winbar draws it.
+
+UI ~
+                                                    *frogman.winbar_segment()*
+winbar_segment()        The current window's winbar segment, for a winbar of
+                        your own (`winbar.own = false`).
+
+                                   *frogman.set_cache_from_window_triquetra()*
+set_cache_from_window_triquetra({winid})
+                        Rebuild the window's display cache from its
+                        triquetra.
+
+                                                        *frogman.bufferline*
+bufferline              The functions cokeline's setup calls
+                        (|frogman-cokeline|): `bufnr_is_displayed`,
+                        `compare_buffers`, `get_theme_bg_color`,
+                        `get_theme_fg_color`, `get_buffer_bold`, and
+                        `cokeline.create_tab_components`,
+                        `cokeline.create_buffer_components`.
+
+Internals ~
+                                                    *frogman.history*
+                                                    *frogman.window*
+                                                    *frogman.navigation*
+                                                    *frogman.storage*
+                                                    *frogman.ui*
+                                                    *frogman.ledger*
+                                                    *frogman.engine*
+history, window, navigation, storage, ui, ledger, engine
+                        The domains themselves, for debugging; they can change
+                        between versions. `history.get_hash_from_handle(id)`
+                        gives a handle's hash.
+
+==============================================================================
+16. Configuration                                             *frogman-config*
+
+Pass |frogman.setup()| only what you change; everything else keeps its
+default. A list replaces the default list whole.
+
+                                            *frogman-config.session_dir*
+session_dir     Where the session files go.
+                Default: `stdpath("data") .. "/frogman/sessions/"`
+
+                                            *frogman-config.libcrypto_path*
+libcrypto_path  OpenSSL's libcrypto: a full path, or a name the system finds.
+                Tried before frogman's own list; `~` and `$HOME` expand. Read
+                the first time it's needed, and again only when no libcrypto
+                loaded and the option changed since.
+                Default: nil (frogman's list alone)
+
+                                            *frogman-config.label_provider*
+label_provider  Where you are, for tagging files that go missing
+                (|frogman-missing|): nil reads `.git/HEAD`, a function
+                returning a string gives the label, false turns labels off
+                (the tag is then the time).
+                Default: nil
+
+                                            *frogman-config.bufferline*
+bufferline      `history_view`: `"global"` sorts the bufferline by every
+                window's visits, `"window"` by the current window's own.
+                Default: `{ history_view = "global" }`
+
+                            *frogman-config.primary_buffer_history_popup*
+                                    *frogman-config.closed_lists_popup*
+                                    *frogman-config.trail_popup*
+                                    *frogman-config.marks_popup*
+                                    *frogman-config.snapshots_popup*
+primary_buffer_history_popup, closed_lists_popup, trail_popup,
+marks_popup, snapshots_popup
+                Each pop-up's size, `{ height, width }`: a value of at most 1
+                is a share of the editor, a larger one a number of cells.
+                Defaults: the primary pop-up 0.2 by 0.7, the closed lists 0.5
+                by 0.7, the trail 0.8 by 0.8, the marks 0.5 by 0.6, the
+                snapshots 0.4 by 0.8.
+
+                                            *frogman-config.trail*
+trail           `header`: what the trail's header shows, `tally` (the day's
+                moves), `gauge` (the days), `shade` (its fill by depth).
+                Default: `{ header = { tally = true, gauge = true,
+                shade = true } }`
+
+                                            *frogman-config.glyphs*
+glyphs          `set`: `"unicode"` or `"ascii"`, the glyph set the views
+                draw with. A glyph named here, outside the sets, replaces the
+                set's: `glyphs = { group = "#" }`. The sets' glyphs are in
+                `lua/frogman/configs.lua`.
+                Default: `{ set = "unicode", ... }`
+
+                                            *frogman-config.formatters*
+formatters      Your own drawing of `closed_entry`, `trail_step`,
+                `trail_move` and `trail_header`: each a function giving
+                `{ text, highlight }` chunks, or nil for frogman's own.
+                Default: `{}`
+
+                                            *frogman-config.colors*
+colors          The colours of the winbar, the bufferline and the views:
+                `base`, `current`, `secondary`, `ternary` (each `focused` and
+                `unfocused`), `primary` (`active`, `inactive`, `unfocused`),
+                `marked`, `both_way_arrow`, `visit_bar`, `trail` and
+                `cokeline`. Change the base colours first and the rest
+                follows your theme. The full table is in
+                `lua/frogman/configs.lua`.
+
+                                            *frogman-config.keymaps*
+keymaps         Every key of |frogman-keys|, by its action's name, and
+                `views` for the keys inside frogman's views
+                (|frogman-view-keys|). A key set to false isn't mapped.
+                `mark_prefix`, `mark_popup` and `mark_modes` set the marks'
+                keys. Defaults: >lua
+                    reopen_last_closed = "<M-S-w>",
+                    toggle_secondary = "<M-f>",
+                    toggle_ternary = "<M-S-f>",
+                    jump_to_primary = "<M-;><M-f>",
+                    restore_ternary = "<M-;><M-r>",
+                    restore_secondary = "<M-;><M-t>",
+                    toggle_window = "<M-,>",
+                    cycle_left = "<M-n>",
+                    cycle_right = "<M-m>",
+                    cycle_select = "<M-v>",
+                    toggle_primary = "<M-;><M-x>",
+                    set_primary = "<M-;><M-c>",
+                    close_buffer = "<M-.>",
+                    open_primary_buffer_history = "<M-;>F",
+                    open_closed_lists = "<M-;>W",
+                    take_snapshot = "<M-;><M-s>",
+                    open_snapshots = "<M-;>S",
+                    mark_prefix = "<M-'>",
+                    mark_popup = "<M-e>",
+                    mark_modes = { window = "<M-1>", tab = "<M-2>",
+                                   session = "<M-3>" },
+                    views = {
+                        leave = "q", leave_too = "<C-c>",
+                        act = "<CR>", act_and_stay = "gf",
+                        fold = "za",
+                        previous_section = "H", next_section = "L",
+                        pick = "<M-e>", search = "s", search_word = "*",
+                        write = "<C-s>", add = "a", make_primary = "<M-c>",
+                    },
+<
+                                            *frogman-config.ledger*
+ledger          `ring`: how many of the last steps are kept in memory.
+                `dump`: whether something that shouldn't happen writes them
+                to a file and a window (|frogman-dump|).
+                Default: `{ ring = 1000, dump = true }`
+
+                                            *frogman-config.marks*
+marks           `aliases`: each mark's key and its place, one alias to one
+                place. `default_group`: the name of the group a scope gets at
+                its first mark. `split_copies`: whether a new split starts
+                with a copy of its window's marks.
+                Default: >lua
+                    {
+                        aliases = { a = 1, s = 2, d = 3, f = 4,
+                                    u = 5, i = 6, o = 7, p = 8 },
+                        default_group = "main",
+                        split_copies = false,
+                    }
+<
+                                            *frogman-config.winbar*
+winbar          `own`: whether frogman writes the winbar; otherwise
+                |frogman.winbar_segment()| gives its segment to place
+                yourself. `skip_filetypes`: windows of these filetypes get
+                none.
+                Default: `own = true`, and `skip_filetypes` the pickers',
+                completion menus', notifiers' and file trees' filetypes
+                listed in `lua/frogman/configs.lua`.
+
+                                            *frogman-config.toggle_window*
+toggle_window   `skip_filetypes`: <M-,> passes over a previous window of
+                these filetypes.
+                Default: `{ skip_filetypes = { "minimap", "neominimap" } }`
+
+                                            *frogman-config.cleanup_interval*
+cleanup_interval
+                How often frogman's cleanup runs, in milliseconds.
+                Default: 4000
+
+                                    *frogman-config.winbar_refresh_interval*
+winbar_refresh_interval
+                How often the winbar is drawn again, in milliseconds.
+                Default: 140
+
+==============================================================================
+17. Highlight groups                                      *frogman-highlights*
+
+Frogman sets these from |frogman-config.colors| at setup, and again after
+|:colorscheme|; a group your colorscheme defines stays its own.
+
+The winbar ~
+  WinbarBase                      the bar itself
+  WinbarBufnrCurrent, WinbarFilenameCurrent        the current slot
+  WinbarBufnrSecondary, WinbarFilenameSecondary    the secondary slot
+  WinbarBufnrTernary, WinbarFilenameTernary        the ternary slot
+  WinbarBufnrPrimary, WinbarBufnrPrimaryDisabled   the primary's number
+  WinbarVisit                     the bar of a window frogman doesn't track,
+                                  naming what it shows
+  BothWayNerdArrow                the arrow before the secondary
+Each has an `NC` twin for a window without focus, but
+WinbarBufnrPrimaryDisabled.
+
+The trail and the lists ~
+  FrogmanTrailList, FrogmanTrailClosed, FrogmanTrailTime, FrogmanTrailTag,
+  FrogmanTrailDim                 the closed lists' headers and entries,
+                                  shared with the trail
+  FrogmanTrailWave0 .. 3          the trail's fill: today, a week, a month,
+                                  older
+  FrogmanTrailTitle, FrogmanTrailDate, FrogmanTrailDepth,
+  FrogmanTrailCount, FrogmanTrailGauge, FrogmanTrailGaugeNow,
+  FrogmanTrailKeyOn, FrogmanTrailKeyOff, FrogmanTrailGutter,
+  FrogmanTrailCause, FrogmanTrailTrigger, FrogmanTrailName,
+  FrogmanTrailWords, FrogmanTrailRing, FrogmanTrailFold
+                                  the trail's header and steps
+  FrogmanTrailReopened, FrogmanTrailForgot, FrogmanTrailGone,
+  FrogmanTrailBack, FrogmanTrailRepair, FrogmanTrailSlot,
+  FrogmanTrailNote, FrogmanTrailCycle, FrogmanTrailSession,
+  FrogmanTrailRename              the moves, by family
+  FrogmanTrailRowT, FrogmanTrailRowC, FrogmanTrailRowS
+                                  a window's row: ternary, current,
+                                  secondary
+  FrogmanTrailLifeOpen, FrogmanTrailLifeClosed, FrogmanTrailLifeGone
+                                  a search's life line
+
+The snapshot list ~
+  FrogmanOrderPrimary, FrogmanOrderSecondary, FrogmanOrderCurrent,
+  FrogmanOrderTernary, FrogmanOrderMarked, FrogmanOrderOpen
+                                  a snapshot's stored order, by role
+
+==============================================================================
+18. Coming from cavediver                                  *frogman-cavediver*
+
+This plugin was called cavediver before. Do these once, in this order,
+before your first session with frogman:
+
+1. Change your config. The old names are gone, with nothing standing in for
+   them:
+   - `require('cavediver')` becomes `require('frogman')`, the session
+     manager's hooks included.
+   - The commands, `:CavediverClosed`, `:CavediverTrail`, `:CavediverWinbar`
+     and the rest, become `:FrogmanClosed`, `:FrogmanTrail`,
+     `:FrogmanWinbar` and so on.
+   - The highlight groups `CavediverTrail*` become `FrogmanTrail*`.
+   - The filetypes `cavediver-closed-lists`,
+     `cavediver-primary-buffer-history` and `cavediver-trail` become
+     `frogman-closed-lists`, `frogman-primary-buffer-history` and
+     `frogman-trail`.
+   - The augroup `cavediver` becomes `frogman`.
+   - A file is a handle now, a number, where it was a hash:
+     |frogman.get_buffer_history()| is keyed by handles, the triquetras hold
+     handles in their slots and notes, `history.get_closed_buffers()` lists
+     handles, and |frogman.get_smart_basename()| takes one.
+     `require('frogman').history.get_hash_from_handle(id)` gives a handle's
+     hash.
+   The options |frogman.setup()| takes keep their names.
+
+2. Run the migration script, with none of your config loaded: >sh
+
+    nvim --clean -l {frogman}/scripts/migrate_sessions.lua --dry-run
+    nvim --clean -l {frogman}/scripts/migrate_sessions.lua
+<
+   It moves what cavediver saved, the session files in
+   `stdpath("data")/cavediver/sessions/` and the dumps in
+   `stdpath("state")/cavediver/`, into frogman's folders, then converts the
+   session files from before encryption. A file frogman's folder has already
+   stays where it is, and the script names it. With `--session-dir` naming a
+   folder of your own, the session files aren't moved. If your setup sets
+   them, pass `--session-dir`, `--resession-dir` and `--libcrypto-path` too.
+
+   It also gives each tab session's file a name of its own. resession's tab
+   sessions are found through its list; `--tab-session {directory} [{name}]`
+   names one it doesn't list, and can be given more than once.
+
+   Run it before your first session: a session started first saves a fresh
+   file, and the script won't convert over it unless you pass `--replace`. A
+   load that finds an old file tells you the command, with the path for your
+   install.
+
+==============================================================================
+ vim:tw=78:ts=8:noet:ft=help:norl:

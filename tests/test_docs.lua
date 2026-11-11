@@ -309,4 +309,44 @@ T['D14 [char] the desk\'s new-file wipe bug and its repro name the faster trigge
 	eq({ has(desk, 'Sooner still, the next `BufEnter` anywhere wipes it'), has(desk, 'Or skip the wait') }, { true, true })
 end
 
+
+-- The help file is the full manual, written by hand: every option setup() takes, every key action, every
+-- user command and every field of require('frogman') has its tag there, so a new one without its entry
+-- fails here.
+T['T1293 [char] (the user, 2026-11-12: "help as the full manual") doc/frogman.txt has a tag for every option, key, command and function'] = function()
+	local help = read('doc/frogman.txt')
+	local tags = {}
+	for tag in help:gmatch('%*([^%*%s]+)%*') do
+		tags[tag] = true
+	end
+	local child = Helpers.new_child()
+	child.setup()
+	local wanted = child.lua([[
+		local out = {}
+		local configs = require('frogman.configs')
+		for key, value in pairs(configs) do
+			if type(value) ~= 'function' then table.insert(out, 'frogman-config.' .. key) end
+		end
+		for _, key in ipairs({ 'libcrypto_path', 'label_provider' }) do
+			table.insert(out, 'frogman-config.' .. key) -- read when set, absent from the defaults
+		end
+		for action, lhs in pairs(configs.keymaps) do
+			if type(lhs) == 'string' and not action:match('^mark_') then
+				table.insert(out, 'frogman-key-' .. action)
+			end
+		end
+		for name, _ in pairs(vim.api.nvim_get_commands({})) do
+			if name:match('^Frogman') then table.insert(out, ':' .. name) end
+		end
+		for name, value in pairs(require('frogman')) do
+			table.insert(out, 'frogman.' .. name .. (type(value) == 'function' and '()' or ''))
+		end
+		table.sort(out)
+		return out
+	]])
+	child.stop()
+	local missing = vim.tbl_filter(function(tag) return not tags[tag] end, wanted)
+	eq({ wanted = #wanted > 80, missing = missing }, { wanted = true, missing = {} })
+end
+
 return T
