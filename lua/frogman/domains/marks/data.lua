@@ -19,6 +19,7 @@
 ---@field waited integer Counts the groups that waited, naming the place each one's files wait in
 ---@field tab_shows table<integer, { session: string, what: string }> Each tab's session and what it showed, read as tabs close
 ---@field copies table<WinId, { from: WinId, given: table|nil }> The splits that started with a copy of a window's marks: the window, and the marks given, serialised
+---@field joins table<integer, { session: string, what: string|nil }> Each tab that joined a tab session: the session's pool id, and what its marks were held over as (nil with none)
 
 ---@type MarksState
 local corpus = {
@@ -30,6 +31,7 @@ local corpus = {
 	waited = 0,
 	tab_shows = {},
 	copies = {},
+	joins = {},
 }
 
 return corpus

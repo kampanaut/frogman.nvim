@@ -356,8 +356,8 @@ end
 
 ---Find the file a row names: a name the pop-up drew, or a path, from here, to a file.
 ---
----A file the registry knows is given by its handle; one it doesn't yet, by its path's hash, until the
----write registers the path.
+---A file the registry knows is given by its handle, and so is an open file the path is another name of,
+---a symlink to it; one it doesn't know yet, by its path's hash, until the write registers the path.
 ---
 ---@param record MarksPopupBuffer The buffer the row is in
 ---@param file string The row's file as written
@@ -376,6 +376,16 @@ local function resolve(record, file)
 	local id = history.get_handle_from_filepath(path)
 	if id then
 		return id, nil
+	end
+	-- another name of an open file, a symlink to it, is that file, as :e goes to its buffer
+	local real = vim.uv.fs_realpath(path)
+	if real then
+		for _, bufnr in pairs(history.data.hash_buffer_registry.buffers) do
+			local name = vim.api.nvim_buf_get_name(bufnr)
+			if name ~= "" and vim.uv.fs_realpath(name) == real then
+				return history.get_handle_from_buffer(bufnr), nil
+			end
+		end
 	end
 	if vim.fn.filereadable(path) == 1 and vim.fn.isdirectory(path) == 0 then
 		return history.routines.get_filehash(path), path
@@ -528,14 +538,17 @@ end
 ---the group above below its own. Else, renamed, it's the drawn one whose mark comes first under it,
 ---unless a drawn group of its own name and place is still there to be it. Else it's the one of its name
 ---and place. Else, empty, with no mark to follow, it's by position the unclaimed empty drawn group between
----the drawn groups its nearest matched neighbours have. One renamed with every mark changed, or typed in
----under a new name, matches none. A drawn group none matched had its header deleted, and its marks still
----there, beyond another group's own, joined that group.
+---the drawn groups its nearest matched neighbours have; where more empty headers stand between them than
+---empty groups were drawn there, which header stands for which can't be told, and each one taken is named
+---for the write's prompt to ask about. One renamed with every mark changed, or typed in under a new name,
+---matches none. A drawn group none matched had its header deleted, and its marks still there, beyond
+---another group's own, joined that group.
 ---
----@param groups {name: string, rows: {key: string, row: integer}[]}[] The groups written, in order, each mark by its key and its line
----@param drawn {key: string, name: string, rows: string[]}[] The groups drawn, in order
+---@param groups {name: string, row: integer, rows: {key: string, row: integer}[]}[] The groups written, in order, each with its header's line and each mark by its key and its line
+---@param drawn {key: string, name: string, held: boolean|nil, rows: string[]}[] The groups drawn, in order
 ---@return table<integer, integer> match A written group's place → the drawn group's
 ---@return {name: string, into: string, row: integer}[] joined Each drawn group whose header is gone with marks left: its name, the group they joined and the first one's line, a name with its place, `x/2`, when another group has it
+---@return {row: integer, text: string}[] guessed Each empty header taken by its place for a drawn group where more empty headers stand than empty groups were drawn, at its header's line
 local function match_groups(groups, drawn)
 	local match, claimed = {}, {}
 	local function claim(g, d)
@@ -617,7 +630,9 @@ local function match_groups(groups, drawn)
 		end
 	end
 	-- an empty group renamed has no mark to follow, so it follows by position: it's the unclaimed empty drawn
-	-- group standing between the drawn groups its nearest matched neighbours have
+	-- group standing between the drawn groups its nearest matched neighbours have. each one's neighbours are
+	-- read before any is taken, so the empty headers of one gap are counted against its empty drawn groups
+	local gaps, gap_of = {}, {}
 	for g, group in ipairs(groups) do
 		if not match[g] and #group.rows == 0 then
 			local low, high = 0, #drawn + 1
@@ -633,9 +648,32 @@ local function match_groups(groups, drawn)
 					break
 				end
 			end
-			for d = low + 1, high - 1 do
+			local key = low .. ":" .. high
+			if not gaps[key] then
+				local empty = 0
+				for d = low + 1, high - 1 do
+					if not claimed[d] and #drawn[d].rows == 0 then
+						empty = empty + 1
+					end
+				end
+				gaps[key] = { low = low, high = high, headers = 0, empty = empty }
+			end
+			gaps[key].headers = gaps[key].headers + 1
+			gap_of[g] = gaps[key]
+		end
+	end
+	local guessed = {}
+	for g, group in ipairs(groups) do
+		local gap = gap_of[g]
+		if gap then
+			for d = gap.low + 1, gap.high - 1 do
 				if not claimed[d] and #drawn[d].rows == 0 then
 					claim(g, d)
+					if gap.headers > gap.empty then
+						table.insert(guessed, { row = group.row, text = group_glyph() .. " " .. group.name .. "  stands for " ..
+							group_glyph() .. " " .. drawn[d].name .. (drawn[d].held and ", the held-over group" or ", the group") ..
+							" drawn here: more empty headers stand here than empty groups were drawn" })
+					end
 					break
 				end
 			end
@@ -693,7 +731,7 @@ local function match_groups(groups, drawn)
 			end
 		end
 	end
-	return match, joined
+	return match, joined, guessed
 end
 
 ---Read the pop-up's lines into the groups they'd write.
@@ -713,7 +751,7 @@ local function read_groups(record, lines)
 	for row, line in ipairs(lines) do
 		local kind, a, b = read_line(line)
 		if kind == "header" then
-			current = { name = a, marks = {}, rows = {} }
+			current = { name = a, marks = {}, rows = {}, row = row }
 			if named[a] then
 				table.insert(read.items, { row = row, text = line .. "  is a second group of that name" })
 			end
@@ -859,12 +897,13 @@ local function write(record)
 	end
 	local groups, items, fresh = read.groups, read.items, read.fresh
 	local drawn_groups = record.groups_drawn or {}
-	local match, joined = match_groups(groups, drawn_groups)
+	local match, joined, guessed = match_groups(groups, drawn_groups)
 	local moved = moved_groups(match, #groups)
 	for _, gone in ipairs(joined) do
 		table.insert(items, { row = gone.row,
 			text = group_glyph() .. " " .. gone.name .. "'s header is gone: its rows join " .. group_glyph() .. " " .. gone.into })
 	end
+	vim.list_extend(items, guessed)
 	table.sort(items, function(x, y) return x.row < y.row end)
 	if #items > 0 and vim.fn.confirm("frogman: before writing the marks:\n" ..
 			table.concat(vim.tbl_map(function(item) return item.text end, items), "\n") ..
@@ -876,6 +915,30 @@ local function write(record)
 	end
 	for _, path in pairs(fresh) do
 		history.register_filepath(path) -- a file typed by its path, known from now on
+	end
+	local join = record.kind == "tab" and history.data.tab_pools[record.id] and routines().join_of(record.id)
+	if join then
+		-- the tab joined a tab session since its marks were drawn, and tab mode reads the session's marks for it
+		-- now: the lines are held over there, as the join held the tab's own over, and it says so
+		local held = {}
+		for _, group in ipairs(groups) do
+			local marks = {}
+			for alias, ref in pairs(group.marks) do
+				local handle = type(ref) == "number" and history.handles.get(ref) or history.handles.of_hash(ref)
+				if handle then
+					marks[alias] = handle.id
+				end
+			end
+			table.insert(held, { name = group.name, marks = marks })
+		end
+		routines().hold_over(join.session, held, join.what or ("tab on " .. routines().shows(vim.api.nvim_tabpage_get_win(record.id))))
+		local pool = history.data.pools[join.session]
+		local name = pool and (pool.name or vim.fn.fnamemodify(pool.directory or "", ":t")) or "?"
+		vim.notify("frogman: tab " .. vim.api.nvim_tabpage_get_number(record.id) .. " joined the session " .. name ..
+			" since these marks were drawn: they're held over in " .. name .. "'s marks, as the tab's own were.", vim.log.levels.INFO)
+		draw_into(record, nil)
+		M.rescope()
+		return true
 	end
 	local scope = routines().scope(record.kind, record.id, true)
 	-- what came in since the draw: a group held over, or a load's, with marks or none, but for one the
@@ -1179,6 +1242,30 @@ function M.origin()
 		return open.origin
 	end
 	return nil
+end
+
+---Show the scope the pop-up's mode reads for its window now, when that's another than the one it shows: a load
+---of another-named session, or the window's tab joining or leaving a tab session, changes it. Unedited, the
+---pop-up shows that scope's buffer, drawn as the scope stands; edited, it stays as it is, and its write goes
+---where the mode reads, a join's held over (`write`).
+---
+---@return nil
+function M.rescope()
+	closed_unseen()
+	if not is_open() or not M.origin() then
+		return
+	end
+	local kind, id = routines().scope_key(data.mode, open.origin)
+	local record = open.shown
+	if key_of(kind, id) == record.key or edited(record) then
+		return
+	end
+	local target, made = buffer_for(kind, id)
+	if not made and not edited(target) then
+		draw_into(target, nil) -- as its scope stands now
+	end
+	target.mode = data.mode
+	show(target)
 end
 
 ---Open the marks pop-up on the scope the current mode reads for the window you're in, showing that scope's

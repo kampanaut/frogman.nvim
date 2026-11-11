@@ -5728,4 +5728,162 @@ T['T1240 [char] (M15, S2, review round 10) every editable float of frogman\'s is
 	eq(seen, { marks = both, snapshots = both, closed = both, primary = both, plain = false })
 end
 
+
+-- The groups of the scope the given mode reads for the current window: each one's name ('held over' for a
+-- held-over header), whether it's held over, and its marks by alias, each file by its stem.
+local MODE_GROUPS = [[
+	local marks = require('frogman.domains.marks')
+	local H = require('frogman.domains.history')
+	local s = marks.routines.scope(marks.routines.scope_key(..., vim.api.nvim_get_current_win()))
+	return vim.tbl_map(function(g)
+		local named = {}
+		for alias, id in pairs(g.marks) do
+			named[alias] = vim.fn.fnamemodify(H.get_filepath_from_handle(id) or '?', ':t:r')
+		end
+		return { name = g.name:match('^held over') and 'held over' or g.name, held = g.held == true, marks = named }
+	end, s and s.groups or {})
+]]
+
+-- The rows a pop-up's lines draw, alias and file stem, in order.
+local function drawn_rows(lines)
+	local out = {}
+	for _, l in ipairs(lines) do
+		local alias, file = l:match('^(%S+) %-> (%S+)')
+		if alias then table.insert(out, alias .. '=' .. vim.fn.fnamemodify(file, ':t:r')) end
+	end
+	return out
+end
+
+-- Session A has a=a and s=b. A fresh editor, unnamed, has f=c in its session's marks and the pop-up open
+-- on them, unedited, when it loads A: the pop-up shows A's marks.
+T['T1277 [char] (M15, S1 Load, review round 11) an unedited marks pop-up across a load of another-named whole-editor session shows that session\'s marks'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ "<M-'><M-3>", ':e a', ADD .. 'a>', ':e b', ADD .. 's>' })
+	eq(S2.save(child, 'A'), { true })
+	S2.start(child, s)
+	child.steps({ "<M-'><M-3>", ':e c', ADD .. 'f>', OPEN })
+	local before = drawn_rows(popup().lines)
+	child.cmd('wincmd p')
+	Misc.restore(child, { 'a', 'b' }, 'b')
+	eq(S2.load(child, 'A'), { true })
+	child.settle(300)
+	local after = popup()
+	eq({ before = before, after = drawn_rows(after.lines), modified = after.modified, scope = child.lua(MODE_GROUPS, { 'session' }) },
+		{ before = { 'f=c' }, after = { 'a=a', 's=b' }, modified = false,
+			scope = { { name = 'main', held = false, marks = { a = 'a', s = 'b' } } } })
+end
+
+-- Tab 2 has a=b in tab mode, and the pop-up is open on it when the tab is saved as the tab session t: tab
+-- mode reads t's marks from then on, which hold the tab's own held over. Unedited, the pop-up shows t's
+-- marks; edited (s -> c typed), its write holds the lines over in t's marks too, under the join's header,
+-- and says so; tab 2's own marks no mode reads are gone.
+T['T1278 [char] (M15, DESK.md:1330, review round 11) a marks pop-up whose tab joins a tab session: unedited it shows the session\'s marks, edited its write holds them over there'] = function()
+	local s = S2.shared()
+	local function joined(edit)
+		S2.start(child, s)
+		child.cmd('tabnew')
+		child.steps({ "<M-'><M-2>", ':e b', ADD .. 'a>', OPEN })
+		if edit then
+			local lines = popup().lines
+			table.insert(lines, 's -> c.txt')
+			child.lua('vim.api.nvim_buf_set_lines((require("frogman.domains.marks.popup").buffer() or -1), 0, -1, false, ...)', { lines })
+		end
+		child.cmd('wincmd p')
+		eq(child.lua([[return { pcall(require('frogman').save_session, 't', { tab = vim.api.nvim_get_current_tabpage() }) }]]), { true })
+		child.settle(300)
+	end
+	joined(false)
+	local unedited = { rows = drawn_rows(popup().lines), modified = popup().modified, scope = child.lua(MODE_GROUPS, { 'tab' }) }
+	joined(true)
+	child.messages()
+	child.lua('vim.api.nvim_set_current_win(require("frogman.domains.marks.popup").window())')
+	child.cmd('silent! write')
+	child.settle(100)
+	local said = #vim.tbl_filter(function(m) return m.msg:find('joined the session t', 1, true) ~= nil end, child.messages())
+	local tab_scope = child.lua([[return require('frogman.domains.marks').data.scopes.tab[vim.api.nvim_get_current_tabpage()] ~= nil]])
+	child.cmd('wincmd p')
+	eq({ unedited = unedited, said = said, tab_scope = tab_scope, scope = child.lua(MODE_GROUPS, { 'tab' }) },
+		{ unedited = { rows = { 'a=b' }, modified = false,
+			scope = { { name = 'main', held = false, marks = {} }, { name = 'held over', held = true, marks = { a = 'b' } } } },
+			said = 1, tab_scope = false,
+			scope = { { name = 'main', held = false, marks = {} }, { name = 'held over', held = true, marks = { a = 'b' } },
+				{ name = 'held over', held = true, marks = { a = 'b', s = 'c' } } } })
+end
+
+
+-- link.txt is a symlink to a.txt, which is open. A row typed with link.txt marks a.txt itself, as :e
+-- link.txt goes to a.txt's buffer, so the jump goes to it with the slots whole.
+T['T1279 [char] (M15, review round 11) a path typed in the marks pop-up that is a symlink to an open file marks that file'] = function()
+	child.lua([[vim.uv.fs_symlink(_G.FRG_TEST.root .. '/a.txt', _G.FRG_TEST.root .. '/link.txt')]])
+	child.steps({ ':e a', ':e b', OPEN })
+	local lines = popup().lines
+	table.insert(lines, 'a -> link.txt')
+	write_lines(lines)
+	child.cmd('close')
+	child.settle()
+	local marked = child.lua(MODE_GROUPS, { 'window' })
+	local ok = child.lua([[return { pcall(require('frogman').mark_jump, 'a') }]])
+	child.settle(100)
+	eq({ marked = marked, ok = ok, slots = child.slots(), shown = child.shown() },
+		{ marked = { { name = 'main', held = false, marks = { a = 'a' } } }, ok = { true }, slots = '⦉b⦊ [a] ⟦-⟧', shown = 'a' })
+end
+
+
+-- The whole editor's scope holds main and two empty held-over groups, A and B. A header typed in between
+-- them, with B renamed RB, leaves two empty headers where one empty group was drawn: which one stands for B
+-- can't be told by its marks, so the write's prompt asks, naming the header taken for B. No writes
+-- nothing; Yes writes it so. B renamed alone asks nothing.
+T['T1280 [char] (M15, review round 11) a gap with more empty headers than empty groups drawn is asked about, naming the header taken for the held-over group'] = function()
+	local function set_scope()
+		child.lua([[
+			local data = require('frogman.domains.marks.data')
+			data.scopes.session[''] = { groups = {
+				{ name = 'main', marks = {}, default = true },
+				{ name = 'held A', marks = {}, held = true, from = 'w1' },
+				{ name = 'held B', marks = {}, held = true, from = 'w2' },
+			} }
+			require('frogman.domains.marks.routines').hold_scope('session', '')
+		]])
+	end
+	local function headers_edited(insert)
+		local lines = popup().lines
+		for i, line in ipairs(lines) do
+			if line == '❖ held B' then
+				lines[i] = '❖ RB'
+				if insert then table.insert(lines, i, '❖ typed') end
+				break
+			end
+		end
+		return lines
+	end
+	local FLAGS = [[
+		return vim.tbl_map(function(g) return g.name .. (g.held and ' held' or '') .. (g.from and (' from ' .. g.from) or '') end,
+			require('frogman.domains.marks').data.scopes.session[''].groups)
+	]]
+	child.steps({ "<M-'><M-3>" })
+	set_scope()
+	child.steps({ OPEN })
+	child.answer('No')
+	child.prompts()
+	write_lines(headers_edited(true))
+	local refused = { prompts = child.prompts(), modified = popup().modified, scope = child.lua(FLAGS) }
+	child.answer('Yes')
+	child.cmd('silent! write')
+	child.settle(100)
+	local taken = { prompts = #child.prompts(), scope = child.lua(FLAGS) }
+	child.cmd('close')
+	child.settle()
+	set_scope()
+	child.steps({ OPEN })
+	write_lines(headers_edited(false))
+	local alone = { prompts = #child.prompts(), scope = child.lua(FLAGS) }
+	local asked = refused.prompts[1] or ''
+	eq({ asked = #refused.prompts, names = asked:find('❖ typed', 1, true) ~= nil and asked:find('❖ held B', 1, true) ~= nil,
+		modified = refused.modified, refused_scope = refused.scope, taken = taken, alone = alone },
+		{ asked = 1, names = true, modified = true, refused_scope = { 'main', 'held A held from w1', 'held B held from w2' },
+			taken = { prompts = 1, scope = { 'main', 'held A held from w1', 'typed held from w2', 'RB' } },
+			alone = { prompts = 0, scope = { 'main', 'held A held from w1', 'RB held from w2' } } })
+end
+
 return T

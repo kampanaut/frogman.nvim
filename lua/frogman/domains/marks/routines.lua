@@ -169,6 +169,30 @@ function M.drop_scope(kind, id)
 	M.hold_scope(kind, id)
 end
 
+---Note a tab that joined a tab session, once its own marks are held over there: tab mode reads the
+---session's marks for it from then on. An open pop-up shows the scope its mode reads now, and one with
+---edits on the tab's own marks writes them where the join held the tab's over (`popup.rescope()`).
+---
+---@param tabpage integer The tab
+---@param session_id string The session's pool id
+---@param what string|nil What the tab's marks were held over as (nil when it had none and the join named none)
+---@return nil
+function M.joined(tabpage, session_id, what)
+	data.joins[tabpage] = { session = session_id, what = what }
+	local popup = package.loaded['frogman.domains.marks.popup']
+	if popup then
+		popup.rescope()
+	end
+end
+
+---Get the session a tab joined, and what its marks were held over as there.
+---
+---@param tabpage integer The tab
+---@return { session: string, what: string|nil }|nil join
+function M.join_of(tabpage)
+	return data.joins[tabpage]
+end
+
 ---Let every scope go, as a whole-editor load from idle starts from nothing.
 ---
 ---@return nil
@@ -184,6 +208,7 @@ function M.teardown()
 	data.pending = {} -- what was queued to be held over goes with the rest
 	data.tab_shows = {}
 	data.copies = {}
+	data.joins = {}
 	local popup = package.loaded['frogman.domains.marks.popup']
 	if popup then
 		popup.every_scope_changed() -- an open pop-up with nothing unwritten shows the scopes as the load leaves them

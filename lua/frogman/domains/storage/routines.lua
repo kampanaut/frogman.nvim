@@ -1038,9 +1038,11 @@ end
 local function tab_marks_held_over(tabpage, session_id, what)
 	local scope = marks().scope("tab", tabpage)
 	if scope then
-		marks().hold_over(session_id, scope.groups, what or ("tab on " .. marks().shows(vim.api.nvim_tabpage_get_win(tabpage))))
+		what = what or ("tab on " .. marks().shows(vim.api.nvim_tabpage_get_win(tabpage)))
+		marks().hold_over(session_id, scope.groups, what)
 		marks().drop_scope("tab", tabpage)
 	end
+	marks().joined(tabpage, session_id, what) -- with nothing held over and no name given, a later write names the tab
 end
 
 ---Get the window entries a detached list waits on, its tab taking them back when it comes back: those

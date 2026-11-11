@@ -28,6 +28,14 @@ storageSM:on(storageStates.IDLE, storageStates.BARE, "marks_teardown", function(
 	routines.teardown()
 end, 2.5, true)
 
+-- a load done: an open pop-up shows the scope its mode reads now, another session's when it was another's,
+-- once the load's own settle work has run
+storageSM:on(storageStates.LOADING, storageStates.IDLE, "marks_popup_rescope", function()
+	require('frogman.settle').later("marks pop-up after a load", function()
+		M.popup.rescope()
+	end)
+end, 4, true)
+
 ---Create the marks domain's autocmds in frogman's augroup.
 ---
 ---Called by setup(), so nothing runs at require. A closed window's marks, and a closed tab's, are held
