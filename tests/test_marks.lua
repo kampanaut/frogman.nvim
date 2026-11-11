@@ -5886,4 +5886,40 @@ T['T1280 [char] (M15, review round 11) a gap with more empty headers than empty 
 			alone = { prompts = 0, scope = { 'main', 'held A held from w1', 'RB held from w2' } } })
 end
 
+
+-- Tab 2 is the tab session t's, a=b in tab mode, and the pop-up open there with `s -> c.txt` typed when t is
+-- loaded into tab 3: t moves there, and tab 2 keeps a copy of its marks, which tab mode reads from then on.
+-- The write holds the lines over in that copy, saying so, and t's own marks stay as they were.
+T['T1292 [char] (M15, review round 11; the user, 2026-11-11: "The tab\'s copy, held over (Recommended)") a marks pop-up whose session moves to another tab holds its edits over in the copy its tab keeps'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.cmd('tabnew')
+	child.steps({ ':e b' })
+	eq(child.lua([[return { pcall(require('frogman').save_session, 't', { tab = vim.api.nvim_get_current_tabpage() }) }]]), { true })
+	child.steps({ "<M-'><M-2>", ADD .. 'a>', OPEN })
+	local lines = popup().lines
+	table.insert(lines, 's -> c.txt')
+	child.lua('vim.api.nvim_buf_set_lines((require("frogman.domains.marks.popup").buffer() or -1), 0, -1, false, ...)', { lines })
+	child.cmd('wincmd p')
+	eq(child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit b.txt')
+		return { pcall(require('frogman').load_session, 't', { tab = vim.api.nvim_get_current_tabpage() }) }
+	]]), { true })
+	child.settle(300)
+	child.cmd('tabprevious')
+	child.lua('vim.api.nvim_set_current_win(require("frogman.domains.marks.popup").window())')
+	child.messages()
+	child.cmd('silent! write')
+	child.settle(100)
+	local said = #vim.tbl_filter(function(m) return m.msg:find("moved to tab 3 since these marks were drawn", 1, true) ~= nil end, child.messages())
+	child.cmd('wincmd p')
+	local copy = child.lua(MODE_GROUPS, { 'tab' })
+	child.cmd('tabnext')
+	eq({ said = said, copy = copy, t = child.lua(MODE_GROUPS, { 'tab' }) },
+		{ said = 1,
+			copy = { { name = 'main', held = false, marks = { a = 'b' } }, { name = 'held over', held = true, marks = { a = 'b', s = 'c' } } },
+			t = { { name = 'main', held = false, marks = { a = 'b' } } } })
+end
+
 return T

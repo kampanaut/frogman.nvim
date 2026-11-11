@@ -859,6 +859,53 @@ local function drawn_already(record, group)
 	return false
 end
 
+---Find where a buffer's lines go when the scope its mode reads for its tab moved since they were drawn, and
+---the words that say so: a tab's own marks, the tab having joined a tab session since, go into the session's
+---marks, under what the join held the tab's own over as; a session's marks, the session having moved to
+---another tab since and this tab kept a copy of its list, go into that copy, the marks this tab reads now.
+---Held over either way.
+---
+---@param record MarksPopupBuffer The buffer being written
+---@return {session: string, what: string, words: string}|nil moved Nil when its scope is still the one read
+local function moved_to(record)
+	local function name_of(pool)
+		return pool and (pool.name or vim.fn.fnamemodify(pool.directory or "", ":t")) or "?"
+	end
+	if record.kind == "tab" then
+		local join = history.data.tab_pools[record.id] and routines().join_of(record.id)
+		if not join then
+			return nil
+		end
+		local name = name_of(history.data.pools[join.session])
+		return {
+			session = join.session,
+			what = join.what or ("tab on " .. routines().shows(vim.api.nvim_tabpage_get_win(record.id))),
+			words = "frogman: tab " .. vim.api.nvim_tabpage_get_number(record.id) .. " joined the session " .. name ..
+				" since these marks were drawn: they're held over in " .. name .. "'s marks, as the tab's own were.",
+		}
+	end
+	local origin = M.origin()
+	if record.kind ~= "session" or record.id == "" or not origin then
+		return nil
+	end
+	local kind, id = routines().scope_key(record.mode or data.mode, origin)
+	local copy = kind == "session" and id ~= record.id and history.data.pools[id] or nil
+	if not (copy and copy.detached and copy.of == record.id) then
+		return nil
+	end
+	local session = history.data.pools[record.id]
+	local name = name_of(session)
+	local there = session and next(session.tabs)
+	local where = there and vim.api.nvim_tabpage_is_valid(there) and (" to tab " .. vim.api.nvim_tabpage_get_number(there)) or ""
+	local here = vim.api.nvim_tabpage_get_number(vim.api.nvim_win_get_tabpage(origin))
+	return {
+		session = id,
+		what = name .. ", written after it moved" .. where,
+		words = "frogman: " .. name .. " moved" .. where .. " since these marks were drawn: they're held over in tab " ..
+			here .. "'s copy, " .. copy.name .. ", the marks this tab reads now.",
+	}
+end
+
 ---Write a scope's buffer's lines into the scope.
 ---
 ---Lines that hold no edits write nothing. A row naming a file above the first header, or an alias that
@@ -916,10 +963,10 @@ local function write(record)
 	for _, path in pairs(fresh) do
 		history.register_filepath(path) -- a file typed by its path, known from now on
 	end
-	local join = record.kind == "tab" and history.data.tab_pools[record.id] and routines().join_of(record.id)
-	if join then
-		-- the tab joined a tab session since its marks were drawn, and tab mode reads the session's marks for it
-		-- now: the lines are held over there, as the join held the tab's own over, and it says so
+	local elsewhere = moved_to(record)
+	if elsewhere then
+		-- the scope its mode reads for its tab moved since the marks were drawn: the lines are held over where
+		-- the mode reads now, and it says so
 		local held = {}
 		for _, group in ipairs(groups) do
 			local marks = {}
@@ -931,11 +978,8 @@ local function write(record)
 			end
 			table.insert(held, { name = group.name, marks = marks })
 		end
-		routines().hold_over(join.session, held, join.what or ("tab on " .. routines().shows(vim.api.nvim_tabpage_get_win(record.id))))
-		local pool = history.data.pools[join.session]
-		local name = pool and (pool.name or vim.fn.fnamemodify(pool.directory or "", ":t")) or "?"
-		vim.notify("frogman: tab " .. vim.api.nvim_tabpage_get_number(record.id) .. " joined the session " .. name ..
-			" since these marks were drawn: they're held over in " .. name .. "'s marks, as the tab's own were.", vim.log.levels.INFO)
+		routines().hold_over(elsewhere.session, held, elsewhere.what)
+		vim.notify(elsewhere.words, vim.log.levels.INFO)
 		draw_into(record, nil)
 		M.rescope()
 		return true
