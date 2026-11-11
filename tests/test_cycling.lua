@@ -1646,4 +1646,22 @@ T['T822 [char] (A26, M2 Holders) a replay\'s planted closed files are held by th
 	]]), { listed = true, held = true, known = true })
 end
 
+T['T1241 [char] (A8, review round 10) <M-;><M-f> mid-cycle on a start that can no longer come back says so and changes nothing'] = function()
+	-- the start an empty No Name buffer that Neovim reuses for the next :e, so its handle has no buffer and nothing keeps it closed
+	child.steps({ ':e a', ':e b', ':e c', ':e d' })
+	child.cmd('enew')
+	child.settle()
+	child.steps({ '<M-n>', '<M-;><M-f>' })
+	child.cmd('edit f.txt')
+	child.settle()
+	child.messages()
+	local before = { shown = child.shown(), slots = child.slots() }
+	local dumps = child.dump_files()
+	local ok, err = child.step('<M-;><M-f>')
+	local said = vim.tbl_map(function(m) return m.msg end, child.messages())
+	eq({ ok = ok, err = err, dump = child.dumped_since(dumps), state = child.state(), shown = child.shown(), slots = child.slots() == before.slots,
+		said = #vim.tbl_filter(function(m) return m:find("can't be reopened", 1, true) ~= nil end, said) },
+		{ ok = true, err = nil, dump = nil, state = CYCLING, shown = before.shown, slots = true, said = 1 })
+end
+
 return T

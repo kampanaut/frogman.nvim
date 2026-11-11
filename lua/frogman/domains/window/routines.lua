@@ -1134,7 +1134,11 @@ function M.jump_to_primary(winid)
 		end
 
 		if not origin_bufnr then
-			require('frogman.domains.ledger').never("This should not happen. Origin buffer not found for current slot: " .. tostring(cycling_origins.current_slot))
+			-- the start has no buffer and nothing keeps it closed, as an empty No Name buffer Neovim took for the
+			-- next :e: it can't come back, so the key says so and changes nothing, as for a start gone from disk
+			vim.notify(ui_get_basename(cycling_origins.current_slot) ..
+				" was the cycle's start and can't be reopened, so the window stays as it is.", vim.log.levels.WARN)
+			return
 		end
 
 		vim.api.nvim_set_current_buf(origin_bufnr)
