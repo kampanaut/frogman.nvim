@@ -1889,6 +1889,7 @@ T['T1265 [char] (I1, A12, review round 11) a cycle started on a shown file that 
 		{ before = '⦉c⦊ [d] ⟦-⟧', ok = true, dumped = nil, twice = false })
 end
 
+
 -- A cycle runs in the right window; one batch goes to the left window, opens
 -- e there and comes back. The jump ends the cycle, as when the keys are typed
 -- one by one: the right window goes back to its start, and e is taken in on
@@ -1903,6 +1904,47 @@ T['T1270 [char] (A12, M9, review round 11) a batch that goes to another window d
 	child.settle(300)
 	eq({ cycling = cycling, state = child.state(), right = child.slots(right), right_shows = child.shown(right), left = child.slots(left) },
 		{ cycling = CYCLING, state = NORMAL, right = '⦉c⦊ [d] ⟦-⟧', right_shows = 'd', left = '⦉a⦊ [e] ⟦-⟧' })
+end
+
+
+-- With 'modifiable' off globally, every new buffer starts off it. A No Name
+-- text reopened from the closed list still gets its lines, and comes back
+-- off it as :enew's would; the dump's window still gets its rows.
+T['T1272 [char] (A16, A26, review round 11) a global nomodifiable breaks neither a No Name text\'s reopen nor the dump window'] = function()
+	child.steps({ ':e a' })
+	child.cmd('enew')
+	child.lua([[vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'kept text' })]])
+	child.settle()
+	child.steps({ '<M-.>' })
+	child.cmd('set nomodifiable')
+	local ok, err = child.step('<M-S-w>')
+	local reopened = child.lua('return { lines = vim.api.nvim_buf_get_lines(0, 0, -1, false), modifiable = vim.bo.modifiable }')
+	child.lua([[pcall(require('frogman.domains.ledger').never, 'planted under nomodifiable')]])
+	child.settle(300)
+	local dump = child.lua([[
+		for _, w in ipairs(vim.api.nvim_list_wins()) do
+			local b = vim.api.nvim_win_get_buf(w)
+			if vim.b[b].frogman_dump then return vim.api.nvim_buf_line_count(b) > 1 end
+		end
+		return 'no dump window'
+	]])
+	child.cmd('set modifiable')
+	eq({ ok = ok, err = err, reopened = reopened, dump = dump },
+		{ ok = true, reopened = { lines = { 'kept text' }, modifiable = false }, dump = true })
+end
+
+
+-- The second :enew from an empty No Name buffer: Neovim reuses that buffer in place for the new one, its
+-- No Name self closing. The replay gives it the id the recorded row names, so the step after matches.
+T['T1282 [char] (A26, review round 11) a replay keeps the No Name id when Neovim reuses the empty buffer in place for :enew'] = function()
+	local r = made_and_replayed(function()
+		child.steps({ ':e a' })
+		typed(':enew<CR>')
+		typed(':enew<CR>')
+		typed(':e c.txt<CR>')
+	end)
+	eq({ failure = r.failure, driven = r.driven >= 3, mismatches = #r.mismatches, resynced = r.resynced },
+		{ failure = nil, driven = true, mismatches = 0, resynced = 0 })
 end
 
 return T

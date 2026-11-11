@@ -387,7 +387,8 @@ end
 ---A No Name buffer is known by an id of its own, so the one `:enew` makes here would be another
 ---file than the original's, and every row after it would name another. The window's buffer,
 ---unnamed and not taken in yet, takes the id of the No Name text the recorded row shows, which
----no buffer here has, before its arrival is taken in.
+---no buffer here has, before its arrival is taken in. So does an empty one Neovim reused in place for
+---the new one, whose No Name self is closing still under its old id.
 ---
 ---@param winid WinId The window the command ran in
 ---@param after table|nil The step's recorded row after it
@@ -401,8 +402,10 @@ local function same_noname(winid, after, files)
 	end
 	local history = require('frogman.domains.history')
 	local bufnr = vim.api.nvim_win_get_buf(winid)
-	if history.get_buffer_from_hash(hash) or vim.api.nvim_buf_get_name(bufnr) ~= "" or vim.b[bufnr].frogman_noname
-		or history.get_hash_from_buffer(bufnr) then
+	-- reused in place: the No Name text it was is closing, its id and registration going with it
+	local reused = history.data.closing[bufnr] ~= nil
+	if history.get_buffer_from_hash(hash) or vim.api.nvim_buf_get_name(bufnr) ~= ""
+		or (not reused and (vim.b[bufnr].frogman_noname or history.get_hash_from_buffer(bufnr))) then
 		return
 	end
 	vim.b[bufnr].frogman_noname = path:sub(#"NONAME_" + 1)

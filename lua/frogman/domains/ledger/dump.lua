@@ -340,6 +340,7 @@ local function show(name, lines, enter)
 		vim.bo[buf].bufhidden = "wipe"
 		vim.bo[buf].swapfile = false
 		pcall(vim.api.nvim_buf_set_name, buf, "frogman://" .. name)
+		vim.bo[buf].modifiable = true -- a new buffer takes it off with the option off globally
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 		vim.bo[buf].modifiable = false
 		local width = math.max(20, math.min(vim.o.columns - 4, math.floor(vim.o.columns * 0.8)))

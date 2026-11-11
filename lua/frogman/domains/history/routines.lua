@@ -1166,14 +1166,18 @@ end
 ---Make a listed buffer holding a saved No Name text.
 ---
 ---The buffer is shown in no window, and its cursor goes back in the window that shows it, once
----one does.
+---one does. It takes 'modifiable' as a new buffer takes it, after its lines go in, with the option
+---off globally too.
 ---
 ---@param text { lines: string[], filetype: string, cursor: integer[] } The saved text
 ---@return Bufnr bufnr The new buffer
 function M.buffer_from_text(text)
 	local bufnr = vim.api.nvim_create_buf(true, false)
 
+	local modifiable = vim.bo[bufnr].modifiable
+	vim.bo[bufnr].modifiable = true
 	vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, text.lines)
+	vim.bo[bufnr].modifiable = modifiable
 	vim.bo[bufnr].filetype = text.filetype
 	-- the cursor goes back in the window that shows the buffer, once one does.
 	local cursor = text.cursor
