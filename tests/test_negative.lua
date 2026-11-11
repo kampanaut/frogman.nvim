@@ -1011,4 +1011,23 @@ T['T1229 [char] (M12, review round 9) :bwipeout of a buffer another window shows
 	eq({ messages = Extra.at_least(child.messages()), dumped = child.dumped_since(before) }, { messages = {} })
 end
 
+T['T1242 [char] (M12, review round 10) wiping an empty buffer another window holds as its secondary writes no dump, and nothing is said'] = function()
+	-- other windows draw their winbar from the buffer numbers their cache held, which the wipe's let-go clears only once its
+	-- queued work runs; a settle item between draws them
+	child.cmd('tabnew')
+	child.settle()
+	child.steps({ '<M-,>', '<M-f>' })
+	child.cmd('tabnew')
+	child.settle()
+	child.cmd('tabprevious')
+	child.settle()
+	child.cmd('tabprevious')
+	child.settle()
+	local before = child.dump_files()
+	child.messages()
+	child.cmd('bwipeout')
+	child.settle(400)
+	eq({ messages = Extra.at_least(child.messages()), dumped = child.dumped_since(before) }, { messages = {} })
+end
+
 return T

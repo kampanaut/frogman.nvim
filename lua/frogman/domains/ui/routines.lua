@@ -1512,6 +1512,9 @@ function M.get_smart_basename(id)
 			return display_name
 		end
 		name = (vim.api.nvim_buf_is_valid(bufnr) or "") and vim.api.nvim_buf_get_name(bufnr)
+	elseif filepath:match("^NONAME_") then
+		-- a No Name text with no buffer is named as the closed lists name it, by its first line
+		return (closed_entry_name(id, M.glyphs()))
 	else
 		name = filepath
 	end
@@ -1809,6 +1812,18 @@ function M.winbar_segment(winid)
 	return winbar_segments[winid] or ""
 end
 
+---Tell whether a buffer a window's display cache names holds changes not written.
+---
+---A window's cache is built when it was last the tracked window, and a wiped buffer's let-go clears
+---the slots naming it only once the editor settles, so a winbar drawn in between can name a buffer
+---that's gone: that one holds nothing.
+---
+---@param bufnr Bufnr|nil The buffer the cache names
+---@return boolean modified True for a buffer still there with changes not written
+local function cached_modified(bufnr)
+	return bufnr ~= nil and vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].modified
+end
+
 ---@param winid WinId
 ---@param theme UITriquetraTheme
 local function construct_winbar_string(winid, theme)
@@ -1920,7 +1935,7 @@ local function construct_winbar_string(winid, theme)
 		return
 	end
 
-	if vim.bo[triquetra.current_bufnr].modified then
+	if cached_modified(triquetra.current_bufnr) then
 		display_string = display_string .. string.format(
 			"%%#%s#" .. fmt_cbufnr .. " %%#%s#%s%%#%s#  ",
 			theme.current_slot_bufnr, triquetra.current_bufnr, theme.current_slot_filename,
@@ -1945,7 +1960,7 @@ local function construct_winbar_string(winid, theme)
 
 	if triquetra.has_secondary then
 		if not triquetra.deleted_slots.secondary then
-			if vim.bo[triquetra.secondary_bufnr].modified then
+			if cached_modified(triquetra.secondary_bufnr) then
 				display_string = display_string .. string.format(
 					"%%#%s#   %%#%s#" .. fmt_sbufnr .. " %%#%s#%s  ",
 					theme.both_way_arrow, theme.secondary_slot_bufnr, triquetra.secondary_bufnr,

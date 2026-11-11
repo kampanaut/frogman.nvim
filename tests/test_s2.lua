@@ -6023,4 +6023,20 @@ vim.cmd('qa!')
 	eq({ code = r.code, out = decoded }, { code = 0, out = { before = { float = true, modified = true }, ok = false, err = 'E445', tabs = 2, back = true, modified = true } })
 end
 
+T['T1243 [char] (M12, S2, review round 10) a closed No Name text is named by its first line, as the closed lists name it, not by its internal name'] = function()
+	child.setup()
+	child.steps({ ':e a' })
+	S2.noname(child, { 'TODO: fix the thing', 'more' }, 'lua')
+	child.steps({ '<M-.>' })
+	local name = child.lua([[
+		local history = require('frogman.domains.history')
+		for _, id in ipairs(history.get_closed_buffers()) do
+			if (history.get_filepath_from_handle(id) or ''):match('^NONAME_') then
+				return require('frogman.domains.ui').routines.get_smart_basename(id)
+			end
+		end
+	]])
+	eq(name, '[No Name] "TODO: fix the thing"')
+end
+
 return T
