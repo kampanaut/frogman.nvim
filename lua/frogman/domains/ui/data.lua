@@ -36,6 +36,7 @@
 ---@field loaded_slots SlotMasks Which slots reference valid buffers
 ---@field deleted_slots SlotMasks Which slots reference deleted files
 ---@field visiting string|nil Label of the untracked buffer the window visits (its number and buftype or filetype)
+---@field slots {current: HandleId|nil, secondary: HandleId|nil, ternary: HandleId|nil, primary: HandleId|nil} Each slot's file's handle, the primary the queue's first
 
 ---@class UITriquetraTheme Triquetra theme configuration
 ---@field base "WinbarBase"|"WinbarBaseNC" Base highlight group for active/inactive winbar
@@ -153,7 +154,8 @@ function M.get_or_create_window_display_cache(winid)
 			deleted_slots = {
 				secondary = false,
 				ternary = false,
-			}
+			},
+			slots = {},
         }
     end
     return window_display_cache[winid]

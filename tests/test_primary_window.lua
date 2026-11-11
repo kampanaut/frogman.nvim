@@ -616,4 +616,132 @@ T['T496 [char] (A18, I4) a queue entry closed with <M-.> survives the pop-up\'s 
 	eq({ primary = child.primary(w), errors = Extra.at_least(child.messages()) }, { primary = '[a,b]on', errors = {} })
 end
 
+
+-- The queue is the new window's; the pop-up opens on it, and then that window
+-- is closed. A write has no queue to go into: it's refused, the edits kept;
+-- leaving drops them, saying so. Nothing that shouldn't happen does.
+T['T1273 [char] (A18, review round 11) the primary pop-up whose window is gone refuses :w keeping the edits, and q leaves dropping them'] = function()
+	child.steps({ ':e a' })
+	child.cmd('vsplit')
+	child.steps({ ':e b', '<M-;><M-c>' })
+	local w = child.win()
+	local pw = open()
+	child.lua('vim.api.nvim_win_close(..., false)', { w })
+	child.settle()
+	child.lua('vim.api.nvim_set_current_win(...)', { pw })
+	child.popup_set({ 'a.txt', 'b.txt' })
+	child.messages()
+	local dumps = child.dump_files()
+	local wrote = child.lua('return { pcall(vim.cmd, "write") }')
+	child.settle()
+	local after_write = { modified = child.lua('return vim.bo.modified'), lines = child.popup_lines(),
+		said = Extra.has(child.messages(), 'the window this queue was for is gone, so it isn\'t written.') }
+	local ok = child.step('q')
+	settle_close()
+	eq({ wrote = wrote[1], after_write = after_write, ok = ok, open = child.popup() ~= nil,
+		said = Extra.has(child.messages(), 'the window these were for is gone: the edits are dropped.'), dumped = child.dumped_since(dumps) },
+		{ wrote = true, after_write = { modified = true, lines = { 'a.txt', 'b.txt' }, said = true }, ok = true, open = false, said = true })
+end
+
+-- A whole-editor load while the pop-up is open replaces its window's queue.
+-- Unedited, the pop-up shows the loaded queue; edited, :w makes its lines the
+-- queue and the loaded queue's other entries follow, none twice (a is in both).
+T['T1274 [char] (A18, S1 Load, review round 11) the primary pop-up across a whole-editor load: unedited it\'s drawn again, edited :w puts its lines first'] = function()
+	local w = queue_ba()
+	eq(child.lua([[return { pcall(require('frogman').save_session, 'S1') }]]), { true })
+	child.steps({ ':e c', '<M-;><M-c>' })
+	eq(child.primary(w), '[c,b,a]on')
+	local pw = open()
+	-- the window shows b again first, as a session manager's restore would: the load matches it by that
+	local function load_from_window()
+		child.lua('vim.api.nvim_set_current_win(...)', { w })
+		child.steps({ ':e b' })
+		eq(child.lua([[return { pcall(require('frogman').load_session, 'S1') }]]), { true })
+		child.settle(300)
+		child.lua('vim.api.nvim_set_current_win(...)', { pw })
+	end
+	load_from_window()
+	local unedited = { lines = child.popup_lines(), modified = child.lua('return vim.bo.modified') }
+	child.lua('vim.api.nvim_win_close(..., true)', { pw })
+	settle_close()
+	child.lua('vim.api.nvim_set_current_win(...)', { w })
+	child.steps({ ':e c', '<M-;><M-c>' })
+	pw = open()
+	child.popup_set({ 'd.txt', 'a.txt' })
+	load_from_window()
+	local edited = child.popup_lines()
+	local wrote = child.lua('return { pcall(vim.cmd, "write") }')
+	child.settle()
+	eq({ unedited = unedited, edited = edited, wrote = wrote[1], queue = child.primary(w) },
+		{ unedited = { lines = { 'b.txt', 'a.txt' }, modified = false }, edited = { 'd.txt', 'a.txt' }, wrote = true, queue = '[d,a,b]on' })
+end
+
+-- A file typed into the pop-up and written is drawn by its short name; * on
+-- that line follows that file, not a file of that name where Neovim is.
+T['T1275 [char] (A18, A27, review round 11) * in the primary pop-up on a line drawn by a write follows that line\'s file'] = function()
+	child.lua([[
+		vim.fn.mkdir(_G.FRG_TEST.root .. '/sub/dir', 'p')
+		vim.fn.writefile({ 'foo' }, _G.FRG_TEST.root .. '/sub/dir/foo.txt')
+	]])
+	child.steps({ ':e a', '<M-;><M-c>' })
+	open()
+	child.popup_set({ 'a.txt', 'sub/dir/foo.txt' })
+	child.cmd('write')
+	child.settle()
+	local drawn = child.popup_lines()
+	child.lua([[
+		_G.FRG_FOLLOWED = nil
+		require('frogman.domains.ui.trail').follow = function(_, path) _G.FRG_FOLLOWED = path end
+		vim.api.nvim_win_set_cursor(0, { 2, 0 })
+	]])
+	child.steps({ '*' })
+	eq({ drawn = drawn, followed = child.lua('return _G.FRG_FOLLOWED and vim.fn.fnamemodify(_G.FRG_FOLLOWED, ":.")') },
+		{ drawn = { 'a.txt', 'foo.txt' }, followed = 'sub/dir/foo.txt' })
+end
+
+-- The pop-up's buffer in a split of its own: <CR> there acts on the line under
+-- that window's cursor.
+T['T1276 [char] (A18, review round 11) <CR> in a split of the primary pop-up acts on the line under that split\'s cursor'] = function()
+	child.steps({ ':e c', '<M-;><M-c>', ':e d', '<M-;><M-c>', ':e e', '<M-;><M-c>' })
+	local w = child.win()
+	eq(child.primary(w), '[e,d,c]on')
+	open()
+	child.cmd('split')
+	child.settle()
+	child.lua('vim.api.nvim_win_set_cursor(0, { 3, 0 })')
+	child.steps({ '<CR>' })
+	settle_close()
+	eq(child.primary(w), '[c,e,d]on')
+end
+
+
+-- A tab session loaded into another tab leaves this window's queue as it was: the pop-up's edits, a.txt
+-- deleted, are written as typed, nothing brought back after them.
+T['T1287 [char] (A18, S1 Load, review round 11) a load that leaves the pop-up\'s window alone adds nothing to its edited write'] = function()
+	child.cmd('tabnew')
+	child.steps({ ':e c', ':e d' })
+	eq(child.lua([[return { pcall(require('frogman').save_session, 't', { tab = vim.api.nvim_get_current_tabpage() }) }]]), { true })
+	child.cmd('tabprevious')
+	child.settle()
+	local w = queue_ba()
+	open()
+	child.popup_set({ 'b.txt' })
+	child.lua([[
+		vim.cmd('noautocmd tabnew')
+		vim.cmd('noautocmd edit d.txt')
+		_G.FRG_T1287 = { pcall(require('frogman').load_session, 't', { tab = vim.api.nvim_get_current_tabpage() }) }
+	]])
+	child.settle(300)
+	child.cmd('tabfirst')
+	child.lua([[
+		for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+			if vim.api.nvim_win_get_config(win).relative ~= '' then vim.api.nvim_set_current_win(win) end
+		end
+	]])
+	local wrote = child.lua('return { pcall(vim.cmd, "write") }')
+	child.settle()
+	eq({ loaded = child.lua('return _G.FRG_T1287'), wrote = wrote[1], queue = child.primary(w) },
+		{ loaded = { true }, wrote = true, queue = '[b]on' })
+end
+
 return T

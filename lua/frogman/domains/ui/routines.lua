@@ -188,7 +188,27 @@ function M.pick_into_primary_popup(dbuf)
 	end)
 end
 
+-- each open primary pop-up, by its buffer: what draws it again from its window's queue as it is now
+---@type table<Bufnr, { live: fun(): WindowTriquetra|nil, draw: fun() }>
+local primary_popups = {}
+
+---Draw every open primary pop-up again that holds no edits, from its window's queue as a load left it.
+---
+---@return nil
+function M.primary_popups_loaded()
+	for dbuf, popup in pairs(primary_popups) do
+		if vim.api.nvim_buf_is_valid(dbuf) and not vim.bo[dbuf].modified and popup.live() then
+			popup.draw()
+		end
+	end
+end
+
 ---Display primary buffer history managgement floating window.
+---
+---The pop-up edits the queue of the window it's opened from, read as it is at each use: a load that
+---replaces that queue draws an unedited pop-up again, and a write after one puts its lines first, the
+---loaded queue's other entries after them, none twice. With that window gone, a write is refused, the
+---edits kept.
 function M.show_primary_buffer_history()
 	local cwin = vim.api.nvim_get_current_win()
 
@@ -218,8 +238,10 @@ function M.show_primary_buffer_history()
 		vim.api.nvim_buf_delete(existing, { force = true })
 	end
 
-	-- what each name a line shows stands for, by the file's handle, so a line follows its file
+	-- what each name a line shows stands for, by the file's handle, so a line follows its file, and the
+	-- file's path when it was drawn, for a handle a load has let go since
 	local basename_filepath_mapping = {}
+	local drawn_paths = {}
 	
 	data.clear_display_name_cache() -- worked out afresh, once for the whole list
 	for filepath, _ in pairs(history.data.hash_filepath_registry.hashes) do
@@ -234,6 +256,14 @@ function M.show_primary_buffer_history()
 		end
 	end
 
+	-- the window's queue as it is now: a load gives it a new triquetra, and a closed window has none
+	local function live()
+		return vim.api.nvim_win_is_valid(cwin) and window.get_triquetra(cwin) or nil
+	end
+	-- the triquetra the pop-up was last drawn from: a load that replaces the window's queue gives the
+	-- window another
+	local drawn_from = live()
+
 	local dbuf = vim.api.nvim_create_buf(true, false)
 	local dwin
 
@@ -241,7 +271,6 @@ function M.show_primary_buffer_history()
 	vim.bo[dbuf].buftype = "acwrite"
 	vim.bo[dbuf].swapfile = false
 	vim.bo[dbuf].bufhidden = "wipe" -- gone once no window shows it, so its name is free for the next one
-	vim.b[dbuf].frogman_names = basename_filepath_mapping -- what each short name stands for, for the picker
 	vim.b[dbuf].origin_window = cwin -- the window the queue is for, which the keys' steps are about
 
 	local function to_display(id)
@@ -257,7 +286,14 @@ function M.show_primary_buffer_history()
 			end
 			basename_filepath_mapping[basename] = id
 		end
+		drawn_paths[basename] = filepath
 		return basename
+	end
+
+	-- the path a line stands for: its file's as it is now, the path it had when drawn, or the line itself
+	local function path_of(basename)
+		local id = basename_filepath_mapping[basename]
+		return (id and history.get_filepath_from_handle(id)) or drawn_paths[basename] or basename
 	end
 
 	-- the trail's language, as virtual text: the lines you edit stay the entries' names alone
@@ -277,8 +313,9 @@ function M.show_primary_buffer_history()
 				})
 			end
 			local after = {}
-			if i == 1 then
-				table.insert(after, { "  primary" .. glyphs.dot .. (triquetra.primary_enabled and "on" or "off"), "FrogmanTrailDim" })
+			local now = live()
+			if i == 1 and now then
+				table.insert(after, { "  primary" .. glyphs.dot .. (now.primary_enabled and "on" or "off"), "FrogmanTrailDim" })
 			end
 			if handle and handle.tag then
 				table.insert(after, { "  " .. glyphs.tag .. handle.tag, "FrogmanTrailTag" })
@@ -289,10 +326,26 @@ function M.show_primary_buffer_history()
 		end
 	end
 
+	-- the queue as it is now, the names it draws known to the keys that read them
+	local function draw()
+		local now = live()
+		vim.api.nvim_buf_set_lines(dbuf, 0, -1, false, vim.tbl_map(to_display, now and now.primary_buffer or {}))
+		vim.bo[dbuf].modified = false
+		vim.b[dbuf].frogman_names = basename_filepath_mapping
+		drawn_from = now
+		decorate()
+	end
+
 	vim.api.nvim_buf_set_name(dbuf, "frogman://primary-buffer-queue-history")
-	vim.api.nvim_buf_set_lines(dbuf, 0, -1, false, vim.tbl_map(to_display, triquetra.primary_buffer))
-	vim.bo[dbuf].modified = false
-	decorate()
+	draw()
+	primary_popups[dbuf] = { live = live, draw = draw }
+	vim.api.nvim_create_autocmd("BufWipeout", {
+		buffer = dbuf,
+		once = true,
+		callback = function()
+			primary_popups[dbuf] = nil
+		end,
+	})
 	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
 		buffer = dbuf,
 		callback = decorate,
@@ -318,13 +371,32 @@ function M.show_primary_buffer_history()
 			if not vim.bo[dbuf].modified then
 				return
 			end
+			local now = live()
+			if not now then
+				vim.notify("frogman: the window this queue was for is gone, so it isn't written.", vim.log.levels.WARN)
+				return -- the edits stay, and the buffer stays modified
+			end
 			-- the blank lines dropped, each line's row kept for the cursor when the save is declined
 			local lines, rows = {}, {}
 			for row, basename in ipairs(vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)) do
 				basename = vim.trim(basename)
 				if basename ~= "" then
-					table.insert(lines, history.get_filepath_from_handle(basename_filepath_mapping[basename]) or basename)
+					table.insert(lines, path_of(basename))
 					table.insert(rows, row)
+				end
+			end
+			if now ~= drawn_from then
+				-- a load replaced the window's queue since the pop-up was drawn: its other entries go after the lines
+				local seen = {}
+				for _, path in ipairs(lines) do
+					seen[vim.fn.fnamemodify(path, ":p")] = true
+				end
+				for _, id in ipairs(now.primary_buffer) do
+					local path = history.get_filepath_from_handle(id)
+					if path and not seen[vim.fn.fnamemodify(path, ":p")] then
+						seen[vim.fn.fnamemodify(path, ":p")] = true
+						table.insert(lines, path)
+					end
 				end
 			end
 			local saved, at = window.update_primary_buffer(lines, cwin)
@@ -336,10 +408,7 @@ function M.show_primary_buffer_history()
 				end
 				return
 			end
-			vim.api.nvim_buf_set_lines(dbuf, 0, -1, false,
-				vim.tbl_map(to_display, triquetra.primary_buffer))
-			vim.bo[dbuf].modified = false
-			decorate()
+			draw()
 			vim.cmd("redraw")
 		end,
 		desc = "Save primary buffer queue changes"
@@ -728,6 +797,18 @@ local function draw_closed_lists(dbuf)
 	M.mark_headers(dbuf, picker)
 	vim.bo[dbuf].modified = false
 	decorate_closed_lists(dbuf)
+end
+
+---Draw every open closed lists again that holds no edits, from the lists as a load left them, so no entry
+---stands for a file the load let go.
+---
+---@return nil
+function M.closed_lists_loaded()
+	for dbuf, _ in pairs(closed_pickers) do
+		if vim.api.nvim_buf_is_valid(dbuf) and not vim.bo[dbuf].modified then
+			draw_closed_lists(dbuf)
+		end
+	end
 end
 
 ---The namespaces of the marks a view puts on what it draws: one on each header, so its write tells a header it drew
@@ -1334,19 +1415,50 @@ function M.closed_lists_fold()
 	return picker and "1" or "0"
 end
 
+---Get the window a view opened from a window acts on: that window, or for a float, a window of the
+---float's own tab: the last tracked window when it's there, else the tab's previous window, else the
+---tab's first tracked window, else its first window.
+---
+---@param winid WinId The window the view is opened from
+---@return WinId origin The window the view acts on
+function M.origin_of(winid)
+	if vim.api.nvim_win_get_config(winid).relative == "" then
+		return winid
+	end
+	local tabpage = vim.api.nvim_win_get_tabpage(winid)
+	local function here(w)
+		return w ~= nil and w ~= 0 and vim.api.nvim_win_is_valid(w) and vim.api.nvim_win_get_tabpage(w) == tabpage
+			and vim.api.nvim_win_get_config(w).relative == ""
+	end
+	if here(window.data.last_valid_window) then
+		return window.data.last_valid_window
+	end
+	local previous = vim.api.nvim_tabpage_get_win(tabpage) == winid and vim.fn.win_getid(vim.fn.winnr("#")) or nil
+	if here(previous) then
+		return previous
+	end
+	local first = nil
+	for _, w in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
+		if here(w) then
+			if window.data.crux[w] then
+				return w
+			end
+			first = first or w
+		end
+	end
+	return first or winid
+end
+
 ---Open the closed lists in a floating window.
 ---
 ---It holds the editor's list of closed files, each tab session's, the detached ones and those in
 ---the whole editor's file alone, to reorder, merge, discard or reopen from. Opened from a float,
----it reopens into the last tracked window.
+---it reopens into a window of the float's tab (`M.origin_of()`).
 ---
 ---@param opts {focus: Pool|nil}|nil Options, with `focus` the list whose header the cursor starts on
 ---@return nil
 function M.show_closed_lists(opts)
-	local cwin = vim.api.nvim_get_current_win()
-	if vim.api.nvim_win_get_config(cwin).relative ~= "" and window.data.last_valid_window then
-		cwin = window.data.last_valid_window -- opened from a float: reopen into the last tracked window
-	end
+	local cwin = M.origin_of(vim.api.nvim_get_current_win())
 	local existing = vim.fn.bufnr("frogman://closed-lists")
 	if existing ~= -1 and vim.bo[existing].modified then
 		-- an edit not written yet stays: the lists open as they are
@@ -1638,6 +1750,10 @@ local function derive_cache_from_window_triquetra(winid, again)
 	end
 
 	-- Update all slots from the WindowTriquetra's handles
+	ui_triquetra.slots = {
+		current = window_triquetra.current_slot, secondary = window_triquetra.secondary_slot,
+		ternary = window_triquetra.ternary_slot, primary = window_triquetra.primary_buffer[1],
+	}
 	ui_triquetra.current_bufnr, ui_triquetra.current_display_name, _, _, ui_triquetra.deleted_slots.current =
 		resolve_slot(window_triquetra.current_slot)
 	-- a window showing something we don't track is visiting it. it shows the buftype, or the filetype for a
@@ -1670,10 +1786,13 @@ local function derive_cache_from_window_triquetra(winid, again)
 	ui_triquetra.has_primary = ui_triquetra.has_primary and window_triquetra.primary_enabled
 
 	-- a trackable buffer not taken in yet has its arrival still to settle, which the heal leaves it to, and
-	-- a window whose buffer is being deleted lands by itself once the delete is over
+	-- a window whose buffer is being deleted lands by itself once the delete is over. a snapshot showing whose
+	-- current is closed while the window shows another of its files carries on, its current drawn closed
 	local arriving = ui_triquetra.visiting ~= nil and history.routines.is_trackable(shown)
 	local landing = window.data.landing[winid] ~= nil
-	if ui_triquetra.current_bufnr == nil and not landing and not (ui_triquetra.visiting and (ui_triquetra.deleted_slots.current or arriving)) then
+	local previewing = preview ~= nil and preview.window() == winid
+	if ui_triquetra.current_bufnr == nil and not landing
+		and not ((ui_triquetra.visiting or previewing) and (ui_triquetra.deleted_slots.current or arriving)) then
 		-- the retry is counted here: resolve_slot clears derive_cache_lock when another slot resolves.
 		if not again then
 			derive_cache_lock[winid] = true
@@ -1848,24 +1967,27 @@ local function construct_winbar_string(winid, theme)
 		theme.current_slot_filename = theme.base
 	end
 
+	-- the primary is marked on the slot holding its file, by its handle: two files can draw one name
+	local slots = triquetra.slots or {}
+	local primary = slots.primary
 	if triquetra.has_primary then
-		if triquetra.primary_display_name == triquetra.current_display_name then
+		if primary ~= nil and primary == slots.current then
 			theme.current_slot_bufnr = theme.primary_bufnr
 			fmt_cbufnr = "⦉%d⦊"
-		elseif triquetra.primary_display_name == triquetra.secondary_display_name then
+		elseif primary ~= nil and primary == slots.secondary then
 			theme.secondary_slot_bufnr = theme.primary_bufnr
 			fmt_sbufnr = "⦉%d⦊"
-		elseif triquetra.primary_display_name == triquetra.ternary_display_name then
+		elseif primary ~= nil and primary == slots.ternary then
 			theme.ternary_slot_bufnr = theme.primary_bufnr
 		end
 	else
-		if triquetra.primary_display_name == triquetra.current_display_name then
+		if primary ~= nil and primary == slots.current then
 			fmt_cbufnr = "⦉%d⦊"
 			theme.current_slot_bufnr = "WinbarBufnrPrimaryDisabled"
-		elseif triquetra.primary_display_name == triquetra.secondary_display_name then
+		elseif primary ~= nil and primary == slots.secondary then
 			theme.secondary_slot_bufnr = "WinbarBufnrPrimaryDisabled"
 			fmt_sbufnr = "⦉%d⦊"
-		elseif triquetra.primary_display_name == triquetra.ternary_display_name then
+		elseif primary ~= nil and primary == slots.ternary then
 			theme.ternary_slot_bufnr = "WinbarBufnrPrimaryDisabled"
 		end
 	end

@@ -6170,4 +6170,41 @@ T['T1243 [char] (M12, S2, review round 10) a closed No Name text is named by its
 	eq(name, '[No Name] "TODO: fix the thing"')
 end
 
+
+-- The closed lists open and unedited across a whole-editor load: they're drawn again from the lists the
+-- load left, so <CR> on an entry reopens that file, not a stale entry said to be off the disk.
+T['T1283 [char] (S1 Load, A16, review round 11) the closed lists open and unedited across a load are drawn again from what the load left'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a', ':e b', ':e c' })
+	child.cmd('bdelete b.txt')
+	child.steps({ ':e d' })
+	child.cmd('bdelete c.txt')
+	child.settle()
+	eq(S2.save(child, 'S1'), { true })
+	child.steps({ ':e e' })
+	child.cmd('bdelete e.txt')
+	child.cmd('bdelete d.txt')
+	child.settle()
+	child.steps({ '<M-;>W' })
+	local float = child.lua('return vim.api.nvim_get_current_win()')
+	local function lines() return child.lua('return vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(...), 0, -1, false)', { float }) end
+	local before = lines()
+	child.lua([[
+		for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+			if vim.api.nvim_win_get_config(w).relative == '' then vim.api.nvim_set_current_win(w) break end
+		end
+	]])
+	eq(S2.load(child, 'S1'), { true })
+	child.settle(300)
+	local after = lines()
+	child.lua('vim.api.nvim_set_current_win(...)', { float })
+	child.lua('vim.api.nvim_win_set_cursor(0, { 2, 0 })')
+	child.messages()
+	child.steps({ '<CR>' })
+	child.settle(200)
+	eq({ before = before, after = after, said_gone = S2.has(child.messages(), "isn't on disk right now"), shown = child.shown() },
+		{ before = { '≡editor', 'd.txt', 'e.txt', 'c.txt', 'b.txt' }, after = { '≡editor', 'c.txt', 'b.txt' }, said_gone = false, shown = 'c' })
+end
+
 return T

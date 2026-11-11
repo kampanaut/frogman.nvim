@@ -3119,4 +3119,26 @@ T['T1237 [char] (M16) previewing() says whether a snapshot shows, so a config\'s
 		{ before = false, during = true, after = false })
 end
 
+
+-- The snapshot's current, d, is open and not shown (the preview stepped off it) when its buffer is deleted:
+-- the preview carries on, d closed and drawn so, and stepping back onto d borrows it.
+T['T1281 [char] (M16, A26, review round 11) a preview whose snapshot\'s current is closed while another file shows carries on, and borrows it when stepped onto'] = function()
+	local win = previewing()
+	child.step('<M-m>')
+	child.settle()
+	local stepped = child.shown(win)
+	local dumps = child.dump_files()
+	child.messages()
+	child.cmd('bdelete ' .. child.lua('return _G.FRG_TEST.root') .. '/d.txt')
+	child.settle(600)
+	local failed = #vim.tbl_filter(function(m) return m:find('failed', 1, true) or m:find('Impossible', 1, true) end, said())
+	local active = child.lua('return require("frogman.domains.snapshots.preview").active()')
+	local drawn = child.lua('local c = require("frogman.domains.ui").data.window_display_cache[...] or {}; return c.deleted_slots and c.deleted_slots.current == true', { win })
+	child.step('<M-n>')
+	child.settle()
+	eq({ stepped_off = stepped ~= 'd', dumped = child.dumped_since(dumps), failed = failed, active = active, drawn_closed = drawn,
+		back = child.shown(win), borrowed = child.lua('return require("frogman.domains.snapshots.preview").borrowed(vim.api.nvim_win_get_buf(...))', { win }) },
+		{ stepped_off = true, failed = 0, active = true, drawn_closed = true, back = 'd', borrowed = true })
+end
+
 return T

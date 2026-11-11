@@ -641,4 +641,26 @@ T['T1192 [char] (Bug 2, DESK.md:2459, repro R22) the bufferline toggled off and 
 		{ shown = 2, hidden = false })
 end
 
+
+-- Two No Name texts, both drawn [No Name]: the primary is the second, which sits in the secondary slot
+-- after two <M-f>, while the first is current. The winbar puts the primary's brackets on the secondary's
+-- number, by the file, not on the current's, which has the same name.
+T['T1284 [char] (M12, review round 11) the winbar marks the primary on the slot holding its file, not one of the same name'] = function()
+	child.steps({ ':e a' })
+	child.cmd('enew')
+	child.lua([[vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'text one' })]])
+	child.settle()
+	local n1 = child.lua('return vim.api.nvim_get_current_buf()')
+	child.cmd('enew')
+	child.lua([[vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'text two' })]])
+	child.settle()
+	local n2 = child.lua('return vim.api.nvim_get_current_buf()')
+	child.steps({ '<M-;><M-c>', '<M-f>', '<M-f>' })
+	child.settle(300)
+	local bar = child.lua('return require("frogman").winbar_segment()'):gsub('%%#[^#]*#', '')
+	eq({ current = child.lua('return vim.api.nvim_get_current_buf()') == n1, primary_on_secondary = bar:find('⦉' .. n2 .. '⦊', 1, true) ~= nil,
+		current_plain = bar:find('[' .. n1 .. ']', 1, true) ~= nil },
+		{ current = true, primary_on_secondary = true, current_plain = true })
+end
+
 return T

@@ -1281,4 +1281,49 @@ T['T921 [char] (A27, A18, M15, DESK.md:1990) * on a path typed in a pop-up that 
 		{ primary = true, marks = true })
 end
 
+
+-- A frogman float in tab 1 stays when you go to tab 2 and come back to it;
+-- the views opened from it act on tab 1's window, not on the last tracked
+-- window, which is in tab 2: the trail's q goes back to it, and the closed
+-- lists' <CR> reopens into it.
+T['T1271 [char] (M16, A16, review round 11) a trail or the closed lists opened from a float act on a window of the float\'s own tab'] = function()
+	S2.start(child, S2.shared())
+	child.steps({ ':e a', ':e b', ':e c' })
+	child.cmd('bdelete b.txt')
+	child.settle()
+	local win1 = child.lua('return vim.api.nvim_get_current_win()')
+	local function from_float(open)
+		child.lua(open)
+		child.settle()
+		local float = child.lua('return vim.api.nvim_get_current_win()')
+		child.cmd('tabnew')
+		child.steps({ ':e d' })
+		child.cmd('tabprevious')
+		child.settle()
+		return float, child.lua('return vim.api.nvim_get_current_win()')
+	end
+	local float, back = from_float([[require('frogman').open_closed_lists()]])
+	child.lua([[require('frogman').open_trail()]])
+	child.settle()
+	child.type_keys('q')
+	child.settle()
+	local after_trail = child.lua('return vim.api.nvim_get_current_win()')
+	child.lua('pcall(vim.api.nvim_win_close, ..., true)', { float })
+	child.lua('vim.api.nvim_set_current_win(...)', { win1 })
+	child.cmd('tabonly')
+	child.settle()
+	local float2, back2 = from_float([[require('frogman').open_trail()]])
+	child.lua([[require('frogman').open_closed_lists()]])
+	child.settle()
+	child.lua([[
+		for i, line in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+			if line:find('b.txt', 1, true) then vim.api.nvim_win_set_cursor(0, { i, 0 }) break end
+		end
+	]])
+	child.type_keys('<CR>')
+	child.settle(200)
+	eq({ back = back == float, trail_q = after_trail == win1, back2 = back2 == float2, reopened_in = child.shown(win1) },
+		{ back = true, trail_q = true, back2 = true, reopened_in = 'b' })
+end
+
 return T

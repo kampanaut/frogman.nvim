@@ -28,6 +28,15 @@ storageSM:on(storageStates.IDLE, storageStates.BARE, "ui_teardown", function()
 	data.clear_bufferline_cache()
 end, 4, true)
 
+-- a load done: an open primary pop-up with nothing unwritten shows its window's queue as the load left it,
+-- and open closed lists with nothing unwritten the lists, once the load's own settle work has run
+storageSM:on(storageStates.LOADING, storageStates.IDLE, "views_loaded", function()
+	require('frogman.settle').later("views after a load", function()
+		routines.primary_popups_loaded()
+		routines.closed_lists_loaded()
+	end)
+end, 4, true)
+
 -- the bufferline's hide notes 'showtabline', and its show sets it back: cokeline zeroes it while it has
 -- nothing to draw and turns it on again only at BufAdd or VimEnter, so a show alone would leave it hidden
 local tabline_shown = nil
@@ -193,19 +202,39 @@ function M.init_autocmds(group)
 		group = group,
 		pattern = "frogman-primary-buffer-history",
 		callback = function(args)
+			-- each key's step is about the window the queue is for
+			local function origin()
+				local winid = vim.b[args.buf].origin_window
+				return winid and vim.api.nvim_win_is_valid(winid) and winid or nil
+			end
+
 			local function close_window()
+				local dwin = vim.b[args.buf].display_window
+				if not origin() and vim.bo[args.buf].modified then
+					-- no queue to write them into: they're dropped, as the snapshot list drops its own
+					vim.notify("frogman: the window these were for is gone: the edits are dropped.", vim.log.levels.WARN)
+					vim.api.nvim_win_close(dwin, true) -- its WinClosed deletes the buffer
+					return
+				end
 				vim.cmd("write!")
 				if vim.bo[args.buf].modified then
 					return -- the save was answered no: the pop-up stays, its lines as typed
 				end
-				local dwin = vim.b[args.buf].display_window
 
 				vim.api.nvim_win_close(dwin, true) -- its WinClosed deletes the buffer
 			end
 
 			local function promote_to_primary_and_quit(stay)
-				local dwin = vim.b[args.buf].display_window
+				if not origin() then
+					vim.notify("frogman: the window this queue was for is gone, so it isn't written.", vim.log.levels.WARN)
+					return
+				end
 				local dbuf = args.buf
+				-- the line under the cursor of the window the key is pressed in: the float, or a split of its buffer
+				local dwin = vim.api.nvim_get_current_win()
+				if vim.api.nvim_win_get_buf(dwin) ~= dbuf then
+					dwin = vim.b[dbuf].display_window
+				end
 				local cursor_line = vim.api.nvim_win_get_cursor(dwin)[1]
 				local lines = vim.api.nvim_buf_get_lines(dbuf, 0, -1, false)
 
@@ -234,11 +263,6 @@ function M.init_autocmds(group)
 			end
 
 			local keys = require('frogman.configs').keymaps.views or {}
-			-- each key's step is about the window the queue is for
-			local function origin()
-				local winid = vim.b[args.buf].origin_window
-				return winid and vim.api.nvim_win_is_valid(winid) and winid or nil
-			end
 
 			-- Quick save
 			map_view_key(args.buf, keys.write, function() vim.cmd("write") end, "Save queue", origin)

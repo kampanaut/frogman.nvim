@@ -1114,17 +1114,14 @@ end
 
 ---Open the trail of the current tab, on its newest day with moves, or on a search.
 ---
----Opened from a float, it takes the last tracked window as the one it came from. A query of
----`win <N>`, or `win` alone, searches for a window of this tab by its id.
+---Opened from a float, it takes a window of the float's tab as the one it came from
+---(`ui.routines.origin_of()`). A query of `win <N>`, or `win` alone, searches for a window of this tab
+---by its id.
 ---
 ---@param query string|nil A name to search for
 ---@return nil
 function M.open(query)
-	local window = require('frogman.domains.window')
-	local from = vim.api.nvim_get_current_win()
-	if vim.api.nvim_win_get_config(from).relative ~= "" and window.data.last_valid_window then
-		from = window.data.last_valid_window -- opened from a float: back to the last tracked window
-	end
+	local from = require('frogman.domains.ui.routines').origin_of(vim.api.nvim_get_current_win())
 	if view then
 		-- an earlier trail closes where it is, wherever that is, and the focus stays here: the new one opens
 		-- in this tab, over this window, and reads this tab's trail
