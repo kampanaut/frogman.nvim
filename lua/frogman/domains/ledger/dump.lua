@@ -64,7 +64,8 @@ end
 ---
 ---Copies the triquetra and history of every valid window, the global history, every list's
 ---closed files, the missing tags, the machines' states, the cycling window and the history
----view. Files are kept by hash, as the dump writes them.
+---view. Files are kept by hash, as the dump writes them, with every known file's path, so the
+---dump can name one let go since.
 ---
 ---@return table snapshot The state as it is now
 local function snapshot()
@@ -107,6 +108,8 @@ local function snapshot()
 		-- where a split puts its new window, which numbers the windows after it
 		splitright = vim.o.splitright,
 		splitbelow = vim.o.splitbelow,
+		-- every file it names is known now, so the registry's paths cover them all
+		paths = vim.tbl_extend("force", {}, hdata.hash_filepath_registry.filepaths),
 	}
 end
 
@@ -186,6 +189,25 @@ end
 local function compose(what, failing)
 	local history = require('frogman.domains.history')
 	local ledger = require('frogman.domains.ledger.routines')
+
+	-- The steps since the older snapshot, and the one the failure fired in
+	local from = checkpoints[1]
+	local steps = {}
+	for _, step in ipairs(data.ring) do
+		if not from or step.seq >= from.seq then
+			table.insert(steps, step)
+		end
+	end
+	-- the failing step once: a step closed already may be in the ring, with steps kept after it
+	if failing and not vim.tbl_contains(steps, failing) then
+		table.insert(steps, failing)
+	end
+
+	-- the paths the snapshot and the steps took, for a file let go since: a hash names one path
+	local taken = vim.tbl_extend("force", {}, from and from.snapshot.paths or {})
+	for _, step in ipairs(steps) do
+		taken = vim.tbl_extend("keep", taken, step.paths or {})
+	end
 	local files, seen = {}, {}
 	-- Each file the dump names, listed once with its path
 	local function file(hash)
@@ -196,7 +218,7 @@ local function compose(what, failing)
 		local base = hash:gsub("%-swap$", "")
 		if not seen[base] then
 			seen[base] = true
-			local path = history.data.hash_filepath_registry.filepaths[base]
+			local path = history.data.hash_filepath_registry.filepaths[base] or taken[base]
 			table.insert(files, { hash = base, path = path,
 				exists = path ~= nil and not path:match("^NONAME_") and vim.fn.filereadable(path) == 1 })
 		end
@@ -219,7 +241,8 @@ local function compose(what, failing)
 		return r and { c = file(r.c), s = file(r.s), t = file(r.t), p = vim.tbl_map(file, r.p or {}), on = r.on,
 			dtm = map(r.dtm), dsm = map(r.dsm), shows = file(r.shows) }
 	end
-	local function notes(r)
+	-- the current file's notes, each file by the name its step took, as the trail draws a row
+	local function notes(r, names)
 		if not r or not r.c then
 			return ""
 		end
@@ -229,7 +252,7 @@ local function compose(what, failing)
 			for _, key in ipairs({ r.c, r.c .. "-swap" }) do
 				local v = (m[2] or {})[key]
 				if v then
-					table.insert(parts, ledger.slot_name(r.c) .. (key:match("%-swap$") and "-swap" or "") .. ">" .. ledger.slot_name(v))
+					table.insert(parts, ledger.slot_name(r.c, names) .. (key:match("%-swap$") and "-swap" or "") .. ">" .. ledger.slot_name(v, names))
 				end
 			end
 			if #parts > 0 then
@@ -239,28 +262,15 @@ local function compose(what, failing)
 		return table.concat(out, " ")
 	end
 
-	-- The steps since the older snapshot, and the one the failure fired in
-	local from = checkpoints[1]
-	local steps = {}
-	for _, step in ipairs(data.ring) do
-		if not from or step.seq >= from.seq then
-			table.insert(steps, step)
-		end
-	end
-	-- the failing step once: a step closed already may be in the ring, with steps kept after it
-	if failing and not vim.tbl_contains(steps, failing) then
-		table.insert(steps, failing)
-	end
-
 	local rows = {}
 	local replay_steps = {}
 	for _, step in ipairs(steps) do
 		-- the failing step as the failure found it: as it closed, or as it stands when still open
-		local after = step == failing and (step.closed and step.row_after or ledger.row_of(step.win, step.names)) or step.row_after
+		local after = step == failing and (step.closed and step.row_after or ledger.row_of(step.win, step.names, step.paths)) or step.row_after
 		local n = step.win_nr or number(step.win)
 		table.insert(rows, string.format("%s  %-7s %-16s %-6s %s → %s  %s%s", os.date("%H:%M:%S", math.floor(step.time)),
-			step.cause, step.trigger or "", n and ("win " .. n) or "win -", ledger.draw_row(step.row_before), ledger.draw_row(after), notes(after),
-			step == failing and "   ← fired here" or ""))
+			step.cause, step.trigger or "", n and ("win " .. n) or "win -", ledger.draw_row(step.row_before, step.names),
+			ledger.draw_row(after, step.names), notes(after, step.names), step == failing and "   ← fired here" or ""))
 		table.insert(replay_steps, {
 			seq = step.seq, cause = step.cause, trigger = step.trigger, cut = step.cut, window = n, winid = step.win,
 			tab = step.tab_nr or tab_number(step.win),
@@ -460,24 +470,44 @@ function M.read(path)
 	return text
 end
 
+---Get the file a dump's path names, as `:FrogmanDump` and a replay are given one.
+---
+---A path that names a file or a folder as given is that one, braces and dollars included, as
+---`:FrogmanDump` hands it on once Neovim has read the name typed. Otherwise `~` and environment
+---variables in it are expanded, with no pattern matched.
+---
+---@param given string The path as given
+---@return string path The full path
+---@return string name Its last part, to name it in a message (the path itself when it has none)
+function M.path_of(given)
+	local path = given
+	if not vim.uv.fs_stat(path) then
+		path = vim.fs.normalize(given)
+	end
+	path = vim.fn.fnamemodify(path, ":p")
+	-- a folder's full path ends in a slash, which leaves its last part empty
+	local name = vim.fn.fnamemodify((path:gsub("(.)/+$", "%1")), ":t")
+	return path, name ~= "" and name or path
+end
+
 ---Open a dump in a window to read it.
 ---
 ---Shows it decrypted, with its replay part, and enters the window. When it can't, it says why
 ---(no such file, not a dump, or a dump that was edited or written from another directory).
 ---
----@param path string The dump's file, as typed
+---@param given string The dump's file, as typed
 ---@return nil
-function M.open(path)
-	path = vim.fn.fnamemodify(vim.fn.expand(path), ":p")
+function M.open(given)
+	local path, name = M.path_of(given)
 	local text, problem = M.read(path)
 	if not text then
 		local why = problem == "missing" and "there's no such file"
 			or problem == "not a dump" and "it isn't a dump"
 			or "it doesn't open here: a dump opens only from the directory it was written in, unedited"
-		vim.notify("frogman: " .. vim.fn.fnamemodify(path, ":t") .. " can't be opened, since " .. why .. ".", vim.log.levels.WARN)
+		vim.notify("frogman: " .. name .. " can't be opened, since " .. why .. ".", vim.log.levels.WARN)
 		return
 	end
-	show(vim.fn.fnamemodify(path, ":t:r"), vim.split(text, "\n", { plain = true }), true)
+	show(vim.fn.fnamemodify(name, ":r"), vim.split(text, "\n", { plain = true }), true)
 end
 
 ---Dump a message that `ledger.never()` is about to raise.

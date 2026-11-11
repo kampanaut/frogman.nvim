@@ -93,6 +93,7 @@
 ---@field row_before FrogmanLedgerRow|nil The window's row as the step began (none once the ring drops the step, or read from a page)
 ---@field row_after FrogmanLedgerRow|nil The window's row as the step closed (none once the ring drops the step, or read from a page)
 ---@field names table<Filehash, string> Name of every file in its rows and moves, as it was then
+---@field paths table<Filehash, Filepath> Path of every file in its rows, as it was then, for a dump to name a file let go since (in memory only)
 ---@field events string[] Events it set off, listed under it (`BufEnter b.txt`)
 ---@field moves FrogmanLedgerMove[] What frogman did in it
 ---@field told table[] Messages it queued, said as it closes (and emptied then)

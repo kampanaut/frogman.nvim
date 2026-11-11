@@ -14,11 +14,38 @@ local DRIVEN = {
 	close = true, only = true, enew = true, wincmd = true,
 }
 
+---Read a command's file argument as Neovim reads it, when it names a file as typed.
+---
+---A backslash takes the character after it as it is, as Neovim's file names have it. An
+---argument holding a character Neovim expands, unescaped, names what the editor that made the
+---dump expanded: `%`, `#` or `<` its buffers, `$` its environment, a backtick a shell command,
+---`*`, `?`, `[` or `{` a pattern over its files, and a `~` it starts with a home folder.
+---
+---@param arg string The argument as typed
+---@return string|nil name The file it names, or nil when that editor's expansion decided it
+local function as_typed(arg)
+	if arg:match("^~") then
+		return nil
+	end
+	local i = 1
+	while i <= #arg do
+		local char = arg:sub(i, i)
+		if char == "\\" then
+			i = i + 1 -- the escaped character, taken as it is
+		elseif char:match("[%%#<$`*?%[{]") then
+			return nil
+		end
+		i = i + 1
+	end
+	return (arg:gsub("\\(.)", "%1"))
+end
+
 ---Parse a recorded command line into the command a replay runs, when it runs one.
 ---
 ---It must be one of the commands that only move windows and buffers, with nothing chained
----after it by `|`, no `+cmd` argument and no backtick in a file name. It runs as parsed, with
----no file expansion.
+---after it by `|`, no `+cmd` argument, and nothing in its file names that the editor that made
+---the dump expanded. It runs with each file name as typed, its escapes read, with no file
+---expansion.
 ---
 ---@param trigger string The command line as the ledger recorded it (`:e b.txt`)
 ---@return table|nil cmd The command for `nvim_cmd`, or nil when the step is planted
@@ -32,10 +59,12 @@ local function driven_command(trigger)
 	if by_number and #(cmd.range or {}) > 0 then
 		return nil
 	end
-	for _, arg in ipairs(cmd.args or {}) do
-		if arg:match("^%+") or arg:find("`", 1, true) or arg:match("^[#%%<]") or (by_number and arg:match("^%d+$")) then
+	for i, arg in ipairs(cmd.args or {}) do
+		local name = not arg:match("^%+") and not (by_number and arg:match("^%d+$")) and as_typed(arg)
+		if not name then
 			return nil
 		end
+		cmd.args[i] = name
 	end
 	cmd.nextcmd, cmd.addr, cmd.nargs = nil, nil, nil
 	cmd.magic = { file = false, bar = false }
@@ -353,21 +382,73 @@ local function plant_snapshot(snapshot, plant)
 	history.routines.update_buffer_history_ordered()
 end
 
+---Give a new No Name buffer a driven command left in its window the id the original's had.
+---
+---A No Name buffer is known by an id of its own, so the one `:enew` makes here would be another
+---file than the original's, and every row after it would name another. The window's buffer,
+---unnamed and not taken in yet, takes the id of the No Name text the recorded row shows, which
+---no buffer here has, before its arrival is taken in.
+---
+---@param winid WinId The window the command ran in
+---@param after table|nil The step's recorded row after it
+---@param files table<Filehash, {path: string|nil}> The dump's files
+---@return nil
+local function same_noname(winid, after, files)
+	local hash = after and after.shows
+	local path = hash and files[hash] and files[hash].path
+	if not path or not path:match("^NONAME_") or not vim.api.nvim_win_is_valid(winid) then
+		return
+	end
+	local history = require('frogman.domains.history')
+	local bufnr = vim.api.nvim_win_get_buf(winid)
+	if history.get_buffer_from_hash(hash) or vim.api.nvim_buf_get_name(bufnr) ~= "" or vim.b[bufnr].frogman_noname
+		or history.get_hash_from_buffer(bufnr) then
+		return
+	end
+	vim.b[bufnr].frogman_noname = path:sub(#"NONAME_" + 1)
+end
+
+---Check if a recorded key is a view's key that leaves the view.
+---
+---@param lhs string The key, as the step's trigger
+---@return boolean leaves True for `keymaps.views`' leave, leave_too and act
+local function leaves_view(lhs)
+	local views = require('frogman.configs').keymaps.views or {}
+	return lhs == views.leave or lhs == views.leave_too or lhs == views.act
+end
+
+---Close frogman's own floats in this tab, their edits dropped.
+---
+---A view's keys are planted, not driven, so a view a driven key opened is closed here where the
+---original's key left it.
+---
+---@return nil
+local function close_views()
+	local view = require('frogman.domains.ui.view')
+	for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+		if vim.api.nvim_win_is_valid(winid) and view.is_own(winid) then
+			pcall(vim.api.nvim_win_close, winid, true)
+		end
+	end
+end
+
 ---Replay a dump into this editor.
 ---
 ---Runs from the directory the dump was written in, in an editor with frogman set up that
 ---tracks nothing yet but the empty buffer it started on. A dump that spans more than one tab
 ---is refused. Once a replay starts, this editor's state isn't a session, so `save_session`
 ---refuses and no records are written. The result holds `steps`, `driven`, `matched`,
----`mismatches`, `failure` and `snapshot`.
+---`resynced`, `mismatches`, `vim_errors` (a driven command's Vim error, noted, the replay going
+---on), `failure` (any other error a driven step raised, which stops it), `fired` and `snapshot`.
 ---
----@param path string The dump's file
+---@param given string The dump's file
 ---@return table|nil result What the replay found, or nil if it was refused
-function M.run(path)
-	path = vim.fn.fnamemodify(vim.fn.expand(path), ":p")
-	local text, problem = require('frogman.domains.ledger.dump').read(path)
+function M.run(given)
+	local dump = require('frogman.domains.ledger.dump')
+	local path, name = dump.path_of(given)
+	local text, problem = dump.read(path)
 	if not text then
-		vim.notify("frogman: " .. vim.fn.fnamemodify(path, ":t") .. " can't be replayed, since "
+		vim.notify("frogman: " .. name .. " can't be replayed, since "
 			.. (problem == "missing" and "there's no such file" or problem == "not a dump" and "it isn't a dump"
 				or "it doesn't open here: a dump opens only from the directory it was written in, unedited") .. ".",
 			vim.log.levels.WARN)
@@ -404,10 +485,9 @@ function M.run(path)
 	end
 	settle.drain()
 
-	local dump = require('frogman.domains.ledger.dump')
 	dump.replay_fired()
-	local result = { steps = 0, driven = 0, matched = 0, resynced = 0, mismatches = {}, failure = nil, fired = {},
-		snapshot = replay.snapshot ~= nil }
+	local result = { steps = 0, driven = 0, matched = 0, resynced = 0, mismatches = {}, vim_errors = {}, failure = nil,
+		fired = {}, snapshot = replay.snapshot ~= nil }
 	for _, step in ipairs(replay.steps or {}) do
 		result.steps = result.steps + 1
 		local windows = tab_windows()
@@ -423,6 +503,7 @@ function M.run(path)
 			local cmd = driven_command(step.trigger)
 			drive = cmd and function()
 				vim.api.nvim_cmd(cmd, {})
+				same_noname(winid, step.after, replay.files or {})
 			end
 		end
 		if drive and step.before and not same(row_now(winid), step.before) then
@@ -437,8 +518,14 @@ function M.run(path)
 			local ok, err = pcall(drive)
 			settle.drain()
 			if not ok then
-				result.failure = { seq = step.seq, trigger = step.trigger, error = tostring(err) }
-				break
+				-- a command's Vim error is the editor's, as it was where the dump was made: noted, and the replay
+				-- goes on; any other error is frogman's, and stops it
+				local said = step.cause == "command" and dump.vim_error(err)
+				if not said then
+					result.failure = { seq = step.seq, trigger = step.trigger, error = tostring(err) }
+					break
+				end
+				table.insert(result.vim_errors, { seq = step.seq, trigger = step.trigger, error = said })
 			end
 			local got = row_now(winid)
 			if same(got, step.after) then
@@ -456,6 +543,9 @@ function M.run(path)
 			end
 		else
 			plant.row(winid, step.after)
+			if step.cause == "keymap" and leaves_view(step.trigger) then
+				close_views()
+			end
 			settle.drain()
 		end
 	end
@@ -471,6 +561,11 @@ function M.run(path)
 		result.matched, result.resynced)
 	if #result.mismatches > 0 then
 		words = words .. ("; %d didn't match, the first at %s"):format(#result.mismatches, result.mismatches[1].trigger)
+	end
+	if #result.vim_errors > 0 then
+		local first = result.vim_errors[1]
+		words = words .. ("; %d gave Vim's own error%s, gone past, the first at %s: %s"):format(#result.vim_errors,
+			#result.vim_errors == 1 and "" or "s", first.trigger, first.error)
 	end
 	if result.failure then
 		words = words .. "; it stopped at " .. tostring(result.failure.trigger) .. ": " .. result.failure.error:match("[^\n]*")

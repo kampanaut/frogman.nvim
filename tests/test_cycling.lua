@@ -1339,6 +1339,165 @@ T['T487 [char] a command naming the original editor\'s buffers is planted'] = fu
 	eq({ mismatches = #r.mismatches, hash = child.lua([[return vim.fn.bufnr('^#$')]]) }, { mismatches = 0, hash = -1 })
 end
 
+-- :b zzz.txt fails with E94 in the editor that made the dump, and the replay meets it again
+T['T1250 [char] (A26, review round 10) a Vim error in a replayed command is noted, and the replay goes on'] = function()
+	local r = made_and_replayed(function()
+		child.steps({ ':e a', ':e b' })
+		typed(':b zzz.txt<CR>')
+		typed(':e c.txt<CR>')
+		typed(':e d.txt<CR>')
+		child.steps({ '<M-f>' })
+	end)
+	local noted = r.vim_errors or {}
+	eq({
+		failure = r.failure,
+		noted = #noted == 1 and noted[1].trigger == ':b zzz.txt' and noted[1].error:find('E94', 1, true) ~= nil,
+		on = r.driven >= 4, -- :b, :e c.txt, :e d.txt and <M-f>
+		matched = r.matched == r.driven,
+	}, { failure = nil, noted = true, on = true, matched = true })
+end
+
+T['T1251 [char] (A26, review round 10) a replayed command opens the file its backslash escapes named'] = function()
+	local r = made_and_replayed(function(root)
+		vim.fn.writefile({ 'spaced' }, root .. '/my file.txt')
+		vim.fn.writefile({ 'hashed' }, root .. '/a#b.txt')
+		child.steps({ ':e a' })
+		typed([[:e my\ file.txt<CR>]])
+		typed([[:e a\#b.txt<CR>]])
+		child.steps({ ':e b' })
+	end)
+	eq({
+		failure = r.failure,
+		driven = r.driven >= 2,
+		mismatches = #r.mismatches,
+		stray = child.lua([[return #vim.tbl_filter(function(b) return vim.api.nvim_buf_get_name(b):find('\\', 1, true) ~= nil end,
+			vim.api.nvim_list_bufs())]]),
+	}, { failure = nil, driven = true, mismatches = 0, stray = 0 })
+end
+
+-- $FRG_T1252 and a pattern name what the editor that made the dump expanded, which the replay doesn't
+T['T1252 [char] (A26, review round 10) a command naming an environment variable or a pattern is planted'] = function()
+	local r, root = made_and_replayed(function(root)
+		child.lua('vim.env.FRG_T1252 = ...', { root })
+		child.steps({ ':e a' })
+		typed(':e $FRG_T1252/c.txt<CR>')
+		typed(':e d*.txt<CR>')
+		child.steps({ ':e b' })
+	end)
+	eq({
+		failure = r.failure,
+		mismatches = #r.mismatches,
+		stray = child.lua([[return #vim.tbl_filter(function(b)
+			local name = vim.api.nvim_buf_get_name(b)
+			return name:find('$', 1, true) ~= nil or name:find('*', 1, true) ~= nil
+		end, vim.api.nvim_list_bufs())]]),
+		root = root ~= nil,
+	}, { failure = nil, mismatches = 0, stray = 0, root = true })
+end
+
+-- An empty No Name buffer closed with <M-.> is held by nothing, and is forgotten before the dump
+T['T1253 [char] (A26, review round 10) a dump lists a file forgotten since by the path it had, and draws its rows by name'] = function()
+	local root = Misc.make_project()
+	Misc.start(child, { root = root })
+	-- typed, so the replay drives them: a planted step plants its row, not the history <M-.> lands by
+	typed(':e a.txt<CR>')
+	typed(':e b.txt<CR>')
+	typed(':enew<CR>')
+	child.steps({ '<M-.>' })
+	child.settle(200)
+	local before = child.dumps()
+	child.lua([[pcall(require('frogman.domains.ledger').never, 'planted for T1253')]])
+	child.settle(200)
+	local path = the_dump(before)
+	local text = child.lua('return require("frogman.domains.ledger.dump").read(...)', { path })
+	local files = (text:match('\nfiles:\n(.-)\n\n') or '') .. '\n'
+	eq({
+		unknown = files:find('  %?\n') ~= nil,
+		noname = files:find('NONAME_', 1, true) ~= nil,
+		drawn = text:find('[?]', 1, true) ~= nil or text:find('⦉?⦊', 1, true) ~= nil or text:find('⟦?⟧', 1, true) ~= nil,
+	}, { unknown = false, noname = true, drawn = false })
+	Misc.start(child, { root = root })
+	local r = replay(path)
+	eq({ failure = r.failure, mismatches = #r.mismatches, fired = r.fired }, { failure = nil, mismatches = 0, fired = {} })
+end
+
+T['T1254 [char] (A26, review round 10) a replayed :enew opens the No Name buffer the later steps name'] = function()
+	local r = made_and_replayed(function()
+		child.steps({ ':e a' })
+		typed(':enew<CR>')
+		child.steps({ '<M-S-f>' })
+	end)
+	eq({ failure = r.failure, driven = r.driven >= 2, mismatches = #r.mismatches, resynced = r.resynced },
+		{ failure = nil, driven = true, mismatches = 0, resynced = 0 })
+end
+
+-- The closed lists' q is a view's key: planted, as every view key is, and it leaves the lists
+T['T1255 [char] (A26, review round 10) a replay closes a pop-up the original left by its leave key'] = function()
+	local r = made_and_replayed(function()
+		child.steps({ ':e a', ':e b', ':e c' })
+		typed(':bdelete a.txt<CR>')
+		child.steps({ '<M-;>W' })
+		child.steps({ 'q' })
+		typed(':e d.txt<CR>')
+	end)
+	eq({
+		failure = r.failure,
+		mismatches = #r.mismatches,
+		floats = child.lua([[return #vim.tbl_filter(function(w) return vim.api.nvim_win_get_config(w).relative ~= "" end,
+			vim.api.nvim_tabpage_list_wins(0))]]),
+	}, { failure = nil, mismatches = 0, floats = 0 })
+end
+
+T['T1256 [char] (A26, review round 10) :FrogmanDump names the directory it was given, and opens a dump in a folder whose name holds braces or a dollar'] = function()
+	child.steps({ ':e a' })
+	local root = child.lua('return _G.FRG_TEST.root')
+	child.messages()
+	child.lua('pcall(vim.cmd, "FrogmanDump " .. _G.FRG_TEST.root .. "/")')
+	local named = Extra.has(child.messages(), 'frogman: ' .. vim.fn.fnamemodify(root, ':t') .. " can't be opened, since it isn't a dump.")
+	local before = child.dumps()
+	child.lua([[pcall(require('frogman.domains.ledger').never, 'planted for T1256')]])
+	child.settle(300)
+	local path = the_dump(before)
+	local odd = child.lua([[
+		local odd = _G.FRG_TEST.root .. "/odd{a,b}$X"
+		vim.fn.mkdir(odd, "p")
+		vim.uv.fs_copyfile(..., odd .. "/the.txt")
+		return odd .. "/the.txt"
+	]], { path })
+	child.messages()
+	-- typed escaped, as a file name is: the command's argument is read as one, braces and all
+	child.lua('pcall(vim.cmd, "FrogmanDump " .. vim.fn.fnameescape(...))', { odd })
+	child.settle(200)
+	local opened = child.lua('return vim.tbl_contains(vim.api.nvim_buf_get_lines(0, 0, -1, false), "replay:")')
+	-- the dump's float closed, when it opened; a q outside it would wait for a register
+	child.lua('local w = vim.api.nvim_get_current_win(); if vim.api.nvim_win_get_config(w).relative ~= "" then vim.api.nvim_win_close(w, true) end')
+	child.settle()
+	local replayed = child.lua('return require("frogman").replay_dump(...) == nil', { odd })
+	local said = child.messages()
+	eq({ named = named, opened = opened, missing = Extra.has(said, "there's no such file"), refused = replayed and Extra.has(said, 'tracks buffers already') },
+		{ named = true, opened = true, missing = false, refused = true })
+end
+
+-- What Neovim expands in a file name, unescaped, names what the editor that made the dump expanded; escaped, it's the name
+T['T1257 [char] (A26, review round 10) a replay plants a command whose file name holds what Neovim expands, and drives it escaped'] = function()
+	local drives = child.lua([[
+		local replay = require('frogman.domains.ledger.replay')
+		local out = {}
+		for _, line in ipairs({ ':e d?.txt', ':e [d].txt', ':e {d}.txt', ':e ~/d.txt', ':e $X/d.txt', ':e a%b.txt', ':e a#b.txt',
+			':e a`b`.txt', ':e d\\?.txt', ':e \\[d].txt', ':e \\{d}.txt', ':e \\~/d.txt', ':e \\$X/d.txt', ':e a\\%b.txt', ':e a\\#b.txt',
+			':e d.txt', ':vsplit my\\ file.txt' }) do
+			out[line] = replay.drives(line)
+		end
+		return out
+	]])
+	eq(drives, {
+		[':e d?.txt'] = false, [':e [d].txt'] = false, [':e {d}.txt'] = false, [':e ~/d.txt'] = false, [':e $X/d.txt'] = false,
+		[':e a%b.txt'] = false, [':e a#b.txt'] = false, [':e a`b`.txt'] = false,
+		[':e d\\?.txt'] = true, [':e \\[d].txt'] = true, [':e \\{d}.txt'] = true, [':e \\~/d.txt'] = true, [':e \\$X/d.txt'] = true,
+		[':e a\\%b.txt'] = true, [':e a\\#b.txt'] = true, [':e d.txt'] = true, [':vsplit my\\ file.txt'] = true,
+	})
+end
+
 for _, splitright in ipairs({ false, true }) do
 	T['T488 [char] a split reaches the dump and replays, splitright ' .. tostring(splitright)] = function()
 		local r = made_and_replayed(function()

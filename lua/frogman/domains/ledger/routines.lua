@@ -110,12 +110,14 @@ end
 ---Read a window's row as it stands.
 ---
 ---Copies its slots, its primary queue and switch, its notes, and what the window shows. The
----name of every file in the row goes in `names`, unless it's there already.
+---name of every file in the row goes in `names`, and its path in `paths`, unless it's there
+---already, so a dump can name a file let go since.
 ---
 ---@param winid integer|nil The window to read
 ---@param names table<Filehash, string> The names to fill in, a step's own
+---@param paths table<Filehash, Filepath>|nil The paths to fill in, a step's own
 ---@return FrogmanLedgerRow|nil row The window's row, or nil if there's no triquetra for it
-local function row_of(winid, names)
+local function row_of(winid, names, paths)
 	-- the slots a move's row has, then the notes and what the window shows
 	local row = M.slots(winid)
 	if not row then
@@ -127,10 +129,14 @@ local function row_of(winid, names)
 	row.dsm = window_data.notes_by_hash(triquetra.displacement_secondary_map)
 	row.shows = vim.api.nvim_win_is_valid(winid)
 		and require('frogman.domains.history').get_hash_from_buffer(vim.api.nvim_win_get_buf(winid)) or nil
+	local filepaths = require('frogman.domains.history.data').hash_filepath_registry.filepaths
 	local function keep(filehash)
 		if filehash then
 			local base = filehash:gsub("%-swap$", "")
 			names[base] = names[base] or M.name_of(base)
+			if paths then
+				paths[base] = paths[base] or filepaths[base]
+			end
 		end
 	end
 	keep(row.c)
@@ -228,11 +234,12 @@ local function new_step(cause, trigger, winid)
 		session = data.session, -- the whole editor's session then, whose file keeps it
 		epoch = data.epoch, -- the editor that made it, kept on its page too
 		names = {},
+		paths = {}, -- in memory alone, for a dump: a page keeps names
 		events = {},
 		moves = {},
 		told = {},
 	}
-	step.row_before = row_of(winid, step.names)
+	step.row_before = row_of(winid, step.names, step.paths)
 	-- the list of its tab, so each session's file keeps its own steps
 	if step.tab then
 		step.pool = require('frogman.domains.history').routines.pool_of_tab(step.tab).id
@@ -345,7 +352,7 @@ local function close(step, held)
 	if data.open == step then
 		data.open = nil
 	end
-	step.row_after = row_of(step.win, step.names)
+	step.row_after = row_of(step.win, step.names, step.paths)
 	-- a command a replay drives is kept too, so a split reaches the dump
 	local driven = step.cause == "command" and require('frogman.domains.ledger.replay').drives(step.trigger)
 	if ALWAYS[step.cause] or step.torn or driven or #step.moves > 0 or not same_row(step.row_before, step.row_after) then
