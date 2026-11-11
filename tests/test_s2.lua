@@ -2047,6 +2047,137 @@ T['T318 [char] (S2) a tab session\'s load from idle works on the current tab onl
 		{ session_tab = '⦉c⦊ [d] ⟦-⟧', first_tab = '⦉x⦊ [t] ⟦-⟧' })
 end
 
+-- A whole-editor save writes the tab session's tab into the whole editor's file, then that tab's save as the tab
+-- session again makes the whole editor's session the unnamed one, whose records are the plain tabs'
+T['T1259 [char] (S1 Records, review round 11) the unnamed refresh keeps the No Name texts the whole editor\'s own windows name'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e x' })
+	child.lua([[vim.cmd('noautocmd tabnew'); require('frogman').load_session('t', { tab = vim.api.nvim_get_current_tabpage() })]])
+	child.settle(300)
+	child.steps({ ':e b' })
+	S2.noname(child, { 'draft' })
+	child.steps({ ':e c' })
+	eq(S2.save(child, 'work'), { true })
+	eq(child.lua([[return { pcall(require('frogman').save_session, 't', { tab = vim.api.nvim_get_current_tabpage() }) }]]), { true })
+	-- every No Name text a window entry of the whole editor's file names, the file holds
+	local unheld = child.lua([[
+		local d = require('frogman.domains.storage').routines.read_session(vim.fn.getcwd(-1, -1), 'work')
+		local n = 0
+		for _, w in ipairs(d.windows) do
+			for _, i in ipairs({ 1, 2, 4 }) do
+				local h = w[i]
+				if type(h) == 'string' and (d.paths[h] or ''):match('^NONAME_') and not d.noname_content[h] then n = n + 1 end
+			end
+		end
+		return n
+	]])
+	child.lua('vim.api.nvim_exec_autocmds("VimLeavePre", {})')
+	S2.start(child, s)
+	S2.restore_tabs(child, { { files = { 'x' }, shown = 'x' }, { files = { 'b', 'c' }, shown = 'c' } })
+	eq(S2.load(child, 'work'), { true })
+	child.settle(300)
+	eq({ unheld = unheld, back = S2.holding(child, 'draft') }, { unheld = 0, back = 1 })
+end
+
+T['T1260 [char] (S1 Save, review round 11) an empty No Name buffer only slots hold is saved as no slot, so the load leaves that slot empty'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	child.cmd('enew')
+	child.settle()
+	child.steps({ ':e a' })
+	local before = child.slots()
+	eq(Misc.save(child), { true })
+	S2.start(child, s)
+	Misc.restore(child, { 'a' }, 'a')
+	eq(Misc.load(child), { true })
+	child.settle(300)
+	eq({ before = before:match('^⦉NONAME_%d+⦊ %[a%] ⟦%-⟧$') ~= nil, after = child.slots() },
+		{ before = true, after = '⦉-⦊ [a] ⟦-⟧' })
+end
+
+-- Editor 1 visits a to e and back through b to e in one tab, saved as the tab
+-- session ta. Editor 2 has made one visit (x) when the manager brings ta back
+-- into a new tab, its window on e. The window's own visits from the file go
+-- below every visit made after the load, so two closes after :e f and :e t land
+-- on e, as they would in editor 1.
+T['T1261 [char] (S1 Load, review round 11) a tab session\'s load puts its windows\' own visits below every visit made after it'] = function()
+	local s = S2.shared()
+	S2.start(child, s, { history_view = 'window' })
+	child.steps({ ':e a', ':e b', ':e c', ':e d', ':e e', ':e b', ':e c', ':e d', ':e e' })
+	eq(child.lua([[return { pcall(require('frogman').save_session, 'ta', { tab = vim.api.nvim_get_current_tabpage() }) }]]), { true })
+
+	S2.start(child, s, { history_view = 'window' })
+	child.steps({ ':e x' })
+	eq(child.lua([[
+		vim.cmd('noautocmd tabnew')
+		for _, f in ipairs({ 'd', 'c', 'b', 'a' }) do
+			local b = vim.fn.bufadd(f .. '.txt')
+			vim.fn.bufload(b)
+			vim.bo[b].buflisted = true
+		end
+		vim.cmd('noautocmd edit e.txt')
+		return { pcall(require('frogman').load_session, 'ta', { tab = vim.api.nvim_get_current_tabpage() }) }
+	]]), { true })
+	child.settle(300)
+	child.steps({ ':e f', ':e t', '<M-.>' })
+	local first = child.shown()
+	child.step('<M-.>')
+	eq({ first = first, second = child.shown() }, { first = 'f', second = 'e' })
+end
+
+-- Each closed list's files by name, oldest first, the editor's under 'editor'
+-- and each tab session's under its name ('?' for a list with no name).
+local function lists_by_pool()
+	return child.lua([[
+		local H = require('frogman.domains.history')
+		local out = {}
+		for id, pool in pairs(H.routines.pools()) do
+			local names = {}
+			for _, h in ipairs(pool.closed) do
+				table.insert(names, vim.fn.fnamemodify(H.get_filepath_from_handle(h) or '?', ':t:r'))
+			end
+			out[id == '' and 'editor' or (pool.name or '?')] = table.concat(names, ',')
+		end
+		return out
+	]])
+end
+
+-- f is visited in a plain tab alone, opened from the session's tab; its
+-- :bdelete closes that tab, the focus landing in the session's tab. Then the
+-- other way round: f visited in the session's own single-window tab alone,
+-- its :bwipeout closing that tab, the focus landing in the plain tab; the
+-- session's list goes into its file with its last tab, so it's read back by
+-- loading the session again.
+T['T1262 [char] (S2, review round 11) a delete that closes its own tab goes on that tab\'s list, not the list of the tab the focus lands in'] = function()
+	local s = S2.shared()
+	tab_session(s)
+	local before = lists_by_pool()
+	child.steps({ ':tabnew f.txt' })
+	child.steps({ ':bdelete' })
+	child.settle()
+	local plain = lists_by_pool()
+
+	S2.start(child, s)
+	child.steps({ ':e a', ':tabnew b.txt' })
+	eq(child.lua([[return { pcall(require('frogman').save_session, 'ta', { tab = vim.api.nvim_get_current_tabpage() }) }]]), { true })
+	child.steps({ ':e f', ':bdelete b.txt' })
+	child.settle()
+	local tabs = child.lua('return #vim.api.nvim_list_tabpages()')
+	child.steps({ ':bwipeout' })
+	child.settle()
+	local closed = lists_by_pool()
+	eq(child.lua([[
+		vim.cmd('noautocmd tabnew')
+		return { pcall(require('frogman').load_session, 'ta', { tab = vim.api.nvim_get_current_tabpage() }) }
+	]]), { true })
+	child.settle(300)
+	eq({ before = before, plain = plain, tabs = tabs, closed = closed, loaded = lists_by_pool() },
+		{ before = { editor = '', t = '' }, plain = { editor = 'f', t = '' }, tabs = 2, closed = { editor = '' },
+			loaded = { editor = '', ta = 'b,f' } })
+end
+
 T['T319 [char] (S2) closes go to the pool of the tab they happen in, and <M-S-w> reopens from the current tab\'s'] = function()
 	local s = S2.shared()
 	local w1, w2 = tab_session(s)

@@ -371,8 +371,21 @@ function M.init_autocmds(group)
 			if not winid then
 				return
 			end
+			-- a delete that takes the tab with it has its event after the tab has gone: it reads the tab then
+			routines.note_closing_with_tab(winid)
 			-- kept until the close is over, so the TabClosedPre of a tab it takes with it may save its history
-			require('frogman.held').after_close(winid, function() data.crux_internals.window[winid] = nil end)
+			require('frogman.held').after_close(winid, function()
+				data.crux_internals.window[winid] = nil
+				routines.forget_closing_with_tab(winid)
+			end)
+		end
+	})
+
+	-- the tab a command leaves: one that closes the tab it runs in leaves it before the tab closes
+	vim.api.nvim_create_autocmd("TabLeave", {
+		group = group,
+		callback = function()
+			routines.tab_left(vim.api.nvim_get_current_tabpage())
 		end
 	})
 end

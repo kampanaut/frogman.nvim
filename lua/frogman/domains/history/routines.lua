@@ -350,17 +350,80 @@ function M.tabs_that_visited(id)
 	return tabpages
 end
 
+-- the tab the last TabLeave left, until the editor next settles: a command that closes the tab it runs
+-- in leaves that tab first
+local left_tab = nil
+
+-- the windows closing with their tab, while their close isn't over: the tab's pool, the file the window
+-- showed, and whether the command closing it ran in that tab
+---@type table<WinId, { pool: Pool, shows: HandleId|nil, here: boolean }>
+local closing_with_tab = {}
+
+---Note the tab a command leaves, until the editor next settles.
+---
+---@param tabpage integer The tab left
+---@return nil
+function M.tab_left(tabpage)
+	left_tab = tabpage
+	vim.schedule(function()
+		if left_tab == tabpage then
+			left_tab = nil
+		end
+	end)
+end
+
+---Note a window that takes its tab with it as it closes, while the tab is still there: the tab's pool, the
+---file the window shows, and whether the command closing it ran in that tab. Neovim closes the tab before
+---a delete's event, so a delete that closed it reads them then (`M.close_targets()`).
+---
+---@param winid WinId The window closing
+---@return nil
+function M.note_closing_with_tab(winid)
+	if not require('frogman.held').closes_tab(winid) then
+		return
+	end
+	local tabpage = vim.api.nvim_win_get_tabpage(winid)
+	closing_with_tab[winid] = {
+		pool = M.pool_of_tab(tabpage),
+		shows = M.get_handle_from_buffer(vim.api.nvim_win_get_buf(winid)),
+		here = tabpage == left_tab,
+	}
+end
+
+---Let a closed window's note go, once its close is over.
+---
+---@param winid WinId The window closed
+---@return nil
+function M.forget_closing_with_tab(winid)
+	closing_with_tab[winid] = nil
+end
+
 ---Get the pools a file closes into.
 ---
----Its pools are the current tab's, every pool it came out of when it was opened again, and the
----pool of every tab that visited it (see `M.tabs_that_visited()`). A delete reads them at its event,
----while the window still shows the buffer, and its close goes on them once the editor settles.
+---Its pools are the pool of the tab the delete happens in, every pool it came out of when it was opened
+---again, and the pool of every tab that visited it (see `M.tabs_that_visited()`). A delete reads them at
+---its event, while the window still shows the buffer, and its close goes on them once the editor
+---settles. A delete that closes the tab of the window showing the file has its event after the tab has
+---gone, so that tab counts by what was noted as it closed (`M.note_closing_with_tab()`): it visited the
+---file, and the delete happened there when the command ran in it.
 ---
 ---@param id HandleId The file's handle
 ---@return string[] targets The pools' ids
 function M.close_targets(id)
 	local pools = M.pools()
-	local targets = { [M.current_pool()] = true }
+	local here = M.current_pool()
+	local targets = {}
+	for winid, gone in pairs(closing_with_tab) do
+		if vim.api.nvim_win_is_valid(winid) then
+			closing_with_tab[winid] = nil -- its WinClosed didn't close it (a plugin's kept it): no tab went
+		elseif gone.shows == id or (data.crux_internals.window[winid] or {})[id] then
+			targets[gone.pool] = true
+			if gone.here and gone.shows == id then
+				here = gone.pool -- the command ran in the tab it closed with the file's window
+			end
+		end
+	end
+	targets[here] = true
 	for pool_id, _ in pairs(data.came_from[id] or {}) do
 		if pools[pool_id] then
 			targets[pools[pool_id]] = true
@@ -1519,19 +1582,8 @@ function M.delete_buffer(winid)
 		return false
 	end
 
-	-- Check if it's the only buffer left
-	local total_buffers = 0
-	for _ in ipairs(data.ordered.crux) do -- the open ones: a closed file keeps its history in the view
-		total_buffers = total_buffers + 1
-	end
-
-	if total_buffers <= 1 then
-		vim.notify("Can't delete buffer because it's the only one left", vim.log.levels.WARN)
-		return false
-	end
-
 	-- Find next buffer in ordered history list
-	local ordered_buffers = data.ordered.crux
+	local ordered_buffers = data.ordered.crux -- the open ones: a closed file keeps its history in the view
 	local current_index = nil
 
 	-- Find current buffer's position in ordered list
@@ -1542,17 +1594,23 @@ function M.delete_buffer(winid)
 		end
 	end
 
+	-- Check if it's the only buffer left, counting it when the history doesn't order it yet
+	if #ordered_buffers + (current_index and 0 or 1) <= 1 then
+		vim.notify("Can't delete buffer because it's the only one left", vim.log.levels.WARN)
+		return false
+	end
+
 	local next_bufnr
-	if current_index then
-		if current_index == 1 and #ordered_buffers >= 2 then
-			-- If deleting most recent, go to second most recent
-			next_bufnr = ordered_buffers[2].buf
-		elseif current_index > 1 then
-			-- Otherwise go to most recent relative to the one deleted (next in list, wraps around)
-			next_bufnr = ordered_buffers[((current_index) % #ordered_buffers) + 1].buf
-		end
+	if current_index == nil then
+		-- one the history doesn't order yet, taken in while a cycle held it still (a :saveas of the
+		-- cycled-to buffer): it goes to the newest other buffer, as a close of the newest does
+		next_bufnr = ordered_buffers[1].buf
+	elseif current_index == 1 then
+		-- If deleting most recent, go to second most recent
+		next_bufnr = ordered_buffers[2].buf
 	else
-		require('frogman.domains.ledger').never("This is impossible: Current buffer not found in ordered history.")
+		-- Otherwise go to most recent relative to the one deleted (next in list, wraps around)
+		next_bufnr = ordered_buffers[((current_index) % #ordered_buffers) + 1].buf
 	end
 
 	-- Switch to next buffer before deletion

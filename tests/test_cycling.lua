@@ -1844,4 +1844,20 @@ T['T1241 [char] (A8, review round 10) <M-;><M-f> mid-cycle on a start that can n
 		{ ok = true, err = nil, dump = nil, state = CYCLING, shown = before.shown, slots = true, said = 1 })
 end
 
+
+-- The cycle holds the history still, so the name :saveas gives the cycled-to
+-- buffer isn't in its order: the close goes to the newest other buffer, as a
+-- close from the newest does, with nothing that shouldn't happen.
+T['T1264 [char] (A15, M9, review round 11) <M-.> after :saveas on the cycled-to buffer closes it, with no dump'] = function()
+	child.steps({ ':e a', ':e b', ':e c', '<M-n>' })
+	local cycled = child.shown()
+	child.cmd('saveas! zz2.txt')
+	child.settle()
+	local dumps = child.dump_files()
+	local ok, err = child.step('<M-.>')
+	child.settle(300)
+	eq({ cycled = cycled, ok = ok, err = err, dumped = child.dumped_since(dumps), shown = child.shown(), listed = child.lua('return vim.fn.buflisted("zz2.txt")') },
+		{ cycled = 'a', ok = true, dumped = nil, shown = 'c', listed = 0 })
+end
+
 return T

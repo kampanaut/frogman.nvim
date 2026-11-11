@@ -178,6 +178,35 @@ local function known(id)
 	return nil
 end
 
+---Get the hash a window's slot is saved under: as `known` gives it, except that an empty [No Name]
+---buffer nothing but the windows and the lists holds gives nil, as its close takes it out of the slots.
+---
+---Its text isn't saved, empty, so a load couldn't give it back. One a mark or a snapshot holds keeps its
+---slot, since they keep its empty text.
+---
+---@param id HandleId|nil The slot's file's handle
+---@return Filehash|nil filehash Its hash, or nil if nothing knows it or it's an empty [No Name] buffer
+local function slot_known(id)
+	local filehash = known(id)
+	local filepath = filehash and history.get_filepath_from_hash(filehash)
+	if not (filepath and filepath:match("^NONAME_"))
+		or history.handles.held_beyond(id, history.handles.WINDOWS_AND_LISTS) then
+		return filehash
+	end
+	local bufnr = history.get_buffer_from_handle(id)
+	local lines
+	if bufnr and vim.api.nvim_buf_is_loaded(bufnr) then
+		lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+	else
+		local handle = history.handles.get(id)
+		lines = handle and handle.text and handle.text.lines or {} -- an unloaded buffer kept no text
+	end
+	if #lines == 0 or (#lines == 1 and lines[1] == "") then
+		return nil
+	end
+	return filehash
+end
+
 ---Get the hash of what a window shows.
 ---
 ---Returns its buffer's hash when the buffer is registered, otherwise the hash of the buffer's name,
@@ -448,7 +477,7 @@ end
 ---that can be safely serialized to JSON. Holds one entry per window with a triquetra,
 ---in window order, with its slots and notes as hashes, its own access history and what
 ---it shows, so the load can find it. A slot whose file the path registry doesn't know is
----dropped.
+---dropped, and so is an empty [No Name] buffer nothing but the windows and the lists holds.
 ---
 ---@return WindowBufferData compressed Serializable window relationship data
 ---@return WinId[] entry_wins The window each entry came from
@@ -493,14 +522,14 @@ local function serialise_window_relationships(outsiders, tabpage)
 			if cfilehash == nil then
 				cfilehash = vim.NIL
 			else
-				cfilehash = known(cfilehash) or vim.NIL
+				cfilehash = slot_known(cfilehash) or vim.NIL
 			end
 
 			-- Secondary slot
 			if sfilehash == nil then
 				sfilehash = vim.NIL
 			else
-				sfilehash = known(sfilehash) or vim.NIL
+				sfilehash = slot_known(sfilehash) or vim.NIL
 			end
 
 			-- Primary buffer (mobile)
@@ -509,7 +538,7 @@ local function serialise_window_relationships(outsiders, tabpage)
 			else
 				local serialised = {}
 				for _, id in ipairs(pfilehashes) do -- no holes: a file nothing knows is dropped
-					table.insert(serialised, known(id))
+					table.insert(serialised, slot_known(id))
 				end
 				pfilehashes = serialised
 			end
@@ -518,7 +547,7 @@ local function serialise_window_relationships(outsiders, tabpage)
 			if tfilehash == nil then
 				tfilehash = vim.NIL
 			else
-				tfilehash = known(tfilehash) or vim.NIL
+				tfilehash = slot_known(tfilehash) or vim.NIL
 			end
 
 			if tdisplacement_map == nil then
@@ -947,13 +976,15 @@ local function named_in(storage, parts)
 	return named
 end
 
----Carry into a write the No Name texts the file's marks and its windows' snapshots name.
+---Carry into a write the No Name texts the file's own entries name: its marks', its windows'
+---snapshots', and its windows' slots and queues.
 ---
 ---A records write leaves the windows and the tabs as the last save wrote them, but for what closes put
----onto their entries, and a list in the file alone keeps its marks, so the texts those name stay: from
----memory when it holds them, an open one's lines as they stand, its window gone, and otherwise carried
----from the file, unread. A save writes the windows and tabs anew, so it carries only the lists' in the
----file alone.
+---onto their entries, and a list in the file alone keeps its marks, so the texts those name stay: a file
+---whose windows name a text holds it until a save writes those windows anew, whichever list owns the
+---text now. Each comes from memory when it holds it, an open one's lines as they stand, its window gone,
+---and otherwise is carried from the file, unread. A save writes the windows and tabs anew, so it carries
+---only the lists' in the file alone.
 ---
 ---@param texts table<Filehash, table> The texts the write takes, added to in place
 ---@param saved table The file's data
@@ -961,8 +992,23 @@ end
 ---@param scratch_dir string The session's scratch directory
 ---@param references boolean Whether the file's windows and tabs are kept, as a records write keeps them
 ---@return nil
-local function carry_marked_texts(texts, saved, key, scratch_dir, references)
+local function carry_named_texts(texts, saved, key, scratch_dir, references)
 	local named = named_in(saved, { windows = references, tabs = references, detached = true })
+	if references then
+		-- the windows' own slots and queues, as the last save wrote them (`[1]`, `[2]`, `[3]` and `[4]`)
+		for _, entry in ipairs(saved.windows or {}) do
+			for _, filehash in ipairs({ entry[1], entry[2], entry[4] }) do
+				if type(filehash) == "string" then
+					named[filehash] = true
+				end
+			end
+			for _, filehash in ipairs(type(entry[3]) == "table" and entry[3] or {}) do
+				if type(filehash) == "string" then
+					named[filehash] = true
+				end
+			end
+		end
+	end
 	for filehash, _ in pairs(named) do
 		local entry = type(saved.noname_content) == "table" and saved.noname_content[filehash]
 		if texts[filehash] == nil then
@@ -2154,11 +2200,11 @@ end
 
 ---Load a tab session into one tab.
 ---
----That tab's windows start over and take the file's entries, and the session's pool comes in with
----its closed stack and its own visits, older than any made from then on. The editor's history stays
----underneath. A pool already in memory is newer than the file, so it keeps its visits and its
----closed stack, and the file's closed entries it lacks go under them. Any other tab in the pool
----gets a detached list of its own.
+---That tab's windows start over and take the file's entries, their own visits older than any made from
+---then on, and the session's pool comes in with its closed stack and its own visits, older too. The
+---editor's history stays underneath. A pool already in memory is newer than the file, so it keeps its
+---visits and its closed stack, and the file's closed entries it lacks go under them. Any other tab in
+---the pool gets a detached list of its own.
 ---
 ---@param saved_data table The file's data
 ---@param key string The session's key
@@ -2182,13 +2228,18 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 	push_out(load_pool, tabpage)
 	local scratch_dir = file_path .. ".d/"
 	load_buffer_history({ global = {} }, load_paths(saved_data.paths, saved_data.outsiders))
-	if not open then
-		-- its own visits, older than any made from now on
-		load_pool.visits = {}
-		local latest = 0
-		for _, time in pairs(saved_data.buffers.global or {}) do
+	-- the file's visits, its own and its windows', go older than any made from now on, in their order
+	local latest = 0
+	for _, time in pairs(saved_data.buffers.global or {}) do
+		latest = math.max(latest, time)
+	end
+	for _, entry in ipairs(saved_data.windows or {}) do
+		for _, time in pairs(type(entry[9]) == "table" and entry[9] or {}) do
 			latest = math.max(latest, time)
 		end
+	end
+	if not open then
+		load_pool.visits = {}
 		for id, time in pairs(history.keyed_by_handle(saved_data.buffers.global)) do
 			load_pool.visits[id] = time - latest - 1
 		end
@@ -2196,7 +2247,11 @@ local function load_tab_session(saved_data, key, file_path, directory, name, tab
 	load_closed_buffers(saved_data.closed or {}, saved_data.noname_content or {}, key, scratch_dir, saved_data.closed_times, open)
 	local window_histories, matched, taken = load_window_buffer_relationships(saved_data.windows, tabpage)
 	for winid, window_crux in pairs(window_histories) do
-		history.data.crux_internals.window[winid] = window_crux
+		local own = {}
+		for id, time in pairs(window_crux) do
+			own[id] = time - latest - 1
+		end
+		history.data.crux_internals.window[winid] = own
 	end
 	local what = vim.fn.fnamemodify(name or directory, ":t") .. ", loaded into tab " .. vim.api.nvim_tabpage_get_number(tabpage)
 	local gone = restore_snapshots(saved_data, taken, load_pool.id, not open, what)
@@ -3000,7 +3055,7 @@ local function put_marks_part(saved, session, texts, key, file_path)
 	for filehash, text in pairs(marked_texts(session.owner)) do
 		texts[filehash] = texts[filehash] or text -- at a switch, the closed part's copy is open or closed as the file has it
 	end
-	carry_marked_texts(texts, saved, key, file_path .. ".d/", true)
+	carry_named_texts(texts, saved, key, file_path .. ".d/", true)
 	for filehash, _ in pairs(named_in(saved, { session = true, windows = true, tabs = true })) do
 		saved.paths[filehash] = saved.paths[filehash] or history.get_filepath_from_hash(filehash)
 	end
@@ -3759,6 +3814,9 @@ local function close_now(pool)
 	if history.data.pools[pool.id] ~= pool or next(pool.tabs) ~= nil then
 		return
 	end
+	-- the closes still to settle go on their lists first, a file whose delete took the pool's last tab
+	-- with it among them, so its records take them
+	history.routines.run_closes()
 	-- what its windows' closes queued to hold over goes into its scope first, so its records take it
 	marks().flush_pending(pool.id)
 	snapshots().flush_pending(pool.id)
@@ -3932,7 +3990,8 @@ end
 
 ---Close a pool whose last tab left it, on the next tick.
 ---
----Its records are written, a detached list's into the whole editor's file, and then the pool goes.
+---The closes still to settle go on their lists first, and its records are written, a detached list's into
+---the whole editor's file, and then the pool goes.
 ---A session manager's switch closes tabs inside its teardown, before the load it ends with, so a
 ---load in the same batch drops this write with the rest.
 ---
@@ -4043,7 +4102,7 @@ function M.save_history(cwd, name, tab)
 			return indices
 		end)
 		carry_detached(detached, live, previous, texts, paths, key, file_path .. ".d/")
-		carry_marked_texts(texts, previous or {}, key, file_path .. ".d/", false)
+		carry_named_texts(texts, previous or {}, key, file_path .. ".d/", false)
 	end
 	local noname_content, kept = write_noname_texts(texts, key, file_path .. ".d/")
 	local closed, closed_times = serialise_closed_buffers(pool and { pool } or every_pool())
