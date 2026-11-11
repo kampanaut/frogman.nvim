@@ -2105,6 +2105,51 @@ T['T956 [char] (M15, DESK.md:1318) a held-over group whose header is renamed sta
 	eq(child.lua(SESSION_FLAGS), { { name = 'main', held = false }, { name = 'kept', held = true } })
 end
 
+T['T1248 [char] (M15, DESK.md:1318, review round 10) an empty held-over group whose header is renamed stays held over'] = function()
+	local lines, held = held_session_popup()
+	-- its rows deleted first: it stays, empty and held over
+	local emptied = {}
+	local under = false
+	for i, line in ipairs(lines) do
+		if line:find('^❖') then under = (i == held) end
+		if i == held or not under then table.insert(emptied, line) end
+	end
+	write_lines(emptied)
+	local before = child.lua(SESSION_FLAGS)
+	lines = popup().lines
+	for i, line in ipairs(lines) do
+		if line:find('^❖ held over') then lines[i] = '❖ renamed empty' end
+	end
+	write_lines(lines)
+	eq({ before = before, after = child.lua(SESSION_FLAGS) }, {
+		before = { { name = 'main', held = false }, { name = 'held over', held = true } },
+		after = { { name = 'main', held = false }, { name = 'renamed empty', held = true } } })
+end
+
+T['T1249 [char] (M15, review round 10) a marks pop-up left open and unedited across a whole-editor load is drawn again with what the load left'] = function()
+	local s = S2.shared()
+	S2.start(child, s)
+	child.steps({ ':e a' })
+	eq(S2.save(child), { true })
+	child.steps({ ADD .. 'a>', ':e b', ADD .. 's>', OPEN })
+	local function rows(lines)
+		return #vim.tbl_filter(function(l) return l:find('a.txt', 1, true) or l:find('b.txt', 1, true) end, lines)
+	end
+	local before = popup()
+	eq(S2.load(child), { true })
+	child.settle(300)
+	local after = popup()
+	local scope = child.lua([[
+		local marks = require('frogman.domains.marks')
+		local s = marks.routines.scope(marks.routines.scope_key('window', vim.api.nvim_get_current_win()))
+		local n = 0
+		for _, g in ipairs(s and s.groups or {}) do n = n + vim.tbl_count(g.marks) end
+		return n
+	]])
+	-- the load's file has no marks, so the window's scope holds none, and the pop-up draws none
+	eq({ before = rows(before.lines), modified = after.modified, after = rows(after.lines), scope = scope }, { before = 2, modified = false, after = 0, scope = 0 })
+end
+
 -- The default group's header renamed in place makes a typed group: saved, empty, it stays first across
 -- a restart.
 T['T957 [char] (M15, DESK.md:1307, :1301) a typed group is saved even while it\'s empty'] = function()

@@ -506,6 +506,18 @@ function M.scope_changed(kind, id)
 	end
 end
 
+---Draw every scope's buffer again that holds nothing unwritten, as when every scope changed at once: a
+---whole-editor load's teardown lets every scope go.
+---
+---@return nil
+function M.every_scope_changed()
+	for _, record in pairs(bufs) do
+		if vim.api.nvim_buf_is_loaded(record.buf) and not edited(record) then
+			draw_into(record, nil)
+		end
+	end
+end
+
 ---Match each group written to the one the pop-up drew, and find each drawn group whose header was
 ---deleted with some of its marks left under another group's.
 ---
@@ -515,9 +527,10 @@ end
 ---that one did, otherwise the one whose mark comes first under it, since a deleted header's rows join
 ---the group above below its own. Else, renamed, it's the drawn one whose mark comes first under it,
 ---unless a drawn group of its own name and place is still there to be it. Else it's the one of its name
----and place. One renamed with every mark changed, or typed in under a new name, matches none. A drawn
----group none matched had its header deleted, and its marks still there, beyond another group's own,
----joined that group.
+---and place. Else, empty, with no mark to follow, it's by position the unclaimed empty drawn group between
+---the drawn groups its nearest matched neighbours have. One renamed with every mark changed, or typed in
+---under a new name, matches none. A drawn group none matched had its header deleted, and its marks still
+---there, beyond another group's own, joined that group.
 ---
 ---@param groups {name: string, rows: {key: string, row: integer}[]}[] The groups written, in order, each mark by its key and its line
 ---@param drawn {key: string, name: string, rows: string[]}[] The groups drawn, in order
@@ -601,6 +614,31 @@ local function match_groups(groups, drawn)
 		local d = not match[g] and keyed(keys[g]) or nil
 		if d then
 			claim(g, d)
+		end
+	end
+	-- an empty group renamed has no mark to follow, so it follows by position: it's the unclaimed empty drawn
+	-- group standing between the drawn groups its nearest matched neighbours have
+	for g, group in ipairs(groups) do
+		if not match[g] and #group.rows == 0 then
+			local low, high = 0, #drawn + 1
+			for p = g - 1, 1, -1 do
+				if match[p] then
+					low = match[p]
+					break
+				end
+			end
+			for n = g + 1, #groups do
+				if match[n] then
+					high = match[n]
+					break
+				end
+			end
+			for d = low + 1, high - 1 do
+				if not claimed[d] and #drawn[d].rows == 0 then
+					claim(g, d)
+					break
+				end
+			end
 		end
 	end
 	-- the marks each group holds beyond those of the group it matched

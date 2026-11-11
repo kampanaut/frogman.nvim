@@ -184,6 +184,10 @@ function M.teardown()
 	data.pending = {} -- what was queued to be held over goes with the rest
 	data.tab_shows = {}
 	data.copies = {}
+	local popup = package.loaded['frogman.domains.marks.popup']
+	if popup then
+		popup.every_scope_changed() -- an open pop-up with nothing unwritten shows the scopes as the load leaves them
+	end
 end
 
 ---Check if a window's marks are a copy another window still holds alike: the copy it was given, the
