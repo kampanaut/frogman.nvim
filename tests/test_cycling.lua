@@ -1860,4 +1860,49 @@ T['T1264 [char] (A15, M9, review round 11) <M-.> after :saveas on the cycled-to 
 		{ cycled = 'a', ok = true, dumped = nil, shown = 'c', listed = 0 })
 end
 
+
+-- c becomes a nowrite buffer (its OptionSet fired by hand, as a plugin's may
+-- not fire it) and its file is deleted, so it stays registered but untracked;
+-- the window falls back to it while it's also the ternary. The cycle's
+-- checkpoint takes the shown file as current, trading places with the
+-- ternary, so no file is in two slots.
+T['T1265 [char] (I1, A12, review round 11) a cycle started on a shown file that is also the ternary keeps I1'] = function()
+	child.steps({ ':e a', ':e b', ':e c', ':tabnew', ':b#' })
+	child.lua([[
+		vim.bo.buftype = 'nowrite'
+		vim.api.nvim_exec_autocmds('OptionSet', { pattern = 'buftype' })
+	]])
+	child.settle()
+	child.lua([[vim.fn.delete(vim.fn.getcwd() .. '/c.txt')]])
+	child.settle()
+	child.steps({ ':enew', ':bdelete', ':e d', ':bunload' })
+	local before = child.slots()
+	local dumps = child.dump_files()
+	local ok, err = child.step('<M-m>')
+	child.settle(300)
+	local twice = child.lua([[
+		local t = require('frogman.domains.window').data.crux[vim.api.nvim_get_current_win()]
+		local c, s, r = t.current_slot, t.secondary_slot, t.ternary_slot
+		return (c ~= nil and (c == s or c == r)) or (s ~= nil and s == r)
+	]])
+	eq({ before = before, ok = ok, err = err, dumped = child.dumped_since(dumps), twice = twice },
+		{ before = '⦉c⦊ [d] ⟦-⟧', ok = true, dumped = nil, twice = false })
+end
+
+-- A cycle runs in the right window; one batch goes to the left window, opens
+-- e there and comes back. The jump ends the cycle, as when the keys are typed
+-- one by one: the right window goes back to its start, and e is taken in on
+-- the left.
+T['T1270 [char] (A12, M9, review round 11) a batch that goes to another window during a cycle and edits there ends the cycle'] = function()
+	child.steps({ ':e a', ':e b', ':e c', ':vsplit', ':wincmd h', ':e a', ':wincmd l', ':e d' })
+	local right = child.lua('return vim.api.nvim_get_current_win()')
+	local left = child.lua('return vim.fn.win_getid(vim.fn.winnr("h"))')
+	child.steps({ '<M-n>' })
+	local cycling = child.state()
+	child.lua([[pcall(vim.api.nvim_feedkeys, vim.api.nvim_replace_termcodes('<C-w>h:e e.txt<CR><C-w>l', true, false, true), 'x', false)]])
+	child.settle(300)
+	eq({ cycling = cycling, state = child.state(), right = child.slots(right), right_shows = child.shown(right), left = child.slots(left) },
+		{ cycling = CYCLING, state = NORMAL, right = '⦉c⦊ [d] ⟦-⟧', right_shows = 'd', left = '⦉a⦊ [e] ⟦-⟧' })
+end
+
 return T

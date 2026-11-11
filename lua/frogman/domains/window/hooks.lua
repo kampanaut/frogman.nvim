@@ -183,11 +183,16 @@ local M = {}
 ---Create the window domain's autocmds in frogman's augroup.
 ---
 ---Called by setup(), so nothing runs at require. Calling it again after the group is cleared
----replaces them cleanly.
+---replaces them cleanly. The window you're in is the current one from then on, and the last tracked
+---window too when that one's gone: frogman off (`disable()`) saw no window move.
 ---
 ---@param group integer The frogman augroup
 ---@return nil
 function M.init_autocmds(group)
+	data.current_window = vim.api.nvim_get_current_win()
+	if not (data.last_valid_window and vim.api.nvim_win_is_valid(data.last_valid_window)) then
+		data.last_valid_window = data.current_window
+	end
 	vim.api.nvim_create_autocmd("WinClosed", {
 		group = group,
 		callback = function(args)

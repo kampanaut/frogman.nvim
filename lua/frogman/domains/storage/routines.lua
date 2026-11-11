@@ -489,8 +489,10 @@ local function serialise_window_relationships(outsiders, tabpage)
 
 	local compressed_index = 1
 	for _, winid in pairs(tabpage and vim.api.nvim_tabpage_list_wins(tabpage) or vim.api.nvim_list_wins()) do
-		if window.data.crux[winid] ~= nil then -- yes, a direct existence check sorry for breaking encapsulation
-			local triquetra = window.get_triquetra(winid)
+		-- yes, a direct existence check sorry for breaking encapsulation. the getter lets go a window's that
+		-- was turned into a float since, and that window is no entry.
+		local triquetra = window.data.crux[winid] ~= nil and window.get_triquetra(winid) or nil
+		if triquetra then
 
 			-- each slot's handle first, then the hash it's saved under
 			---@type HandleId|Filehash|vim.NIL|nil
@@ -505,10 +507,6 @@ local function serialise_window_relationships(outsiders, tabpage)
 			local sdisplacement_map = {}
 			---@type table<HandleId|string, HandleId>|nil
 			local tdisplacement_map = {}
-
-			if not triquetra then
-				require('frogman.domains.ledger').never("This is impossible. The window triquetra must exist.")
-			end
 
 			-- Current buffer (window's active buffer)
 			cfilehash = triquetra.current_slot

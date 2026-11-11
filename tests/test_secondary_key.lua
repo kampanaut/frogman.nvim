@@ -228,4 +228,38 @@ T['T623 [char] (A6, M7) a secondary that can\'t be reopened writes no note'] = f
 		{ notes = before, slots = '⦉t⦊ [a] ⟦-⟧', said = true })
 end
 
+
+-- d is modified and goes when hidden (bufhidden=wipe), so Vim refuses to
+-- leave it (E37). Each key that would leave it, the ternary and secondary
+-- swaps and the primary jump, raises Vim's error and changes no slot or note,
+-- as a plain :e does. A mark jump under 'winfixbuf' (E1513) the same.
+T['T1267 [char] (A6, A7, M15, review round 11) a slot key or a mark jump Vim refuses changes no slot or note'] = function()
+	child.steps({ ':e a', '<M-;><M-x>', ':e b', ':e c', '<M-f>', ':e d' })
+	child.cmd('setlocal bufhidden=wipe')
+	child.cmd('normal! Ox')
+	child.settle()
+	local function state() return { slots = child.slots(), notes = child.notes(), primary = child.primary(), shown = child.shown() } end
+	local before = state()
+	local got = {}
+	for _, key in ipairs({ '<M-S-f>', '<M-f>', '<M-;><M-f>' }) do
+		local ok, err = child.step(key)
+		got[key] = { ok = ok, e37 = (err or ''):find('E37', 1, true) ~= nil, state = state() }
+	end
+	child.cmd('normal! u')
+	child.cmd('setlocal bufhidden=')
+	child.lua([[require('frogman').mark_add('a')]])
+	child.steps({ '<M-f>' })
+	child.cmd('setlocal winfixbuf')
+	local fixed = state()
+	local jump = child.lua([[return { pcall(require('frogman').mark_jump, 'a') }]])
+	local after = state()
+	child.cmd('setlocal nowinfixbuf')
+	eq({ keys = got, jump = { ok = jump[1], e1513 = tostring(jump[2]):find('E1513', 1, true) ~= nil }, mark = after },
+		{ keys = {
+			['<M-S-f>'] = { ok = false, e37 = true, state = before },
+			['<M-f>'] = { ok = false, e37 = true, state = before },
+			['<M-;><M-f>'] = { ok = false, e37 = true, state = before },
+		}, jump = { ok = false, e1513 = true }, mark = fixed })
+end
+
 return T

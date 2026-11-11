@@ -264,7 +264,29 @@ function M.unregister_triquetra(winid)
 	-- print("Unregistered triquetra for window " .. winid .. "\n" .. debug.traceback())
 end
 
+---Check if a window holding a triquetra was turned into a float since it was made: a float holds no slots
+---(I9), and Neovim fires no event for `nvim_win_set_config`, so the getter and the cleanup tick each ask.
+---
+---@param winid WinId A valid window
+---@return boolean turned
+local function turned_float(winid)
+	return M.crux[winid] ~= nil and vim.api.nvim_win_get_config(winid).relative ~= ""
+end
+
+---Let go the triquetras of windows turned into floats since they were made.
+---
+---@return nil
+function M.let_floats_go()
+	for winid, _ in pairs(M.crux) do
+		if vim.api.nvim_win_is_valid(winid) and turned_float(winid) then
+			M.unregister_triquetra(winid)
+		end
+	end
+end
+
 ---Get or create window buffer relationships for a window.
+---
+---A float has none: a window that held some and was turned into a float since lets them go.
 ---
 ---@param winid number Window ID to get relationships for
 ---@return WindowTriquetra|nil relationship The window's buffer relationships
@@ -276,9 +298,12 @@ function M.get_window_triquetra(winid)
 		return nil -- a window that's gone (e.g. :only closed it) has no triquetra to give.
 	end
 	local wbufnr = vim.api.nvim_win_get_buf(winid)
+	if turned_float(winid) then
+		M.unregister_triquetra(winid)
+		return nil
+	end
     if not M.crux[winid] then
-		local config = vim.api.nvim_win_get_config(winid)
-		if config.relative == "" and history.get_hash_from_buffer(wbufnr) then
+		if vim.api.nvim_win_get_config(winid).relative == "" and history.get_hash_from_buffer(wbufnr) then
 			M.register_triquetra(winid)
 		else
 			return nil

@@ -34,6 +34,8 @@ M.reopen_last_closed = routines.reopen_last_closed
 
 M.init_autocmds = hooks.init_autocmds
 
+M.arrive = hooks.arrive
+
 local cleanup_timer = nil
 
 ---Stop the history cleanup timer, if it's running.

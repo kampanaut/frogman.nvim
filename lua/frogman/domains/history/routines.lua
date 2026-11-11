@@ -1121,28 +1121,39 @@ end
 ---Mark the window's triquetra as the cycle's checkpoint. The checkpoint is the window's own triquetra,
 ---not a copy, so it always names the window's current slot.
 ---
+---The file the window shows is its current slot from then on. When the secondary or the ternary holds
+---it, as when the window fell back to an untracked buffer of that file, it trades places with the
+---current, as the cleanup heals a window showing one of them, so no file is in two slots.
+---
 ---@param winid number Window ID to snapshot
 ---@return nil
 function M.snapshot_origin(winid)
 	-- window's data.crux[winid] is ensured to be non-nil.
 	local get_smart_basename = require('frogman.domains.ui.routines').get_smart_basename
-	data.cycling_origins[winid] = require('frogman.domains.window').get_triquetra(winid)
+	local origin = require('frogman.domains.window').get_triquetra(winid)
+	data.cycling_origins[winid] = origin
 
-	local current_slot = M.get_handle_from_buffer(vim.api.nvim_win_get_buf(winid)) or data.cycling_origins[winid].current_slot
-	local secondary_slot = data.cycling_origins[winid].secondary_slot
+	local current_slot = M.get_handle_from_buffer(vim.api.nvim_win_get_buf(winid)) or origin.current_slot
 	local sslot_display_string
 
 	if current_slot == nil then
 		require('frogman.domains.ledger').never("This is impossible: current buffer is not registered.")
 	end
 
+	if current_slot ~= origin.current_slot and current_slot == origin.secondary_slot then
+		origin:update({ current_slot = current_slot, secondary_slot = origin.current_slot or vim.NIL })
+	elseif current_slot ~= origin.current_slot and current_slot == origin.ternary_slot then
+		origin:update({ current_slot = current_slot, ternary_slot = origin.current_slot or vim.NIL })
+	else
+		origin:set("current_slot", current_slot)
+	end
+
+	local secondary_slot = origin.secondary_slot
 	if secondary_slot == nil then
 		sslot_display_string = "Unfilled"
 	else
 		sslot_display_string = get_smart_basename(secondary_slot)
 	end
-
-	data.cycling_origins[winid]:set("current_slot", current_slot)
 
 	vim.notify(
 		"Checkpoint saved: \n" ..
@@ -1921,6 +1932,9 @@ function M.cleanup_system(on_tick)
 	if not M.refresh_label() then
 		M.mark_missing(data.last_label, on_tick and true or nil)
 	end
+
+	-- a window turned into a float since holds no slots: no event says so, so the tick asks
+	require('frogman.domains.window.data').let_floats_go()
 
 	-- 5. Update ordered lists after cleanup
 	if report.stale_hash_entries > 0 then

@@ -178,6 +178,24 @@ end
 
 local M = {}
 
+---Take a buffer in as an arrival in a window, once the editor has settled.
+---
+---A close still to settle for the buffer runs first, as cleanup runs it for a buffer the screen shows
+---gone: an :edit that reused an empty No Name buffer for a new name deleted its No Name self, so the
+---buffer is taken in under the name it has now, and no window is left a current slot with no buffer.
+---
+---@param winid WinId The window it arrives in
+---@param bufnr Bufnr The buffer it shows
+---@return nil
+function M.arrive(winid, bufnr)
+	if data.closing[bufnr] then
+		routines.run_closes()
+	end
+	vim.api.nvim_win_call(winid, function()
+		historySM:to(historySM:state(), { buf = bufnr }, states.mode.UPDATE)
+	end)
+end
+
 ---Create the history domain's autocmds in frogman's augroup.
 ---
 ---Called by setup(), so nothing runs at require. Calling it again after the group is cleared
@@ -305,7 +323,10 @@ function M.init_autocmds(group)
 			end
 			-- the settle rule: the arrival is slotted once the event is over, against the window it
 			-- happened in (not the focused one), and only if that window still shows the buffer then.
+			-- a cycle's step is one in the cycling window; one in another, a batch that went there, is an arrival
+			-- once the jump's cancel has run
 			local cycling_step = historySM:state() == states.DETACHED
+				and require('frogman.domains.navigation.data').cycling_window == winid
 			local loads = data.loads
 			require('frogman.settle').later("arrival " .. require('frogman.domains.ledger.routines').buffer_label(args.buf), function()
 				if
@@ -321,9 +342,7 @@ function M.init_autocmds(group)
 				if data.loads ~= loads then
 					return -- a session loaded since: this was the restore's own arrival, which the load replaced.
 				end
-				vim.api.nvim_win_call(winid, function()
-					historySM:to(historySM:state(), { buf = args.buf }, states.mode.UPDATE)
-				end)
+				M.arrive(winid, args.buf)
 			end)
 		end,
 	})

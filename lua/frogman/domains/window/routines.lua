@@ -492,6 +492,8 @@ end
 ---It goes to the ternary, then the secondary, then the primary, then the most recent buffer. With
 ---nothing to land on it keeps the empty buffer Neovim gave it, and only makes one if Neovim showed
 ---something else. Neovim's own pick in between isn't recorded as a visit (see `M.is_landing_pick()`).
+---A window that moved on in the same batch doesn't land: from Neovim's pick, or from a buffer that was
+---renamed rather than deleted and is still listed.
 ---
 ---@param winid WinId The window that was showing the deleted buffer
 ---@param deleted_bufnr Bufnr The buffer being deleted
@@ -521,6 +523,11 @@ function M.land_after_delete(winid, deleted_bufnr)
 		end
 		-- the window moved on since neovim's pick (another :e in the same batch), so that's where it is.
 		if landing.pick and vim.api.nvim_win_get_buf(winid) ~= landing.pick then
+			return
+		end
+		-- still listed, it wasn't deleted but renamed, a No Name buffer written under a name, and Neovim made
+		-- no pick: the window moved on from it in the same batch (another :e), and its arrival settles it.
+		if vim.api.nvim_buf_is_valid(deleted_bufnr) and vim.bo[deleted_bufnr].buflisted then
 			return
 		end
 
@@ -695,9 +702,10 @@ function M.enforce_editor_policy(bufnr_ondelete, committing)
 					M.land_after_delete(winid, cbufnr)
 					goto continue
 				end
-				if cbufhash == current_hash and vim.bo[cbufnr].buftype == "" then
+				if cbufhash == current_hash and vim.bo[cbufnr].buftype == "" and history.routines.is_trackable(cbufnr) then
 					-- the window still shows the current slot's file, it's only unregistered for the moment
-					-- (a reload without events). there's nothing to heal.
+					-- (a reload without events). there's nothing to heal. one no longer trackable, an empty
+					-- No Name buffer unlisted, isn't taken in again: the window visits it, as below.
 					goto continue
 				end
 				if history.handles.kept_closed(triquetra.current_slot) then
@@ -956,14 +964,14 @@ function M.swap_with_secondary(winid)
 					vim.log.levels.INFO)
 			end
 		end
-		M.write_secondary_swap_notes(triquetra)
 		if not history.get_handle_from_buffer(cbufnr) then
 			require('frogman.domains.ledger').never("This is impossible. Ternary slot should always have a buffer associated with it.")
 		end
 
-		M.reconcile_triquetra(winid, cbufnr)
-
+		-- the switch goes first, so one Vim refuses (E37, E1513) raises before any slot or note is written
 		vim.api.nvim_set_current_buf(cbufnr)
+		M.write_secondary_swap_notes(triquetra)
+		M.reconcile_triquetra(winid, cbufnr)
 	end
 
 	loop_sm:to(loop_states.SELF)
@@ -1043,9 +1051,9 @@ function M.swap_with_ternary(winid)
 	if not history.get_handle_from_buffer(cbufnr) then
 		require('frogman.domains.ledger').never("This is impossible. Ternary slot should always have a buffer associated with it.")
 	end
-	M.reconcile_triquetra(winid, cbufnr)
-
+	-- the switch goes first, so one Vim refuses (E37, E1513) raises before any slot or note is written
 	vim.api.nvim_set_current_buf(cbufnr)
+	M.reconcile_triquetra(winid, cbufnr)
 
 	loop_sm:to(loop_states.SELF)
 end
@@ -1087,15 +1095,16 @@ function M.jump_to_mark(winid, id, label)
 			return
 		end
 	end
+	-- the switch goes first, so one Vim refuses (E37, E1513) raises before any slot or note is written
+	if vim.api.nvim_win_get_buf(winid) ~= cbufnr then
+		vim.api.nvim_win_set_buf(winid, cbufnr)
+	end
 	if triquetra.current_slot ~= id then
 		local left, ternary_before = triquetra.current_slot, triquetra.ternary_slot
 		triquetra.displacement_ternary_map[left .. "-swap"] = ternary_before
 		triquetra:update({ ternary_slot = left, current_slot = id })
 		M.enforce_secondary_map_policy(triquetra, id, triquetra.secondary_slot)
 		M.enforce_ternary_map_policy(triquetra, id, left, ternary_before, left)
-	end
-	if vim.api.nvim_win_get_buf(winid) ~= cbufnr then
-		vim.api.nvim_win_set_buf(winid, cbufnr)
 	end
 	loop_sm:to(loop_states.SELF)
 end
@@ -1173,6 +1182,8 @@ function M.jump_to_primary(winid)
 			return
 		end
 	end
+	-- the switch goes first, so one Vim refuses (E37, E1513) raises before any slot or note is written
+	vim.api.nvim_set_current_buf(cbufnr)
 	if triquetra.current_slot ~= triquetra.primary_buffer[1] then -- We only do displacment if we are not already in the primary buffer.
 		local left, ternary_before = triquetra.current_slot, triquetra.ternary_slot
 		triquetra.displacement_ternary_map[triquetra.current_slot .. "-swap"] = triquetra.ternary_slot
@@ -1184,7 +1195,6 @@ function M.jump_to_primary(winid)
 	end
 
 	M.reconcile_triquetra(winid, cbufnr)
-	vim.api.nvim_set_current_buf(cbufnr)
 end
 
 ---Toggle the primary buffer in the target window.

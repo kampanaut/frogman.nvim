@@ -72,6 +72,26 @@ end, 1, true, states.mode.WINENTER)
 
 local M = {}
 
+---Take in a window left in the batch that made it: one with no triquetra yet, showing a buffer frogman
+---tracks, gets its arrival for what it shows, as the BufEnter it never had would give it.
+---
+---@param winid WinId The window entered and left
+---@return nil
+local function take_in_left(winid)
+	if
+		not vim.api.nvim_win_is_valid(winid) or
+		vim.api.nvim_win_get_config(winid).relative ~= "" or
+		require('frogman.domains.window.data').crux[winid] ~= nil
+	then
+		return
+	end
+	local bufnr = vim.api.nvim_win_get_buf(winid)
+	if not history.routines.is_trackable(bufnr) then
+		return
+	end
+	history.arrive(winid, bufnr)
+end
+
 ---Create the navigation domain's autocmds in frogman's augroup.
 ---
 ---Called by setup(), so nothing runs at require. Calling it again after the group is cleared
@@ -93,7 +113,16 @@ function M.init_autocmds(group)
 			end
 			require('frogman.settle').later("window entry win " .. vim.api.nvim_win_get_number(winid), function()
 				if vim.api.nvim_get_current_win() ~= winid then
-					return -- moved on already, the later WinEnter takes it from here.
+					-- moved on already, the later WinEnter takes it from here. but the jump here was made: a cycle
+					-- running in another window ends, as the jump ends it when typed by hand, and a window made in
+					-- the same batch and left in it, a split, has no other event: it's taken in by what it shows,
+					-- as its arrival.
+					local cycling_window = data.cycling_window
+					if navigationSM:state() == states.CYCLING and cycling_window and cycling_window ~= winid then
+						routines.cancel_cycle(cycling_window)
+					end
+					take_in_left(winid)
+					return
 				end
 				navigationSM:to(navigationSM:state(), { previous_win = previous_win }, states.mode.WINENTER)
 			end)

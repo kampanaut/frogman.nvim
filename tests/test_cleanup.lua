@@ -809,4 +809,50 @@ T['T909 [char] (A22, DESK.md:877) a cleanup tick runs what\'s queued to settle f
 	eq(order, { 'queued', 'tick' })
 end
 
+
+-- A No Name buffer written under a name is a rename, not a delete, so the
+-- window doesn't land after it: an :edit in the same batch is where it is,
+-- as when the two are typed one after the other.
+T['T1263 [char] (A20, M11, review round 11) a No Name buffer written under a name, then an :edit in the same batch, ends on the edit'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('enew')
+	child.settle()
+	child.lua([[vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'scratch text' })]])
+	child.settle()
+	child.lua([[pcall(vim.api.nvim_feedkeys, vim.api.nvim_replace_termcodes(':write g1.txt<CR>:edit d.txt<CR>', true, false, true), 'x', false)]])
+	child.settle(300)
+	eq({ shown = child.shown(), slots = child.slots(), d = buffer_state('d.txt').registered },
+		{ shown = 'd', slots = '⦉g1⦊ [d] ⟦-⟧', d = true })
+end
+
+
+-- Unlisting the empty No Name buffer a window shows fires BufDelete: its
+-- close lets it go, and the buffer, unlisted, is no longer one frogman
+-- tracks. The window visits it, its next slot taking the current slot's
+-- place, as for a buffer whose buftype turned it untracked (I10), and the
+-- ternary key, with no ternary, takes it back to that current slot.
+T['T1266 [char] (I10, A21, review round 11) :setlocal nobuflisted on the empty No Name buffer a window shows leaves it visiting, with no dump or failing hook'] = function()
+	child.steps({ ':e a', ':e b' })
+	child.cmd('enew')
+	child.settle()
+	local before = child.slots():gsub('NONAME_%d+', 'NONAME')
+	local dumps = child.dump_files()
+	child.messages()
+	child.cmd('setlocal nobuflisted')
+	child.settle(600)
+	local said = child.messages()
+	local slots = child.slots()
+	child.step('<M-S-f>')
+	local after = child.messages()
+	local function has(list, text)
+		for _, m in ipairs(list) do
+			if m.msg:find(text, 1, true) then return true end
+		end
+		return false
+	end
+	eq({ dumped = child.dumped_since(dumps), failed = has(said, 'failed'), before = before, slots = slots,
+		shown = child.shown(), reopen = has(after, "can't be reopened") },
+		{ failed = false, before = '⦉b⦊ [NONAME] ⟦-⟧', slots = '⦉-⦊ [b] ⟦-⟧', shown = 'b', reopen = false })
+end
+
 return T
