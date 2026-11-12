@@ -380,6 +380,13 @@ local function write(path, text)
 	storage.seal_file(path, storage.key_for(vim.fn.getcwd(-1, -1), salt), salt, text, "dump")
 end
 
+---Get the folder the dumps are written in, made by the first dump.
+---
+---@return string directory stdpath("state")/frogman, with no slash at its end
+function M.directory()
+	return vim.fn.stdpath("state") .. "/frogman"
+end
+
 ---Write a dump, once per failure.
 ---
 ---Writes the sealed file right away, then shows the rows in a window and says where the file
@@ -414,7 +421,7 @@ function M.fire(key, what, failing)
 		return
 	end
 	-- Another editor may have written a dump this second, so the number goes past its files
-	local dir = vim.fn.stdpath("state") .. "/frogman"
+	local dir = M.directory()
 	local name, path
 	repeat
 		count = count + 1

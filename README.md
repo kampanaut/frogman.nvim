@@ -576,7 +576,7 @@ Frogman sets these from the `colors` option, and again after `:colorscheme`; a g
 Frogman only tracks regular file buffers and No Name buffers. Help, terminals, quickfix lists and the like aren't tracked: a window visiting one keeps its triquetra, and `<m-f>` brings you back.
 
 **My slots didn't come back after a restart.**
-Check the session manager's hooks first ([Session manager setup](#session-manager-setup)): `save_session` has to run before the editor is torn down, and `load_session` after the session manager restored your windows. The session files are encrypted with a key from the project's directory, so a session only opens from the directory it was saved in. And if OpenSSL's libcrypto can't be found, the save and the load say so: set `libcrypto_path` to its file.
+Run `:checkhealth frogman` first: it says whether the session files can be encrypted and written, and what to change when they can't. Then check the session manager's hooks ([Session manager setup](#session-manager-setup)): `save_session` has to run before the editor is torn down, and `load_session` after the session manager restored your windows. The session files are encrypted with a key from the project's directory, so a session only opens from the directory it was saved in. And if OpenSSL's libcrypto can't be found, the save and the load say so: set `libcrypto_path` to its file.
 
 **A save says it's refused while a snapshot shows.**
 That's on purpose: while a snapshot shows, the window isn't really yours yet. Take it with `<m-v>`, or leave it by opening the list again or going to another window. Your session manager's switch should call `require('frogman').cancel_preview()` before it saves, like the setup above does.

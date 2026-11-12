@@ -31,9 +31,9 @@ M.storage = storage
 M.ledger = ledger
 M.engine = engine
 
--- The keys the last setup mapped, each with its callback, so the next one takes off those that are
--- still frogman's
-local mapped = {}
+-- Whether frogman is on, and the keys the last setup mapped, each with its callback, so the next one
+-- takes off those that are still frogman's, and what each held before
+local state = require('frogman.state')
 
 -- Each key frogman maps: its name in the config, the export it runs and its description. The
 -- same table wraps the exports, so a key's export can't be left unwrapped.
@@ -65,23 +65,46 @@ local keymap_actions = {
 ---Setup keymaps for frogman operations
 ---@param keymaps FrogmanKeymaps Keymap configuration
 local function setup_keymaps(keymaps)
-	-- the last setup's keys go first, those another mapping hasn't replaced since
-	for lhs, callback in pairs(mapped) do
-		if vim.fn.maparg(lhs, 'n', false, true).callback == callback then
+	-- the last setup's keys go first, those another mapping hasn't replaced since, each read from the
+	-- global mappings, which a buffer's own mapping of the key doesn't stand in front of; what each
+	-- held before frogman took it stays known while frogman takes it again
+	local released = {}
+	for lhs, callback in pairs(state.mapped) do
+		local mapping = state.global_mapping(lhs)
+		if mapping and mapping.callback == callback then
 			vim.keymap.del('n', lhs)
+			released[vim.keycode(lhs)] = { took = state.took[lhs] }
 		end
 	end
-	mapped = {}
+	state.mapped, state.took, state.keys = {}, {}, {}
 	if not keymaps then return end
+
+	-- map a key, noting what it held before, another mapping or what frogman took it from at an
+	-- earlier setup; a key this setup mapped already is the marks' clash, not something taken. A
+	-- main key goes by its name in the config, a marks' key by none
+	local ours = {}
+	local function map(lhs, callback, desc, name)
+		local before = state.global_mapping(lhs)
+		local again = released[vim.keycode(lhs)]
+		if again then
+			state.took[lhs] = again.took
+		elseif before and not ours[before.callback] then
+			state.took[lhs] = state.describe(before)
+		end
+		vim.keymap.set('n', lhs, callback, { desc = desc })
+		state.mapped[lhs] = callback
+		ours[callback] = true
+		table.insert(state.keys, { lhs = lhs, desc = desc, name = name })
+	end
 
 	for _, action in ipairs(keymap_actions) do
 		local lhs, desc = keymaps[action[1]], action[3]
 		if lhs then
-			vim.keymap.set('n', lhs, function()
+			map(lhs, function()
 				-- the export as it is when the key is pressed, so a reassigned one takes the key; the step is
 				-- about the window current once the queue has run
 				ledger.run_key(lhs, nil, M[action[2]])
-			end, { desc = desc })
+			end, desc, action[1])
 		end
 	end
 
@@ -129,16 +152,9 @@ local function setup_keymaps(keymaps)
 		end
 		for _, key in ipairs(marks_keys) do
 			local lhs, run, desc = key[1], key[2], key[3]
-			vim.keymap.set('n', lhs, function()
+			map(lhs, function()
 				ledger.run_key(lhs, nil, run)
-			end, { desc = desc })
-			mapped[lhs] = vim.fn.maparg(lhs, 'n', false, true).callback
-		end
-	end
-
-	for action, lhs in pairs(keymaps) do
-		if type(lhs) == "string" and type(defaults.keymaps[action]) == "string" and action ~= "mark_prefix" and action ~= "mark_popup" then
-			mapped[lhs] = vim.fn.maparg(lhs, 'n', false, true).callback
+			end, desc, nil)
 		end
 	end
 end
@@ -271,6 +287,7 @@ function M.setup(user_config)
 
 	-- Setup keymaps
 	setup_keymaps(settings.keymaps)
+	state.on = true
 end
 
 ---Setup debug commands for inspecting internal state
@@ -508,6 +525,7 @@ function M.disable()
 	history.stop_cleanup_timer()
 	history.routines.enable_head_watch(false)
 	require('frogman.domains.storage').routines.write_records_on(false)
+	state.on = false
 end
 
 ---API Exports - Direct access to domain functionality

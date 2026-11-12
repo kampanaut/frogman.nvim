@@ -18,13 +18,14 @@ CONTENTS                                                    *frogman-contents*
 11. Files gone from disk ................................ |frogman-missing|
 12. The trail ............................................. |frogman-trail|
 13. When something shouldn't happen ........................ |frogman-dump|
-14. Guides ............................................... |frogman-guides|
-15. Commands ........................................... |frogman-commands|
-16. Lua functions ............................................ |frogman-api|
-17. Configuration ........................................ |frogman-config|
-18. Highlight groups ................................. |frogman-highlights|
-19. FAQ ..................................................... |frogman-faq|
-20. Coming from cavediver ............................. |frogman-cavediver|
+14. Health check ......................................... |frogman-health|
+15. Guides ............................................... |frogman-guides|
+16. Commands ........................................... |frogman-commands|
+17. Lua functions ............................................ |frogman-api|
+18. Configuration ........................................ |frogman-config|
+19. Highlight groups ................................. |frogman-highlights|
+20. FAQ ..................................................... |frogman-faq|
+21. Coming from cavediver ............................. |frogman-cavediver|
 
 ==============================================================================
 1. Introduction                                                *frogman-intro*
@@ -720,7 +721,50 @@ raises is noted and the replay goes on. If it stopped, the line says where
 and why.
 
 ==============================================================================
-14. Guides                                                    *frogman-guides*
+14. Health check                                              *frogman-health*
+
+`:checkhealth frogman` tells you whether frogman can save and load your
+sessions and draw everything it draws, and what to change when it can't. It
+writes nothing. Each part asks the code that does the work, so what it says
+is what a save or a pop-up would find.
+
+Neovim ~
+- Neovim 0.12 or newer. An older one is an error.
+
+Encryption ~
+- LuaJIT's FFI, which encrypts the session files.
+- OpenSSL's libcrypto, found the way a save finds it:
+  |frogman-config.libcrypto_path| first, then frogman's own list. A
+  `libcrypto_path` that didn't load while the list found one is a warning;
+  nothing found is an error naming every name tried.
+- A test text encrypted and decrypted again, through AES-256-GCM.
+
+Folders ~
+- The session folder, |frogman-config.session_dir|, and the dumps' folder,
+  `stdpath("state")/frogman/`, can be written. One not made yet is fine when
+  the folder it'd be made in can be written.
+
+Setup ~
+- |frogman.setup()| has run, and |frogman.disable()| hasn't turned frogman
+  off since. Either is a warning, since nothing is tracked then.
+
+Plugins frogman uses ~
+- telescope.nvim and nvim-window-picker: either one missing is an error,
+  saying what can't work without it.
+- nvim-cokeline: missing is a warning, since frogman works without it, with
+  less to see.
+
+Keys ~
+Each of these is a warning:
+- a key another mapping had before setup() took it, said again after every
+  setup() while frogman keeps the key;
+- one of frogman's keys mapped over, or unmapped, after setup();
+- one of frogman's keys that's the same as one of the marks' keys, which the
+  marks' key takes.
+A buffer's own mapping of a key doesn't count.
+
+==============================================================================
+15. Guides                                                    *frogman-guides*
 
                                                   *frogman-guide-history-view*
 Sort the bufferline by each window's own visits ~
@@ -811,7 +855,7 @@ If your font doesn't have the Unicode glyphs frogman's views use: >lua
 You can also swap a single glyph, like `glyphs = { group = "#" }`.
 
 ==============================================================================
-15. Commands                                                *frogman-commands*
+16. Commands                                                *frogman-commands*
 
                                                             *:FrogmanClosed*
 :FrogmanClosed          Open the closed lists (|frogman-closed-lists|).
@@ -870,7 +914,7 @@ change between versions:
 :FrogmanUIData          The UI domain's data.
 
 ==============================================================================
-16. Lua functions                                                *frogman-api*
+17. Lua functions                                                *frogman-api*
 
 All of these are fields of `require('frogman')`.
 
@@ -1026,7 +1070,7 @@ history, window, navigation, storage, ui, ledger, engine
                         gives a handle's hash.
 
 ==============================================================================
-17. Configuration                                             *frogman-config*
+18. Configuration                                             *frogman-config*
 
 Pass |frogman.setup()| only what you change; everything else keeps its
 default. A list replaces the default list whole.
@@ -1175,7 +1219,7 @@ winbar_refresh_interval
                 Default: 140
 
 ==============================================================================
-18. Highlight groups                                      *frogman-highlights*
+19. Highlight groups                                      *frogman-highlights*
 
 Frogman sets these from |frogman-config.colors| at setup, and again after
 |:colorscheme|; a group your colorscheme defines stays its own.
@@ -1220,7 +1264,7 @@ The snapshot list ~
                                   a snapshot's stored order, by role
 
 ==============================================================================
-19. FAQ                                                          *frogman-faq*
+20. FAQ                                                          *frogman-faq*
 
 Some of my buffers don't show in the bufferline. ~
 
@@ -1230,12 +1274,14 @@ keeps its triquetra, and <M-f> brings you back.
 
 My slots didn't come back after a restart. ~
 
-Check the session manager's hooks first (|frogman-sessions|): `save_session`
-has to run before the editor is torn down, and `load_session` after the
-session manager restored your windows. The session files are encrypted with a
-key from the project's directory, so a session only opens from the directory
-it was saved in. And if OpenSSL's libcrypto can't be found, the save and the
-load say so: set |frogman-config.libcrypto_path| to its file.
+Run `:checkhealth frogman` first (|frogman-health|): it says whether the
+session files can be encrypted and written, and what to change when they
+can't. Then check the session manager's hooks (|frogman-sessions|):
+`save_session` has to run before the editor is torn down, and `load_session`
+after the session manager restored your windows. The session files are
+encrypted with a key from the project's directory, so a session only opens
+from the directory it was saved in. And if OpenSSL's libcrypto can't be found,
+the save and the load say so: set |frogman-config.libcrypto_path| to its file.
 
 A save says it's refused while a snapshot shows. ~
 
@@ -1268,7 +1314,7 @@ How do I turn frogman off for a while? ~
 |frogman.disable()|, and |frogman.setup()| to turn it back on.
 
 ==============================================================================
-20. Coming from cavediver                                  *frogman-cavediver*
+21. Coming from cavediver                                  *frogman-cavediver*
 
 This plugin was called cavediver before. Do these once, in this order,
 before your first session with frogman:

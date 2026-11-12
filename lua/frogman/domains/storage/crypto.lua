@@ -22,8 +22,12 @@ local EVP_CTRL_GCM_GET_TAG = 0x10
 local EVP_CTRL_GCM_SET_TAG = 0x11
 
 local libcrypto
+-- the name libcrypto was loaded by
+local loaded_name
 -- the libcrypto_path values that didn't load, each said once
 local warned = {}
+-- the libcrypto_path the search that loaded libcrypto passed over, and why
+local rejected
 -- the last search that loaded nothing: the libcrypto_path it was made with, and its error
 local failed
 
@@ -90,18 +94,22 @@ local function crypto()
 				"/opt/homebrew/lib/libcrypto.4.dylib", "/usr/local/lib/libcrypto.4.dylib",
 			})
 		end
+		rejected = nil -- a search says what it passed over itself
 		for i, name in ipairs(names) do
 			local ok, lib = pcall(ffi.load, name)
 			-- a library that loads but has no libcrypto in it counts as one that won't load
 			local why = not ok and tostring(lib):match("[^\n]*")
 				or not pcall(function() return lib.frg_EVP_aes_256_gcm end) and "it isn't libcrypto (no EVP_aes_256_gcm)"
 			if not why then
-				libcrypto = lib
+				libcrypto, loaded_name = lib, name
 				break
-			elseif i == 1 and type(configured) == "string" and configured ~= "" and not warned[name] then
-				warned[name] = true
-				vim.notify("frogman: libcrypto_path (" .. name .. ") didn't load: " .. why
-					.. "; trying frogman's own list.", vim.log.levels.WARN)
+			elseif i == 1 and type(configured) == "string" and configured ~= "" then
+				rejected = { path = name, why = why }
+				if not warned[name] then
+					warned[name] = true
+					vim.notify("frogman: libcrypto_path (" .. name .. ") didn't load: " .. why
+						.. "; trying frogman's own list.", vim.log.levels.WARN)
+				end
 			end
 		end
 		if libcrypto == nil then
@@ -111,6 +119,19 @@ local function crypto()
 		end
 	end
 	return libcrypto
+end
+
+---Tell how libcrypto stands, loading it first when it isn't loaded yet, as a save would.
+---
+---Loading it says once that a `libcrypto_path` that doesn't load was passed over, as any first load
+---does, and the answer keeps what that said.
+---
+---@return {ffi: boolean, library: string|nil, error: string|nil, rejected: {path: string, why: string}|nil} status
+---  Whether LuaJIT's FFI is there, the name libcrypto was loaded by, the error the load gave, and the
+---  `libcrypto_path` the load passed over, with why
+function M.status()
+	local ok, err = pcall(crypto)
+	return { ffi = ffi ~= nil, library = loaded_name, error = not ok and tostring(err) or nil, rejected = rejected }
 end
 
 ---Get random bytes from libcrypto.
