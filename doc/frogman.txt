@@ -50,8 +50,7 @@ On top of the triquetra sit three more ways to hold on to a buffer:
 - Snapshots: save points of a window's whole setup (|frogman-snapshots|).
 
 All of it survives a restart, with any session manager, in an encrypted file
-(|frogman-sessions|). Every move frogman makes for you is logged, a page a
-day, in the trail (|frogman-trail|).
+(|frogman-sessions|).
 
                                                         *frogman-recall-tiers*
 The recall tiers ~
