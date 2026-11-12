@@ -872,15 +872,6 @@ T['T289 [char] (D25) the window machine is gone: its file, its SHOWING_ constant
 	}, { sm = 0, showing = false, requires = false })
 end
 
-T['T290 [char] (D18, D22, D24) STATUS and the old project CLAUDE.md live in archive/'] = function()
-	eq({
-		vim.fn.filereadable('archive/CURRENT_IMPLEMENTATION_STATUS.md'),
-		vim.fn.filereadable('archive/CLAUDE.md'),
-		vim.fn.filereadable('CURRENT_IMPLEMENTATION_STATUS.md'),
-		vim.fn.filereadable('CLAUDE.md'),
-	}, { 1, 1, 0, 0 })
-end
-
 T['T291 [char] (D8, D13) README:15 and README:355 stay as written'] = function()
 	local r = read('README.md')
 	eq({

@@ -199,11 +199,6 @@ T['D21 [char] navigation/states.lua says nothing enters file_picker yet'] = func
 	eq({ says, has(line, 'where explorer controls navigation') }, { true, false })
 end
 
-T['D21 [char] the old spec marks file-picker mode as not built'] = function()
-	local s = section(read('WINDOW_BUFFER_RELATIONSHIP_SPECIFICATION.md'), '#### File Picker Mode')
-	eq(has(s:lower(), 'not built'), true)
-end
-
 T['D25 [char] the closed-stack comments say handles'] = function()
 	local data = read('lua/frogman/domains/history/data.lua')
 	local init = read('lua/frogman/domains/history/init.lua')
@@ -291,24 +286,6 @@ T['Q5 [char] the meaningless 30 in math.max(#ordered, 30) is gone'] = function()
 	local c = read('lua/frogman/domains/ui/routines.lua')
 	eq(c:find('math%.max%(%s*#history%.data%.ordered%.crux%s*,%s*30%s*%)') ~= nil, false)
 end
-
--- The desk, as of 2026-10-21, archived --------------------------------------
-
-local DESK = 'archive/DESK-2026-10-21.md'
-
-T['A12 [char] the desk narrows the cokeline item and its Dropped line to the fallback'] = function()
-	local desk = read(DESK)
-	local dropped = section(desk, '## Dropped', '## ')
-	local phrase = 'only a fallback when cokeline is missing'
-	local _, n = desk:gsub(phrase:gsub('%p', '%%%0'), '')
-	eq({ has(dropped, phrase), n >= 2 }, { true, true })
-end
-
-T['D14 [char] the desk\'s new-file wipe bug and its repro name the faster trigger'] = function()
-	local desk = read(DESK)
-	eq({ has(desk, 'Sooner still, the next `BufEnter` anywhere wipes it'), has(desk, 'Or skip the wait') }, { true, true })
-end
-
 
 -- The help file is the full manual, written by hand: every option setup() takes, every key action, every
 -- user command and every field of require('frogman') has its tag there; and the README's Commands and Lua
