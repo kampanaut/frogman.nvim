@@ -16,11 +16,13 @@ CONTENTS                                                    *frogman-contents*
 11. Files gone from disk ................................ |frogman-missing|
 12. The trail ............................................. |frogman-trail|
 13. When something shouldn't happen ........................ |frogman-dump|
-14. Commands ........................................... |frogman-commands|
-15. Lua functions ............................................ |frogman-api|
-16. Configuration ........................................ |frogman-config|
-17. Highlight groups ................................. |frogman-highlights|
-18. Coming from cavediver ............................. |frogman-cavediver|
+14. Guides ............................................... |frogman-guides|
+15. Commands ........................................... |frogman-commands|
+16. Lua functions ............................................ |frogman-api|
+17. Configuration ........................................ |frogman-config|
+18. Highlight groups ................................. |frogman-highlights|
+19. FAQ ..................................................... |frogman-faq|
+20. Coming from cavediver ............................. |frogman-cavediver|
 
 ==============================================================================
 1. Introduction                                                *frogman-intro*
@@ -424,9 +426,9 @@ one is borrowed, still counted closed, and a file gone from disk shows as a
 placeholder. `:e` in the window borrows what it opens.
 
 - <M-v> takes the snapshot, landing on the buffer you're on.
-- Opening the list again, or going to another window, leaves the preview, and
-  the window goes back to how it was. <M-,> leaves it and goes to the window
-  before.
+- Press <M-;>S again to open the pop-up, quitting the preview: the window
+  goes back to how it was, and q closes the pop-up. Going to another window
+  quits it too, and <M-,> quits it and goes to the window before.
 - A buffer the preview shows deleted ends the preview, saying so. The
   snapshot's current deleted while another of its files shows doesn't: it's
   drawn closed, and borrowed when you step onto it.
@@ -716,7 +718,98 @@ raises is noted and the replay goes on. If it stopped, the line says where
 and why.
 
 ==============================================================================
-14. Commands                                                *frogman-commands*
+14. Guides                                                    *frogman-guides*
+
+                                                  *frogman-guide-history-view*
+Sort the bufferline by each window's own visits ~
+
+By default the bufferline follows every window's visits. To have each window
+show its own: >lua
+
+    require('frogman').setup({
+        bufferline = { history_view = "window" },
+    })
+<
+                                                      *frogman-guide-winbar*
+Put frogman's winbar into your own ~
+
+Tell frogman not to write the winbar, and place its segment yourself.
+`vim.g.statusline_winid` is the window being drawn, so each window gets its
+own triquetra: >lua
+
+    require('frogman').setup({
+        winbar = { own = false },
+    })
+
+    function _G.MyWinbar()
+        local frogman = require('frogman')
+        return "  " .. frogman.winbar_segment(vim.g.statusline_winid)
+    end
+    vim.o.winbar = "%!v:lua.MyWinbar()"
+<
+                                                 *frogman-guide-copy-window*
+Copy a window's setup into another window ~
+
+1. In the window you want to copy, take a snapshot with <M-;><M-s>.
+2. Open its list with <M-;>S, yank the snapshot's line, and leave with q.
+3. In the other window, open its list with <M-;>S, paste the line, and
+   write.
+4. <CR> on the line shows it, and <M-v> takes it.
+
+Cut instead of yank to move the snapshot rather than copy it.
+
+                                                *frogman-guide-tab-sessions*
+Use tab sessions with resession ~
+
+With the hooks of |frogman-resession| in place, a tab session is just
+resession's: >lua
+
+    -- save the tab you're in as its own session
+    require('resession').save_tab("notes")
+    -- load it into the tab you're in, the other tabs left as they are
+    require('resession').load("notes")
+<
+The tab's closed buffers and its marks are its own from then on, and closing
+the tab saves it (the `TabClosedPre` part of the setup). If you load the same
+session into another tab, it moves there, and the tab it left keeps a copy of
+its list, like `notes_DETACHED` (|frogman-detached|).
+
+                                                        *frogman-guide-keys*
+Use your own keys ~
+
+Set a key to false to leave it unmapped, then map the function yourself: >lua
+
+    require('frogman').setup({
+        keymaps = { toggle_secondary = false },
+    })
+    vim.keymap.set('n', '<leader>s', require('frogman').toggle_secondary,
+        { desc = "Swap with the secondary" })
+<
+Every key has its function, listed in |frogman-api|.
+
+                                                     *frogman-guide-aliases*
+Use other mark aliases ~
+
+The aliases are a table of each alias and its place, one alias to one place.
+Yours replaces the default table whole: >lua
+
+    require('frogman').setup({
+        marks = { aliases = { j = 1, k = 2, l = 3, h = 4 } },
+    })
+<
+                                                       *frogman-guide-ascii*
+Draw with ASCII glyphs ~
+
+If your font doesn't have the Unicode glyphs frogman's views use: >lua
+
+    require('frogman').setup({
+        glyphs = { set = "ascii" },
+    })
+<
+You can also swap a single glyph, like `glyphs = { group = "#" }`.
+
+==============================================================================
+15. Commands                                                *frogman-commands*
 
                                                             *:FrogmanClosed*
 :FrogmanClosed          Open the closed lists (|frogman-closed-lists|).
@@ -775,7 +868,7 @@ change between versions:
 :FrogmanUIData          The UI domain's data.
 
 ==============================================================================
-15. Lua functions                                                *frogman-api*
+16. Lua functions                                                *frogman-api*
 
 All of these are fields of `require('frogman')`.
 
@@ -931,7 +1024,7 @@ history, window, navigation, storage, ui, ledger, engine
                         gives a handle's hash.
 
 ==============================================================================
-16. Configuration                                             *frogman-config*
+17. Configuration                                             *frogman-config*
 
 Pass |frogman.setup()| only what you change; everything else keeps its
 default. A list replaces the default list whole.
@@ -1080,7 +1173,7 @@ winbar_refresh_interval
                 Default: 140
 
 ==============================================================================
-17. Highlight groups                                      *frogman-highlights*
+18. Highlight groups                                      *frogman-highlights*
 
 Frogman sets these from |frogman-config.colors| at setup, and again after
 |:colorscheme|; a group your colorscheme defines stays its own.
@@ -1125,7 +1218,55 @@ The snapshot list ~
                                   a snapshot's stored order, by role
 
 ==============================================================================
-18. Coming from cavediver                                  *frogman-cavediver*
+19. FAQ                                                          *frogman-faq*
+
+Some of my buffers don't show in the bufferline. ~
+
+Frogman only tracks regular file buffers and No Name buffers. Help,
+terminals, quickfix lists and the like aren't tracked: a window visiting one
+keeps its triquetra, and <M-f> brings you back.
+
+My slots didn't come back after a restart. ~
+
+Check the session manager's hooks first (|frogman-sessions|): `save_session`
+has to run before the editor is torn down, and `load_session` after the
+session manager restored your windows. The session files are encrypted with a
+key from the project's directory, so a session only opens from the directory
+it was saved in. And if OpenSSL's libcrypto can't be found, the save and the
+load say so: set |frogman-config.libcrypto_path| to its file.
+
+A save says it's refused while a snapshot shows. ~
+
+That's on purpose: while a snapshot shows, the window isn't really yours yet.
+Take it with <M-v>, or leave it by opening the list again or going to another
+window. Your session manager's switch should call |frogman.cancel_preview()|
+before it saves, like |frogman-resession| does.
+
+Do I need cokeline, or a session manager? ~
+
+No to both, frogman runs without them. Without cokeline you lose the visit
+order and the role colours in the bufferline, and without a session manager
+nothing comes back after a restart, unless you call |frogman.save_session()|
+and |frogman.load_session()| yourself.
+
+Where are my sessions, and are they private? ~
+
+In `stdpath("data")/frogman/sessions/` by default
+(|frogman-config.session_dir|), encrypted with AES-256-GCM through OpenSSL's
+libcrypto, with a key from the project's directory. The dumps under
+`stdpath("state")/frogman/` are encrypted the same way.
+
+A window popped up saying something shouldn't happen. ~
+
+That's the flight recorder: frogman caught one of its own bugs and wrote its
+last steps to a file. See |frogman-dump| to read it or replay it.
+
+How do I turn frogman off for a while? ~
+
+|frogman.disable()|, and |frogman.setup()| to turn it back on.
+
+==============================================================================
+20. Coming from cavediver                                  *frogman-cavediver*
 
 This plugin was called cavediver before. Do these once, in this order,
 before your first session with frogman:

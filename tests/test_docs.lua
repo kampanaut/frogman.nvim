@@ -136,7 +136,7 @@ end
 
 T['D28 [char] README has "Session manager setup" with resession, native sessions and no manager'] = function()
 	local r = read(README)
-	local s = section(r, 'Session manager setup', '## ')
+	local s = section(r, '## Session manager setup', '## ') -- its heading: the contents name it first
 	eq({
 		has(r, 'Session manager setup'),
 		has(s, 'pre_load'),
@@ -311,42 +311,56 @@ end
 
 
 -- The help file is the full manual, written by hand: every option setup() takes, every key action, every
--- user command and every field of require('frogman') has its tag there, so a new one without its entry
--- fails here.
-T['T1293 [char] (the user, 2026-11-12: "help as the full manual") doc/frogman.txt has a tag for every option, key, command and function'] = function()
+-- user command and every field of require('frogman') has its tag there; and the README's Commands and Lua
+-- API sections name every command and every field too. A new one without its entry fails here.
+T['T1293 [char] (the user, 2026-11-12: "help as the full manual", "Extend it (Recommended)") the help has a tag for every option, key, command and function, and the README names every command and function'] = function()
 	local help = read('doc/frogman.txt')
 	local tags = {}
 	for tag in help:gmatch('%*([^%*%s]+)%*') do
 		tags[tag] = true
 	end
+	local readme = read(README)
+	local commands_part = section(readme, '## Commands')
+	local api_part = section(readme, '## Lua API')
 	local child = Helpers.new_child()
 	child.setup()
-	local wanted = child.lua([[
-		local out = {}
+	local got = child.lua([[
+		local out = { tags = {}, commands = {}, fields = {} }
 		local configs = require('frogman.configs')
 		for key, value in pairs(configs) do
-			if type(value) ~= 'function' then table.insert(out, 'frogman-config.' .. key) end
+			if type(value) ~= 'function' then table.insert(out.tags, 'frogman-config.' .. key) end
 		end
 		for _, key in ipairs({ 'libcrypto_path', 'label_provider' }) do
-			table.insert(out, 'frogman-config.' .. key) -- read when set, absent from the defaults
+			table.insert(out.tags, 'frogman-config.' .. key) -- read when set, absent from the defaults
 		end
 		for action, lhs in pairs(configs.keymaps) do
 			if type(lhs) == 'string' and not action:match('^mark_') then
-				table.insert(out, 'frogman-key-' .. action)
+				table.insert(out.tags, 'frogman-key-' .. action)
 			end
 		end
 		for name, _ in pairs(vim.api.nvim_get_commands({})) do
-			if name:match('^Frogman') then table.insert(out, ':' .. name) end
+			if name:match('^Frogman') then
+				table.insert(out.tags, ':' .. name)
+				table.insert(out.commands, name)
+			end
 		end
 		for name, value in pairs(require('frogman')) do
-			table.insert(out, 'frogman.' .. name .. (type(value) == 'function' and '()' or ''))
+			table.insert(out.tags, 'frogman.' .. name .. (type(value) == 'function' and '()' or ''))
+			table.insert(out.fields, name)
 		end
-		table.sort(out)
+		table.sort(out.tags)
+		table.sort(out.commands)
+		table.sort(out.fields)
 		return out
 	]])
 	child.stop()
-	local missing = vim.tbl_filter(function(tag) return not tags[tag] end, wanted)
-	eq({ wanted = #wanted > 80, missing = missing }, { wanted = true, missing = {} })
+	local missing = vim.tbl_filter(function(tag) return not tags[tag] end, got.tags)
+	local unlisted = vim.tbl_filter(function(name) return not commands_part:find(':' .. name, 1, true) end, got.commands)
+	local unnamed = vim.tbl_filter(function(name)
+		return not (api_part:find('`' .. name .. '(', 1, true) or api_part:find('`' .. name .. '`', 1, true))
+	end, got.fields)
+	eq({ wanted = #got.tags > 80, missing = missing, unlisted = unlisted, unnamed = unnamed },
+		{ wanted = true, missing = {}, unlisted = {}, unnamed = {} })
 end
 
 return T
