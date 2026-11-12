@@ -5,6 +5,7 @@ Per-window buffer recall for Neovim: the buffers you're juggling stay within rea
 ## Contents
 
 - [Why frogman](#why-frogman)
+- [Similar plugins](#similar-plugins)
 - [Demo](#demo)
 - [Features](#features)
 - [Requirements](#requirements)
@@ -29,6 +30,36 @@ Everything here is also in Neovim's help: `:h frogman`.
 So basically, this plugin allows you to manage your buffers with a per-window recall system designed around the human mind's frailty in _working memory_. Let me explain what that is: have you ever felt lost after unconsciously jumping to files trying to get around the codebase just because you forgot to be conscious about it? Like some jumps earlier you should have remembered your current filename, but you were too busy thinking about the problem at hand not the filename itself. And also sometimes you don't want to mess up your current jumping setup, like, at some point you have decided to just swap between files A and B, with A being your current file, and now you have to go to C. In traditional neovim, B would have been forgotten, and now you can only jump between A and C. It's fine if you remember the full filename of B, what if you forgot? And now it gets annoying to try remember it and then it just interrupts your flow, trying to go back to only swap between A and B. 
 
 This is the kind of problem this plugin solves for you. This recall system is known as the **Triquetra System**. The Triquetra System is what mainly drives the recalling of buffers, with less load on your working memory. In a way because of how the triquetra buffers are presented in the UI, this gives you at least a semblance of your current jumping setup. And I have designed this in a way, that you can always restore the secondary buffer and the ternary buffer so you can always get back to what once was. On top of the triquetras there are marks, for the buffers you keep coming back to, and snapshots, to save a window's whole setup and get back to it later. There are other neat features as well, like it remembering all of this across restarts, just read the **How to Use** section below.
+
+## Similar plugins
+
+Frogman covers ground a few other plugins cover, each in its own way. If one of them does all you need, it's the lighter choice.
+
+**Per-window buffer history**
+- [rabbit.nvim](https://github.com/VoxelPrismatic/rabbit.nvim): keeps recent buffers apart for each window.
+- [buf-jump.nvim](https://github.com/johnpmitsch/buf-jump.nvim): gives each window back and forward, like a browser.
+- Frogman keeps three named slots instead of a line of where you've been: the buffer you're on, the one before it and the one you parked. You can always restore the last two, so the setup you're juggling doesn't get pushed out.
+
+**Marks**
+- [harpoon](https://github.com/ThePrimeagen/harpoon/tree/harpoon2): files under quick keys, per project.
+- [grapple.nvim](https://github.com/cbochs/grapple.nvim): tagged files, per directory, per git branch or across everything.
+- [arrow.nvim](https://github.com/otavioschwanck/arrow.nvim): bookmarks per project, behind one key.
+- Frogman's marks are per window, per tab or per session, in groups you type in a pop-up, and a mark can become the window's primary.
+
+**Closed buffers**
+- [bufstack.nvim](https://github.com/BibekBhusal0/bufstack.nvim), a fork of [buftrack.nvim](https://github.com/bloznelis/buftrack.nvim): reopens recently closed buffers.
+- [buffon.nvim](https://github.com/francescarpi/buffon.nvim): a buffer navigator that reopens closed ones.
+- Frogman keeps them per session, across restarts, in lists you edit like any buffer.
+
+**Tab-scoped buffers**
+- [scope.nvim](https://github.com/tiagovla/scope.nvim): each tab gets its own buffers.
+- Frogman's tab sessions give a tab its own closed list, marks and history, saved with your session manager.
+- Frogman doesn't play well with scope.nvim. It's meant to follow Vim's own idea of buffers, one list that every tab and window shares, so when scope.nvim unlists a tab's buffers as you leave it, frogman takes them as closed.
+
+**What none of these do**
+- a buffer you park in a window and swap with
+- a primary for each window, with a queue of the earlier ones
+- snapshots of a window's whole setup, to come back to
 
 ## Demo
 This is a short demo. It just covers how the triquetra buffers update for all sorts of jumps. The slots update when you enter a buffer, except while cycling.
