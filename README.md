@@ -21,6 +21,7 @@ Per-window buffer recall for Neovim: the buffers you're juggling stay within rea
 - [When something shouldn't happen](#when-something-shouldnt-happen)
 - [Configuration Defaults](#configuration-defaults)
 - [Coming from cavediver](#coming-from-cavediver)
+- [License](#license)
 
 Everything here is also in Neovim's help: `:h frogman`.
 
@@ -937,3 +938,7 @@ This plugin was called cavediver before. Do these once, in this order, before yo
     Run it before your first session: a session started first saves a fresh file, and the script won't convert over
     it unless you pass `--replace`. A load that finds an old file tells you the command, with the path for your
     install, the folder and library your setup sets, and, for a tab session's file, the session itself.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

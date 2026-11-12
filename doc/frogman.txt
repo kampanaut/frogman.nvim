@@ -1,5 +1,7 @@
 *frogman.txt*                              Per-window buffer recall for Neovim
 
+License: MIT
+
 ==============================================================================
 CONTENTS                                                    *frogman-contents*
 
